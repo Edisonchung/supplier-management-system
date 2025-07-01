@@ -1,28 +1,23 @@
-import { useState } from 'react';
-import { Building2, AlertCircle, Eye, EyeOff, Shield, Users, Package, BarChart3 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import React, { useState } from 'react';
+import { Building2, AlertCircle, Eye, EyeOff, Shield, Users, Package, BarChart3, Sparkles, Zap, Globe, ArrowRight } from 'lucide-react';
 
-const LoginForm = ({ showNotification }) => {
-  const { login } = useAuth();
+const ModernLoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     
-    try {
-      const result = await login(email, password);
-      showNotification(`Welcome back, ${result.user.displayName}!`, 'success');
-    } catch (err) {
-      setError(err.message);
-    } finally {
+    // Simulate login
+    setTimeout(() => {
       setLoading(false);
-    }
+      alert('Demo login successful!');
+    }, 1500);
   };
 
   const quickLogin = (userEmail, role) => {
@@ -32,10 +27,34 @@ const LoginForm = ({ showNotification }) => {
   };
 
   const features = [
-    { icon: Package, title: 'Product Management', desc: 'Complete catalog control' },
-    { icon: Building2, title: 'Supplier Network', desc: 'Streamlined partnerships' },
-    { icon: BarChart3, title: 'Analytics Dashboard', desc: 'Real-time insights' },
-    { icon: Shield, title: 'Enterprise Security', desc: 'Role-based access control' }
+    { 
+      icon: Package, 
+      title: 'Smart Inventory', 
+      desc: 'AI-powered stock management',
+      color: 'from-emerald-400 to-teal-500',
+      bgColor: 'bg-emerald-50'
+    },
+    { 
+      icon: Building2, 
+      title: 'Global Network', 
+      desc: 'Worldwide supplier connections',
+      color: 'from-blue-400 to-indigo-500',
+      bgColor: 'bg-blue-50'
+    },
+    { 
+      icon: BarChart3, 
+      title: 'Live Analytics', 
+      desc: 'Real-time performance insights',
+      color: 'from-purple-400 to-pink-500',
+      bgColor: 'bg-purple-50'
+    },
+    { 
+      icon: Zap, 
+      title: 'Lightning Fast', 
+      desc: 'Optimized for speed & efficiency',
+      color: 'from-amber-400 to-orange-500',
+      bgColor: 'bg-amber-50'
+    }
   ];
 
   const roles = [
@@ -43,201 +62,266 @@ const LoginForm = ({ showNotification }) => {
       role: 'admin', 
       email: 'admin@company.com', 
       name: 'Admin', 
-      color: 'from-purple-500 to-purple-600',
-      description: 'Full system access',
-      permissions: ['All Features', 'User Management', 'System Settings']
+      gradient: 'from-violet-500 via-purple-500 to-indigo-500',
+      bg: 'bg-gradient-to-br from-violet-50 to-purple-50',
+      description: 'Complete system control',
+      permissions: ['All Features', 'User Management', 'System Config'],
+      icon: Shield
     },
     { 
       role: 'manager', 
       email: 'manager@company.com', 
       name: 'Manager', 
-      color: 'from-blue-500 to-blue-600',
-      description: 'Department oversight',
-      permissions: ['Suppliers', 'Products', 'Purchase Orders']
+      gradient: 'from-blue-500 via-cyan-500 to-teal-500',
+      bg: 'bg-gradient-to-br from-blue-50 to-cyan-50',
+      description: 'Department leadership',
+      permissions: ['Suppliers', 'Products', 'Orders'],
+      icon: Users
     },
     { 
       role: 'employee', 
       email: 'employee@company.com', 
       name: 'Employee', 
-      color: 'from-green-500 to-green-600',
+      gradient: 'from-emerald-500 via-green-500 to-lime-500',
+      bg: 'bg-gradient-to-br from-emerald-50 to-green-50',
       description: 'Daily operations',
-      permissions: ['Products', 'Quick Import', 'View Access']
+      permissions: ['Products', 'Import', 'Reports'],
+      icon: Package
     },
     { 
       role: 'viewer', 
       email: 'viewer@company.com', 
       name: 'Viewer', 
-      color: 'from-gray-500 to-gray-600',
+      gradient: 'from-orange-500 via-amber-500 to-yellow-500',
+      bg: 'bg-gradient-to-br from-orange-50 to-amber-50',
       description: 'Read-only access',
-      permissions: ['View Products', 'Basic Reports', 'Dashboard']
+      permissions: ['View Products', 'Basic Reports'],
+      icon: BarChart3
     }
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-purple-900 flex">
-      {/* Left Side - Features */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col justify-center p-12 text-white relative overflow-hidden">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 bg-white bg-opacity-20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-              <Building2 className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Supplier Management</h1>
-              <p className="text-blue-200">Enterprise Solution</p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-emerald-400/20 to-cyan-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-pink-400/10 to-violet-400/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+      </div>
 
-          <div className="mb-12">
-            <h2 className="text-4xl font-bold mb-4">
-              Streamline Your <br />
-              <span className="bg-gradient-to-r from-blue-300 to-purple-300 bg-clip-text text-transparent">
-                Supply Chain
-              </span>
-            </h2>
-            <p className="text-xl text-blue-200 leading-relaxed">
-              Manage suppliers, track inventory, and optimize purchase orders with our comprehensive platform.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-6">
-            {features.map((feature, index) => {
-              const Icon = feature.icon;
-              return (
-                <div key={index} className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 border border-white border-opacity-20">
-                  <Icon className="w-8 h-8 text-blue-200 mb-3" />
-                  <h3 className="font-semibold mb-1">{feature.title}</h3>
-                  <p className="text-sm text-blue-200">{feature.desc}</p>
+      <div className="relative z-10 min-h-screen flex">
+        {/* Left Side - Branding & Features */}
+        <div className="hidden lg:flex lg:w-1/2 flex-col justify-center p-12 relative">
+          <div className="max-w-lg">
+            {/* Logo & Branding */}
+            <div className="flex items-center gap-4 mb-8">
+              <div className="relative">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+                  <Building2 className="w-8 h-8 text-white" />
                 </div>
-              );
-            })}
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-full flex items-center justify-center">
+                  <Sparkles className="w-3 h-3 text-white" />
+                </div>
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                  SupplyFlow
+                </h1>
+                <p className="text-slate-600 font-medium">Enterprise Suite 2024</p>
+              </div>
+            </div>
+
+            {/* Main Heading */}
+            <div className="mb-12">
+              <h2 className="text-5xl font-bold mb-6 leading-tight">
+                <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-600 bg-clip-text text-transparent">
+                  Transform
+                </span>
+                <br />
+                <span className="text-gray-900">Your Supply Chain</span>
+              </h2>
+              <p className="text-xl text-slate-600 leading-relaxed mb-8">
+                Harness the power of modern technology to streamline operations, 
+                boost efficiency, and drive growth with our next-generation platform.
+              </p>
+              
+              {/* CTA Button */}
+              <div className="flex items-center gap-4 mb-12">
+                <button className="group bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-2xl font-semibold shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 hover:scale-105 flex items-center gap-2">
+                  Get Started Free
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </button>
+                <button className="text-slate-600 hover:text-blue-600 font-semibold flex items-center gap-2 transition-colors">
+                  <Globe className="w-5 h-5" />
+                  Learn More
+                </button>
+              </div>
+            </div>
+
+            {/* Features Grid */}
+            <div className="grid grid-cols-2 gap-6">
+              {features.map((feature, index) => (
+                <div key={index} className={`${feature.bgColor} p-6 rounded-2xl border border-white/50 backdrop-blur-sm hover:scale-105 transition-all duration-300 group cursor-pointer`}>
+                  <div className={`w-12 h-12 bg-gradient-to-br ${feature.color} rounded-xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform`}>
+                    <feature.icon className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="font-bold text-gray-900 mb-2">{feature.title}</h3>
+                  <p className="text-sm text-slate-600">{feature.desc}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Background Elements */}
-        <div className="absolute top-1/4 right-0 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-1/4 left-0 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-1000"></div>
-      </div>
-
-      {/* Right Side - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white lg:bg-transparent">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-3xl shadow-2xl p-8 lg:p-10 border border-gray-200">
-            {/* Mobile Header */}
-            <div className="lg:hidden text-center mb-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Building2 className="w-8 h-8 text-white" />
+        {/* Right Side - Login Form */}
+        <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12">
+          <div className="w-full max-w-md">
+            {/* Mobile Logo */}
+            <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <Building2 className="w-6 h-6 text-white" />
               </div>
-              <h1 className="text-2xl font-bold text-gray-900">Supplier Management</h1>
-              <p className="text-gray-600 mt-1">Sign in to continue</p>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                SupplyFlow
+              </h1>
             </div>
 
-            {/* Desktop Header */}
-            <div className="hidden lg:block text-center mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
-              <p className="text-gray-600">Sign in to access your dashboard</p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 placeholder-gray-400"
-                  placeholder="Enter your email"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 placeholder-gray-400 pr-12"
-                    placeholder="Enter your password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                  </button>
-                </div>
+            {/* Login Card */}
+            <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-gray-200/50 border border-white/50 p-8">
+              <div className="text-center mb-8">
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back!</h2>
+                <p className="text-slate-600">Sign in to continue your journey</p>
               </div>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700">
-                  <AlertCircle size={20} />
-                  <span className="text-sm">{error}</span>
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                  <span className="text-red-700 text-sm">{error}</span>
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4 rounded-xl font-medium hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                    Signing in...
-                  </div>
-                ) : (
-                  'Sign In'
-                )}
-              </button>
-            </form>
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 text-gray-900"
+                    placeholder="Enter your email"
+                    required
+                  />
+                </div>
 
-            {/* Demo Accounts */}
-            <div className="mt-8 p-6 bg-gray-50 rounded-2xl border border-gray-200">
-              <div className="flex items-center gap-2 mb-4">
-                <Users className="w-5 h-5 text-gray-600" />
-                <h3 className="font-semibold text-gray-900">Demo Accounts</h3>
-              </div>
-              <p className="text-sm text-gray-600 mb-4">Try different user roles with these demo accounts:</p>
-              
-              <div className="grid grid-cols-2 gap-3">
-                {roles.map((roleData, index) => (
-                  <button
-                    key={index}
-                    onClick={() => quickLogin(roleData.email, roleData.role)}
-                    className="group p-3 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200 text-left"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-3 h-3 bg-gradient-to-r ${roleData.color} rounded-full`}></div>
-                      <span className="font-medium text-gray-900">{roleData.name}</span>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-4 pr-12 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-200 text-gray-900"
+                      placeholder="Enter your password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold py-4 rounded-2xl hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-4 focus:ring-blue-500/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02]"
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                      Signing you in...
                     </div>
-                    <p className="text-xs text-gray-600 mb-1">{roleData.description}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {roleData.permissions.slice(0, 2).map((perm, i) => (
-                        <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                          {perm}
-                        </span>
-                      ))}
-                    </div>
-                  </button>
-                ))}
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      Sign In
+                      <ArrowRight className="w-5 h-5" />
+                    </span>
+                  )}
+                </button>
               </div>
-              
-              <div className="mt-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
-                <p className="text-xs text-blue-700 text-center">
-                  <span className="font-medium">Password for all accounts:</span> password123
-                </p>
+
+              {/* Demo Accounts */}
+              <div className="mt-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-lg flex items-center justify-center">
+                    <Users className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="font-bold text-gray-900">Try Demo Accounts</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  {roles.map((roleData, index) => {
+                    const IconComponent = roleData.icon;
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => quickLogin(roleData.email, roleData.role)}
+                        className={`group ${roleData.bg} p-4 rounded-2xl border border-white/50 hover:scale-[1.02] transition-all duration-200 text-left hover:shadow-lg`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 bg-gradient-to-br ${roleData.gradient} rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform`}>
+                            <IconComponent className="w-6 h-6 text-white" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-gray-900">{roleData.name}</span>
+                              <span className="text-xs bg-white/60 text-gray-600 px-2 py-1 rounded-full">
+                                {roleData.role}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-2">{roleData.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {roleData.permissions.slice(0, 3).map((perm, i) => (
+                                <span key={i} className="text-xs bg-white/80 text-gray-700 px-2 py-1 rounded-lg font-medium">
+                                  {perm}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl border border-blue-200/50">
+                  <div className="flex items-center gap-2 justify-center">
+                    <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                      <Shield className="w-3 h-3 text-white" />
+                    </div>
+                    <p className="text-sm text-gray-700 font-medium">
+                      Universal Password: <span className="font-mono bg-white px-2 py-1 rounded-lg">password123</span>
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Footer */}
-          <div className="text-center mt-8 text-gray-500 text-sm">
-            <p>© 2024 Supplier Management System</p>
-            <p>Enterprise Edition v2.0</p>
+            {/* Footer */}
+            <div className="text-center mt-8 text-gray-500 text-sm">
+              <p className="flex items-center justify-center gap-2">
+                <span>© 2024 SupplyFlow</span>
+                <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                <span>Enterprise Edition v2.0</span>
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -245,4 +329,4 @@ const LoginForm = ({ showNotification }) => {
   );
 };
 
-export default LoginForm;
+export default ModernLoginForm;
