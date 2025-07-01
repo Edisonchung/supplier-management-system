@@ -1,22 +1,20 @@
-import { useState } from 'react';
-import { ArrowUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowUp, ChevronRight, Home } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import Header from './Header';
 import Navigation from './Navigation';
 
 const Layout = ({ children, activeTab, setActiveTab, showNotification }) => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user } = useAuth();
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Handle scroll to top button
-  const handleScroll = () => {
-    if (window.scrollY > 400) {
-      setShowScrollTop(true);
-    } else {
-      setShowScrollTop(false);
-    }
-  };
+  // Handle scroll events for scroll-to-top button
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 400);
+    };
 
-  React.useEffect(() => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
@@ -27,53 +25,68 @@ const Layout = ({ children, activeTab, setActiveTab, showNotification }) => {
 
   const getPageTitle = (tab) => {
     const titles = {
-      dashboard: 'Dashboard Overview',
-      suppliers: 'Supplier Management',
-      products: 'Product Catalog',
+      dashboard: 'Dashboard',
+      suppliers: 'Suppliers',
+      products: 'Products',
       'purchase-orders': 'Purchase Orders',
-      import: 'Quick Import Tools',
-      users: 'User Administration'
+      import: 'Quick Import',
+      users: 'User Management'
     };
     return titles[tab] || 'Dashboard';
   };
 
-  const getBreadcrumb = (tab) => {
+  const getBreadcrumbs = (tab) => {
     const breadcrumbs = {
-      dashboard: ['Home', 'Dashboard'],
-      suppliers: ['Home', 'Management', 'Suppliers'],
-      products: ['Home', 'Catalog', 'Products'],
-      'purchase-orders': ['Home', 'Orders', 'Purchase Orders'],
-      import: ['Home', 'Tools', 'Quick Import'],
-      users: ['Home', 'Administration', 'Users']
+      dashboard: ['Dashboard'],
+      suppliers: ['Dashboard', 'Suppliers'],
+      products: ['Dashboard', 'Products'],
+      'purchase-orders': ['Dashboard', 'Purchase Orders'],
+      import: ['Dashboard', 'Quick Import'],
+      users: ['Dashboard', 'User Management']
     };
-    return breadcrumbs[tab] || ['Home'];
+    return breadcrumbs[tab] || ['Dashboard'];
+  };
+
+  const handleMenuToggle = () => {
+    setShowMobileMenu(!showMobileMenu);
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setShowMobileMenu(false); // Close mobile menu when tab changes
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top on tab change
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 relative">
+      {/* Header */}
       <Header 
-        onMenuToggle={() => setMobileMenuOpen(true)} 
+        user={user}
+        onMenuToggle={handleMenuToggle}
         showNotification={showNotification}
       />
-      
-      <Navigation 
+
+      {/* Navigation */}
+      <Navigation
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        isOpen={mobileMenuOpen}
-        onClose={() => setMobileMenuOpen(false)}
+        onTabChange={handleTabChange}
+        showMobileMenu={showMobileMenu}
+        onMenuClose={() => setShowMobileMenu(false)}
       />
 
       {/* Main Content */}
-      <main className="relative">
-        {/* Page Header */}
+      <main className="relative z-10">
+        {/* Breadcrumb and Page Header */}
         <div className="bg-white border-b border-gray-200 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             {/* Breadcrumb */}
-            <nav className="flex items-center text-sm text-gray-500 mb-2">
-              {getBreadcrumb(activeTab).map((crumb, index) => (
-                <span key={index} className="flex items-center">
-                  {index > 0 && <span className="mx-2">/</span>}
-                  <span className={index === getBreadcrumb(activeTab).length - 1 ? 'text-blue-600 font-medium' : ''}>
+            <nav className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+              <Home size={16} />
+              {getBreadcrumbs(activeTab).map((crumb, index) => (
+                <span key={crumb} className="flex items-center gap-2">
+                  {index > 0 && <ChevronRight size={14} />}
+                  <span className={index === getBreadcrumbs(activeTab).length - 1 ? 
+                    'text-blue-600 font-medium' : ''}>
                     {crumb}
                   </span>
                 </span>
@@ -127,6 +140,14 @@ const Layout = ({ children, activeTab, setActiveTab, showNotification }) => {
           </div>
         </div>
       </footer>
+
+      {/* Mobile Menu Overlay */}
+      {showMobileMenu && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          onClick={() => setShowMobileMenu(false)}
+        />
+      )}
     </div>
   );
 };
