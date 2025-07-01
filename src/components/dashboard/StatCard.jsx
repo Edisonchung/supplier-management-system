@@ -1,6 +1,16 @@
+import React from 'react';
 import { TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 
-const StatCard = ({ title, value, icon: Icon, color = "blue", trend, format = "number", subtitle, priority = "normal" }) => {
+const StatCard = ({ 
+  title, 
+  value, 
+  icon: Icon, 
+  color = "blue", 
+  trend, 
+  format = "number", 
+  subtitle, 
+  priority = "normal" 
+}) => {
   const formatValue = (val) => {
     if (format === "currency") return `$${val.toLocaleString()}`;
     return val.toLocaleString();
