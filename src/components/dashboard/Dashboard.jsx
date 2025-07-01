@@ -12,7 +12,9 @@ import {
   ArrowRight,
   BarChart3,
   Calendar,
-  Bell
+  Bell,
+  Activity,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -68,11 +70,11 @@ const Dashboard = () => {
 
       // Generate recent activity
       const activities = [
-        { id: 1, type: 'supplier', action: 'added', item: 'TechCorp Solutions', time: '2 hours ago', icon: Building2 },
-        { id: 2, type: 'product', action: 'updated', item: 'ARM Processor A15', time: '4 hours ago', icon: Package },
-        { id: 3, type: 'order', action: 'created', item: 'PO-240701', time: '6 hours ago', icon: ShoppingCart },
-        { id: 4, type: 'supplier', action: 'approved', item: 'GlobalTech Inc', time: '1 day ago', icon: CheckCircle },
-        { id: 5, type: 'product', action: 'restocked', item: 'Sensor Module XZ', time: '2 days ago', icon: Package }
+        { id: 1, type: 'supplier', action: 'added', item: 'TechCorp Solutions', time: '2 hours ago', icon: Building2, color: 'text-green-600' },
+        { id: 2, type: 'product', action: 'updated', item: 'ARM Processor A15', time: '4 hours ago', icon: Package, color: 'text-blue-600' },
+        { id: 3, type: 'order', action: 'created', item: 'PO-240701', time: '6 hours ago', icon: ShoppingCart, color: 'text-purple-600' },
+        { id: 4, type: 'supplier', action: 'approved', item: 'GlobalTech Inc', time: '1 day ago', icon: CheckCircle, color: 'text-green-600' },
+        { id: 5, type: 'product', action: 'restocked', item: 'Sensor Module XZ', time: '2 days ago', icon: Package, color: 'text-blue-600' }
       ];
       setRecentActivity(activities);
       
@@ -124,7 +126,10 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -188,29 +193,6 @@ const Dashboard = () => {
 
       {/* Quick Actions & Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Quick Actions */}
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-blue-500" />
-              Quick Actions
-            </h3>
-            <div className="space-y-3">
-              {quickActions.filter(action => action.permission).map((action, index) => (
-                <button
-                  key={index}
-                  onClick={action.action}
-                  className={`w-full ${action.color} text-white p-4 rounded-xl flex items-center gap-3 transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl`}
-                >
-                  <action.icon className="w-5 h-5" />
-                  <span className="font-medium">{action.label}</span>
-                  <ArrowRight className="w-4 h-4 ml-auto" />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* Recent Activity */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-2xl border border-gray-200 p-6">
@@ -239,6 +221,29 @@ const Dashboard = () => {
                   </div>
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="lg:col-span-1">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-blue-500" />
+              Quick Actions
+            </h3>
+            <div className="space-y-3">
+              {quickActions.filter(action => action.permission).map((action, index) => (
+                <button
+                  key={index}
+                  onClick={action.action}
+                  className={`w-full ${action.color} text-white p-4 rounded-xl flex items-center gap-3 transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl`}
+                >
+                  <action.icon className="w-5 h-5" />
+                  <span className="font-medium">{action.label}</span>
+                  <ArrowRight className="w-4 h-4 ml-auto" />
+                </button>
               ))}
             </div>
           </div>
