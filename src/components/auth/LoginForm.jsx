@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Building2, AlertCircle, Eye, EyeOff, Shield, Users, Package, BarChart3, Sparkles, Zap, Globe, ArrowRight } from 'lucide-react';
 
-const ModernLoginForm = () => {
+const LoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -329,4 +329,4 @@ const ModernLoginForm = () => {
   );
 };
 
-export default ModernLoginForm;
+export default LoginForm;
