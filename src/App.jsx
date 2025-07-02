@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import Dashboard from './components/dashboard/Dashboard';
+import Suppliers from './components/suppliers/Suppliers'; // Add this import
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
 
@@ -79,41 +80,6 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
   </div>
 );
 
-// Lazy load components with fallbacks
-const LazyComponent = ({ path, fallbackTitle, fallbackDescription }) => {
-  const [Component, setComponent] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
-
-  React.useEffect(() => {
-    // Try to dynamically import the component
-    import(path)
-      .then(module => {
-        setComponent(() => module.default);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.log(`Component not found at ${path}, showing placeholder`);
-        setError(true);
-        setLoading(false);
-      });
-  }, [path]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (error || !Component) {
-    return <PlaceholderComponent title={fallbackTitle} description={fallbackDescription} />;
-  }
-
-  return <Component />;
-};
-
 function AppContent() {
   const { user } = useAuth();
   const [notification, setNotification] = useState(null);
@@ -135,10 +101,7 @@ function AppContent() {
     },
     {
       path: '/suppliers',
-      element: <PlaceholderComponent 
-        title="Suppliers" 
-        description="Supplier management - Feature coming soon" 
-      />,
+      element: <Suppliers showNotification={showNotification} />, // Now using real component
       permission: 'canViewSuppliers'
     },
     {
