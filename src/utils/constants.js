@@ -1,5 +1,6 @@
 export const PERMISSIONS = {
   admin: {
+    canViewDashboard: true,
     canViewSuppliers: true,
     canEditSuppliers: true,
     canViewProducts: true,
@@ -11,6 +12,7 @@ export const PERMISSIONS = {
     canManageUsers: true
   },
   manager: {
+    canViewDashboard: true,
     canViewSuppliers: true,
     canEditSuppliers: true,
     canViewProducts: true,
@@ -22,6 +24,7 @@ export const PERMISSIONS = {
     canManageUsers: false
   },
   employee: {
+    canViewDashboard: true,
     canViewSuppliers: false,
     canEditSuppliers: false,
     canViewProducts: true,
@@ -33,6 +36,7 @@ export const PERMISSIONS = {
     canManageUsers: false
   },
   viewer: {
+    canViewDashboard: true,
     canViewSuppliers: false,
     canEditSuppliers: false,
     canViewProducts: true,
