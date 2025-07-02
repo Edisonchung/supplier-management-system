@@ -3,19 +3,26 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Building2, Package, FileText, 
-  Upload, Users, X, ChevronRight, Truck, DollarSign
+  Upload, Users, X, Truck, DollarSign
 } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
 
 const Navigation = ({ isOpen, onClose, isMobile }) => {
   const permissions = usePermissions();
 
+  // Ensure onClose is a function
+  const handleClose = () => {
+    if (typeof onClose === 'function') {
+      onClose();
+    }
+  };
+
   const navItems = [
     {
       path: '/',
       label: 'Dashboard',
       icon: LayoutDashboard,
-      permission: permissions.canViewDashboard
+      permission: permissions.canViewDashboard !== false
     },
     {
       path: '/suppliers',
@@ -76,7 +83,7 @@ const Navigation = ({ isOpen, onClose, isMobile }) => {
       {isMobile && isOpen && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={onClose}
+          onClick={handleClose}
         />
       )}
 
@@ -94,7 +101,7 @@ const Navigation = ({ isOpen, onClose, isMobile }) => {
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-lg font-semibold text-gray-800">Menu</h2>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="p-1 rounded-lg hover:bg-gray-100"
               >
                 <X size={20} />
@@ -108,7 +115,7 @@ const Navigation = ({ isOpen, onClose, isMobile }) => {
               <NavLink
                 key={item.path}
                 to={item.path}
-                onClick={() => isMobile && onClose()}
+                onClick={() => isMobile && handleClose()}
                 className={({ isActive }) => `
                   flex items-center justify-between px-6 py-3 text-sm font-medium transition-colors
                   ${isActive 
@@ -134,7 +141,7 @@ const Navigation = ({ isOpen, onClose, isMobile }) => {
           <div className="p-4 border-t">
             <div className="text-xs text-gray-500">
               <p className="font-medium">Current Role</p>
-              <p className="mt-1 capitalize">{permissions.role}</p>
+              <p className="mt-1 capitalize">{permissions.role || 'Unknown'}</p>
             </div>
           </div>
         </div>
