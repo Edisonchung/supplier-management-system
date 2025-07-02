@@ -126,7 +126,15 @@ const LoginForm = ({ showNotification }) => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-500/20 rounded-full blur-[128px] animate-pulse" style={{animationDelay: '4s'}}></div>
         
         {/* Grid pattern */}
-        <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]"></div>
+<div className="absolute inset-0 opacity-10">
+  <div className="absolute inset-0" style={{
+    backgroundImage: `
+      linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)
+    `,
+    backgroundSize: '50px 50px'
+  }}></div>
+</div>
         
         {/* Animated lines */}
         <svg className="absolute inset-0 w-full h-full">
