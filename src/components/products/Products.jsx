@@ -1,195 +1,144 @@
-import { useState, useEffect } from 'react';
-import { Package, Search, Plus, Edit, Trash2, Building2, DollarSign, TrendingDown } from 'lucide-react';
+// src/components/products/Products.jsx
+import React, { useState, useEffect } from 'react';
+import { 
+  Package, Plus, Search, Filter, AlertCircle, 
+  TrendingUp, DollarSign, Layers, Clock, CheckCircle
+} from 'lucide-react';
+import { useProducts } from '../../hooks/useProducts';
+import { useSuppliers } from '../../hooks/useSuppliers';
 import { usePermissions } from '../../hooks/usePermissions';
-import { mockFirebase } from '../../services/firebase';
-import { CATEGORIES, STATUS_OPTIONS, BRAND_PATTERNS } from '../../utils/constants';
+import ProductCard from './ProductCard';
+import ProductModal from './ProductModal';
+import FurnishModal from './FurnishModal';
 
 const Products = ({ showNotification }) => {
   const permissions = usePermissions();
-  const [products, setProducts] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const { 
+    products, 
+    loading, 
+    error,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    updateProductStock,
+    getLowStockProducts
+  } = useProducts();
+  
+  const { suppliers } = useSuppliers();
+  
   const [showModal, setShowModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [showFurnishModal, setShowFurnishModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStock, setFilterStock] = useState('all');
+  const [viewMode, setViewMode] = useState('grid');
 
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    brand: '',
-    supplierId: '',
-    category: '',
-    price: '',
-    status: 'pending',
-    description: '',
-    sku: '',
-    stock: '',
-    minStock: '',
-    photo: '',
-    catalog: '',
-    notes: ''
+  const canEdit = permissions.canEditProducts || permissions.isAdmin;
+  const canView = permissions.canViewProducts || permissions.isAdmin;
+
+  // Filter products
+  const filteredProducts = products.filter(product => {
+    const supplier = suppliers.find(s => s.id === product.supplierId);
+    const matchesSearch = 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      supplier?.name.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesCategory = filterCategory === 'all' || product.category === filterCategory;
+    const matchesStatus = filterStatus === 'all' || product.status === filterStatus;
+    
+    let matchesStock = true;
+    if (filterStock === 'low') {
+      matchesStock = product.stock <= product.minStock;
+    } else if (filterStock === 'out') {
+      matchesStock = product.stock === 0;
+    } else if (filterStock === 'in-stock') {
+      matchesStock = product.stock > product.minStock;
+    }
+    
+    return matchesSearch && matchesCategory && matchesStatus && matchesStock;
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    filterProducts();
-  }, [products, searchTerm, filterCategory, filterStatus]);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [productsSnapshot, suppliersSnapshot] = await Promise.all([
-        mockFirebase.firestore.collection('products').get(),
-        mockFirebase.firestore.collection('suppliers').get()
-      ]);
-      
-      const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const suppliersData = suppliersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      setProducts(productsData);
-      setSuppliers(suppliersData);
-    } catch (error) {
-      showNotification('Error loading data', 'error');
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterProducts = () => {
-    let filtered = products;
-    
-    if (searchTerm) {
-      filtered = filtered.filter(product =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    }
-    
-    if (filterCategory) {
-      filtered = filtered.filter(product => product.category === filterCategory);
-    }
-    
-    if (filterStatus) {
-      filtered = filtered.filter(product => product.status === filterStatus);
-    }
-    
-    setFilteredProducts(filtered);
-  };
-
-  const detectBrand = (partNumber) => {
-    for (const [brand, pattern] of Object.entries(BRAND_PATTERNS)) {
-      if (pattern.test(partNumber)) {
-        return brand;
-      }
-    }
-    return '';
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const productData = {
-        ...formData,
-        price: parseFloat(formData.price) || 0,
-        stock: parseInt(formData.stock) || 0,
-        minStock: parseInt(formData.minStock) || 0,
-        brand: formData.brand || detectBrand(formData.name)
-      };
-
-      if (editingProduct) {
-        await mockFirebase.firestore.collection('products').doc(editingProduct.id).update({
-          ...productData,
-          updatedAt: new Date().toISOString()
-        });
-        showNotification('Product updated successfully', 'success');
-      } else {
-        await mockFirebase.firestore.collection('products').add({
-          ...productData,
-          dateAdded: new Date().toISOString()
-        });
-        showNotification('Product added successfully', 'success');
-      }
-      
-      resetForm();
-      loadData();
-    } catch (error) {
-      showNotification('Error saving product', 'error');
-      console.error('Error saving product:', error);
-    }
-  };
-
-  const handleEdit = (product) => {
-    setEditingProduct(product);
-    setFormData({
-      name: product.name,
-      brand: product.brand || '',
-      supplierId: product.supplierId,
-      category: product.category,
-      price: product.price.toString(),
-      status: product.status,
-      description: product.description || '',
-      sku: product.sku || '',
-      stock: (product.stock || 0).toString(),
-      minStock: (product.minStock || 0).toString(),
-      photo: product.photo || '',
-      catalog: product.catalog || '',
-      notes: product.notes || ''
-    });
+  const handleAddProduct = () => {
+    setSelectedProduct(null);
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      try {
-        await mockFirebase.firestore.collection('products').doc(id).delete();
+  const handleEditProduct = (product) => {
+    if (!canEdit) return;
+    setSelectedProduct(product);
+    setShowModal(true);
+  };
+
+  const handleFurnishProduct = (product) => {
+    if (!canEdit) return;
+    setSelectedProduct(product);
+    setShowFurnishModal(true);
+  };
+
+  const handleDeleteProduct = async (id) => {
+    if (!canEdit) return;
+    
+    if (window.confirm('Are you sure you want to delete this product?')) {
+      const result = await deleteProduct(id);
+      if (result.success) {
         showNotification('Product deleted successfully', 'success');
-        loadData();
-      } catch (error) {
-        showNotification('Error deleting product', 'error');
-        console.error('Error deleting product:', error);
+      } else {
+        showNotification(result.error || 'Failed to delete product', 'error');
       }
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      brand: '',
-      supplierId: '',
-      category: '',
-      price: '',
-      status: 'pending',
-      description: '',
-      sku: '',
-      stock: '',
-      minStock: '',
-      photo: '',
-      catalog: '',
-      notes: ''
+  const handleSaveProduct = async (productData) => {
+    if (selectedProduct) {
+      const result = await updateProduct(selectedProduct.id, productData);
+      if (result.success) {
+        showNotification('Product updated successfully', 'success');
+        setShowModal(false);
+      } else {
+        showNotification(result.error || 'Failed to update product', 'error');
+      }
+    } else {
+      const result = await addProduct(productData);
+      if (result.success) {
+        showNotification('Product added successfully', 'success');
+        setShowModal(false);
+      } else {
+        showNotification(result.error || 'Failed to add product', 'error');
+      }
+    }
+  };
+
+  const handleFurnish = async (furnishData) => {
+    const result = await updateProduct(selectedProduct.id, {
+      status: 'furnished',
+      furnishedAt: new Date().toISOString(),
+      furnishDetails: furnishData
     });
-    setEditingProduct(null);
-    setShowModal(false);
+    
+    if (result.success) {
+      showNotification('Product furnished successfully', 'success');
+      setShowFurnishModal(false);
+    } else {
+      showNotification(result.error || 'Failed to furnish product', 'error');
+    }
   };
 
-  const getSupplierName = (supplierId) => {
-    const supplier = suppliers.find(s => s.id === supplierId);
-    return supplier ? supplier.name : 'Unknown Supplier';
+  // Calculate statistics
+  const stats = {
+    total: products.length,
+    lowStock: getLowStockProducts().length,
+    outOfStock: products.filter(p => p.stock === 0).length,
+    totalValue: products.reduce((sum, p) => sum + (p.price * p.stock), 0)
   };
 
-  if (!permissions.canViewProducts) {
+  if (loading) {
     return (
-      <div className="text-center py-12">
-        <Package className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Access Denied</h3>
-        <p className="text-gray-600">You don't have permission to view products.</p>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -197,12 +146,15 @@ const Products = ({ showNotification }) => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-        {permissions.canEditProducts && (
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Products</h1>
+          <p className="text-gray-600 mt-1">Manage your product inventory</p>
+        </div>
+        {canEdit && (
           <button
-            onClick={() => setShowModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            onClick={handleAddProduct}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
           >
             <Plus size={20} />
             Add Product
@@ -210,316 +162,292 @@ const Products = ({ showNotification }) => {
         )}
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search products..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Products</p>
+              <p className="text-2xl font-bold">{stats.total}</p>
+            </div>
+            <Package className="h-8 w-8 text-blue-500" />
+          </div>
         </div>
         
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">All Categories</option>
-          {CATEGORIES.map(cat => (
-            <option key={cat.value} value={cat.value}>{cat.label}</option>
-          ))}
-        </select>
-        
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="">All Status</option>
-          {STATUS_OPTIONS.PRODUCT.map(status => (
-            <option key={status.value} value={status.value}>{status.label}</option>
-          ))}
-        </select>
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Low Stock</p>
+              <p className="text-2xl font-bold text-orange-600">{stats.lowStock}</p>
+            </div>
+            <AlertCircle className="h-8 w-8 text-orange-500" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Out of Stock</p>
+              <p className="text-2xl font-bold text-red-600">{stats.outOfStock}</p>
+            </div>
+            <Layers className="h-8 w-8 text-red-500" />
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Value</p>
+              <p className="text-2xl font-bold">${stats.totalValue.toFixed(0)}</p>
+            </div>
+            <DollarSign className="h-8 w-8 text-green-500" />
+          </div>
+        </div>
       </div>
 
-      {/* Products Grid */}
-      {loading ? (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto"></div>
+      {/* Low Stock Alert */}
+      {stats.lowStock > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-orange-600" />
+            <p className="text-orange-800">
+              <span className="font-medium">{stats.lowStock} products</span> are running low on stock
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Search products..."
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <select
+            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+          >
+            <option value="all">All Categories</option>
+            <option value="electronics">Electronics</option>
+            <option value="hydraulics">Hydraulics</option>
+            <option value="pneumatics">Pneumatics</option>
+            <option value="automation">Automation</option>
+            <option value="sensors">Sensors</option>
+            <option value="cables">Cables</option>
+            <option value="components">Components</option>
+          </select>
+
+          <select
+            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="complete">Complete</option>
+            <option value="furnished">Furnished</option>
+          </select>
+
+          <select
+            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={filterStock}
+            onChange={(e) => setFilterStock(e.target.value)}
+          >
+            <option value="all">All Stock</option>
+            <option value="in-stock">In Stock</option>
+            <option value="low">Low Stock</option>
+            <option value="out">Out of Stock</option>
+          </select>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-600' : 'text-gray-400'}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-100 text-blue-600' : 'text-gray-400'}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Product List/Grid */}
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredProducts.map(product => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              supplier={suppliers.find(s => s.id === product.supplierId)}
+              onEdit={() => handleEditProduct(product)}
+              onDelete={() => handleDeleteProduct(product.id)}
+              onFurnish={() => handleFurnishProduct(product)}
+              canEdit={canEdit}
+            />
+          ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((product) => (
-            <div key={product.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-blue-600" />
-                  <h3 className="font-semibold text-gray-900 truncate">{product.name}</h3>
-                </div>
-                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                  product.status === 'furnished' ? 'bg-green-100 text-green-800' :
-                  product.status === 'complete' ? 'bg-blue-100 text-blue-800' :
-                  'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {STATUS_OPTIONS.PRODUCT.find(s => s.value === product.status)?.label || product.status}
-                </span>
-              </div>
-              
-              <div className="space-y-2 text-sm text-gray-600 mb-4">
-                {product.brand && (
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">Brand:</span>
-                    <span>{product.brand}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <Building2 size={14} />
-                  <span>{getSupplierName(product.supplierId)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <DollarSign size={14} />
-                  <span>${product.price}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Stock:</span>
-                  <span className={`${(product.stock || 0) <= (product.minStock || 0) ? 'text-red-600' : ''}`}>
-                    {product.stock || 0}
-                    {(product.stock || 0) <= (product.minStock || 0) && <TrendingDown size={14} className="inline ml-1" />}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Category:</span>
-                  <span className="capitalize">{product.category}</span>
-                </div>
-              </div>
-
-              {permissions.canEditProducts && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleEdit(product)}
-                    className="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
-                  >
-                    <Edit size={16} />
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(product.id)}
-                    className="bg-red-100 text-red-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors flex items-center justify-center"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Product
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  SKU
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Supplier
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Price
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Stock
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredProducts.map(product => {
+                const supplier = suppliers.find(s => s.id === product.supplierId);
+                const isLowStock = product.stock <= product.minStock;
+                
+                return (
+                  <tr key={product.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div>
+                        <div className="font-medium">{product.name}</div>
+                        <div className="text-sm text-gray-500">{product.brand}</div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {product.sku || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {supplier?.name || 'Unknown'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap font-medium">
+                      ${product.price}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`font-medium ${
+                        product.stock === 0 ? 'text-red-600' :
+                        isLowStock ? 'text-orange-600' : 'text-gray-900'
+                      }`}>
+                        {product.stock}
+                      </span>
+                      <span className="text-gray-500 text-sm"> / {product.minStock}</span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        product.status === 'complete' ? 'bg-green-100 text-green-800' :
+                        product.status === 'furnished' ? 'bg-blue-100 text-blue-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {product.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      <button
+                        onClick={() => handleEditProduct(product)}
+                        className="text-blue-600 hover:text-blue-800 mr-3"
+                      >
+                        Edit
+                      </button>
+                      {canEdit && product.status === 'complete' && (
+                        <button
+                          onClick={() => handleFurnishProduct(product)}
+                          className="text-green-600 hover:text-green-800 mr-3"
+                        >
+                          Furnish
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
+                          onClick={() => handleDeleteProduct(product.id)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       {/* Empty State */}
-      {!loading && filteredProducts.length === 0 && (
-        <div className="text-center py-12">
-          <Package className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            {searchTerm || filterCategory || filterStatus ? 'No products found' : 'No products yet'}
-          </h3>
-          <p className="text-gray-600 mb-4">
-            {searchTerm || filterCategory || filterStatus ? 'Try adjusting your search terms.' : 'Add your first product to get started.'}
-          </p>
-          {permissions.canEditProducts && !searchTerm && !filterCategory && !filterStatus && (
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Add Product
-            </button>
-          )}
+      {filteredProducts.length === 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12">
+          <div className="text-center">
+            <Package className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No Products</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchTerm || filterCategory !== 'all' || filterStatus !== 'all' || filterStock !== 'all'
+                ? 'No products found matching your filters.'
+                : 'Get started by adding a new product.'}
+            </p>
+            {canEdit && !searchTerm && filterCategory === 'all' && filterStatus === 'all' && filterStock === 'all' && (
+              <div className="mt-6">
+                <button
+                  onClick={handleAddProduct}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 inline-flex items-center gap-2"
+                >
+                  <Plus size={20} />
+                  Add Product
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modals */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h2 className="text-xl font-semibold mb-4">
-                {editingProduct ? 'Edit Product' : 'Add New Product'}
-              </h2>
-              
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Product Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
+        <ProductModal
+          product={selectedProduct}
+          suppliers={suppliers}
+          onSave={handleSaveProduct}
+          onClose={() => setShowModal(false)}
+        />
+      )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Brand
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Auto-detected from part number"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Supplier *
-                    </label>
-                    <select
-                      value={formData.supplierId}
-                      onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    >
-                      <option value="">Select Supplier</option>
-                      {suppliers.map(supplier => (
-                        <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Category *
-                    </label>
-                    <select
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    >
-                      <option value="">Select Category</option>
-                      {CATEGORIES.map(cat => (
-                        <option key={cat.value} value={cat.value}>{cat.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Price *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.price}
-                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Status
-                    </label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      {STATUS_OPTIONS.PRODUCT.map(status => (
-                        <option key={status.value} value={status.value}>{status.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      SKU
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.sku}
-                      onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Stock
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.stock}
-                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Minimum Stock
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.minStock}
-                      onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows="2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Notes
-                  </label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows="2"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    {editingProduct ? 'Update' : 'Add'} Product
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+      {showFurnishModal && selectedProduct && (
+        <FurnishModal
+          product={selectedProduct}
+          onFurnish={handleFurnish}
+          onClose={() => setShowFurnishModal(false)}
+        />
       )}
     </div>
   );
