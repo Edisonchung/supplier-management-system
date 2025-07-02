@@ -9,25 +9,26 @@ export const usePermissions = () => {
   
   const userRole = user.role;
   
+  // Safe access with fallbacks
   return {
-    // Existing permissions
-    canViewDashboard: PERMISSIONS.canViewDashboard.includes(userRole),
-    canEditSuppliers: PERMISSIONS.canEditSuppliers.includes(userRole),
-    canViewSuppliers: PERMISSIONS.canViewSuppliers.includes(userRole),
-    canEditProducts: PERMISSIONS.canEditProducts.includes(userRole),
-    canViewProducts: PERMISSIONS.canViewProducts.includes(userRole),
-    canEditPurchaseOrders: PERMISSIONS.canEditPurchaseOrders.includes(userRole),
-    canViewPurchaseOrders: PERMISSIONS.canViewPurchaseOrders.includes(userRole),
-    canManageUsers: PERMISSIONS.canManageUsers.includes(userRole),
-    canImportData: PERMISSIONS.canImportData.includes(userRole),
+    // Existing permissions with safe access
+    canViewDashboard: PERMISSIONS?.canViewDashboard?.includes(userRole) ?? true,
+    canEditSuppliers: PERMISSIONS?.canEditSuppliers?.includes(userRole) ?? false,
+    canViewSuppliers: PERMISSIONS?.canViewSuppliers?.includes(userRole) ?? false,
+    canEditProducts: PERMISSIONS?.canEditProducts?.includes(userRole) ?? false,
+    canViewProducts: PERMISSIONS?.canViewProducts?.includes(userRole) ?? false,
+    canEditPurchaseOrders: PERMISSIONS?.canEditPurchaseOrders?.includes(userRole) ?? false,
+    canViewPurchaseOrders: PERMISSIONS?.canViewPurchaseOrders?.includes(userRole) ?? false,
+    canManageUsers: PERMISSIONS?.canManageUsers?.includes(userRole) ?? false,
+    canImportData: PERMISSIONS?.canImportData?.includes(userRole) ?? false,
     
-    // New PI permissions
-    canViewPI: PERMISSIONS.canViewPI?.includes(userRole) ?? PERMISSIONS.canViewPurchaseOrders.includes(userRole),
-    canEditPI: PERMISSIONS.canEditPI?.includes(userRole) ?? PERMISSIONS.canEditPurchaseOrders.includes(userRole),
-    canViewInvoices: PERMISSIONS.canViewInvoices?.includes(userRole) ?? PERMISSIONS.canViewPurchaseOrders.includes(userRole),
-    canEditInvoices: PERMISSIONS.canEditInvoices?.includes(userRole) ?? PERMISSIONS.canEditPurchaseOrders.includes(userRole),
-    canViewTracking: PERMISSIONS.canViewTracking?.includes(userRole) ?? PERMISSIONS.canViewProducts.includes(userRole),
-    canUpdateDeliveryStatus: PERMISSIONS.canUpdateDeliveryStatus?.includes(userRole) ?? PERMISSIONS.canEditPurchaseOrders.includes(userRole),
+    // New PI permissions with safe access
+    canViewPI: PERMISSIONS?.canViewPI?.includes(userRole) ?? false,
+    canEditPI: PERMISSIONS?.canEditPI?.includes(userRole) ?? false,
+    canViewInvoices: PERMISSIONS?.canViewInvoices?.includes(userRole) ?? false,
+    canEditInvoices: PERMISSIONS?.canEditInvoices?.includes(userRole) ?? false,
+    canViewTracking: PERMISSIONS?.canViewTracking?.includes(userRole) ?? false,
+    canUpdateDeliveryStatus: PERMISSIONS?.canUpdateDeliveryStatus?.includes(userRole) ?? false,
     
     // General permissions
     isAdmin: userRole === 'admin',
