@@ -5,14 +5,6 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import Dashboard from './components/dashboard/Dashboard';
-import Suppliers from './components/suppliers/Suppliers';
-import Products from './components/products/Products';
-import ProformaInvoices from './components/procurement/ProformaInvoices';
-import PurchaseOrders from './components/purchase-orders/PurchaseOrders';
-import ClientInvoices from './components/invoices/ClientInvoices';
-import DeliveryTracking from './components/tracking/DeliveryTracking';
-import QuickImport from './components/import/QuickImport';
-import UserManagement from './components/users/UserManagement';
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
 
@@ -32,10 +24,11 @@ const ProtectedRoute = ({ children, permission }) => {
   return children;
 };
 
-// Placeholder Components for features not yet implemented
-const PlaceholderComponent = ({ title, description }) => (
-  <div className="flex items-center justify-center h-full">
+// Placeholder Component for features not yet implemented
+const PlaceholderComponent = ({ title, description, icon: Icon }) => (
+  <div className="flex items-center justify-center h-full p-8">
     <div className="text-center">
+      {Icon && <Icon className="mx-auto h-12 w-12 text-gray-400 mb-4" />}
       <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
       <p className="text-gray-600">{description}</p>
     </div>
@@ -73,7 +66,10 @@ function AppContent() {
             path="/suppliers" 
             element={
               <ProtectedRoute permission="canViewSuppliers">
-                <Suppliers showNotification={showNotification} />
+                <PlaceholderComponent 
+                  title="Suppliers" 
+                  description="Supplier management - Create suppliers components to activate this page" 
+                />
               </ProtectedRoute>
             } 
           />
@@ -82,7 +78,10 @@ function AppContent() {
             path="/products" 
             element={
               <ProtectedRoute permission="canViewProducts">
-                <Products showNotification={showNotification} />
+                <PlaceholderComponent 
+                  title="Products" 
+                  description="Product catalog - Create products components to activate this page" 
+                />
               </ProtectedRoute>
             } 
           />
@@ -91,7 +90,10 @@ function AppContent() {
             path="/proforma-invoices" 
             element={
               <ProtectedRoute permission="canViewPI">
-                <ProformaInvoices showNotification={showNotification} />
+                <PlaceholderComponent 
+                  title="Proforma Invoices" 
+                  description="PI management - Create ProformaInvoices component to activate this page" 
+                />
               </ProtectedRoute>
             } 
           />
@@ -100,7 +102,10 @@ function AppContent() {
             path="/purchase-orders" 
             element={
               <ProtectedRoute permission="canViewPurchaseOrders">
-                <PurchaseOrders showNotification={showNotification} />
+                <PlaceholderComponent 
+                  title="Purchase Orders" 
+                  description="Purchase order management coming soon" 
+                />
               </ProtectedRoute>
             } 
           />
@@ -133,7 +138,10 @@ function AppContent() {
             path="/import" 
             element={
               <ProtectedRoute permission="canImportData">
-                <QuickImport showNotification={showNotification} />
+                <PlaceholderComponent 
+                  title="Quick Import" 
+                  description="Bulk import functionality coming soon" 
+                />
               </ProtectedRoute>
             } 
           />
@@ -142,7 +150,10 @@ function AppContent() {
             path="/users" 
             element={
               <ProtectedRoute permission="canManageUsers">
-                <UserManagement showNotification={showNotification} />
+                <PlaceholderComponent 
+                  title="User Management" 
+                  description="User management coming soon" 
+                />
               </ProtectedRoute>
             } 
           />
