@@ -17,13 +17,13 @@ const Layout = ({ children, activeTab, setActiveTab, showNotification }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   const navigationItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home, color: 'text-violet-600', badge: null },
-    { id: 'suppliers', label: 'Suppliers', icon: Building2, color: 'text-blue-600', badge: '156' },
-    { id: 'products', label: 'Products', icon: Package, color: 'text-emerald-600', badge: '3.8k' },
-    { id: 'purchase-orders', label: 'Orders', icon: FileText, color: 'text-amber-600', badge: '428' },
-    { id: 'import', label: 'Import', icon: Upload, color: 'text-purple-600', badge: null },
-    { id: 'users', label: 'Users', icon: Users, color: 'text-pink-600', badge: '24' }
-  ];
+  { id: 'dashboard', label: 'Dashboard', icon: Home, color: 'text-violet-600', badge: null },
+  { id: 'products', label: 'Products', icon: Package, color: 'text-emerald-600', badge: '3.8k' },
+  { id: 'purchase-orders', label: 'Orders', icon: FileText, color: 'text-amber-600', badge: '428' },
+  { id: 'suppliers', label: 'Suppliers', icon: Building2, color: 'text-blue-600', badge: '156' },
+  { id: 'import', label: 'Import', icon: Upload, color: 'text-purple-600', badge: null },
+  { id: 'users', label: 'Users', icon: Users, color: 'text-pink-600', badge: '24' }
+];
 
   const quickStats = [
     { label: 'Revenue Today', value: '$12,450', icon: TrendingUp, change: '+8%' },
