@@ -37,12 +37,23 @@ const ProformaInvoices = ({ showNotification }) => {
   const [filterPurpose, setFilterPurpose] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   const [viewMode, setViewMode] = useState('grid'); // grid or list
+  const [groupByYear, setGroupByYear] = useState(true);
 
   const canEdit = permissions.canEditPI || permissions.isAdmin;
   const canDelete = permissions.isAdmin;
 
   // Filter PIs based on search and filters
   const filteredPIs = proformaInvoices.filter(pi => {
+    // Group PIs by year
+const pisByYear = filteredPIs.reduce((acc, pi) => {
+  const year = new Date(pi.date).getFullYear();
+  if (!acc[year]) acc[year] = [];
+  acc[year].push(pi);
+  return acc;
+}, {});
+
+// Sort years descending (newest first)
+const sortedYears = Object.keys(pisByYear).sort((a, b) => b - a);
     const supplier = suppliers.find(s => s.id === pi.supplierId);
     const matchesSearch = 
       pi.piNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -313,28 +324,48 @@ const ProformaInvoices = ({ showNotification }) => {
             >
               <List size={20} />
             </button>
+            
+            <button
+  onClick={() => setGroupByYear(!groupByYear)}
+  className={`p-2 rounded ${groupByYear ? 'bg-blue-100 text-blue-600' : 'text-gray-400'}`}
+  title="Group by Year"
+>
+  <Calendar size={20} />
+</button>
+            
           </div>
         </div>
       </div>
 
       {/* PI List/Grid */}
       {viewMode === 'grid' ? (
+  <div className="space-y-8">
+    {sortedYears.map(year => (
+      <div key={year}>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b">
+          {year} ({pisByYear[year].length} PIs)
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredPIs.map(pi => (
-            <PICard
-              key={pi.id}
-              proformaInvoice={pi}
-              supplier={suppliers.find(s => s.id === pi.supplierId)}
-              onEdit={() => handleEditPI(pi)}
-              onDelete={() => handleDeletePI(pi.id)}
-              onUpdateDelivery={() => handleUpdateDeliveryStatus(pi)}
-              onShare={() => handleSharePI(pi)}
-              canEdit={canEdit}
-              canDelete={canDelete}
-            />
-          ))}
+          {pisByYear[year]
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .map(pi => (
+              <PICard
+                key={pi.id}
+                proformaInvoice={pi}
+                supplier={suppliers.find(s => s.id === pi.supplierId)}
+                onEdit={() => handleEditPI(pi)}
+                onDelete={() => handleDeletePI(pi.id)}
+                onUpdateDelivery={() => handleUpdateDeliveryStatus(pi)}
+                onShare={() => handleSharePI(pi)}
+                canEdit={canEdit}
+                canDelete={canDelete}
+              />
+            ))}
         </div>
-      ) : (
+      </div>
+    ))}
+  </div>
+) : (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -372,85 +403,95 @@ const ProformaInvoices = ({ showNotification }) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredPIs.map(pi => {
-                const supplier = suppliers.find(s => s.id === pi.supplierId);
-                return (
-                  <tr key={pi.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {pi.piNumber}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600">
-                      {pi.projectCode || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {supplier?.name || 'Unknown'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(pi.date).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ${pi.totalAmount?.toFixed(2) || '0.00'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 capitalize">
-                        {pi.purpose?.replace('-', ' ') || 'stock'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(pi.status)}`}>
-                        {pi.status}
-                      </span>
-                      {pi.isPriority && (
-                       <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                        <AlertTriangle size={12} className="mr-1" />
-                          Priority
-                      </span>
-                      )}
-                    </td> 
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getDeliveryColor(pi.deliveryStatus)}`}>
-                        {pi.deliveryStatus}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentColor(pi.paymentStatus || 'pending')}`}>
-                        {pi.paymentStatus || 'pending'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleEditPI(pi)}
-                          className="text-blue-600 hover:text-blue-800"
-                          title="View/Edit"
-                        >
-                          <Eye size={18} />
-                        </button>
-                        {canEdit && (
-                          <button
-                            onClick={() => handleUpdateDeliveryStatus(pi)}
-                            className="text-green-600 hover:text-green-800"
-                            title="Update Delivery"
-                          >
-                            <Truck size={18} />
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button
-                            onClick={() => handleDeletePI(pi.id)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Delete"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+  {sortedYears.map(year => (
+    <React.Fragment key={year}>
+      <tr className="bg-gray-50">
+        <td colSpan="10" className="px-6 py-3 text-sm font-semibold text-gray-900">
+          {year} - {pisByYear[year].length} Proforma Invoices
+        </td>
+      </tr>
+      {pisByYear[year]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .map(pi => {
+          const supplier = suppliers.find(s => s.id === pi.supplierId);
+          return (
+            <tr key={pi.id}>
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                {pi.piNumber}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600">
+                {pi.projectCode || '-'}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {supplier?.name || 'Unknown'}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {new Date(pi.date).toLocaleDateString()}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                ${pi.totalAmount?.toFixed(2) || '0.00'}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 capitalize">
+                  {pi.purpose?.replace('-', ' ') || 'stock'}
+                </span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(pi.status)}`}>
+                  {pi.status}
+                </span>
+                {pi.isPriority && (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                    <AlertTriangle size={12} className="mr-1" />
+                    Priority
+                  </span>
+                )}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getDeliveryColor(pi.deliveryStatus)}`}>
+                  {pi.deliveryStatus}
+                </span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentColor(pi.paymentStatus || 'pending')}`}>
+                  {pi.paymentStatus || 'pending'}
+                </span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => handleEditPI(pi)}
+                    className="text-blue-600 hover:text-blue-800"
+                    title="View/Edit"
+                  >
+                    <Eye size={18} />
+                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => handleUpdateDeliveryStatus(pi)}
+                      className="text-green-600 hover:text-green-800"
+                      title="Update Delivery"
+                    >
+                      <Truck size={18} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDeletePI(pi.id)}
+                      className="text-red-600 hover:text-red-800"
+                      title="Delete"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+    </React.Fragment>
+  ))}
+</tbody>
         </div>
       )}
 
