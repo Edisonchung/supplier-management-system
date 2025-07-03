@@ -395,6 +395,12 @@ const ProformaInvoices = ({ showNotification }) => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(pi.status)}`}>
                         {pi.status}
+                        {pi.isPriority && (
+  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+    <AlertTriangle size={12} className="mr-1" />
+    Priority
+  </span>
+)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
