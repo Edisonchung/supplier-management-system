@@ -492,7 +492,7 @@ const sortedYears = Object.keys(pisByYear).sort((a, b) => b - a);
     </React.Fragment>
   ))}
 </tbody>
-        </div>
+        </table>
       )}
 
       {/* Empty State */}
