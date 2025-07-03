@@ -44,6 +44,25 @@ export const useProformaInvoices = () => {
 
   const updateProformaInvoice = async (id, piData) => {
     try {
+      // Check if this is a stock receiving update
+      if (piData.items && piData.items.some(item => item.receivedQty !== undefined)) {
+        // Calculate if all items are fully received
+        const allReceived = piData.items.every(item => item.receivedQty >= item.quantity);
+        const someReceived = piData.items.some(item => item.receivedQty > 0);
+        const hasDiscrepancy = piData.items.some(item => 
+          item.receivedQty > 0 && item.receivedQty !== item.quantity
+        );
+        
+        // Auto-update delivery status based on receiving
+        if (allReceived && !hasDiscrepancy) {
+          piData.deliveryStatus = 'delivered';
+        } else if (someReceived) {
+          piData.deliveryStatus = 'partial';
+        }
+        
+        piData.hasDiscrepancy = hasDiscrepancy;
+      }
+      
       await mockFirebase.firestore.collection('proformaInvoices').doc(id).update({
         ...piData,
         updatedAt: new Date().toISOString()
