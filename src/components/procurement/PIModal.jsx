@@ -3,7 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Plus, Trash2, Search, Package, 
   FileText, Calculator, Calendar, Tag,
-  Truck, AlertCircle, CheckSquare, Square
+  Truck, AlertCircle, CheckSquare, Square,
+  DollarSign, Upload, Link, Eye, Download,
+  CreditCard, MessageSquare
 } from 'lucide-react';
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
@@ -19,14 +21,30 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     attachments: [],
     etaDate: '',
     receivedDate: '',
-    hasDiscrepancy: false
+    hasDiscrepancy: false,
+    // Payment fields
+    paymentTerms: '30% down payment, 70% before delivery',
+    paymentStatus: 'pending',
+    totalPaid: 0,
+    payments: [],
+    shareableId: ''
   });
 
   const [searchProduct, setSearchProduct] = useState('');
   const [showProductSearch, setShowProductSearch] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [errors, setErrors] = useState({});
-  const [activeTab, setActiveTab] = useState('details'); // details or receiving
+  const [activeTab, setActiveTab] = useState('details'); // details, receiving, payment
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [newPayment, setNewPayment] = useState({
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    type: 'down-payment', // down-payment, balance, partial
+    method: 'bank-transfer',
+    reference: '',
+    remark: '',
+    attachments: []
+  });
 
   useEffect(() => {
     if (proformaInvoice) {
@@ -34,7 +52,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
         ...proformaInvoice,
         date: proformaInvoice.date?.split('T')[0] || new Date().toISOString().split('T')[0],
         etaDate: proformaInvoice.etaDate?.split('T')[0] || '',
-        receivedDate: proformaInvoice.receivedDate?.split('T')[0] || ''
+        receivedDate: proformaInvoice.receivedDate?.split('T')[0] || '',
+        shareableId: proformaInvoice.shareableId || generateShareableId()
       });
       
       // Initialize items with receiving data
@@ -48,12 +67,28 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
       
       setSelectedProducts(itemsWithReceiving);
     } else {
-      // Generate PI number
+      // Generate PI number and shareable ID
       const date = new Date();
       const piNumber = `PI-${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-      setFormData(prev => ({ ...prev, piNumber }));
+      const shareableId = generateShareableId();
+      setFormData(prev => ({ ...prev, piNumber, shareableId }));
     }
   }, [proformaInvoice]);
+
+  const generateShareableId = () => {
+    return `pi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  const generateShareableLink = () => {
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/pi/view/${formData.shareableId}`;
+  };
+
+  const copyShareableLink = () => {
+    const link = generateShareableLink();
+    navigator.clipboard.writeText(link);
+    alert('Link copied to clipboard!');
+  };
 
   const validateForm = () => {
     const newErrors = {};
@@ -88,12 +123,76 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
       item.receivedQty > 0 && item.receivedQty !== item.quantity
     );
     
+    // Calculate payment status
+    const totalPaid = formData.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+    let paymentStatus = 'pending';
+    if (totalPaid >= totalAmount) {
+      paymentStatus = 'paid';
+    } else if (totalPaid > 0) {
+      paymentStatus = 'partial';
+    }
+    
     onSave({
       ...formData,
       items: selectedProducts,
       totalAmount,
-      hasDiscrepancy
+      hasDiscrepancy,
+      totalPaid,
+      paymentStatus
     });
+  };
+
+  const handleAddPayment = () => {
+    setShowPaymentModal(true);
+  };
+
+  const handleSavePayment = () => {
+    if (!newPayment.amount || newPayment.amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    const payment = {
+      ...newPayment,
+      id: `payment-${Date.now()}`,
+      amount: parseFloat(newPayment.amount),
+      createdAt: new Date().toISOString()
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      payments: [...(prev.payments || []), payment]
+    }));
+
+    setShowPaymentModal(false);
+    setNewPayment({
+      amount: '',
+      date: new Date().toISOString().split('T')[0],
+      type: 'down-payment',
+      method: 'bank-transfer',
+      reference: '',
+      remark: '',
+      attachments: []
+    });
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // In a real app, this would upload to a server
+      // For demo, we'll create a fake URL
+      const fakeUrl = URL.createObjectURL(file);
+      setNewPayment(prev => ({
+        ...prev,
+        attachments: [...prev.attachments, {
+          name: file.name,
+          url: fakeUrl,
+          type: file.type,
+          size: file.size,
+          uploadedAt: new Date().toISOString()
+        }]
+      }));
+    }
   };
 
   const handleAddProduct = (product) => {
@@ -173,21 +272,34 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
   const totalAmount = selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
   const totalReceived = selectedProducts.reduce((sum, item) => sum + (item.receivedQty || 0), 0);
   const totalOrdered = selectedProducts.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const totalPaid = formData.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+  const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden">
         <div className="p-6 border-b">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold">
               {proformaInvoice ? 'Edit Proforma Invoice' : 'Create Proforma Invoice'}
             </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X size={24} />
-            </button>
+            <div className="flex items-center gap-2">
+              {proformaInvoice && (
+                <button
+                  onClick={copyShareableLink}
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                  title="Copy shareable link"
+                >
+                  <Link size={20} />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X size={24} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -204,6 +316,24 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                 }`}
               >
                 PI Details
+              </button>
+              <button
+                onClick={() => setActiveTab('payment')}
+                className={`px-6 py-3 font-medium ${
+                  activeTab === 'payment' 
+                    ? 'border-b-2 border-blue-500 text-blue-600' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Payment
+                {formData.paymentStatus === 'partial' && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
+                    {paymentProgress.toFixed(0)}%
+                  </span>
+                )}
+                {formData.paymentStatus === 'paid' && (
+                  <CheckSquare className="inline-block ml-2 h-4 w-4 text-green-600" />
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('receiving')}
@@ -307,6 +437,19 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                     <option value="pending">Pending</option>
                     <option value="confirmed">Confirmed</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Payment Terms
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.paymentTerms}
+                    onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., 30% down payment, 70% before delivery"
+                  />
                 </div>
 
                 <div>
@@ -502,6 +645,141 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                 />
               </div>
             </>
+          ) : activeTab === 'payment' ? (
+            // Payment Tab
+            <div className="space-y-6">
+              {/* Payment Summary */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Total Amount</p>
+                    <p className="text-2xl font-bold">${totalAmount.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Paid</p>
+                    <p className="text-2xl font-bold text-green-600">${totalPaid.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Balance</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      ${(totalAmount - totalPaid).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Status</p>
+                    <p className="text-lg font-bold">
+                      <span className={`px-3 py-1 rounded-full text-sm ${
+                        formData.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
+                        formData.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {formData.paymentStatus}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Payment Progress Bar */}
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-1">
+                    <span>Payment Progress</span>
+                    <span>{paymentProgress.toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(paymentProgress, 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Payment Terms */}
+                <div className="mt-4 p-3 bg-white rounded border border-gray-200">
+                  <p className="text-sm font-medium text-gray-700">Payment Terms</p>
+                  <p className="text-sm text-gray-600 mt-1">{formData.paymentTerms}</p>
+                </div>
+              </div>
+
+              {/* Add Payment Button */}
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">Payment History</h3>
+                <button
+                  type="button"
+                  onClick={handleAddPayment}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Plus size={20} />
+                  Add Payment
+                </button>
+              </div>
+
+              {/* Payment History */}
+              <div className="space-y-4">
+                {formData.payments && formData.payments.length > 0 ? (
+                  formData.payments.map((payment, index) => (
+                    <div key={payment.id || index} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <CreditCard className="h-5 w-5 text-gray-400" />
+                            <div>
+                              <p className="font-medium">${payment.amount.toFixed(2)}</p>
+                              <p className="text-sm text-gray-600">
+                                {new Date(payment.date).toLocaleDateString()} • {payment.type.replace('-', ' ')}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          payment.type === 'down-payment' ? 'bg-blue-100 text-blue-800' :
+                          payment.type === 'balance' ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {payment.type.replace('-', ' ')}
+                        </span>
+                      </div>
+
+                      {payment.reference && (
+                        <div className="text-sm text-gray-600 mb-2">
+                          <span className="font-medium">Reference:</span> {payment.reference}
+                        </div>
+                      )}
+
+                      {payment.remark && (
+                        <div className="text-sm text-gray-600 mb-2">
+                          <span className="font-medium">Remark:</span> {payment.remark}
+                        </div>
+                      )}
+
+                      {payment.attachments && payment.attachments.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Attachments</p>
+                          <div className="flex flex-wrap gap-2">
+                            {payment.attachments.map((file, idx) => (
+                              <a
+                                key={idx}
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 px-3 py-1 bg-gray-100 rounded text-sm hover:bg-gray-200"
+                              >
+                                <FileText size={14} />
+                                {file.name}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <DollarSign className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                    <p>No payments recorded yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             // Receiving Tab
             <div className="space-y-6">
@@ -628,6 +906,184 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
           </button>
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Add Payment</h3>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newPayment.amount}
+                    onChange={(e) => setNewPayment({ ...newPayment, amount: e.target.value })}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Date
+                </label>
+                <input
+                  type="date"
+                  value={newPayment.date}
+                  onChange={(e) => setNewPayment({ ...newPayment, date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Type
+                </label>
+                <select
+                  value={newPayment.type}
+                  onChange={(e) => setNewPayment({ ...newPayment, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="down-payment">Down Payment</option>
+                  <option value="balance">Balance Payment</option>
+                  <option value="partial">Partial Payment</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={newPayment.method}
+                  onChange={(e) => setNewPayment({ ...newPayment, method: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="bank-transfer">Bank Transfer</option>
+                  <option value="check">Check</option>
+                  <option value="cash">Cash</option>
+                  <option value="credit-card">Credit Card</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reference Number
+                </label>
+                <input
+                  type="text"
+                  value={newPayment.reference}
+                  onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Transaction ID or Check Number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Remark
+                </label>
+                <textarea
+                  value={newPayment.remark}
+                  onChange={(e) => setNewPayment({ ...newPayment, remark: e.target.value })}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Additional notes about this payment..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Upload Payment Slip
+                </label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600">
+                      <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                        <span>Upload a file</span>
+                        <input 
+                          id="file-upload" 
+                          name="file-upload" 
+                          type="file" 
+                          className="sr-only"
+                          accept="image/*,.pdf"
+                          onChange={handleFileUpload}
+                        />
+                      </label>
+                      <p className="pl-1">or drag and drop</p>
+                    </div>
+                    <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
+                  </div>
+                </div>
+                
+                {newPayment.attachments.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Uploaded Files</p>
+                    <div className="space-y-2">
+                      {newPayment.attachments.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center gap-2">
+                            <FileText size={16} className="text-gray-400" />
+                            <span className="text-sm text-gray-700">{file.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewPayment(prev => ({
+                                ...prev,
+                                attachments: prev.attachments.filter((_, i) => i !== idx)
+                              }));
+                            }}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePayment}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Save Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
