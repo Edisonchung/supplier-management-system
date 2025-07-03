@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, Plus, Search, Filter, Calendar, 
   Download, Eye, Edit, Trash2, Truck, Package,
-  AlertCircle, Clock, CheckCircle
+  AlertCircle, Clock, CheckCircle, CreditCard,
+  Grid, List
 } from 'lucide-react';
 import { useProformaInvoices } from '../../hooks/useProformaInvoices';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -59,7 +60,6 @@ const ProformaInvoices = ({ showNotification }) => {
   };
 
   const handleEditPI = (pi) => {
-    if (!canEdit) return;
     setSelectedPI(pi);
     setShowModal(true);
   };
@@ -104,6 +104,7 @@ const ProformaInvoices = ({ showNotification }) => {
       if (!etaDate) return;
       
       const result = await updateProformaInvoice(pi.id, {
+        ...pi,
         deliveryStatus: 'in-transit',
         etaDate: etaDate
       });
@@ -127,6 +128,18 @@ const ProformaInvoices = ({ showNotification }) => {
     }
   };
 
+  const handleSharePI = (pi) => {
+    // Generate shareable link
+    const shareableLink = `${window.location.origin}/pi/view/${pi.shareableId || pi.id}`;
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(shareableLink).then(() => {
+      showNotification('PI link copied to clipboard!', 'success');
+    }).catch(() => {
+      showNotification('Failed to copy link', 'error');
+    });
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'confirmed': return 'bg-green-100 text-green-800';
@@ -141,6 +154,16 @@ const ProformaInvoices = ({ showNotification }) => {
       case 'delivered': return 'bg-green-100 text-green-800';
       case 'in-transit': return 'bg-blue-100 text-blue-800';
       case 'pending': return 'bg-orange-100 text-orange-800';
+      case 'partial': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPaymentColor = (status) => {
+    switch (status) {
+      case 'paid': return 'bg-green-100 text-green-800';
+      case 'partial': return 'bg-yellow-100 text-yellow-800';
+      case 'pending': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -182,7 +205,19 @@ const ProformaInvoices = ({ showNotification }) => {
               <p className="text-sm text-gray-600">Total PIs</p>
               <p className="text-2xl font-bold">{proformaInvoices.length}</p>
             </div>
-            <FileText className="h-8 w-8 text-blue-500" />
+            <FileText className="h-8 w-8 text-blue-600" />
+          </div>
+        </div>
+        
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Confirmed</p>
+              <p className="text-2xl font-bold">
+                {proformaInvoices.filter(pi => pi.status === 'confirmed').length}
+              </p>
+            </div>
+            <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
         </div>
         
@@ -190,38 +225,26 @@ const ProformaInvoices = ({ showNotification }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Pending Delivery</p>
-              <p className="text-2xl font-bold text-orange-600">{pendingCount}</p>
+              <p className="text-2xl font-bold">{pendingCount}</p>
             </div>
-            <Clock className="h-8 w-8 text-orange-500" />
+            <Truck className="h-8 w-8 text-orange-600" />
           </div>
         </div>
-
+        
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">In Transit</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {proformaInvoices.filter(pi => pi.deliveryStatus === 'in-transit').length}
+              <p className="text-sm text-gray-600">Total Value</p>
+              <p className="text-2xl font-bold">
+                ${proformaInvoices.reduce((sum, pi) => sum + (pi.totalAmount || 0), 0).toFixed(2)}
               </p>
             </div>
-            <Truck className="h-8 w-8 text-blue-500" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Delivered</p>
-              <p className="text-2xl font-bold text-green-600">
-                {proformaInvoices.filter(pi => pi.deliveryStatus === 'delivered').length}
-              </p>
-            </div>
-            <CheckCircle className="h-8 w-8 text-green-500" />
+            <CreditCard className="h-8 w-8 text-purple-600" />
           </div>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters and Search */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
@@ -230,63 +253,60 @@ const ProformaInvoices = ({ showNotification }) => {
               <input
                 type="text"
                 placeholder="Search by PI number or supplier..."
-                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
           
-          <select
-            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">All Status</option>
-            <option value="draft">Draft</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-          </select>
-
-          <select
-            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={filterDelivery}
-            onChange={(e) => setFilterDelivery(e.target.value)}
-          >
-            <option value="all">All Deliveries</option>
-            <option value="pending">Pending</option>
-            <option value="in-transit">In Transit</option>
-            <option value="delivered">Delivered</option>
-            <option value="partial">Partial Delivery</option>
-          </select>
-
-          <select
-            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={filterPurpose}
-            onChange={(e) => setFilterPurpose(e.target.value)}
-          >
-            <option value="all">All Purposes</option>
-            <option value="stock">Stock</option>
-            <option value="r&d">R&D</option>
-            <option value="client-order">Client Order</option>
-          </select>
-
           <div className="flex gap-2">
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+            </select>
+            
+            <select
+              value={filterDelivery}
+              onChange={(e) => setFilterDelivery(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Delivery</option>
+              <option value="pending">Pending</option>
+              <option value="in-transit">In Transit</option>
+              <option value="partial">Partial</option>
+              <option value="delivered">Delivered</option>
+            </select>
+            
+            <select
+              value={filterPurpose}
+              onChange={(e) => setFilterPurpose(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Purpose</option>
+              <option value="stock">Stock</option>
+              <option value="r&d">R&D</option>
+              <option value="client-order">Client Order</option>
+            </select>
+            
+            {/* View Mode Toggle */}
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-600' : 'text-gray-400'}`}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
+              <Grid size={20} />
             </button>
             <button
               onClick={() => setViewMode('list')}
               className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-100 text-blue-600' : 'text-gray-400'}`}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
+              <List size={20} />
             </button>
           </div>
         </div>
@@ -303,6 +323,7 @@ const ProformaInvoices = ({ showNotification }) => {
               onEdit={() => handleEditPI(pi)}
               onDelete={() => handleDeletePI(pi.id)}
               onUpdateDelivery={() => handleUpdateDeliveryStatus(pi)}
+              onShare={() => handleSharePI(pi)}
               canEdit={canEdit}
               canDelete={canDelete}
             />
@@ -334,6 +355,9 @@ const ProformaInvoices = ({ showNotification }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Delivery
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Payment
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -343,33 +367,40 @@ const ProformaInvoices = ({ showNotification }) => {
               {filteredPIs.map(pi => {
                 const supplier = suppliers.find(s => s.id === pi.supplierId);
                 return (
-                  <tr key={pi.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap font-medium">
+                  <tr key={pi.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {pi.piNumber}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {supplier?.name || 'Unknown'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(pi.date).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       ${pi.totalAmount?.toFixed(2) || '0.00'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm capitalize">{pi.purpose}</span>
+                      <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 capitalize">
+                        {pi.purpose?.replace('-', ' ') || 'stock'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(pi.status)}`}>
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(pi.status)}`}>
                         {pi.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${getDeliveryColor(pi.deliveryStatus)}`}>
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getDeliveryColor(pi.deliveryStatus)}`}>
                         {pi.deliveryStatus}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentColor(pi.paymentStatus || 'pending')}`}>
+                        {pi.paymentStatus || 'pending'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => handleEditPI(pi)}
