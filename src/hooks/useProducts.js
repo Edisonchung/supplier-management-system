@@ -26,7 +26,7 @@ export const useProducts = () => {
     try {
       const newProduct = {
         ...productData,
-        dateAdded: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       
@@ -55,26 +55,6 @@ export const useProducts = () => {
     }
   };
 
-  const updateProductStock = async (id, quantityChange) => {
-    try {
-      const product = products.find(p => p.id === id);
-      if (!product) throw new Error('Product not found');
-      
-      const newStock = product.stock + quantityChange;
-      
-      await mockFirebase.firestore.collection('products').doc(id).update({
-        stock: newStock,
-        updatedAt: new Date().toISOString()
-      });
-      
-      await loadProducts();
-      return { success: true, newStock };
-    } catch (error) {
-      console.error('Error updating product stock:', error);
-      return { success: false, error: error.message };
-    }
-  };
-
   const deleteProduct = async (id) => {
     try {
       await mockFirebase.firestore.collection('products').doc(id).delete();
@@ -90,16 +70,31 @@ export const useProducts = () => {
     return products.find(product => product.id === id);
   };
 
-  const getProductsBySupplier = (supplierId) => {
+  const getProductsBySupplierId = (supplierId) => {
     return products.filter(product => product.supplierId === supplierId);
   };
 
-  const getLowStockProducts = () => {
-    return products.filter(product => product.stock <= product.minStock);
+  const getLowStockProducts = (threshold = 10) => {
+    return products.filter(product => product.currentStock <= threshold);
   };
 
-  const getProductsByCategory = (category) => {
-    return products.filter(product => product.category === category);
+  const updateProductStock = async (id, stockChange, type = 'add') => {
+    try {
+      const product = getProductById(id);
+      if (!product) throw new Error('Product not found');
+      
+      const newStock = type === 'add' 
+        ? product.currentStock + stockChange 
+        : product.currentStock - stockChange;
+      
+      if (newStock < 0) throw new Error('Insufficient stock');
+      
+      await updateProduct(id, { currentStock: newStock });
+      return { success: true, newStock };
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      return { success: false, error: error.message };
+    }
   };
 
   useEffect(() => {
@@ -112,12 +107,11 @@ export const useProducts = () => {
     error,
     addProduct,
     updateProduct,
-    updateProductStock,
     deleteProduct,
     getProductById,
-    getProductsBySupplier,
+    getProductsBySupplierId,
     getLowStockProducts,
-    getProductsByCategory,
+    updateProductStock,
     refetch: loadProducts
   };
 };
