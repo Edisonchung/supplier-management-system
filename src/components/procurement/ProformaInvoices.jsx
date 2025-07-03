@@ -402,7 +402,7 @@ const sortedYears = Object.keys(pisByYear).sort((a, b) => b - a);
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+  <tbody className="bg-white divide-y divide-gray-200">
   {sortedYears.map(year => (
     <React.Fragment key={year}>
       <tr className="bg-gray-50">
@@ -492,6 +492,7 @@ const sortedYears = Object.keys(pisByYear).sort((a, b) => b - a);
     </React.Fragment>
   ))}
 </tbody>
+            </table>
         </div>
       )}
 
