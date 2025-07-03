@@ -1,4 +1,5 @@
 // src/services/firebase.js
+import { initializeSampleData } from '../utils/mockData';
 
 // Mock Firebase implementation for demo
 class MockFirebase {
@@ -29,35 +30,35 @@ class MockFirebase {
       {
         id: 'sup-001',
         name: 'Flow Solution Sdn. Bhd.',
-        email: 'sales@flowsolution.my',
-        phone: '+60 3-1234 5678',
-        address: 'Lot 123, Jalan Industrial 1, 47100 Puchong, Selangor',
-        contactPerson: 'Mr. Ahmad Rahman',
+        email: 'sales@flowsolution.com',
+        phone: '0128070612',
+        address: 'PT7257, Jalan BBN 1/2A, Bandar Baru Nilai, 71800 Nilai, SGR, Malaysia',
+        contactPerson: 'Edison Chung',
         status: 'active',
-        dateAdded: new Date().toISOString()
+        dateAdded: new Date('2024-01-15').toISOString()
       },
       {
         id: 'sup-002',
-        name: 'Tech Components Asia',
-        email: 'info@techcomponents.sg',
-        phone: '+65 6789 0123',
-        address: '8 Jurong East, Singapore 123456',
-        contactPerson: 'Ms. Sarah Lee',
+        name: 'Hebei Mickey Badger Engineering',
+        email: 'wenpan@hbmickey.com',
+        phone: '+86-18731810277',
+        address: 'Hengshui City, Hebei Province, China',
+        contactPerson: 'Wenpan',
         status: 'active',
-        dateAdded: new Date().toISOString()
+        dateAdded: new Date('2024-02-20').toISOString()
       },
       {
         id: 'sup-003',
-        name: 'Industrial Parts Malaysia',
-        email: 'procurement@industrialparts.my',
-        phone: '+60 3-9876 5432',
-        address: 'Block B, Damansara Business Park, 46200 Petaling Jaya',
-        contactPerson: 'Mr. David Tan',
+        name: 'Tech Components Asia',
+        email: 'info@techcomponents.com',
+        phone: '+65 6789 0123',
+        address: '123 Tech Park, Singapore 123456',
+        contactPerson: 'John Lee',
         status: 'pending',
-        dateAdded: new Date().toISOString()
+        dateAdded: new Date('2024-03-10').toISOString()
       }
     ];
-
+    
     this.data.suppliers = sampleSuppliers;
     localStorage.setItem('suppliers', JSON.stringify(sampleSuppliers));
   }
@@ -66,48 +67,90 @@ class MockFirebase {
     const sampleProducts = [
       {
         id: 'prod-001',
-        name: 'SMC Pneumatic Cylinder',
-        code: 'CY1B25-300',
-        brand: 'SMC',
+        name: 'LOAD CELL CABLE C/W SENSOR CONNECTOR SERIES',
+        brand: 'Generic',
         supplierId: 'sup-001',
-        category: 'pneumatics',
-        price: 450.00,
-        stock: 15,
-        minStock: 5,
+        category: 'cables',
+        price: 400,
         status: 'complete',
-        description: 'Rodless cylinder, 25mm bore, 300mm stroke',
-        dateAdded: new Date().toISOString()
+        description: 'Cable Length 2 Meter',
+        sku: '200QCR1634',
+        stock: 10,
+        minStock: 5,
+        dateAdded: new Date('2024-01-20').toISOString()
       },
       {
         id: 'prod-002',
-        name: 'Omron Safety Relay',
-        code: 'G9SA-301',
-        brand: 'Omron',
-        supplierId: 'sup-002',
-        category: 'automation',
-        price: 320.00,
-        stock: 8,
-        minStock: 3,
+        name: 'CIRCUIT BREAKER POLE: 3 220 9kW',
+        brand: 'Schneider',
+        supplierId: 'sup-001',
+        category: 'electronics',
+        price: 230,
         status: 'complete',
-        description: '3-pole safety relay unit',
-        dateAdded: new Date().toISOString()
+        description: 'Industrial circuit breaker',
+        sku: '200QCR1372',
+        stock: 15,
+        minStock: 10,
+        dateAdded: new Date('2024-01-25').toISOString()
       },
       {
         id: 'prod-003',
-        name: 'Festo Solenoid Valve',
-        code: 'VUVG-L14-M52',
-        brand: 'Festo',
-        supplierId: 'sup-001',
-        category: 'pneumatics',
-        price: 180.00,
-        stock: 25,
-        minStock: 10,
+        name: 'Siemens Push Button 3SB3400-0B',
+        brand: 'Siemens',
+        supplierId: 'sup-002',
+        category: 'components',
+        price: 4.50,
         status: 'pending',
-        description: '5/2-way solenoid valve',
-        dateAdded: new Date().toISOString()
+        description: 'Industrial push button',
+        sku: 'S3628',
+        stock: 25,
+        minStock: 20,
+        dateAdded: new Date('2024-02-10').toISOString()
+      },
+      {
+        id: 'prod-004',
+        name: 'Siemens Communication Module 6AG1972-0BA12-2XA0',
+        brand: 'Siemens',
+        supplierId: 'sup-002',
+        category: 'electronics',
+        price: 42,
+        status: 'complete',
+        description: 'SIMATIC S7 communication module',
+        sku: 'S3626',
+        stock: 3,
+        minStock: 5,
+        dateAdded: new Date('2024-02-15').toISOString()
+      },
+      {
+        id: 'prod-005',
+        name: 'Hydraulic Valve DG4V-5-2C-MU-C6-20',
+        brand: 'Parker',
+        supplierId: 'sup-001',
+        category: 'hydraulics',
+        price: 157,
+        status: 'complete',
+        description: 'Directional control valve',
+        sku: 'PKR-DG4V-002',
+        stock: 0,
+        minStock: 2,
+        dateAdded: new Date('2024-03-01').toISOString()
+      },
+      {
+        id: 'prod-006',
+        name: 'Proximity Sensor E2E-X5ME1',
+        brand: 'Omron',
+        supplierId: 'sup-003',
+        category: 'sensors',
+        price: 85,
+        status: 'pending',
+        description: 'Inductive proximity sensor, M12',
+        sku: 'OMR-E2E-001',
+        stock: 8,
+        minStock: 10,
+        dateAdded: new Date('2024-03-05').toISOString()
       }
     ];
-
+    
     this.data.products = sampleProducts;
     localStorage.setItem('products', JSON.stringify(sampleProducts));
   }
@@ -116,40 +159,124 @@ class MockFirebase {
     const samplePIs = [
       {
         id: 'pi-001',
-        piNumber: 'PI-20250124-001',
+        piNumber: 'PI-2024-001',
         supplierId: 'sup-001',
-        date: new Date().toISOString(),
+        date: '2024-07-09',
         items: [
           {
             productId: 'prod-001',
-            productName: 'SMC Pneumatic Cylinder',
-            productCode: 'CY1B25-300',
-            quantity: 5,
-            unitPrice: 450.00,
-            totalPrice: 2250.00,
-            receivedQty: 0
+            productName: 'LOAD CELL CABLE C/W SENSOR CONNECTOR SERIES',
+            productCode: '200QCR1634',
+            quantity: 1,
+            unitPrice: 400,
+            totalPrice: 400,
+            notes: ''
+          },
+          {
+            productId: 'prod-002',
+            productName: 'CIRCUIT BREAKER POLE: 3 220 9kW',
+            productCode: '200QCR1372',
+            quantity: 1,
+            unitPrice: 230,
+            totalPrice: 230,
+            notes: ''
           }
         ],
-        totalAmount: 2250.00,
+        totalAmount: 630,
         status: 'confirmed',
         deliveryStatus: 'pending',
+        purpose: 'client-order',
+        notes: 'For Pelabuhan Tanjung Pelepas project',
+        createdAt: new Date('2024-07-09').toISOString(),
+        updatedAt: new Date('2024-07-09').toISOString()
+      },
+      {
+        id: 'pi-002',
+        piNumber: 'PI-2024-002',
+        supplierId: 'sup-002',
+        date: '2024-07-10',
+        items: [
+          {
+            productId: 'prod-003',
+            productName: 'Siemens Push Button 3SB3400-0B',
+            productCode: 'S3628',
+            quantity: 4,
+            unitPrice: 4.50,
+            totalPrice: 18,
+            notes: ''
+          },
+          {
+            productId: 'prod-004',
+            productName: 'Siemens Communication Module 6AG1972-0BA12-2XA0',
+            productCode: 'S3626',
+            quantity: 19,
+            unitPrice: 42,
+            totalPrice: 798,
+            notes: ''
+          }
+        ],
+        totalAmount: 816,
+        status: 'confirmed',
+        deliveryStatus: 'in-transit',
         purpose: 'stock',
-        notes: 'Urgent order for stock replenishment',
-        paymentTerms: '30% down payment, 70% before delivery',
-        paymentStatus: 'pending',
-        totalPaid: 0,
-        payments: [],
-        shareableId: 'pi-1737650000000-abc123xyz',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        notes: 'Regular stock replenishment',
+        createdAt: new Date('2024-07-10').toISOString(),
+        updatedAt: new Date('2024-08-15').toISOString()
+      },
+      {
+        id: 'pi-003',
+        piNumber: 'PI-2024-003',
+        supplierId: 'sup-001',
+        date: '2024-09-01',
+        items: [
+          {
+            productId: 'prod-005',
+            productName: 'Hydraulic Valve DG4V-5-2C-MU-C6-20',
+            productCode: 'PKR-DG4V-002',
+            quantity: 5,
+            unitPrice: 157,
+            totalPrice: 785,
+            notes: 'Urgent order'
+          }
+        ],
+        totalAmount: 785,
+        status: 'pending',
+        deliveryStatus: 'pending',
+        purpose: 'r&d',
+        notes: 'For R&D testing new hydraulic system',
+        createdAt: new Date('2024-09-01').toISOString(),
+        updatedAt: new Date('2024-09-01').toISOString()
+      },
+      {
+        id: 'pi-004',
+        piNumber: 'PI-2024-004',
+        supplierId: 'sup-003',
+        date: '2024-09-10',
+        items: [
+          {
+            productId: 'prod-006',
+            productName: 'Proximity Sensor E2E-X5ME1',
+            productCode: 'OMR-E2E-001',
+            quantity: 20,
+            unitPrice: 85,
+            totalPrice: 1700,
+            notes: ''
+          }
+        ],
+        totalAmount: 1700,
+        status: 'draft',
+        deliveryStatus: 'pending',
+        purpose: 'stock',
+        notes: 'Awaiting approval',
+        createdAt: new Date('2024-09-10').toISOString(),
+        updatedAt: new Date('2024-09-10').toISOString()
       }
     ];
-
+    
     this.data.proformaInvoices = samplePIs;
     localStorage.setItem('proformaInvoices', JSON.stringify(samplePIs));
   }
 
-  // Firestore-like API
   firestore = {
     collection: (collectionName) => ({
       get: async () => {
@@ -166,44 +293,94 @@ class MockFirebase {
       
       doc: (docId) => ({
         get: async () => {
-          const data = this.data[collectionName] || [];
-          const doc = data.find(item => item.id === docId);
+          const item = this.data[collectionName]?.find(item => item.id === docId);
           return {
-            exists: !!doc,
-            data: () => doc,
-            id: docId
+            id: docId,
+            data: () => item,
+            exists: !!item
           };
         },
-        update: async (updates) => {
-          const data = this.data[collectionName] || [];
-          const index = data.findIndex(item => item.id === docId);
-          if (index !== -1) {
-            this.data[collectionName][index] = { ...data[index], ...updates };
+        
+        set: async (data, options = {}) => {
+          const updatedData = { ...data, id: docId };
+          const index = this.data[collectionName]?.findIndex(item => item.id === docId);
+          
+          if (index >= 0) {
+            if (options.merge) {
+              this.data[collectionName][index] = { ...this.data[collectionName][index], ...updatedData };
+            } else {
+              this.data[collectionName][index] = updatedData;
+            }
+          } else {
+            if (!this.data[collectionName]) {
+              this.data[collectionName] = [];
+            }
+            this.data[collectionName].push(updatedData);
+          }
+          
+          localStorage.setItem(collectionName, JSON.stringify(this.data[collectionName]));
+          return Promise.resolve();
+        },
+        
+        update: async (data) => {
+          const index = this.data[collectionName]?.findIndex(item => item.id === docId);
+          if (index >= 0) {
+            this.data[collectionName][index] = { ...this.data[collectionName][index], ...data };
             localStorage.setItem(collectionName, JSON.stringify(this.data[collectionName]));
           }
+          return Promise.resolve();
         },
+        
         delete: async () => {
-          const data = this.data[collectionName] || [];
-          this.data[collectionName] = data.filter(item => item.id !== docId);
+          this.data[collectionName] = this.data[collectionName]?.filter(item => item.id !== docId) || [];
           localStorage.setItem(collectionName, JSON.stringify(this.data[collectionName]));
+          return Promise.resolve();
         }
       }),
       
-      // Add where query support
+      add: async (data) => {
+        const id = `${collectionName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const newDoc = { ...data, id };
+        
+        if (!this.data[collectionName]) {
+          this.data[collectionName] = [];
+        }
+        
+        this.data[collectionName].push(newDoc);
+        localStorage.setItem(collectionName, JSON.stringify(this.data[collectionName]));
+        
+        return Promise.resolve({ id });
+      },
+      
       where: (field, operator, value) => ({
         get: async () => {
-          const data = this.data[collectionName] || [];
-          const filtered = data.filter(item => {
-            if (operator === '==') return item[field] === value;
-            if (operator === '!=') return item[field] !== value;
-            if (operator === '>') return item[field] > value;
-            if (operator === '<') return item[field] < value;
-            if (operator === '>=') return item[field] >= value;
-            if (operator === '<=') return item[field] <= value;
-            if (operator === 'in') return value.includes(item[field]);
-            if (operator === 'array-contains') return item[field]?.includes(value);
-            return false;
-          });
+          let filtered = this.data[collectionName] || [];
+          
+          switch (operator) {
+            case '==':
+              filtered = filtered.filter(item => item[field] === value);
+              break;
+            case '!=':
+              filtered = filtered.filter(item => item[field] !== value);
+              break;
+            case '>':
+              filtered = filtered.filter(item => item[field] > value);
+              break;
+            case '<':
+              filtered = filtered.filter(item => item[field] < value);
+              break;
+            case '>=':
+              filtered = filtered.filter(item => item[field] >= value);
+              break;
+            case '<=':
+              filtered = filtered.filter(item => item[field] <= value);
+              break;
+            case 'array-contains':
+              filtered = filtered.filter(item => Array.isArray(item[field]) && item[field].includes(value));
+              break;
+            default:
+              break;
+          }
           
           return {
             docs: filtered.map((item, index) => ({
@@ -214,21 +391,7 @@ class MockFirebase {
             empty: filtered.length === 0
           };
         }
-      }),
-      
-      add: async (documentData) => {
-        const id = `${collectionName}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const newDoc = { ...documentData, id };
-        
-        if (!this.data[collectionName]) {
-          this.data[collectionName] = [];
-        }
-        
-        this.data[collectionName].push(newDoc);
-        localStorage.setItem(collectionName, JSON.stringify(this.data[collectionName]));
-        
-        return { id };
-      }
+      })
     })
   };
 }
