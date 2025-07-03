@@ -5,6 +5,10 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import Dashboard from './components/dashboard/Dashboard';
+import Suppliers from './components/suppliers/Suppliers'; // Add this import
+import Products from './components/products/Products'; // Add this import
+import ProformaInvoices from './components/procurement/ProformaInvoices'; // Add this import
+import PublicPIView from './components/procurement/PublicPIView'; // Add this import
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
 
@@ -79,41 +83,6 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
   </div>
 );
 
-// Lazy load components with fallbacks
-const LazyComponent = ({ path, fallbackTitle, fallbackDescription }) => {
-  const [Component, setComponent] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
-
-  React.useEffect(() => {
-    // Try to dynamically import the component
-    import(path)
-      .then(module => {
-        setComponent(() => module.default);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.log(`Component not found at ${path}, showing placeholder`);
-        setError(true);
-        setLoading(false);
-      });
-  }, [path]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (error || !Component) {
-    return <PlaceholderComponent title={fallbackTitle} description={fallbackDescription} />;
-  }
-
-  return <Component />;
-};
-
 function AppContent() {
   const { user } = useAuth();
   const [notification, setNotification] = useState(null);
@@ -135,26 +104,17 @@ function AppContent() {
     },
     {
       path: '/suppliers',
-      element: <PlaceholderComponent 
-        title="Suppliers" 
-        description="Supplier management - Feature coming soon" 
-      />,
+      element: <Suppliers showNotification={showNotification} />, // Now using real component
       permission: 'canViewSuppliers'
     },
     {
       path: '/products',
-      element: <PlaceholderComponent 
-        title="Products" 
-        description="Product catalog - Feature coming soon" 
-      />,
+      element: <Products showNotification={showNotification} />, // Now using real component
       permission: 'canViewProducts'
     },
     {
       path: '/proforma-invoices',
-      element: <PlaceholderComponent 
-        title="Proforma Invoices" 
-        description="PI management - Feature coming soon" 
-      />,
+      element: <ProformaInvoices showNotification={showNotification} />, // Now using real component
       permission: 'canViewPI'
     },
     {
@@ -202,8 +162,14 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <Router>
-        <Layout>
-          <Routes>
+        <Routes>
+          {/* Public PI View Route - No Layout */}
+          <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
+          
+          {/* Protected Routes with Layout */}
+          <Route element={
+            user ? <Layout /> : <Navigate to="/login" replace />
+          }>
             <Route path="/login" element={<Navigate to="/" replace />} />
             
             {routes.map(route => (
@@ -219,16 +185,16 @@ function AppContent() {
             ))}
             
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-          
-          {notification && (
-            <Notification
-              message={notification.message}
-              type={notification.type}
-              onClose={() => setNotification(null)}
-            />
-          )}
-        </Layout>
+          </Route>
+        </Routes>
+        
+        {notification && (
+          <Notification
+            message={notification.message}
+            type={notification.type}
+            onClose={() => setNotification(null)}
+          />
+        )}
       </Router>
     </ErrorBoundary>
   );
