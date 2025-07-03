@@ -4,7 +4,7 @@ import {
   FileText, Plus, Search, Filter, Calendar, 
   Download, Eye, Edit, Trash2, Truck, Package,
   AlertCircle, Clock, CheckCircle, CreditCard,
-  Grid, List, Briefcase
+  Grid, List, Briefcase, AlertTriangle
 } from 'lucide-react';
 import { useProformaInvoices } from '../../hooks/useProformaInvoices';
 import { usePermissions } from '../../hooks/usePermissions';
