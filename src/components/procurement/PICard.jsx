@@ -99,15 +99,16 @@ const PICard = ({
           <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColor(proformaInvoice.status)}`}>
             {proformaInvoice.status}
           </span>
+          
+          {hasDiscrepancies && (
+            <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800" title="Has discrepancies">
+              <AlertCircle size={12} />
+            </span>  
+          )}
           {proformaInvoice.isPriority && (
             <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800 border border-red-200 flex items-center gap-1" title={proformaInvoice.priorityReason || 'Priority Payment'}>
             <AlertTriangle size={12} />
               Priority
-            </span>
-          )}
-          {hasDiscrepancies && (
-            <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800" title="Has discrepancies">
-              <AlertCircle size={12} />
             </span>
           )}
         </div>
