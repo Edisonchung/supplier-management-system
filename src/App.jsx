@@ -91,6 +91,11 @@ function AppContent() {
     setNotification({ message, type });
   };
 
+  if (!user && window.location.pathname.startsWith('/pi/view/')) {
+    // Allow public PI view without authentication
+    return null;
+  }
+
   if (!user) {
     return <LoginForm />;
   }
@@ -162,33 +167,41 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <Router>
-        <Layout>
-          <Routes>
-            <Route path="/login" element={<Navigate to="/" replace />} />
-            
-            {routes.map(route => (
-              <Route
-                key={route.path}
-                path={route.path}
-                element={
-                  <ProtectedRoute permission={route.permission}>
-                    {route.element}
-                  </ProtectedRoute>
-                }
-              />
-            ))}
-            
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+        <Routes>
+          {/* Public PI View Route - No Authentication Required */}
+          <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
           
-          {notification && (
-            <Notification
-              message={notification.message}
-              type={notification.type}
-              onClose={() => setNotification(null)}
-            />
+          {/* Login Route */}
+          <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginForm />} />
+          
+          {/* Protected Routes */}
+          {user ? (
+            <Route element={<Layout />}>
+              {routes.map(route => (
+                <Route
+                  key={route.path}
+                  path={route.path}
+                  element={
+                    <ProtectedRoute permission={route.permission}>
+                      {route.element}
+                    </ProtectedRoute>
+                  }
+                />
+              ))}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          ) : (
+            <Route path="*" element={<Navigate to="/login" replace />} />
           )}
-        </Layout>
+        </Routes>
+        
+        {notification && (
+          <Notification
+            message={notification.message}
+            type={notification.type}
+            onClose={() => setNotification(null)}
+          />
+        )}
       </Router>
     </ErrorBoundary>
   );
