@@ -162,14 +162,8 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <Router>
-        <Routes>
-          {/* Public PI View Route - No Layout */}
-          <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
-          
-          {/* Protected Routes with Layout */}
-          <Route element={
-            user ? <Layout /> : <Navigate to="/login" replace />
-          }>
+        <Layout>
+          <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
             
             {routes.map(route => (
@@ -185,16 +179,16 @@ function AppContent() {
             ))}
             
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-        
-        {notification && (
-          <Notification
-            message={notification.message}
-            type={notification.type}
-            onClose={() => setNotification(null)}
-          />
-        )}
+          </Routes>
+          
+          {notification && (
+            <Notification
+              message={notification.message}
+              type={notification.type}
+              onClose={() => setNotification(null)}
+            />
+          )}
+        </Layout>
       </Router>
     </ErrorBoundary>
   );
