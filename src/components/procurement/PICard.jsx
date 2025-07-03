@@ -4,7 +4,7 @@ import {
   FileText, Calendar, DollarSign, Package, 
   Edit, Trash2, Eye, Truck, MoreVertical,
   Building2, Tag, Clock, CheckCircle, AlertCircle,
-  AlertTriangle, CreditCard, Link, Share2
+  AlertTriangle, CreditCard, Link, Share2, Briefcase
 } from 'lucide-react';
 
 const PICard = ({ 
@@ -87,6 +87,12 @@ const PICard = ({
           <div>
             <h3 className="font-semibold text-gray-900">{proformaInvoice.piNumber}</h3>
             <p className="text-sm text-gray-600">{supplier?.name || 'Unknown Supplier'}</p>
+            {proformaInvoice.projectCode && (
+              <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                <Briefcase size={12} />
+                {proformaInvoice.projectCode}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -135,6 +141,18 @@ const PICard = ({
             )}
           </span>
         </div>
+
+        {proformaInvoice.projectCode && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Briefcase size={14} />
+              <span>Project</span>
+            </div>
+            <span className="text-sm font-medium text-blue-600">
+              {proformaInvoice.projectCode}
+            </span>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-gray-600">
