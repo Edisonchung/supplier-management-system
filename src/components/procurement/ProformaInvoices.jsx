@@ -35,6 +35,7 @@ const ProformaInvoices = ({ showNotification }) => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterDelivery, setFilterDelivery] = useState('all');
   const [filterPurpose, setFilterPurpose] = useState('all');
+  const [filterPriority, setFilterPriority] = useState('all');
   const [viewMode, setViewMode] = useState('grid'); // grid or list
 
   const canEdit = permissions.canEditPI || permissions.isAdmin;
@@ -51,8 +52,11 @@ const ProformaInvoices = ({ showNotification }) => {
     const matchesStatus = filterStatus === 'all' || pi.status === filterStatus;
     const matchesDelivery = filterDelivery === 'all' || pi.deliveryStatus === filterDelivery;
     const matchesPurpose = filterPurpose === 'all' || pi.purpose === filterPurpose;
+    const matchesPriority = filterPriority === 'all' || 
+  (filterPriority === 'priority' && pi.isPriority) ||
+  (filterPriority === 'normal' && !pi.isPriority);
     
-    return matchesSearch && matchesStatus && matchesDelivery && matchesPurpose;
+    return matchesSearch && matchesStatus && matchesDelivery && matchesPurpose && matchesPriority;
   });
 
   const handleAddPI = () => {
@@ -395,14 +399,14 @@ const ProformaInvoices = ({ showNotification }) => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(pi.status)}`}>
                         {pi.status}
-                        {pi.isPriority && (
-  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-    <AlertTriangle size={12} className="mr-1" />
-    Priority
-  </span>
-)}
                       </span>
-                    </td>
+                      {pi.isPriority && (
+                       <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                        <AlertTriangle size={12} className="mr-1" />
+                          Priority
+                      </span>
+                      )}
+                    </td> 
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getDeliveryColor(pi.deliveryStatus)}`}>
                         {pi.deliveryStatus}
