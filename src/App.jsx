@@ -6,6 +6,8 @@ import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import Dashboard from './components/dashboard/Dashboard';
 import Suppliers from './components/suppliers/Suppliers'; // Add this import
+import Products from './components/products/Products'; // Add this import
+import ProformaInvoices from './components/procurement/ProformaInvoices'; // Add this import
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
 
@@ -106,18 +108,12 @@ function AppContent() {
     },
     {
       path: '/products',
-      element: <PlaceholderComponent 
-        title="Products" 
-        description="Product catalog - Feature coming soon" 
-      />,
+      element: <Products showNotification={showNotification} />, // Now using real component
       permission: 'canViewProducts'
     },
     {
       path: '/proforma-invoices',
-      element: <PlaceholderComponent 
-        title="Proforma Invoices" 
-        description="PI management - Feature coming soon" 
-      />,
+      element: <ProformaInvoices showNotification={showNotification} />, // Now using real component
       permission: 'canViewPI'
     },
     {
