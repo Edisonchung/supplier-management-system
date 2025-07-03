@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, Calendar, DollarSign, Package, Building2, 
   CreditCard, Upload, CheckCircle, Clock, MessageSquare,
-  Download, Eye, Truck, Tag, Briefcase
+  Download, Eye, Truck, Tag, Briefcase, AlertTriangle
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { mockFirebase } from '../../services/firebase';
