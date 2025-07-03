@@ -98,21 +98,32 @@ const ProformaInvoices = ({ showNotification }) => {
   };
 
   const handleUpdateDeliveryStatus = async (pi) => {
-    const newStatus = 
-      pi.deliveryStatus === 'pending' ? 'in-transit' :
-      pi.deliveryStatus === 'in-transit' ? 'delivered' : 'pending';
-    
-    const result = await updateDeliveryStatus(pi.id, newStatus);
-    if (result.success) {
-      showNotification(`Delivery status updated to ${newStatus}`, 'success');
+    // If current status is pending, prompt for ETA when moving to in-transit
+    if (pi.deliveryStatus === 'pending') {
+      const etaDate = prompt('Enter ETA date (YYYY-MM-DD):');
+      if (!etaDate) return;
       
-      // If marked as delivered, update product stock
-      if (newStatus === 'delivered' && pi.purpose === 'stock') {
-        // This would trigger stock update logic
-        showNotification('Stock levels will be updated', 'info');
+      const result = await updateProformaInvoice(pi.id, {
+        deliveryStatus: 'in-transit',
+        etaDate: etaDate
+      });
+      
+      if (result.success) {
+        showNotification('Delivery status updated to in-transit', 'success');
+      } else {
+        showNotification(result.error || 'Failed to update status', 'error');
       }
+    } else if (pi.deliveryStatus === 'in-transit') {
+      // When marking as delivered, open the modal to handle stock receiving
+      setSelectedPI(pi);
+      setShowModal(true);
+      showNotification('Please update the received quantities', 'info');
     } else {
-      showNotification(result.error || 'Failed to update status', 'error');
+      // Reset to pending
+      const result = await updateDeliveryStatus(pi.id, 'pending');
+      if (result.success) {
+        showNotification('Delivery status reset to pending', 'success');
+      }
     }
   };
 
@@ -246,6 +257,7 @@ const ProformaInvoices = ({ showNotification }) => {
             <option value="pending">Pending</option>
             <option value="in-transit">In Transit</option>
             <option value="delivered">Delivered</option>
+            <option value="partial">Partial Delivery</option>
           </select>
 
           <select
