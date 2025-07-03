@@ -5,10 +5,6 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import Dashboard from './components/dashboard/Dashboard';
-import Suppliers from './components/suppliers/Suppliers'; // Add this import
-import Products from './components/products/Products'; // Add this import
-import ProformaInvoices from './components/procurement/ProformaInvoices'; // Add this import
-import PublicPIView from './components/procurement/PublicPIView'; // Add this import
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
 
@@ -83,6 +79,41 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
   </div>
 );
 
+// Lazy load components with fallbacks
+const LazyComponent = ({ path, fallbackTitle, fallbackDescription }) => {
+  const [Component, setComponent] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
+
+  React.useEffect(() => {
+    // Try to dynamically import the component
+    import(path)
+      .then(module => {
+        setComponent(() => module.default);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.log(`Component not found at ${path}, showing placeholder`);
+        setError(true);
+        setLoading(false);
+      });
+  }, [path]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error || !Component) {
+    return <PlaceholderComponent title={fallbackTitle} description={fallbackDescription} />;
+  }
+
+  return <Component />;
+};
+
 function AppContent() {
   const { user } = useAuth();
   const [notification, setNotification] = useState(null);
@@ -90,11 +121,6 @@ function AppContent() {
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
   };
-
-  if (!user && window.location.pathname.startsWith('/pi/view/')) {
-    // Allow public PI view without authentication
-    return null;
-  }
 
   if (!user) {
     return <LoginForm />;
@@ -109,17 +135,26 @@ function AppContent() {
     },
     {
       path: '/suppliers',
-      element: <Suppliers showNotification={showNotification} />, // Now using real component
+      element: <PlaceholderComponent 
+        title="Suppliers" 
+        description="Supplier management - Feature coming soon" 
+      />,
       permission: 'canViewSuppliers'
     },
     {
       path: '/products',
-      element: <Products showNotification={showNotification} />, // Now using real component
+      element: <PlaceholderComponent 
+        title="Products" 
+        description="Product catalog - Feature coming soon" 
+      />,
       permission: 'canViewProducts'
     },
     {
       path: '/proforma-invoices',
-      element: <ProformaInvoices showNotification={showNotification} />, // Now using real component
+      element: <PlaceholderComponent 
+        title="Proforma Invoices" 
+        description="PI management - Feature coming soon" 
+      />,
       permission: 'canViewPI'
     },
     {
@@ -167,41 +202,33 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <Router>
-        <Routes>
-          {/* Public PI View Route - No Authentication Required */}
-          <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
+        <Layout>
+          <Routes>
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            
+            {routes.map(route => (
+              <Route
+                key={route.path}
+                path={route.path}
+                element={
+                  <ProtectedRoute permission={route.permission}>
+                    {route.element}
+                  </ProtectedRoute>
+                }
+              />
+            ))}
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
           
-          {/* Login Route */}
-          <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginForm />} />
-          
-          {/* Protected Routes */}
-          {user ? (
-            <Route element={<Layout />}>
-              {routes.map(route => (
-                <Route
-                  key={route.path}
-                  path={route.path}
-                  element={
-                    <ProtectedRoute permission={route.permission}>
-                      {route.element}
-                    </ProtectedRoute>
-                  }
-                />
-              ))}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          ) : (
-            <Route path="*" element={<Navigate to="/login" replace />} />
+          {notification && (
+            <Notification
+              message={notification.message}
+              type={notification.type}
+              onClose={() => setNotification(null)}
+            />
           )}
-        </Routes>
-        
-        {notification && (
-          <Notification
-            message={notification.message}
-            type={notification.type}
-            onClose={() => setNotification(null)}
-          />
-        )}
+        </Layout>
       </Router>
     </ErrorBoundary>
   );
