@@ -3,7 +3,8 @@ import React from 'react';
 import { 
   FileText, Calendar, DollarSign, Package, 
   Edit, Trash2, Eye, Truck, MoreVertical,
-  Building2, Tag, Clock, CheckCircle
+  Building2, Tag, Clock, CheckCircle, AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 const PICard = ({ 
@@ -29,6 +30,7 @@ const PICard = ({
       case 'delivered': return 'bg-green-100 text-green-800';
       case 'in-transit': return 'bg-blue-100 text-blue-800';
       case 'pending': return 'bg-orange-100 text-orange-800';
+      case 'partial': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -38,6 +40,7 @@ const PICard = ({
       case 'delivered': return <CheckCircle size={14} />;
       case 'in-transit': return <Truck size={14} />;
       case 'pending': return <Clock size={14} />;
+      case 'partial': return <AlertTriangle size={14} />;
       default: return <Clock size={14} />;
     }
   };
@@ -51,12 +54,26 @@ const PICard = ({
     }
   };
 
+  // Calculate if there are any discrepancies
+  const hasDiscrepancies = proformaInvoice.hasDiscrepancy || false;
+  
+  // Calculate received vs ordered
+  const totalOrdered = proformaInvoice.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+  const totalReceived = proformaInvoice.items?.reduce((sum, item) => sum + (item.receivedQty || 0), 0) || 0;
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+    <div className={`bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow ${
+      hasDiscrepancies ? 'border-orange-300' : 'border-gray-200'
+    }`}>
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="font-semibold text-lg text-gray-900">{proformaInvoice.piNumber}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-lg text-gray-900">{proformaInvoice.piNumber}</h3>
+            {hasDiscrepancies && (
+              <AlertCircle className="h-5 w-5 text-orange-500" title="Has discrepancies" />
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-1">
             <Building2 size={14} className="text-gray-400" />
             <span className="text-sm text-gray-600">{supplier?.name || 'Unknown Supplier'}</span>
@@ -96,6 +113,9 @@ const PICard = ({
           </div>
           <span className="text-sm font-medium">
             {proformaInvoice.items?.length || 0} items
+            {totalReceived > 0 && (
+              <span className="text-gray-500"> ({totalReceived}/{totalOrdered} received)</span>
+            )}
           </span>
         </div>
 
@@ -121,6 +141,27 @@ const PICard = ({
             </span>
           </div>
         </div>
+        
+        {/* Show ETA if in transit */}
+        {proformaInvoice.deliveryStatus === 'in-transit' && proformaInvoice.etaDate && (
+          <div className="mt-2 flex items-center justify-between text-sm">
+            <span className="text-gray-600">ETA:</span>
+            <span className="font-medium text-blue-600">
+              {new Date(proformaInvoice.etaDate).toLocaleDateString()}
+            </span>
+          </div>
+        )}
+
+        {/* Show received date if delivered */}
+        {(proformaInvoice.deliveryStatus === 'delivered' || proformaInvoice.deliveryStatus === 'partial') && 
+         proformaInvoice.receivedDate && (
+          <div className="mt-2 flex items-center justify-between text-sm">
+            <span className="text-gray-600">Received:</span>
+            <span className="font-medium text-green-600">
+              {new Date(proformaInvoice.receivedDate).toLocaleDateString()}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -153,12 +194,21 @@ const PICard = ({
         )}
       </div>
 
-      {/* Alert for pending deliveries */}
+      {/* Alerts */}
       {proformaInvoice.status === 'confirmed' && proformaInvoice.deliveryStatus === 'pending' && (
         <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-orange-600" />
             <span className="text-xs text-orange-800">Awaiting delivery</span>
+          </div>
+        </div>
+      )}
+
+      {hasDiscrepancies && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <span className="text-xs text-red-800">Quantity discrepancy in delivery</span>
           </div>
         </div>
       )}
