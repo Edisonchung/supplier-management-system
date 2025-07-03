@@ -13,6 +13,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     piNumber: '',
     supplierId: '',
     projectCode: '',
+    isPriority: false,  // Flag for urgent payment
+    priorityReason: '',  // Optional reason for priority
     date: new Date().toISOString().split('T')[0],
     items: [],
     status: 'draft',
@@ -469,6 +471,37 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   />
                 </div>
 
+                <div className="md:col-span-2">
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Payment Priority
+  </label>
+  <div className="space-y-2">
+    <label className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={formData.isPriority}
+        onChange={(e) => setFormData({ ...formData, isPriority: e.target.checked })}
+        className="w-4 h-4 text-red-600 focus:ring-red-500"
+      />
+      <div className="flex items-center gap-2">
+        <AlertTriangle className={`w-4 h-4 ${formData.isPriority ? 'text-red-600' : 'text-gray-400'}`} />
+        <span className="font-medium">Flag as Priority Payment</span>
+        <span className="text-xs text-gray-500">(Finance team will be alerted)</span>
+      </div>
+    </label>
+    
+    {formData.isPriority && (
+      <input
+        type="text"
+        value={formData.priorityReason}
+        onChange={(e) => setFormData({ ...formData, priorityReason: e.target.value })}
+        className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+        placeholder="Reason for priority (e.g., Cashflow improvement, Urgent delivery needed)"
+      />
+    )}
+  </div>
+</div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Delivery Status
@@ -715,6 +748,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   <p className="text-sm font-medium text-gray-700">Payment Terms</p>
                   <p className="text-sm text-gray-600 mt-1">{formData.paymentTerms}</p>
                 </div>
+              
               </div>
 
               {/* Add Payment Button */}
