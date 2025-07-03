@@ -4,7 +4,7 @@ import {
   FileText, Calendar, DollarSign, Package, 
   Edit, Trash2, Eye, Truck, MoreVertical,
   Building2, Tag, Clock, CheckCircle, AlertCircle,
-  AlertTriangle
+  AlertTriangle, CreditCard, Link, Share2
 } from 'lucide-react';
 
 const PICard = ({ 
@@ -13,6 +13,7 @@ const PICard = ({
   onEdit, 
   onDelete, 
   onUpdateDelivery,
+  onShare,
   canEdit, 
   canDelete 
 }) => {
@@ -31,6 +32,15 @@ const PICard = ({
       case 'in-transit': return 'bg-blue-100 text-blue-800';
       case 'pending': return 'bg-orange-100 text-orange-800';
       case 'partial': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPaymentColor = (status) => {
+    switch (status) {
+      case 'paid': return 'bg-green-100 text-green-800';
+      case 'partial': return 'bg-yellow-100 text-yellow-800';
+      case 'pending': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -60,6 +70,27 @@ const PICard = ({
   // Calculate received vs ordered
   const totalOrdered = proformaInvoice.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
   const totalReceived = proformaInvoice.items?.reduce((sum, item) => sum + (item.receivedQty || 0), 0) || 0;
+  
+  // Payment calculations
+  const totalAmount = proformaInvoice.totalAmount || 0;
+  const totalPaid = proformaInvoice.totalPaid || 0;
+  const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+
+  const handleShare = () => {
+    const baseUrl = window.location.origin;
+    const shareUrl = `${baseUrl}/pi/view/${proformaInvoice.shareableId}`;
+    
+    if (navigator.share) {
+      navigator.share({
+        title: `PI ${proformaInvoice.piNumber}`,
+        text: `Please review and process payment for PI ${proformaInvoice.piNumber}`,
+        url: shareUrl
+      });
+    } else {
+      navigator.clipboard.writeText(shareUrl);
+      alert('Link copied to clipboard!');
+    }
+  };
 
   return (
     <div className={`bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow ${
@@ -79,9 +110,18 @@ const PICard = ({
             <span className="text-sm text-gray-600">{supplier?.name || 'Unknown Supplier'}</span>
           </div>
         </div>
-        <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(proformaInvoice.status)}`}>
-          {proformaInvoice.status}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(proformaInvoice.status)}`}>
+            {proformaInvoice.status}
+          </span>
+          <button
+            onClick={handleShare}
+            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+            title="Share PI"
+          >
+            <Share2 size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Details */}
@@ -102,7 +142,7 @@ const PICard = ({
             <span>Total Amount</span>
           </div>
           <span className="text-sm font-bold text-gray-900">
-            ${proformaInvoice.totalAmount?.toFixed(2) || '0.00'}
+            ${totalAmount.toFixed(2)}
           </span>
         </div>
 
@@ -128,6 +168,37 @@ const PICard = ({
             {proformaInvoice.purpose?.replace('-', ' ') || 'stock'}
           </span>
         </div>
+      </div>
+
+      {/* Payment Status */}
+      <div className="border-t pt-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium text-gray-700">Payment Status</span>
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-1 text-xs rounded-full flex items-center gap-1 ${getPaymentColor(proformaInvoice.paymentStatus)}`}>
+              <CreditCard size={12} />
+              {proformaInvoice.paymentStatus}
+            </span>
+          </div>
+        </div>
+        
+        {/* Payment Progress */}
+        {proformaInvoice.paymentStatus !== 'pending' && (
+          <div className="mt-2">
+            <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <span>${totalPaid.toFixed(2)} paid</span>
+              <span>${(totalAmount - totalPaid).toFixed(2)} balance</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-1.5">
+              <div 
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  paymentProgress >= 100 ? 'bg-green-600' : 'bg-yellow-600'
+                }`}
+                style={{ width: `${Math.min(paymentProgress, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Delivery Status */}
@@ -192,28 +263,3 @@ const PICard = ({
             <Trash2 size={16} />
           </button>
         )}
-      </div>
-
-      {/* Alerts */}
-      {proformaInvoice.status === 'confirmed' && proformaInvoice.deliveryStatus === 'pending' && (
-        <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-orange-600" />
-            <span className="text-xs text-orange-800">Awaiting delivery</span>
-          </div>
-        </div>
-      )}
-
-      {hasDiscrepancies && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-            <span className="text-xs text-red-800">Quantity discrepancy in delivery</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default PICard;
