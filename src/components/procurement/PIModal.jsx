@@ -5,13 +5,14 @@ import {
   FileText, Calculator, Calendar, Tag,
   Truck, AlertCircle, CheckSquare, Square,
   DollarSign, Upload, Link, Eye, Download,
-  CreditCard, MessageSquare
+  CreditCard, MessageSquare, Briefcase
 } from 'lucide-react';
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
   const [formData, setFormData] = useState({
     piNumber: '',
     supplierId: '',
+    projectCode: '',
     date: new Date().toISOString().split('T')[0],
     items: [],
     status: 'draft',
@@ -50,6 +51,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     if (proformaInvoice) {
       setFormData({
         ...proformaInvoice,
+        projectCode: proformaInvoice.projectCode || '',
         date: proformaInvoice.date?.split('T')[0] || new Date().toISOString().split('T')[0],
         etaDate: proformaInvoice.etaDate?.split('T')[0] || '',
         receivedDate: proformaInvoice.receivedDate?.split('T')[0] || '',
@@ -393,7 +395,22 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   </select>
                   {errors.supplierId && <p className="text-red-500 text-xs mt-1">{errors.supplierId}</p>}
                 </div>
-
+                <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Project Code
+    <span className="ml-1 text-xs text-gray-500">(For quotation system integration)</span>
+  </label>
+  <div className="relative">
+    <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+    <input
+      type="text"
+      value={formData.projectCode}
+      onChange={(e) => setFormData({ ...formData, projectCode: e.target.value })}
+      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      placeholder="e.g., PROJ-2025-001"
+    />
+  </div>
+</div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Date <span className="text-red-500">*</span>
