@@ -5,7 +5,7 @@ import {
   FileText, Calculator, Calendar, Tag,
   Truck, AlertCircle, CheckSquare, Square,
   DollarSign, Upload, Link, Eye, Download,
-  CreditCard, MessageSquare, Briefcase
+  CreditCard, MessageSquare, Briefcase, AlertTriangle
 } from 'lucide-react';
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
