@@ -76,51 +76,28 @@ const PICard = ({
   const totalPaid = proformaInvoice.totalPaid || 0;
   const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
 
-  const handleShare = () => {
-    const baseUrl = window.location.origin;
-    const shareUrl = `${baseUrl}/pi/view/${proformaInvoice.shareableId}`;
-    
-    if (navigator.share) {
-      navigator.share({
-        title: `PI ${proformaInvoice.piNumber}`,
-        text: `Please review and process payment for PI ${proformaInvoice.piNumber}`,
-        url: shareUrl
-      });
-    } else {
-      navigator.clipboard.writeText(shareUrl);
-      alert('Link copied to clipboard!');
-    }
-  };
-
   return (
-    <div className={`bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow ${
-      hasDiscrepancies ? 'border-orange-300' : 'border-gray-200'
-    }`}>
+    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border border-gray-100">
       {/* Header */}
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-lg text-gray-900">{proformaInvoice.piNumber}</h3>
-            {hasDiscrepancies && (
-              <AlertCircle className="h-5 w-5 text-orange-500" title="Has discrepancies" />
-            )}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-100 p-2 rounded-lg">
+            <FileText className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            <Building2 size={14} className="text-gray-400" />
-            <span className="text-sm text-gray-600">{supplier?.name || 'Unknown Supplier'}</span>
+          <div>
+            <h3 className="font-semibold text-gray-900">{proformaInvoice.piNumber}</h3>
+            <p className="text-sm text-gray-600">{supplier?.name || 'Unknown Supplier'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(proformaInvoice.status)}`}>
+          <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColor(proformaInvoice.status)}`}>
             {proformaInvoice.status}
           </span>
-          <button
-            onClick={handleShare}
-            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-            title="Share PI"
-          >
-            <Share2 size={16} />
-          </button>
+          {hasDiscrepancies && (
+            <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800" title="Has discrepancies">
+              <AlertCircle size={12} />
+            </span>
+          )}
         </div>
       </div>
 
@@ -263,3 +240,19 @@ const PICard = ({
             <Trash2 size={16} />
           </button>
         )}
+        
+        {onShare && (
+          <button
+            onClick={onShare}
+            className="bg-purple-100 text-purple-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors flex items-center justify-center"
+            title="Share PI Link"
+          >
+            <Share2 size={16} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PICard;
