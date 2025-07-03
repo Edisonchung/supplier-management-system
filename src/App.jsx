@@ -5,10 +5,10 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import Dashboard from './components/dashboard/Dashboard';
-import Suppliers from './components/suppliers/Suppliers'; // Add this import
-import Products from './components/products/Products'; // Add this import
-import ProformaInvoices from './components/procurement/ProformaInvoices'; // Add this import
-import PublicPIView from './components/procurement/PublicPIView'; // Add this import
+import Suppliers from './components/suppliers/Suppliers';
+import Products from './components/products/Products';
+import ProformaInvoices from './components/procurement/ProformaInvoices';
+import PublicPIView from './components/procurement/PublicPIView';
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
 
@@ -91,15 +91,6 @@ function AppContent() {
     setNotification({ message, type });
   };
 
-  if (!user && window.location.pathname.startsWith('/pi/view/')) {
-    // Allow public PI view without authentication
-    return null;
-  }
-
-  if (!user) {
-    return <LoginForm />;
-  }
-
   // Define routes with component paths
   const routes = [
     {
@@ -109,17 +100,17 @@ function AppContent() {
     },
     {
       path: '/suppliers',
-      element: <Suppliers showNotification={showNotification} />, // Now using real component
+      element: <Suppliers showNotification={showNotification} />,
       permission: 'canViewSuppliers'
     },
     {
       path: '/products',
-      element: <Products showNotification={showNotification} />, // Now using real component
+      element: <Products showNotification={showNotification} />,
       permission: 'canViewProducts'
     },
     {
       path: '/proforma-invoices',
-      element: <ProformaInvoices showNotification={showNotification} />, // Now using real component
+      element: <ProformaInvoices showNotification={showNotification} />,
       permission: 'canViewPI'
     },
     {
@@ -172,27 +163,25 @@ function AppContent() {
           <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
           
           {/* Login Route */}
-          <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginForm />} />
+          <Route path="/login" element={!user ? <LoginForm /> : <Navigate to="/" replace />} />
           
           {/* Protected Routes */}
-          {user ? (
-            <Route element={<Layout />}>
-              {routes.map(route => (
-                <Route
-                  key={route.path}
-                  path={route.path}
-                  element={
-                    <ProtectedRoute permission={route.permission}>
-                      {route.element}
-                    </ProtectedRoute>
-                  }
-                />
-              ))}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          ) : (
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          )}
+          <Route element={user ? <Layout /> : <Navigate to="/login" />}>
+            {routes.map(route => (
+              <Route
+                key={route.path}
+                path={route.path}
+                element={
+                  <ProtectedRoute permission={route.permission}>
+                    {route.element}
+                  </ProtectedRoute>
+                }
+              />
+            ))}
+          </Route>
+          
+          {/* Catch all - redirect to home or login */}
+          <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>
         
         {notification && (
