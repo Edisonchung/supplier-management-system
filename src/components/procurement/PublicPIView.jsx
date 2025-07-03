@@ -101,12 +101,25 @@ const PublicPIView = () => {
         updatedAt: new Date().toISOString()
       });
 
-      // Send notification (in real app, this would send email/SMS)
-      console.log('Payment notification sent');
-
       alert('Payment submitted successfully! The supplier will be notified.');
+      
+      // Reset form
+      setPaymentData({
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        type: 'down-payment',
+        method: 'bank-transfer',
+        reference: '',
+        remark: '',
+        payerName: '',
+        payerEmail: '',
+        payerPhone: '',
+        attachments: []
+      });
       setShowPaymentForm(false);
-      loadPIData(); // Reload to show updated payment status
+      
+      // Reload PI data
+      await loadPIData();
     } catch (error) {
       console.error('Error submitting payment:', error);
       alert('Failed to submit payment. Please try again.');
@@ -116,7 +129,7 @@ const PublicPIView = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -126,8 +139,8 @@ const PublicPIView = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900">PI Not Found</h2>
-          <p className="mt-2 text-gray-600">This PI link may be invalid or expired.</p>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Proforma Invoice Not Found</h2>
+          <p className="text-gray-600">The invoice you're looking for doesn't exist or has been removed.</p>
         </div>
       </div>
     );
@@ -135,7 +148,6 @@ const PublicPIView = () => {
 
   const totalAmount = pi.totalAmount || 0;
   const totalPaid = pi.totalPaid || 0;
-  const balance = totalAmount - totalPaid;
   const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
 
   const getPaymentStatusColor = (status) => {
@@ -248,29 +260,33 @@ const PublicPIView = () => {
           
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="text-center">
+              <div>
                 <p className="text-sm text-gray-600">Total Amount</p>
                 <p className="text-2xl font-bold">${totalAmount.toFixed(2)}</p>
               </div>
-              <div className="text-center">
-                <p className="text-sm text-gray-600">Paid</p>
+              <div>
+                <p className="text-sm text-gray-600">Amount Paid</p>
                 <p className="text-2xl font-bold text-green-600">${totalPaid.toFixed(2)}</p>
               </div>
-              <div className="text-center">
-                <p className="text-sm text-gray-600">Balance</p>
-                <p className="text-2xl font-bold text-orange-600">${balance.toFixed(2)}</p>
+              <div>
+                <p className="text-sm text-gray-600">Balance Due</p>
+                <p className="text-2xl font-bold text-red-600">${(totalAmount - totalPaid).toFixed(2)}</p>
               </div>
             </div>
 
-            {/* Progress Bar */}
+            {/* Payment Progress */}
             <div className="mb-6">
-              <div className="flex justify-between text-sm text-gray-600 mb-1">
+              <div className="flex justify-between text-sm mb-2">
                 <span>Payment Progress</span>
-                <span>{paymentProgress.toFixed(1)}%</span>
+                <span className={`px-2 py-1 rounded-full text-xs ${getPaymentStatusColor(pi.paymentStatus || 'pending')}`}>
+                  {pi.paymentStatus || 'pending'}
+                </span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
-                  className="bg-green-600 h-3 rounded-full transition-all duration-300"
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    paymentProgress >= 100 ? 'bg-green-600' : 'bg-yellow-600'
+                  }`}
                   style={{ width: `${Math.min(paymentProgress, 100)}%` }}
                 />
               </div>
@@ -280,46 +296,36 @@ const PublicPIView = () => {
             {pi.payments && pi.payments.length > 0 && (
               <div className="mb-6">
                 <h3 className="font-medium mb-3">Payment History</h3>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {pi.payments.map((payment, index) => (
-                    <div key={index} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">${payment.amount.toFixed(2)}</p>
-                          <p className="text-sm text-gray-600">
-                            {new Date(payment.date).toLocaleDateString()} • {payment.type.replace('-', ' ')}
-                          </p>
-                          {payment.reference && (
-                            <p className="text-sm text-gray-600 mt-1">Ref: {payment.reference}</p>
-                          )}
-                        </div>
-                        {payment.attachments && payment.attachments.length > 0 && (
-                          <Download className="h-4 w-4 text-gray-400" />
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium">${payment.amount.toFixed(2)}</p>
+                        <p className="text-sm text-gray-600">
+                          {payment.type} • {payment.method} • {new Date(payment.date).toLocaleDateString()}
+                        </p>
+                        {payment.reference && (
+                          <p className="text-xs text-gray-500">Ref: {payment.reference}</p>
                         )}
                       </div>
+                      {payment.attachments && payment.attachments.length > 0 && (
+                        <Eye size={16} className="text-blue-600" />
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Make Payment Button */}
+            {/* Submit Payment Button */}
             {pi.paymentStatus !== 'paid' && (
               <button
                 onClick={() => setShowPaymentForm(true)}
-                className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
+                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
               >
                 <CreditCard size={20} />
-                Make Payment
+                Submit Payment
               </button>
-            )}
-
-            {pi.paymentStatus === 'paid' && (
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <CheckCircle className="mx-auto h-8 w-8 text-green-600 mb-2" />
-                <p className="font-medium text-green-900">Payment Complete</p>
-                <p className="text-sm text-green-700">Thank you for your payment</p>
-              </div>
             )}
           </div>
         </div>
@@ -328,29 +334,28 @@ const PublicPIView = () => {
       {/* Payment Form Modal */}
       {showPaymentForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b">
               <h3 className="text-lg font-semibold">Submit Payment</h3>
             </div>
-
-            <div className="p-6 space-y-4">
+            
+            <div className="p-6">
               {/* Contact Information */}
-              <div>
+              <div className="mb-6">
                 <h4 className="font-medium mb-3">Contact Information</h4>
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Your Name <span className="text-red-500">*</span>
+                      Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={paymentData.payerName}
                       onChange={(e) => setPaymentData({ ...paymentData, payerName: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="John Doe"
+                      required
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Email <span className="text-red-500">*</span>
@@ -360,11 +365,10 @@ const PublicPIView = () => {
                       value={paymentData.payerEmail}
                       onChange={(e) => setPaymentData({ ...paymentData, payerEmail: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="john@company.com"
+                      required
                     />
                   </div>
-
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Phone
                     </label>
@@ -373,36 +377,40 @@ const PublicPIView = () => {
                       value={paymentData.payerPhone}
                       onChange={(e) => setPaymentData({ ...paymentData, payerPhone: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="+1 234 567 8900"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Payment Details */}
-              <div>
+              <div className="mb-6">
                 <h4 className="font-medium mb-3">Payment Details</h4>
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Amount <span className="text-red-500">*</span>
                     </label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max={balance}
-                        value={paymentData.amount}
-                        onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <p className="text-sm text-gray-600 mt-1">Balance due: ${balance.toFixed(2)}</p>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paymentData.amount}
+                      onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0.00"
+                      required
+                    />
                   </div>
-
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      value={paymentData.date}
+                      onChange={(e) => setPaymentData({ ...paymentData, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Payment Type
@@ -412,12 +420,12 @@ const PublicPIView = () => {
                       onChange={(e) => setPaymentData({ ...paymentData, type: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="down-payment">Down Payment (30%)</option>
+                      <option value="down-payment">Down Payment</option>
                       <option value="balance">Balance Payment</option>
                       <option value="partial">Partial Payment</option>
+                      <option value="full">Full Payment</option>
                     </select>
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Payment Method
@@ -430,10 +438,10 @@ const PublicPIView = () => {
                       <option value="bank-transfer">Bank Transfer</option>
                       <option value="check">Check</option>
                       <option value="cash">Cash</option>
+                      <option value="credit-card">Credit Card</option>
                     </select>
                   </div>
-
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Reference Number
                     </label>
@@ -442,11 +450,10 @@ const PublicPIView = () => {
                       value={paymentData.reference}
                       onChange={(e) => setPaymentData({ ...paymentData, reference: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Transaction ID"
+                      placeholder="Transaction ID or check number"
                     />
                   </div>
-
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Upload Payment Proof
                     </label>
@@ -471,7 +478,7 @@ const PublicPIView = () => {
                     </div>
                   </div>
 
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Remarks
                     </label>
