@@ -10,23 +10,39 @@ export const ROLES = {
 
 // Permission Matrix
 export const PERMISSIONS = {
+  // Dashboard
   canViewDashboard: ['admin', 'manager', 'employee', 'viewer'],
+  
+  // Suppliers
   canEditSuppliers: ['admin', 'manager'],
-  canViewSuppliers: ['admin', 'manager'],
+  canViewSuppliers: ['admin', 'manager', 'employee', 'viewer'],
+  
+  // Products
   canEditProducts: ['admin', 'manager', 'employee'],
   canViewProducts: ['admin', 'manager', 'employee', 'viewer'],
-  canEditPurchaseOrders: ['admin', 'manager'],
-  canViewPurchaseOrders: ['admin', 'manager'],
-  canManageUsers: ['admin'],
-  canImportData: ['admin', 'manager'],
   
-  // Procurement permissions
-  canViewPI: ['admin', 'manager', 'employee'],
+  // Purchase Orders
+  canEditPurchaseOrders: ['admin', 'manager'],
+  canViewPurchaseOrders: ['admin', 'manager', 'employee', 'viewer'],
+  canApprovePurchaseOrders: ['admin', 'manager'],
+  
+  // Proforma Invoices
+  canViewPI: ['admin', 'manager', 'employee', 'viewer'],
   canEditPI: ['admin', 'manager'],
-  canViewInvoices: ['admin', 'manager'],
+  
+  // Client Invoices
+  canViewInvoices: ['admin', 'manager', 'employee'],
   canEditInvoices: ['admin', 'manager'],
-  canViewTracking: ['admin', 'manager', 'employee'],
-  canUpdateDeliveryStatus: ['admin', 'manager']
+  
+  // Delivery Tracking
+  canViewTracking: ['admin', 'manager', 'employee', 'viewer'],
+  canUpdateDeliveryStatus: ['admin', 'manager'],
+  
+  // User Management
+  canManageUsers: ['admin'],
+  
+  // Import/Export
+  canImportData: ['admin', 'manager']
 };
 
 // Product Categories
@@ -55,31 +71,52 @@ export const PRODUCT_STATUS = [
 
 export const PO_STATUS = [
   { value: 'draft', label: 'Draft', color: 'gray' },
+  { value: 'confirmed', label: 'Confirmed', color: 'blue' },
+  { value: 'processing', label: 'Processing', color: 'yellow' },
+  { value: 'delivered', label: 'Delivered', color: 'green' },
+  { value: 'cancelled', label: 'Cancelled', color: 'red' }
+];
+
+export const PI_STATUS = [
+  { value: 'draft', label: 'Draft', color: 'gray' },
   { value: 'sent', label: 'Sent', color: 'blue' },
-  { value: 'confirmed', label: 'Confirmed', color: 'green' },
-  { value: 'delivered', label: 'Delivered', color: 'purple' }
+  { value: 'approved', label: 'Approved', color: 'green' },
+  { value: 'rejected', label: 'Rejected', color: 'red' },
+  { value: 'expired', label: 'Expired', color: 'orange' }
 ];
 
 export const DELIVERY_STATUS = [
-  { value: 'pending', label: 'Pending', color: 'orange' },
-  { value: 'in-transit', label: 'In Transit', color: 'blue' },
-  { value: 'delivered', label: 'Delivered', color: 'green' }
+  { value: 'pending', label: 'Pending', color: 'gray' },
+  { value: 'processing', label: 'Processing', color: 'blue' },
+  { value: 'shipped', label: 'Shipped', color: 'yellow' },
+  { value: 'delivered', label: 'Delivered', color: 'green' },
+  { value: 'failed', label: 'Failed', color: 'red' }
 ];
 
-// Brand Detection Patterns
+// Payment Terms
+export const PAYMENT_TERMS = [
+  { value: 'net30', label: 'Net 30' },
+  { value: 'net60', label: 'Net 60' },
+  { value: 'cod', label: 'COD' },
+  { value: 'prepaid', label: 'Prepaid' },
+  { value: '50-50', label: '50% Down, 50% on Delivery' }
+];
+
+// Delivery Terms
+export const DELIVERY_TERMS = [
+  { value: 'fob', label: 'FOB' },
+  { value: 'cif', label: 'CIF' },
+  { value: 'exw', label: 'Ex Works' },
+  { value: 'dap', label: 'DAP' }
+];
+
+// Brand Patterns for Auto-Detection
 export const BRAND_PATTERNS = {
-  'Parker': /^(PVQ|DG4V|D1VW|PVP|PVH|PVS|PVV|PAV|PRV|PRM|PGP|PGM|P1|P2|P3|F11|F12|M2|M3|M4)/i,
-  'Rexroth': /^(A10V|A4V|A2F|A7V|A11V|4WE|4WR|DBD|DBW|DR|DZ|M-3|M-4|PV7|PGF|MSK|MKD|MKE|MAD|MAF|MHD|MDD|HCS|HDS|HMS)/i,
-  'Vickers': /^(V10|V20|VQ|VTM|PVB|PVH|PVM|PVE|DG|CG|CT|CV|CVI|CVCS|CM|CMV|DG4S4|DG4V|DG5S|DG5V)/i,
-  'Denison': /^(T6|T7|T67|T6C|T6D|T6E|P6|P7|P8|P11|P14|P16|P24|P30|M1|M2|P46|P09|P05)/i,
-  'Yuken': /^(PV2R|A16|A22|A37|A56|A70|A90|A145|DSG|DSHG|S-DSG|EDG|EHDG|EBG|EFBG|BSG|S-BSG|CJT|CIT)/i,
-  'Daikin': /^(V15|V23|V38|V50|V70|VZ|J-V|F-V|KSO|JIS|JCS|JRS|JTS|JCP|JRP|JTP)/i,
-  'Siemens': /^(3SB|3SE|3SU|6ES7|6ED1|6EP1|6AV|6AG1|1LA|1LE|1LG|1MA|1MB|1MD|1MJ|1PH|1FK|1FT|1PH|3RV|3RT|3RH|3TF|3UA|3UF|3RP|3RB|3RU|3RW|5SY|5SL|5SU|5SD|5SP|5ST|5SM|5SV|5SX|5SJ)/i,
-  'Schneider': /^(LC1|LC2|LC3|LRD|LR2|LR3|GV2|GV3|NS|NSX|LV|XB|XA|ZB|ZBE|ZBZ|XS|XU|XX|XM|OT|OS|TM|LX|LXM|ATV|ATS|PM|VW3|VZ|VY|VD)/i,
-  'Omron': /^(E2E|E2A|E2B|E2C|E2F|E2G|E2J|E2K|E2Q|E2V|E3|E4|E5|TL|D4|F3|G3|G9|H3|H5|H7|H8|MY|MK|LY|G2R|G5|G6|G7|G9)/i,
-  'Allen Bradley': /^(1756|1769|1794|1734|1746|1747|1771|1785|2711|2711P|22|25|440|442|445|450|700|800T|802T|855T|856T|871|872)/i,
-  'Mitsubishi': /^(FX|Q|L|A|QJ|QD|QH|QY|AJ|AX|AD|DA|FR-|MR-|HC-|HA-|HG-|HF-|HS-|GT1|GT2|GS2|GOT)/i,
-  'Keyence': /^(FS-|FU-|FW-|PS-|PZ-|LV-|LX-|IL-|IG-|GT-|GV-|CV-|VG-|VK-|VR-|VW-|IV-|SR-|BL-|CA-|CB-)/i,
+  'Siemens': /^(6ES|6EP|6ED|6AV|6GK|3RT|3RV|3RW|3RM|5SY|5SL|5ST|5SM|3VA|3VM|3VL|3WT|3WL|7KM|7KT)/i,
+  'Phoenix': /^(IB|UM|FL|PSR|PLC|EMG|QUINT|STEP|MINI|PT|UT|ST|MC|SAC|NBC|FBS|IBS|AXL|ELR)/i,
+  'Schneider': /^(XB|ZB|XA|ZE|XE|XALK|XACA|XD|XU|XS|XX|XT|XV|XG|RE|RM|RP|RU|PM|DM|LC|LE|GV|LR|LU|LV|NS|NT|CV|EZ|TM|SR|TE|VW|SY|GS|GB|GC|GF|KN|KA|KB|KC|KD|KE|KQ|DF|MG|MT|LA|LT|LB|LD|CA|CC|CD|CE|CL|CM)/i,
+  'Omron': /^(E2E|E3Z|E3JK|E3JM|TL|D4N|HL|WL|SHL|ZC|ZE|ZV|XS|F3S|F3SJ|MS|OS|A3|A4|A7|A8|G2R|G3R|G5|G6|G7|G9|H3|H5|H7|H8|LY|MY|MK|MM|G3|G4|G5|G7|G9)/i,
+  'Pepperl': /^(NBB|NBN|NCB|NCN|NEB|NEN|NJ|OB|OG|UC|UB|3RG|ML|V1|V3|V11|V15|V18|V31|LGM|LGS|LFL|LME|OMH|OFH|OBE|OBS|OBT|OBD|OBG)/i,
   'Festo': /^(MS|LF|LFR|D|FRC|LFMA|MS4|MS6|MS9|MS12|FRM|PCRP|SDE|SDET|SDN|PE|PEV|VPPM|CPE|MFH|JMFH|MFH|JMFH|MEBH|JMEBH|JMN|JMDN|JMDH)/i,
   'SMC': /^(SY|VF|VFS|VT|VX|VXS|VXD|VXE|VXF|VXP|VXR|VXZ|VQ|VQC|VQD|VQZ|VS|VSA|VSS|VXA|VP|VPA|VPL|VG|VGA|VGB)/i,
   'Eaton': /^(DIL|PKE|PKZ|FAZ|PL|PLI|PLHT|PLSM|PFIM|PFTM|Z-|NZM|LZM|IZM|BZM|N-|PN-|P-|P1-|P3-|T0|T3|T5|T5B|V5|V6|W5|SVX)/i,
@@ -148,7 +185,10 @@ export default {
   SUPPLIER_STATUS,
   PRODUCT_STATUS,
   PO_STATUS,
+  PI_STATUS,
   DELIVERY_STATUS,
+  PAYMENT_TERMS,
+  DELIVERY_TERMS,
   BRAND_PATTERNS,
   DEMO_USERS,
   ITEMS_PER_PAGE,
