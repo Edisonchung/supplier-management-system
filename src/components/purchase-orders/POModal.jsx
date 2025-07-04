@@ -1,8 +1,23 @@
 // src/components/purchase-orders/POModal.jsx
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, AlertCircle, Upload, FileText } from 'lucide-react';
-import { generatePONumber } from '../../utils/poHelpers';
-import { mockProducts } from '../../utils/mockData';
+
+// Inline helper functions and data
+const generatePONumber = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const random = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+  return `PO-${year}${month}${day}-${random}`;
+};
+
+const mockProducts = [
+  { id: '1', name: 'Widget A', code: 'WDG-001', price: 25.99, stock: 150 },
+  { id: '2', name: 'Gadget B', code: 'GDG-002', price: 45.50, stock: 75 },
+  { id: '3', name: 'Tool C', code: 'TL-003', price: 99.99, stock: 20 },
+  { id: '4', name: 'Device D', code: 'DVC-004', price: 150.00, stock: 5 },
+];
 
 const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
   const [formData, setFormData] = useState({
@@ -38,7 +53,16 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
 
   useEffect(() => {
     if (purchaseOrder) {
-      setFormData(purchaseOrder);
+      // Ensure all items have totalPrice
+      const fixedItems = purchaseOrder.items?.map(item => ({
+        ...item,
+        totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0
+      })) || [];
+      
+      setFormData({
+        ...purchaseOrder,
+        items: fixedItems
+      });
     } else {
       setFormData(prev => ({
         ...prev,
@@ -48,10 +72,18 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
   }, [purchaseOrder]);
 
   const handleSubmit = () => {
-    const subtotal = formData.items.reduce((sum, item) => sum + item.totalPrice, 0);
+    // Fix items to ensure they have totalPrice
+    const fixedItems = formData.items.map(item => ({
+      ...item,
+      totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0
+    }));
+    
+    const subtotal = fixedItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const tax = subtotal * 0.1; // 10% tax
+    
     onSave({
       ...formData,
+      items: fixedItems,
       subtotal,
       tax,
       totalAmount: subtotal + tax
@@ -111,6 +143,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
         stockAvailable: 100
       });
       setShowProductSearch(false);
+      setSearchTerm('');
     }
   };
 
@@ -141,7 +174,11 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
 
   if (!isOpen) return null;
 
-  const subtotal = formData.items.reduce((sum, item) => sum + item.totalPrice, 0);
+  // Safe calculation of subtotal
+  const subtotal = formData.items.reduce((sum, item) => {
+    const itemTotal = item.totalPrice || (item.quantity * item.unitPrice) || 0;
+    return sum + itemTotal;
+  }, 0);
   const tax = subtotal * 0.1;
   const total = subtotal + tax;
 
@@ -220,7 +257,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                   </label>
                   <input
                     type="text"
-                    value={formData.clientPoNumber}
+                    value={formData.clientPoNumber || ''}
                     onChange={(e) => setFormData({...formData, clientPoNumber: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
@@ -231,7 +268,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                   </label>
                   <input
                     type="text"
-                    value={formData.clientName}
+                    value={formData.clientName || ''}
                     onChange={(e) => setFormData({...formData, clientName: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
@@ -243,8 +280,30 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                   </label>
                   <input
                     type="text"
-                    value={formData.clientContact}
+                    value={formData.clientContact || ''}
                     onChange={(e) => setFormData({...formData, clientContact: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contact Email
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.clientEmail || ''}
+                    onChange={(e) => setFormData({...formData, clientEmail: e.target.value})}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contact Phone
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.clientPhone || ''}
+                    onChange={(e) => setFormData({...formData, clientPhone: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -261,7 +320,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                   </label>
                   <input
                     type="date"
-                    value={formData.orderDate}
+                    value={formData.orderDate || ''}
                     onChange={(e) => setFormData({...formData, orderDate: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
@@ -273,7 +332,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                   </label>
                   <input
                     type="date"
-                    value={formData.requiredDate}
+                    value={formData.requiredDate || ''}
                     onChange={(e) => setFormData({...formData, requiredDate: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
@@ -284,7 +343,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                     Payment Terms
                   </label>
                   <select
-                    value={formData.paymentTerms}
+                    value={formData.paymentTerms || 'Net 30'}
                     onChange={(e) => setFormData({...formData, paymentTerms: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
@@ -299,7 +358,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                     Status
                   </label>
                   <select
-                    value={formData.status}
+                    value={formData.status || 'draft'}
                     onChange={(e) => setFormData({...formData, status: e.target.value})}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
@@ -348,6 +407,11 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                               </div>
                             </div>
                           ))}
+                          {filteredProducts.length === 0 && (
+                            <div className="p-3 text-gray-500 text-center">
+                              No products found
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -385,7 +449,8 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                       <button
                         type="button"
                         onClick={addItem}
-                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        disabled={!currentItem.productName || currentItem.quantity <= 0}
+                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
                       >
                         Add Item
                       </button>
@@ -410,11 +475,13 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                       <tbody>
                         {formData.items.map((item) => (
                           <tr key={item.id} className="border-t">
-                            <td className="px-4 py-2">{item.productName}</td>
-                            <td className="px-4 py-2">{item.productCode}</td>
-                            <td className="px-4 py-2 text-center">{item.quantity}</td>
-                            <td className="px-4 py-2 text-right">${item.unitPrice.toFixed(2)}</td>
-                            <td className="px-4 py-2 text-right">${item.totalPrice.toFixed(2)}</td>
+                            <td className="px-4 py-2">{item.productName || 'Unknown'}</td>
+                            <td className="px-4 py-2">{item.productCode || '-'}</td>
+                            <td className="px-4 py-2 text-center">{item.quantity || 0}</td>
+                            <td className="px-4 py-2 text-right">${(item.unitPrice || 0).toFixed(2)}</td>
+                            <td className="px-4 py-2 text-right">
+                              ${((item.totalPrice || (item.quantity * item.unitPrice)) || 0).toFixed(2)}
+                            </td>
                             <td className="px-4 py-2 text-center">
                               <button
                                 type="button"
@@ -428,6 +495,12 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {formData.items.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    No items added yet. Search and add products above.
                   </div>
                 )}
               </div>
@@ -458,7 +531,7 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
                 Internal Notes
               </label>
               <textarea
-                value={formData.notes}
+                value={formData.notes || ''}
                 onChange={(e) => setFormData({...formData, notes: e.target.value})}
                 rows={3}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -477,7 +550,8 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
           </button>
           <button
             onClick={handleSubmit}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            disabled={!formData.clientName || formData.items.length === 0}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
           >
             {purchaseOrder ? 'Update' : 'Create'} Purchase Order
           </button>
