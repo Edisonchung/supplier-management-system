@@ -1,7 +1,7 @@
 // src/components/purchase-orders/POCard.jsx
 import React from 'react';
 import { Eye, Edit2, Trash2 } from 'lucide-react';
-import { getStatusColor } from './utils/poHelpers.js';
+import { getStatusColor } from '../../utils/poHelpers';
 
 const POCard = ({ purchaseOrder, onEdit, onDelete, canEdit, canDelete }) => {
   const subtotal = purchaseOrder.items?.reduce((sum, item) => sum + item.totalPrice, 0) || 0;
