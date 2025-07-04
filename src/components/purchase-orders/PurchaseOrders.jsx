@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Search, Plus, Package, Calendar, DollarSign } from 'lucide-react';
 import POCard from './POCard';
 import POModal from './POModal';
-import { usePurchaseOrders } from '../../hooks/usePurchaseOrders.js';
+import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
 import { usePermissions } from '../../hooks/usePermissions';
 
 const PurchaseOrders = () => {
