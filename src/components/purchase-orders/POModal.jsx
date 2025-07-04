@@ -1,8 +1,8 @@
 // src/components/purchase-orders/POModal.jsx
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, AlertCircle, Upload, FileText } from 'lucide-react';
-import { generatePONumber } from './utils/poHelpers.js';
-import { mockProducts } from './utils/mockData.js';
+import { generatePONumber } from '../../utils/poHelpers';
+import { mockProducts } from '../../utils/mockData';
 
 const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
   const [formData, setFormData] = useState({
