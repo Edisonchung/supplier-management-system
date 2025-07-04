@@ -1,8 +1,5 @@
-// src/components/purchase-orders/hooks/usePurchaseOrders.js
+// src/hooks/usePurchaseOrders.js
 import { useState, useEffect } from 'react';
-import { MockFirebase } from '../utils/mockFirebase';
-
-const firebase = new MockFirebase('purchaseOrders');
 
 export const usePurchaseOrders = () => {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -10,30 +7,47 @@ export const usePurchaseOrders = () => {
 
   const loadPurchaseOrders = async () => {
     setLoading(true);
-    const data = await firebase.getAll();
-    setPurchaseOrders(data);
-    setLoading(false);
+    try {
+      // Get data from localStorage
+      const stored = localStorage.getItem('purchaseOrders');
+      const data = stored ? JSON.parse(stored) : [];
+      setPurchaseOrders(data);
+    } catch (error) {
+      console.error('Error loading purchase orders:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const addPurchaseOrder = async (data) => {
-    const newOrder = await firebase.add(data);
-    setPurchaseOrders([...purchaseOrders, newOrder]);
+    const newOrder = {
+      ...data,
+      id: Date.now().toString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    const updated = [...purchaseOrders, newOrder];
+    setPurchaseOrders(updated);
+    localStorage.setItem('purchaseOrders', JSON.stringify(updated));
     return newOrder;
   };
 
   const updatePurchaseOrder = async (id, data) => {
-    const updated = await firebase.update(id, data);
-    if (updated) {
-      setPurchaseOrders(purchaseOrders.map(order => 
-        order.id === id ? updated : order
-      ));
-    }
-    return updated;
+    const updated = purchaseOrders.map(order => 
+      order.id === id 
+        ? { ...order, ...data, updatedAt: new Date().toISOString() }
+        : order
+    );
+    setPurchaseOrders(updated);
+    localStorage.setItem('purchaseOrders', JSON.stringify(updated));
+    return updated.find(o => o.id === id);
   };
 
   const deletePurchaseOrder = async (id) => {
-    await firebase.delete(id);
-    setPurchaseOrders(purchaseOrders.filter(order => order.id !== id));
+    const updated = purchaseOrders.filter(order => order.id !== id);
+    setPurchaseOrders(updated);
+    localStorage.setItem('purchaseOrders', JSON.stringify(updated));
   };
 
   useEffect(() => {
