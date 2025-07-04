@@ -175,3 +175,15 @@ export const initializeSampleData = () => {
     localStorage.setItem('users', JSON.stringify(users));
   }
 };
+
+  // Mock product data for Purchase Orders
+export const mockProducts = [
+  { id: '1', name: 'Widget A', code: 'WDG-001', price: 25.99, stock: 150 },
+  { id: '2', name: 'Gadget B', code: 'GDG-002', price: 45.50, stock: 75 },
+  { id: '3', name: 'Tool C', code: 'TL-003', price: 99.99, stock: 20 },
+  { id: '4', name: 'Device D', code: 'DVC-004', price: 150.00, stock: 5 },
+  { id: '5', name: 'Component E', code: 'CMP-005', price: 12.50, stock: 500 },
+  { id: '6', name: 'Assembly F', code: 'ASM-006', price: 75.00, stock: 30 },
+  { id: '7', name: 'Module G', code: 'MOD-007', price: 200.00, stock: 15 },
+  { id: '8', name: 'Kit H', code: 'KIT-008', price: 350.00, stock: 10 }
+];
