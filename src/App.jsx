@@ -9,6 +9,7 @@ import Suppliers from './components/suppliers/Suppliers';
 import Products from './components/products/Products';
 import ProformaInvoices from './components/procurement/ProformaInvoices';
 import PublicPIView from './components/procurement/PublicPIView';
+import PurchaseOrders from './components/purchase-orders';
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
 
@@ -115,10 +116,7 @@ function AppContent() {
     },
     {
       path: '/purchase-orders',
-      element: <PlaceholderComponent 
-        title="Purchase Orders" 
-        description="PO management - Feature coming soon" 
-      />,
+      element: <PurchaseOrders showNotification={showNotification} />,
       permission: 'canViewPurchaseOrders'
     },
     {
