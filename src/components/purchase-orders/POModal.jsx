@@ -1,11 +1,12 @@
 // src/components/purchase-orders/POModal.jsx
 import React, { useState, useEffect } from 'react';
-import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [formData, setFormData] = useState({
+    poNumber: '',
     clientPoNumber: '',
     clientName: '',
     clientContact: '',
@@ -13,8 +14,10 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     clientPhone: '',
     orderDate: new Date().toISOString().split('T')[0],
     requiredDate: '',
-    paymentTerms: '',
-    deliveryTerms: '',
+    paymentTerms: 'Net 30',
+    deliveryTerms: 'FOB',
+    status: 'draft',
+    notes: '',
     items: []
   });
 
@@ -23,72 +26,45 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [validationErrors, setValidationErrors] = useState([]);
   const [validationWarnings, setValidationWarnings] = useState([]);
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentItem, setCurrentItem] = useState({
+    productName: '',
+    productCode: '',
+    quantity: 1,
+    unitPrice: 0,
+    totalPrice: 0
+  });
 
-  // AI Extraction Service embedded
+  // Mock products for demo
+  const mockProducts = [
+    { id: '1', name: 'Industrial Sensor', code: 'ISM-001', price: 450.00, stock: 50 },
+    { id: '2', name: 'Control Panel', code: 'CP-100', price: 1200.00, stock: 20 },
+    { id: '3', name: 'Safety Valve', code: 'SV-200', price: 350.00, stock: 100 },
+    { id: '4', name: 'Motor Drive', code: 'MD-300', price: 2500.00, stock: 15 },
+  ];
+
+  // AI Extraction Service URL
   const MCP_SERVER_URL = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:3001';
 
-  const extractFromFile = async (file) => {
-    try {
-      const formData = new FormData();
-      formData.append('pdf', file);
-
-      const response = await fetch(`${MCP_SERVER_URL}/api/extract-po`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to extract data');
-      }
-
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'Extraction failed');
-      }
-
-      // Transform the extracted data to match form structure
-      return {
-        success: result.success,
-        data: transformExtractedData(result.data),
-        confidence: result.confidence || 0.85,
-        model: result.model || 'multi-ai'
-      };
-    } catch (error) {
-      console.error('AI Extraction failed:', error);
-      throw error;
-    }
-  };
-
-  const transformExtractedData = (data) => {
-    // Ensure all required fields are present with defaults
-    return {
-      clientPoNumber: data.clientPoNumber || '',
-      clientName: data.clientName || '',
-      clientContact: data.clientContact || '',
-      clientEmail: data.clientEmail || '',
-      clientPhone: data.clientPhone || '',
-      orderDate: data.orderDate || new Date().toISOString().split('T')[0],
-      requiredDate: data.requiredDate || '',
-      items: Array.isArray(data.items) ? data.items.map(item => ({
-        productName: item.productName || '',
-        productCode: item.productCode || '',
-        quantity: Number(item.quantity) || 1,
-        unitPrice: Number(item.unitPrice) || 0,
-        totalPrice: Number(item.totalPrice) || 0,
-      })) : [],
-      paymentTerms: data.paymentTerms || '',
-      deliveryTerms: data.deliveryTerms || '',
-      _validation: data._validation,
-      warnings: data.warnings,
-      recommendations: data.recommendations
-    };
+  // Generate PO number
+  const generatePONumber = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const random = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+    return `PO-${year}${month}${day}-${random}`;
   };
 
   useEffect(() => {
     if (editingPO) {
       setFormData(editingPO);
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        poNumber: generatePONumber()
+      }));
     }
   }, [editingPO]);
 
@@ -102,26 +78,53 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setValidationWarnings([]);
 
     try {
-      // Extract data from file
-      const result = await extractFromFile(file);
+      const formData = new FormData();
+      formData.append('pdf', file);
+
+      const response = await fetch(`${MCP_SERVER_URL}/api/extract-po`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to extract data');
+      }
+
+      const result = await response.json();
       
-      // Set form data
-      setFormData(result.data);
+      if (!result.success) {
+        throw new Error(result.message || 'Extraction failed');
+      }
+
+      // Update form data with extracted information
+      setFormData(prev => ({
+        ...prev,
+        clientPoNumber: result.data.clientPoNumber || prev.clientPoNumber,
+        clientName: result.data.clientName || '',
+        clientContact: result.data.clientContact || '',
+        clientEmail: result.data.clientEmail || '',
+        clientPhone: result.data.clientPhone || '',
+        orderDate: result.data.orderDate || prev.orderDate,
+        requiredDate: result.data.requiredDate || '',
+        paymentTerms: result.data.paymentTerms || 'Net 30',
+        deliveryTerms: result.data.deliveryTerms || 'FOB',
+        items: result.data.items || []
+      }));
       
       // Store extraction result for display
       setExtractionResult({
         success: result.success,
-        confidence: result.confidence,
-        model: result.model,
+        confidence: result.confidence || 0.95,
+        model: result.model || 'AI Model',
         validation: result.data._validation,
         recommendations: result.data.recommendations
       });
       
       // Check for duplicates
       if (result.data.warnings) {
-        const duplicateWarning = result.data.warnings.find(w => w.type === 'duplicate');
-        if (duplicateWarning) {
-          setDuplicateWarning(duplicateWarning);
+        const dupWarning = result.data.warnings.find(w => w.type === 'duplicate');
+        if (dupWarning) {
+          setDuplicateWarning(dupWarning);
         }
       }
       
@@ -175,16 +178,28 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   };
 
   const addItem = () => {
-    setFormData(prev => ({
-      ...prev,
-      items: [...prev.items, {
+    if (currentItem.productName && currentItem.quantity > 0) {
+      const totalPrice = currentItem.quantity * currentItem.unitPrice;
+      setFormData(prev => ({
+        ...prev,
+        items: [...prev.items, { 
+          ...currentItem, 
+          totalPrice, 
+          id: Date.now().toString() 
+        }]
+      }));
+      
+      // Reset current item
+      setCurrentItem({
         productName: '',
         productCode: '',
         quantity: 1,
         unitPrice: 0,
         totalPrice: 0
-      }]
-    }));
+      });
+      setSearchTerm('');
+      setShowProductSearch(false);
+    }
   };
 
   const removeItem = (index) => {
@@ -194,12 +209,23 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }));
   };
 
+  const selectProduct = (product) => {
+    setCurrentItem({
+      productName: product.name,
+      productCode: product.code,
+      quantity: 1,
+      unitPrice: product.price,
+      totalPrice: product.price
+    });
+    setSearchTerm(product.name);
+    setShowProductSearch(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     // Validate before saving
     const errors = [];
-    if (!formData.clientPoNumber) errors.push({ field: 'clientPoNumber', message: 'PO number is required' });
     if (!formData.clientName) errors.push({ field: 'clientName', message: 'Client name is required' });
     if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
     
@@ -210,7 +236,18 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     
     setLoading(true);
     try {
-      await onSave(formData);
+      // Calculate totals
+      const subtotal = formData.items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+      const tax = subtotal * 0.1; // 10% tax
+      const totalAmount = subtotal + tax;
+      
+      await onSave({
+        ...formData,
+        subtotal,
+        tax,
+        totalAmount
+      });
+      
       onClose();
     } catch (error) {
       console.error('Save failed:', error);
@@ -223,6 +260,11 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const calculateTotal = () => {
     return formData.items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
   };
+
+  const filteredProducts = mockProducts.filter(product =>
+    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (!isOpen) return null;
 
@@ -255,7 +297,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-800">AI Document Extraction</h3>
-                  <p className="text-sm text-gray-600">Upload PDF, Image, Excel or Email files</p>
+                  <p className="text-sm text-gray-600">Upload PDF to auto-fill form</p>
                 </div>
               </div>
               
@@ -263,7 +305,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 <input
                   type="file"
                   className="hidden"
-                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.eml,.msg"
+                  accept=".pdf"
                   onChange={handleFileUpload}
                   disabled={extracting}
                 />
@@ -276,7 +318,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   ) : (
                     <>
                       <Upload className="w-4 h-4" />
-                      Upload Document
+                      Upload PDF
                     </>
                   )}
                 </div>
@@ -292,12 +334,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   <span className="text-gray-600">
                     (Confidence: {Math.round(extractionResult.confidence * 100)}%)
                   </span>
-                  <span className="text-purple-600 font-medium">
-                    Model: {extractionResult.model}
-                  </span>
                 </div>
 
-                {/* Validation Results */}
+                {/* Validation Warnings */}
                 {validationWarnings.length > 0 && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                     <div className="flex items-start gap-2">
@@ -310,11 +349,6 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                           {validationWarnings.map((warning, idx) => (
                             <li key={idx}>
                               {warning.field}: {warning.message}
-                              {warning.corrected && (
-                                <span className="ml-1">
-                                  ({warning.original} → {warning.corrected})
-                                </span>
-                              )}
                             </li>
                           ))}
                         </ul>
@@ -335,9 +369,6 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                         <p className="text-xs text-red-700 mt-1">
                           {duplicateWarning.message}
                         </p>
-                        <button className="text-xs text-red-600 underline mt-1 hover:text-red-800">
-                          View Similar PO
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -356,9 +387,6 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-indigo-600" />
                   <h3 className="font-semibold text-gray-800">AI Recommendations</h3>
-                  <span className="text-sm text-gray-600">
-                    ({extractionResult.recommendations.length} insights available)
-                  </span>
                 </div>
                 {showRecommendations ? 
                   <ChevronUp className="w-5 h-5 text-gray-600" /> : 
@@ -370,62 +398,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 <div className="mt-3 space-y-3">
                   {extractionResult.recommendations.map((rec, idx) => (
                     <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-start gap-3">
-                        {rec.type === 'price_optimization' && <TrendingUp className="w-5 h-5 text-green-600 mt-0.5" />}
-                        {rec.type === 'supplier_recommendation' && <Users className="w-5 h-5 text-blue-600 mt-0.5" />}
-                        {rec.type === 'inventory_insight' && <Package className="w-5 h-5 text-orange-600 mt-0.5" />}
-                        {rec.type === 'payment_terms' && <CreditCard className="w-5 h-5 text-purple-600 mt-0.5" />}
-                        
-                        <div className="flex-1">
-                          <h4 className="font-medium text-gray-800">{rec.title}</h4>
-                          
-                          {rec.items && (
-                            <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                              {rec.items.map((item, itemIdx) => (
-                                <li key={itemIdx} className="flex justify-between">
-                                  <span>{item.product}</span>
-                                  <span className="text-green-600 font-medium">
-                                    Save ${item.potentialSaving.toFixed(2)}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                          
-                          {rec.suppliers && (
-                            <ul className="mt-2 space-y-2 text-sm">
-                              {rec.suppliers.slice(0, 2).map((supplier, supIdx) => (
-                                <li key={supIdx} className="flex items-center justify-between">
-                                  <div>
-                                    <span className="font-medium">{supplier.name}</span>
-                                    <span className="text-gray-500 ml-2">★ {supplier.rating}</span>
-                                  </div>
-                                  <button className="text-blue-600 hover:text-blue-800 text-xs">
-                                    View Details
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                          
-                          {rec.insights && (
-                            <ul className="mt-2 space-y-1 text-sm text-gray-600">
-                              {rec.insights.map((insight, insIdx) => (
-                                <li key={insIdx} className="flex items-start gap-2">
-                                  <Info className="w-3 h-3 text-orange-600 mt-0.5" />
-                                  <span>{insight.message}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                          
-                          {rec.suggestion && (
-                            <p className="mt-2 text-sm text-gray-600">
-                              Suggestion: {rec.suggestion.reason}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                      <h4 className="font-medium text-gray-800 mb-2">{rec.title}</h4>
+                      {rec.items && (
+                        <ul className="text-sm text-gray-600 space-y-1">
+                          {rec.items.map((item, itemIdx) => (
+                            <li key={itemIdx}>{item.message}</li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -445,20 +425,22 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   </label>
                   <input
                     type="text"
+                    value={formData.poNumber}
+                    readOnly
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Client PO Number
+                  </label>
+                  <input
+                    type="text"
                     value={formData.clientPoNumber}
                     onChange={(e) => handleInputChange('clientPoNumber', e.target.value)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                      validationErrors.find(e => e.field === 'clientPoNumber') 
-                        ? 'border-red-500' 
-                        : 'border-gray-300'
-                    }`}
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
-                  {validationErrors.find(e => e.field === 'clientPoNumber') && (
-                    <p className="text-red-500 text-xs mt-1">
-                      {validationErrors.find(e => e.field === 'clientPoNumber').message}
-                    </p>
-                  )}
                 </div>
 
                 <div>
@@ -543,43 +525,144 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Payment Terms
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.paymentTerms}
                     onChange={(e) => handleInputChange('paymentTerms', e.target.value)}
-                    placeholder="e.g., 30 days"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="Net 30">Net 30</option>
+                    <option value="Net 60">Net 60</option>
+                    <option value="Net 90">Net 90</option>
+                    <option value="Due on Receipt">Due on Receipt</option>
+                    <option value="2/10 Net 30">2/10 Net 30</option>
+                  </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Delivery Terms
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.deliveryTerms}
                     onChange={(e) => handleInputChange('deliveryTerms', e.target.value)}
-                    placeholder="e.g., DDP"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="FOB">FOB</option>
+                    <option value="CIF">CIF</option>
+                    <option value="DDP">DDP</option>
+                    <option value="EXW">EXW</option>
+                  </select>
                 </div>
               </div>
             </div>
 
             {/* Items Section */}
             <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">Order Items</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Order Items</h3>
+              
+              {/* Add Item Form */}
+              <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                <div className="grid grid-cols-5 gap-3 mb-3">
+                  <div className="col-span-2 relative">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Product Search
+                    </label>
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setShowProductSearch(true);
+                      }}
+                      onFocus={() => setShowProductSearch(true)}
+                      placeholder="Search products..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    
+                    {showProductSearch && searchTerm && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {filteredProducts.length > 0 ? (
+                          filteredProducts.map(product => (
+                            <div
+                              key={product.id}
+                              onClick={() => selectProduct(product)}
+                              className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                            >
+                              <div className="font-medium">{product.name}</div>
+                              <div className="text-sm text-gray-600">
+                                Code: {product.code} | Price: ${product.price} | Stock: {product.stock}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-3 text-gray-500 text-center">
+                            No products found
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Quantity
+                    </label>
+                    <input
+                      type="number"
+                      value={currentItem.quantity}
+                      onChange={(e) => setCurrentItem({
+                        ...currentItem,
+                        quantity: parseInt(e.target.value) || 1,
+                        totalPrice: (parseInt(e.target.value) || 1) * currentItem.unitPrice
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      min="1"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Unit Price
+                    </label>
+                    <input
+                      type="number"
+                      value={currentItem.unitPrice}
+                      onChange={(e) => setCurrentItem({
+                        ...currentItem,
+                        unitPrice: parseFloat(e.target.value) || 0,
+                        totalPrice: currentItem.quantity * (parseFloat(e.target.value) || 0)
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Total
+                    </label>
+                    <input
+                      type="number"
+                      value={currentItem.totalPrice}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      readOnly
+                    />
+                  </div>
+                </div>
+
                 <button
                   type="button"
                   onClick={addItem}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={!currentItem.productName || currentItem.quantity <= 0}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center gap-2"
                 >
+                  <Plus className="w-4 h-4" />
                   Add Item
                 </button>
               </div>
 
+              {/* Items List */}
               {validationErrors.find(e => e.field === 'items') && (
                 <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-600">
@@ -590,7 +673,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 
               <div className="space-y-3">
                 {formData.items.map((item, index) => (
-                  <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <div key={item.id || index} className="bg-white p-4 rounded-lg border border-gray-200">
                     <div className="grid grid-cols-6 gap-3">
                       <div className="col-span-2">
                         <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -662,8 +745,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     <button
                       type="button"
                       onClick={() => removeItem(index)}
-                      className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                      className="mt-2 text-red-600 hover:text-red-800 text-sm flex items-center gap-1"
                     >
+                      <Trash2 className="w-3 h-3" />
                       Remove Item
                     </button>
                   </div>
@@ -672,12 +756,32 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 
               {/* Total */}
               {formData.items.length > 0 && (
-                <div className="mt-4 text-right">
-                  <p className="text-lg font-semibold">
-                    Total: ${calculateTotal().toFixed(2)}
+                <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-semibold">Total Amount:</span>
+                    <span className="text-2xl font-bold text-blue-600">
+                      ${calculateTotal().toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">
+                    * Tax will be calculated at checkout
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Internal Notes
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => handleInputChange('notes', e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Add any internal notes..."
+              />
             </div>
           </form>
         </div>
@@ -693,7 +797,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || !formData.clientName || formData.items.length === 0}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
