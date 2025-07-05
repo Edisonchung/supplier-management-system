@@ -1,25 +1,35 @@
 // src/components/common/Layout.jsx
-import React, { useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Outlet } from 'react-router-dom';
 import Header from './Header';
 import Navigation from './Navigation';
 
 const Layout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [isNavCollapsed, setIsNavCollapsed] = useState(false);
 
-  // Extract the current tab from the pathname
-  const currentPath = location.pathname.substring(1) || 'dashboard';
-  
-  // Convert path to tab name (e.g., '/proforma-invoices' -> 'proforma-invoices')
-  const activeTab = currentPath;
+  // Check navigation collapsed state from localStorage
+  useEffect(() => {
+    const checkNavState = () => {
+      const navCollapsed = localStorage.getItem('navCollapsed') === 'true';
+      setIsNavCollapsed(navCollapsed);
+    };
 
-  const handleTabChange = (tab) => {
-    // Convert tab to path
-    const path = tab === 'dashboard' ? '/' : `/${tab}`;
-    navigate(path);
-  };
+    // Check initially
+    checkNavState();
+
+    // Listen for storage changes (when nav is toggled)
+    window.addEventListener('storage', checkNavState);
+    
+    // Also listen for custom event for same-tab updates
+    const handleNavToggle = () => checkNavState();
+    window.addEventListener('navToggled', handleNavToggle);
+
+    return () => {
+      window.removeEventListener('storage', checkNavState);
+      window.removeEventListener('navToggled', handleNavToggle);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -29,15 +39,16 @@ const Layout = () => {
       
       <div className="flex">
         <Navigation 
-          activeTab={activeTab}
-          setActiveTab={handleTabChange}
           isMobileMenuOpen={isMobileMenuOpen}
           setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
         
-        <main className="flex-1 p-6 lg:ml-64">
+        <main className={`
+          flex-1 p-6 transition-all duration-300
+          ${isNavCollapsed ? 'lg:ml-16' : 'lg:ml-64'}
+        `}>
           <div className="max-w-7xl mx-auto">
-            <Outlet /> {/* This is where child routes render */}
+            <Outlet />
           </div>
         </main>
       </div>
