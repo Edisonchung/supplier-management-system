@@ -12,6 +12,8 @@ import PublicPIView from './components/procurement/PublicPIView';
 import PurchaseOrders from './components/purchase-orders';
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
+import ClientInvoices from './components/invoices/ClientInvoices';
+
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -163,6 +165,13 @@ function AppContent() {
           {/* Login Route */}
           <Route path="/login" element={!user ? <LoginForm /> : <Navigate to="/" replace />} />
           
+          <Route path="/invoices" element={
+  <ProtectedRoute>
+    <ClientInvoices />
+  </ProtectedRoute>
+} />
+
+          
           {/* Protected Routes */}
           <Route element={user ? <Layout /> : <Navigate to="/login" />}>
             {routes.map(route => (
@@ -177,6 +186,8 @@ function AppContent() {
               />
             ))}
           </Route>
+
+
           
           {/* Catch all - redirect to home or login */}
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
