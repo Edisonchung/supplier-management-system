@@ -1,364 +1,36 @@
+// src/components/invoices/ClientInvoices.jsx
 import React, { useState, useEffect } from 'react';
 import { FileText, Plus, Search, Filter, DollarSign, Calendar, AlertCircle, CheckCircle, Upload, Eye, Edit2, Trash2 } from 'lucide-react';
+import { useClientInvoices } from '../../hooks/useClientInvoices';
+import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
+import { usePermissions } from '../../hooks/usePermissions';
+import InvoiceRecordModal from './InvoiceRecordModal';
 
-// Mock data for demonstration
-const mockInvoices = [
-  {
-    id: '1',
-    invoiceNumber: 'INV-2025-001',
-    poId: 'PO-20250106-001',
-    poNumber: 'PO-20250106-001',
-    clientName: 'ABC Corporation',
-    invoiceDate: '2025-01-06',
-    dueDate: '2025-02-05',
-    totalAmount: 15000,
-    currency: 'MYR',
-    status: 'sent',
-    paymentStatus: 'pending',
-    paidAmount: 0,
-    invoiceFile: {
-      url: '#',
-      filename: 'INV-2025-001.pdf',
-      uploadedAt: '2025-01-06'
-    },
-    isExternalInvoice: true
-  },
-  {
-    id: '2',
-    invoiceNumber: 'INV-2024-087',
-    poId: 'PO-20241220-003',
-    poNumber: 'PO-20241220-003',
-    clientName: 'XYZ Industries',
-    invoiceDate: '2024-12-20',
-    dueDate: '2025-01-20',
-    totalAmount: 8500,
-    currency: 'MYR',
-    status: 'paid',
-    paymentStatus: 'paid',
-    paidAmount: 8500,
-    paymentDate: '2025-01-05',
-    paymentMethod: 'Bank Transfer',
-    invoiceFile: {
-      url: '#',
-      filename: 'INV-2024-087.pdf',
-      uploadedAt: '2024-12-20'
-    },
-    isExternalInvoice: true
-  }
-];
-
-const mockPOs = [
-  { id: 'PO-20250106-001', poNumber: 'PO-20250106-001', clientName: 'ABC Corporation', totalAmount: 15000 },
-  { id: 'PO-20241220-003', poNumber: 'PO-20241220-003', clientName: 'XYZ Industries', totalAmount: 8500 },
-  { id: 'PO-20250105-002', poNumber: 'PO-20250105-002', clientName: 'Tech Solutions Ltd', totalAmount: 12000 }
-];
-
-// Invoice Record Modal Component
-const InvoiceRecordModal = ({ isOpen, onClose, onSave, invoice, purchaseOrders }) => {
-  const [formData, setFormData] = useState({
-    invoiceNumber: '',
-    poId: '',
-    invoiceDate: new Date().toISOString().split('T')[0],
-    dueDate: '',
-    totalAmount: '',
-    currency: 'MYR',
-    status: 'sent',
-    paymentStatus: 'pending',
-    paidAmount: 0,
-    paymentDate: '',
-    paymentMethod: '',
-    notes: '',
-    invoiceFile: null
-  });
-
-  const [selectedPO, setSelectedPO] = useState(null);
-
-  useEffect(() => {
-    if (invoice) {
-      setFormData(invoice);
-      const po = purchaseOrders.find(p => p.id === invoice.poId);
-      setSelectedPO(po);
-    } else {
-      // Calculate due date (30 days from invoice date)
-      const invoiceDate = new Date();
-      const dueDate = new Date(invoiceDate);
-      dueDate.setDate(dueDate.getDate() + 30);
-      
-      setFormData(prev => ({
-        ...prev,
-        invoiceDate: invoiceDate.toISOString().split('T')[0],
-        dueDate: dueDate.toISOString().split('T')[0]
-      }));
-    }
-  }, [invoice, purchaseOrders]);
-
-  const handlePOSelect = (poId) => {
-    const po = purchaseOrders.find(p => p.id === poId);
-    if (po) {
-      setSelectedPO(po);
-      setFormData(prev => ({
-        ...prev,
-        poId: po.id,
-        totalAmount: po.totalAmount
-      }));
-    }
-  };
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFormData(prev => ({
-        ...prev,
-        invoiceFile: {
-          url: URL.createObjectURL(file),
-          filename: file.name,
-          uploadedAt: new Date().toISOString()
-        }
-      }));
-    }
-  };
-
-  const handleSubmit = () => {
-    onSave({
-      ...formData,
-      clientName: selectedPO?.clientName || '',
-      poNumber: selectedPO?.poNumber || '',
-      isExternalInvoice: true,
-      id: invoice?.id || Date.now().toString()
-    });
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b">
-          <h2 className="text-2xl font-bold">
-            {invoice ? 'Edit Invoice Record' : 'Add Invoice Record'}
-          </h2>
-          <p className="text-gray-600 mt-1">
-            Link an external invoice to a purchase order for tracking
-          </p>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {/* PO Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Purchase Order *
-            </label>
-            <select
-              value={formData.poId}
-              onChange={(e) => handlePOSelect(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="">Select a PO</option>
-              {purchaseOrders.map(po => (
-                <option key={po.id} value={po.id}>
-                  {po.poNumber} - {po.clientName} (${po.totalAmount})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Invoice Details */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Invoice Number *
-              </label>
-              <input
-                type="text"
-                value={formData.invoiceNumber}
-                onChange={(e) => setFormData({...formData, invoiceNumber: e.target.value})}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="INV-2025-001"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Total Amount *
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={formData.currency}
-                  onChange={(e) => setFormData({...formData, currency: e.target.value})}
-                  className="w-20 px-2 py-2 border rounded-lg"
-                >
-                  <option value="MYR">MYR</option>
-                  <option value="SGD">SGD</option>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
-                </select>
-                <input
-                  type="number"
-                  value={formData.totalAmount}
-                  onChange={(e) => setFormData({...formData, totalAmount: parseFloat(e.target.value)})}
-                  className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  step="0.01"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Invoice Date *
-              </label>
-              <input
-                type="date"
-                value={formData.invoiceDate}
-                onChange={(e) => setFormData({...formData, invoiceDate: e.target.value})}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Due Date *
-              </label>
-              <input
-                type="date"
-                value={formData.dueDate}
-                onChange={(e) => setFormData({...formData, dueDate: e.target.value})}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-          </div>
-
-          {/* File Upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Invoice File
-            </label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-              <input
-                type="file"
-                onChange={handleFileUpload}
-                accept=".pdf,.jpg,.jpeg,.png"
-                className="hidden"
-                id="invoice-file"
-              />
-              <label
-                htmlFor="invoice-file"
-                className="flex flex-col items-center cursor-pointer"
-              >
-                <Upload className="h-8 w-8 text-gray-400 mb-2" />
-                <span className="text-sm text-gray-600">
-                  {formData.invoiceFile ? formData.invoiceFile.filename : 'Click to upload PDF or image'}
-                </span>
-              </label>
-            </div>
-          </div>
-
-          {/* Payment Status */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Payment Status
-            </label>
-            <select
-              value={formData.paymentStatus}
-              onChange={(e) => setFormData({...formData, paymentStatus: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="pending">Pending</option>
-              <option value="partial">Partial</option>
-              <option value="paid">Paid</option>
-            </select>
-          </div>
-
-          {/* Payment Details (if paid) */}
-          {formData.paymentStatus !== 'pending' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Paid Amount
-                </label>
-                <input
-                  type="number"
-                  value={formData.paidAmount}
-                  onChange={(e) => setFormData({...formData, paidAmount: parseFloat(e.target.value)})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  step="0.01"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Payment Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.paymentDate}
-                  onChange={(e) => setFormData({...formData, paymentDate: e.target.value})}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
-            </label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              rows="3"
-              placeholder="Any additional notes..."
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              {invoice ? 'Update' : 'Save'} Invoice Record
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Main Client Invoices Component
-const ClientInvoices = () => {
-  const [invoices, setInvoices] = useState(mockInvoices);
+const ClientInvoices = ({ showNotification }) => {
+  const permissions = usePermissions();
+  const { 
+    invoices, 
+    loading, 
+    error, 
+    addInvoice, 
+    updateInvoice, 
+    deleteInvoice,
+    getStats,
+    getOverdueInvoices 
+  } = useClientInvoices();
+  
+  const { purchaseOrders } = usePurchaseOrders();
+  
   const [showModal, setShowModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  // Calculate summary stats
-  const stats = {
-    total: invoices.length,
-    paid: invoices.filter(inv => inv.paymentStatus === 'paid').length,
-    pending: invoices.filter(inv => inv.paymentStatus === 'pending').length,
-    totalAmount: invoices.reduce((sum, inv) => sum + inv.totalAmount, 0),
-    paidAmount: invoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0)
-  };
+  const canEdit = permissions.canEditInvoices;
+  const canView = permissions.canViewInvoices;
+
+  // Get stats
+  const stats = getStats();
 
   // Filter invoices
   const filteredInvoices = invoices.filter(invoice => {
@@ -374,22 +46,43 @@ const ClientInvoices = () => {
   };
 
   const handleEditInvoice = (invoice) => {
+    if (!canEdit) {
+      showNotification('You do not have permission to edit invoices', 'error');
+      return;
+    }
     setSelectedInvoice(invoice);
     setShowModal(true);
   };
 
-  const handleSaveInvoice = (invoiceData) => {
-    if (selectedInvoice) {
-      setInvoices(invoices.map(inv => inv.id === invoiceData.id ? invoiceData : inv));
+  const handleSaveInvoice = async (invoiceData) => {
+    const result = selectedInvoice
+      ? await updateInvoice(selectedInvoice.id, invoiceData)
+      : await addInvoice(invoiceData);
+
+    if (result.success) {
+      showNotification(
+        selectedInvoice ? 'Invoice updated successfully' : 'Invoice created successfully',
+        'success'
+      );
+      setShowModal(false);
     } else {
-      setInvoices([...invoices, invoiceData]);
+      showNotification(result.error || 'Failed to save invoice', 'error');
     }
-    setShowModal(false);
   };
 
-  const handleDeleteInvoice = (id) => {
+  const handleDeleteInvoice = async (id) => {
+    if (!canEdit) {
+      showNotification('You do not have permission to delete invoices', 'error');
+      return;
+    }
+
     if (window.confirm('Are you sure you want to delete this invoice record?')) {
-      setInvoices(invoices.filter(inv => inv.id !== id));
+      const result = await deleteInvoice(id);
+      if (result.success) {
+        showNotification('Invoice deleted successfully', 'success');
+      } else {
+        showNotification('Failed to delete invoice', 'error');
+      }
     }
   };
 
@@ -409,21 +102,34 @@ const ClientInvoices = () => {
     return diff > 0 ? diff : 0;
   };
 
+  if (!canView) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-600">You do not have permission to view invoices.</p>
+      </div>
+    );
+  }
+
+  if (loading) return <div className="text-center py-8">Loading invoices...</div>;
+  if (error) return <div className="text-center py-8 text-red-600">Error: {error}</div>;
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Client Invoices</h1>
+          <h2 className="text-2xl font-bold text-gray-900">Client Invoices</h2>
           <p className="text-gray-600">Track invoices and payment status</p>
         </div>
-        <button
-          onClick={handleAddInvoice}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus size={20} />
-          Add Invoice Record
-        </button>
+        {canEdit && (
+          <button
+            onClick={handleAddInvoice}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={20} />
+            Add Invoice Record
+          </button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -463,7 +169,7 @@ const ClientInvoices = () => {
             <div>
               <p className="text-sm text-gray-600">Outstanding</p>
               <p className="text-2xl font-bold">
-                ${(stats.totalAmount - stats.paidAmount).toLocaleString()}
+                MYR {stats.outstandingAmount.toLocaleString()}
               </p>
             </div>
             <DollarSign className="h-8 w-8 text-yellow-600" />
@@ -573,26 +279,31 @@ const ClientInvoices = () => {
                       <div className="flex items-center gap-2">
                         {invoice.invoiceFile && (
                           <button
+                            onClick={() => window.open(invoice.invoiceFile.url, '_blank')}
                             className="text-blue-600 hover:text-blue-800"
                             title="View Invoice"
                           >
                             <Eye size={18} />
                           </button>
                         )}
-                        <button
-                          onClick={() => handleEditInvoice(invoice)}
-                          className="text-gray-600 hover:text-gray-800"
-                          title="Edit"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteInvoice(invoice.id)}
-                          className="text-red-600 hover:text-red-800"
-                          title="Delete"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        {canEdit && (
+                          <>
+                            <button
+                              onClick={() => handleEditInvoice(invoice)}
+                              className="text-gray-600 hover:text-gray-800"
+                              title="Edit"
+                            >
+                              <Edit2 size={18} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteInvoice(invoice.id)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -605,19 +316,29 @@ const ClientInvoices = () => {
             <div className="text-center py-12">
               <FileText className="mx-auto h-12 w-12 text-gray-400" />
               <p className="mt-2 text-gray-600">No invoices found</p>
+              {canEdit && (
+                <button
+                  onClick={handleAddInvoice}
+                  className="mt-4 text-blue-600 hover:underline"
+                >
+                  Add your first invoice
+                </button>
+              )}
             </div>
           )}
         </div>
       </div>
 
       {/* Modal */}
-      <InvoiceRecordModal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        onSave={handleSaveInvoice}
-        invoice={selectedInvoice}
-        purchaseOrders={mockPOs}
-      />
+      {showModal && (
+        <InvoiceRecordModal
+          isOpen={showModal}
+          onClose={() => setShowModal(false)}
+          onSave={handleSaveInvoice}
+          invoice={selectedInvoice}
+          purchaseOrders={purchaseOrders}
+        />
+      )}
     </div>
   );
 };
