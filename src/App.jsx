@@ -10,10 +10,12 @@ import Products from './components/products/Products';
 import ProformaInvoices from './components/procurement/ProformaInvoices';
 import PublicPIView from './components/procurement/PublicPIView';
 import PurchaseOrders from './components/purchase-orders';
+import ClientInvoices from './components/invoices/ClientInvoices';
+import QuickImport from './components/import/QuickImport';
+import UserManagement from './components/users/UserManagement';
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
-import ClientInvoices from './components/invoices/ClientInvoices';
-
+import { Truck, Upload, Users } from 'lucide-react';
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -94,67 +96,6 @@ function AppContent() {
     setNotification({ message, type });
   };
 
-  // Define routes with component paths
-  const routes = [
-    {
-      path: '/',
-      element: <Dashboard />,
-      permission: 'canViewDashboard'
-    },
-    {
-      path: '/suppliers',
-      element: <Suppliers showNotification={showNotification} />,
-      permission: 'canViewSuppliers'
-    },
-    {
-      path: '/products',
-      element: <Products showNotification={showNotification} />,
-      permission: 'canViewProducts'
-    },
-    {
-      path: '/proforma-invoices',
-      element: <ProformaInvoices showNotification={showNotification} />,
-      permission: 'canViewPI'
-    },
-    {
-      path: '/purchase-orders',
-      element: <PurchaseOrders showNotification={showNotification} />,
-      permission: 'canViewPurchaseOrders'
-    },
-    {
-      path: '/invoices',
-      element: <PlaceholderComponent 
-        title="Client Invoices" 
-        description="Invoice management - Feature coming soon" 
-      />,
-      permission: 'canViewInvoices'
-    },
-    {
-      path: '/tracking',
-      element: <PlaceholderComponent 
-        title="Delivery Tracking" 
-        description="Track deliveries - Feature coming soon" 
-      />,
-      permission: 'canViewTracking'
-    },
-    {
-      path: '/import',
-      element: <PlaceholderComponent 
-        title="Quick Import" 
-        description="Import data - Feature coming soon" 
-      />,
-      permission: 'canImportData'
-    },
-    {
-      path: '/users',
-      element: <PlaceholderComponent 
-        title="User Management" 
-        description="Manage users - Feature coming soon" 
-      />,
-      permission: 'canManageUsers'
-    }
-  ];
-
   return (
     <ErrorBoundary>
       <Router>
@@ -165,34 +106,108 @@ function AppContent() {
           {/* Login Route */}
           <Route path="/login" element={!user ? <LoginForm /> : <Navigate to="/" replace />} />
           
-          <Route path="/invoices" element={
-  <ProtectedRoute>
-    <ClientInvoices />
-  </ProtectedRoute>
-} />
-
-          
-          {/* Protected Routes */}
+          {/* Protected Routes with Layout */}
           <Route element={user ? <Layout /> : <Navigate to="/login" />}>
-            {routes.map(route => (
-              <Route
-                key={route.path}
-                path={route.path}
-                element={
-                  <ProtectedRoute permission={route.permission}>
-                    {route.element}
-                  </ProtectedRoute>
-                }
-              />
-            ))}
+            {/* Dashboard */}
+            <Route 
+              path="/" 
+              element={
+                <ProtectedRoute permission="canViewDashboard">
+                  <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Suppliers */}
+            <Route 
+              path="/suppliers" 
+              element={
+                <ProtectedRoute permission="canViewSuppliers">
+                  <Suppliers showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Products */}
+            <Route 
+              path="/products" 
+              element={
+                <ProtectedRoute permission="canViewProducts">
+                  <Products showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Proforma Invoices */}
+            <Route 
+              path="/proforma-invoices" 
+              element={
+                <ProtectedRoute permission="canViewPI">
+                  <ProformaInvoices showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Purchase Orders */}
+            <Route 
+              path="/purchase-orders" 
+              element={
+                <ProtectedRoute permission="canViewPurchaseOrders">
+                  <PurchaseOrders showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Client Invoices */}
+            <Route 
+              path="/invoices" 
+              element={
+                <ProtectedRoute permission="canViewInvoices">
+                  <ClientInvoices showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Delivery Tracking - Placeholder */}
+            <Route 
+              path="/tracking" 
+              element={
+                <ProtectedRoute permission="canViewTracking">
+                  <PlaceholderComponent 
+                    title="Delivery Tracking" 
+                    description="Track deliveries and shipment status - Feature coming soon" 
+                    icon={Truck}
+                  />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Quick Import */}
+            <Route 
+              path="/import" 
+              element={
+                <ProtectedRoute permission="canImportData">
+                  <QuickImport showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* User Management */}
+            <Route 
+              path="/users" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <UserManagement showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
           </Route>
-
-
           
           {/* Catch all - redirect to home or login */}
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>
         
+        {/* Global Notification */}
         {notification && (
           <Notification
             message={notification.message}
