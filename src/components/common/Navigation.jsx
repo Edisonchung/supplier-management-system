@@ -28,6 +28,8 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     const newCollapsed = !isCollapsed;
     setIsCollapsed(newCollapsed);
     localStorage.setItem('navCollapsed', newCollapsed.toString());
+    // Dispatch custom event for same-tab updates
+    window.dispatchEvent(new Event('navToggled'));
   };
 
   const tabs = [
