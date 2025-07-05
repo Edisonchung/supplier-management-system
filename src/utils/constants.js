@@ -45,6 +45,23 @@ export const PERMISSIONS = {
   canImportData: ['admin', 'manager']
 };
 
+
+// Role options for dropdowns
+export const ROLE_OPTIONS = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'employee', label: 'Employee' },
+  { value: 'viewer', label: 'Viewer' }
+];
+
+// Status options for various entities
+export const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'pending', label: 'Pending' }
+];
+
+
 // Product Categories
 export const PRODUCT_CATEGORIES = [
   { value: 'electronics', label: 'Electronics' },
