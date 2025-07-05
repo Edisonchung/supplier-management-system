@@ -93,41 +93,41 @@ const POModal = ({ isOpen, onClose, onSave, purchaseOrder }) => {
   };
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (file && file.type === 'application/pdf') {
-      setUploadedFile(file);
-      setIsParsing(true);
+  const file = e.target.files[0];
+  if (file && file.type === 'application/pdf') {
+    setUploadedFile(file);
+    setIsParsing(true);
+    
+    try {
+      // Extract data from PDF using AI
+      const extractedData = await AIExtractionService.extractPOFromPDF(file);
       
-      // Simulate PDF parsing
-      setTimeout(() => {
-        // Mock extracted data
-        alert('PDF data extracted successfully! Please review and make any necessary adjustments.');
-        setFormData({
-          ...formData,
-          clientPoNumber: 'PO-2024-001',
-          clientName: 'Acme Corporation',
-          clientContact: 'John Smith',
-          clientEmail: 'john@acme.com',
-          clientPhone: '+1-555-0123',
-          requiredDate: '2024-04-15',
-          items: [
-            {
-              id: Date.now().toString(),
-              productName: 'Widget A',
-              productCode: 'WDG-001',
-              quantity: 10,
-              unitPrice: 25.99,
-              totalPrice: 259.90,
-              stockAvailable: 150
-            }
-          ]
-        });
-        setIsParsing(false);
-      }, 2000);
-    } else {
-      alert('Please upload a valid PDF file.');
+      // Update form data with extracted information
+      setFormData({
+        ...formData,
+        clientPoNumber: extractedData.clientPoNumber || formData.clientPoNumber,
+        clientName: extractedData.clientName,
+        clientContact: extractedData.clientContact,
+        clientEmail: extractedData.clientEmail,
+        clientPhone: extractedData.clientPhone,
+        orderDate: extractedData.orderDate,
+        requiredDate: extractedData.requiredDate,
+        paymentTerms: extractedData.paymentTerms,
+        deliveryTerms: extractedData.deliveryTerms,
+        items: extractedData.items || []
+      });
+      
+      alert('PDF data extracted successfully! Please review and make any necessary adjustments.');
+    } catch (error) {
+      console.error('Error extracting PDF data:', error);
+      alert(`Failed to extract data: ${error.message}. Please try again or enter manually.`);
+    } finally {
+      setIsParsing(false);
     }
-  };
+  } else {
+    alert('Please upload a valid PDF file.');
+  }
+};
 
   const addItem = () => {
     if (currentItem.productName && currentItem.quantity > 0) {
