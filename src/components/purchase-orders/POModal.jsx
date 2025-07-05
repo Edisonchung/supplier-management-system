@@ -25,7 +25,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [validationWarnings, setValidationWarnings] = useState([]);
 
   // AI Extraction Service embedded
-  const MCP_SERVER_URL = process.env.REACT_APP_MCP_SERVER_URL || 'http://localhost:3001';
+  const MCP_SERVER_URL = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:3001';
 
   const extractFromFile = async (file) => {
     try {
