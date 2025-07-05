@@ -38,9 +38,15 @@ const Header = ({ toggleMobileMenu }) => {
             </button>
             
             {/* Title with proper spacing */}
-            <h1 className="ml-4 lg:ml-0 text-xl font-semibold text-gray-900 whitespace-nowrap">
-              Supplier Management System
-            </h1>
+            <div className="ml-4 lg:ml-0 flex items-center space-x-3">
+              {/* Logo */}
+              <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg">
+                <span className="text-white font-bold text-sm">HF</span>
+              </div>
+              <h1 className="text-xl font-semibold text-gray-900 whitespace-nowrap">
+                HiggsFlow
+              </h1>
+            </div>
           </div>
 
           {/* Right side - Notifications and User menu */}
