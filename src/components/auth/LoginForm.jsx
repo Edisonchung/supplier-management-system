@@ -1,264 +1,230 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Building2, Users, Package, FileText, BarChart3, 
-  LogIn, ArrowRight, Shield, Sparkles, ChevronRight,
-  Zap, Globe, Lock, CheckCircle, TrendingUp, Star,
-  Cpu, Layers, Award, Target
-} from 'lucide-react';
+// src/components/auth/LoginForm.jsx
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { 
+  Users, Package, ShoppingCart, FileText, 
+  Lock, Mail, ArrowRight, Sparkles, 
+  Zap, Shield, BarChart3, Globe
+} from 'lucide-react';
 
 const LoginForm = ({ showNotification }) => {
-  const { login, loading, error } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [hoveredRole, setHoveredRole] = useState(null);
-  const [activeTab, setActiveTab] = useState('demo');
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await login(email, password);
-    } catch (error) {
-      showNotification(error.message, 'error');
-    }
-  };
-
-  const quickLogin = async (email, role) => {
-    try {
-      await login(email, 'password123');
-    } catch (error) {
-      showNotification('Login failed', 'error');
-    }
-  };
-
-  const roles = [
-    { 
-      role: 'admin', 
-      email: 'admin@company.com', 
-      name: 'Administrator', 
-      gradient: 'from-violet-600 to-indigo-600',
-      lightGradient: 'from-violet-500/20 to-indigo-500/20',
-      shadowColor: 'shadow-violet-500/50',
-      icon: Shield,
-      stats: '100%',
-      features: ['Full Control', 'All Modules', 'User Management'],
-      description: 'Complete system access'
-    },
-    { 
-      role: 'manager', 
-      email: 'manager@company.com', 
-      name: 'Manager', 
-      gradient: 'from-blue-600 to-cyan-600',
-      lightGradient: 'from-blue-500/20 to-cyan-500/20',
-      shadowColor: 'shadow-blue-500/50',
-      icon: Users,
-      stats: '75%',
-      features: ['Suppliers', 'Products', 'Orders'],
-      description: 'Operations management'
-    },
-    { 
-      role: 'employee',  
-      email: 'employee@company.com', 
-      name: 'Employee', 
-      gradient: 'from-emerald-600 to-teal-600',
-      lightGradient: 'from-emerald-500/20 to-teal-500/20',
-      shadowColor: 'shadow-emerald-500/50',
-      icon: Package,
-      stats: '50%',
-      features: ['Products', 'Basic Reports'],
-      description: 'Daily operations'
-    },
-    { 
-      role: 'viewer', 
-      email: 'viewer@company.com', 
-      name: 'Viewer', 
-      gradient: 'from-amber-600 to-orange-600',
-      lightGradient: 'from-amber-500/20 to-orange-500/20',
-      shadowColor: 'shadow-amber-500/50',
-      icon: BarChart3,
-      stats: '25%',
-      features: ['View Only', 'Reports'],
-      description: 'Read-only access'
-    }
+  const demoAccounts = [
+    { email: 'admin@company.com', password: 'admin123', role: 'Admin', color: 'from-purple-600 to-indigo-600' },
+    { email: 'manager@company.com', password: 'manager123', role: 'Manager', color: 'from-blue-600 to-cyan-600' },
+    { email: 'employee@company.com', password: 'employee123', role: 'Employee', color: 'from-emerald-600 to-teal-600' },
+    { email: 'viewer@company.com', password: 'viewer123', role: 'Viewer', color: 'from-orange-600 to-amber-600' }
   ];
 
   const features = [
-    { icon: Zap, text: 'Lightning Performance', color: 'from-yellow-400 to-orange-500' },
-    { icon: Shield, text: 'Bank-Level Security', color: 'from-green-400 to-emerald-500' },
-    { icon: Globe, text: 'Global Infrastructure', color: 'from-blue-400 to-indigo-500' },
-    { icon: Cpu, text: 'AI-Powered Insights', color: 'from-purple-400 to-pink-500' }
+    { icon: Globe, title: 'Global Supplier Network', description: 'Connect with suppliers worldwide' },
+    { icon: Zap, title: 'Real-time Tracking', description: 'Monitor orders and deliveries instantly' },
+    { icon: Shield, title: 'Secure & Reliable', description: 'Enterprise-grade security for your data' },
+    { icon: BarChart3, title: 'Analytics & Insights', description: 'Make data-driven decisions' }
   ];
 
-  return (
-    <div className="min-h-screen bg-black relative overflow-hidden">
-      {/* Animated background elements */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900"></div>
-        
-        {/* Floating orbs */}
-        <div className="absolute top-20 left-20 w-72 h-72 bg-purple-500/30 rounded-full blur-[128px] animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-indigo-500/30 rounded-full blur-[128px] animate-pulse" style={{animationDelay: '2s'}}></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-500/20 rounded-full blur-[128px] animate-pulse" style={{animationDelay: '4s'}}></div>
-      </div>
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
 
-      <div className="relative z-10 min-h-screen flex">
-        {/* Left Side - Branding */}
-        <div className="hidden lg:flex lg:w-1/2 flex-col justify-center p-12 relative">
-          <div className="max-w-lg mx-auto">
-            {/* Logo */}
-            <div className="mb-12 group cursor-pointer">
-              <div className="inline-flex items-center gap-4 p-5 bg-white/5 backdrop-blur-2xl rounded-2xl border border-white/10 shadow-2xl hover:shadow-violet-500/25 transition-all duration-500 hover:scale-105">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-xl blur-xl opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                  <div className="relative w-16 h-16 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                    <Building2 className="w-9 h-9 text-white" />
-                  </div>
+    try {
+      await login(email, password);
+      showNotification?.('Login successful!', 'success');
+    } catch (error) {
+      showNotification?.('Invalid email or password', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async (demoEmail, demoPassword) => {
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+    setLoading(true);
+
+    try {
+      await login(demoEmail, demoPassword);
+      showNotification?.('Login successful!', 'success');
+    } catch (error) {
+      showNotification?.('Login failed', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex">
+      {/* Left Panel - Login Form */}
+      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          {/* Logo and Branding */}
+          <div className="text-center">
+            <div className="flex justify-center mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl shadow-lg">
+                  <span className="text-white font-bold text-xl">HF</span>
                 </div>
-                <div>
-                  <h1 className="text-4xl font-bold text-white tracking-tight">SupplyFlow</h1>
-                  <p className="text-sm text-violet-400 font-medium">Enterprise Platform</p>
-                </div>
+                <h1 className="text-3xl font-bold text-gray-900">HiggsFlow</h1>
               </div>
             </div>
+            <p className="text-lg text-gray-600 font-medium">Accelerating your supply chain</p>
+          </div>
 
-            {/* Tagline */}
-            <h2 className="text-6xl font-bold text-white mb-6 leading-tight tracking-tight">
-              Next-Gen
-              <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-pink-400 to-cyan-400">
-                Supply Chain
-              </span>
-            </h2>
-            <p className="text-xl text-gray-400 mb-12 leading-relaxed">
-              Revolutionize your operations with AI-powered insights, real-time analytics, and seamless collaboration.
-            </p>
-
-            {/* Feature Cards */}
-            <div className="grid grid-cols-2 gap-4 mb-12">
-              {features.map((feature, index) => (
-                <div 
-                  key={index}
-                  className="group relative p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-white/20 transition-all duration-300 hover:scale-105 hover:bg-white/10"
-                >
-                  <div className={`w-10 h-10 bg-gradient-to-br ${feature.color} rounded-lg flex items-center justify-center mb-3 shadow-lg group-hover:scale-110 transition-transform`}>
-                    <feature.icon className="w-5 h-5 text-white" />
+          {/* Login Form Card */}
+          <div className="bg-white py-8 px-4 shadow-xl rounded-2xl sm:px-10">
+            <form className="space-y-6" onSubmit={handleSubmit}>
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                  Email address
+                </label>
+                <div className="mt-1 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-5 w-5 text-gray-400" />
                   </div>
-                  <p className="text-gray-300 font-medium text-sm">{feature.text}</p>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter your email"
+                  />
                 </div>
-              ))}
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <div className="mt-1 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter your password"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02]"
+                >
+                  {loading ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Signing in...
+                    </div>
+                  ) : (
+                    <div className="flex items-center">
+                      Sign in
+                      <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {/* Demo Accounts */}
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">Or try a demo account</span>
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                {demoAccounts.map((account) => (
+                  <button
+                    key={account.email}
+                    onClick={() => handleDemoLogin(account.email, account.password)}
+                    className={`relative group overflow-hidden rounded-lg px-3 py-2 text-sm font-medium text-white bg-gradient-to-r ${account.color} hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200`}
+                  >
+                    <div className="relative z-10">
+                      <div className="text-xs opacity-90">{account.role}</div>
+                      <div className="flex items-center justify-center mt-1">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        Demo
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+
+          {/* Footer */}
+          <p className="text-center text-sm text-gray-600">
+            By signing in, you agree to our{' '}
+            <a href="#" className="font-medium text-blue-600 hover:text-blue-500">
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a href="#" className="font-medium text-blue-600 hover:text-blue-500">
+              Privacy Policy
+            </a>
+          </p>
         </div>
+      </div>
 
-        {/* Right Side - Login Form */}
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="w-full max-w-md">
-            <div className="bg-white/5 backdrop-blur-2xl rounded-3xl p-8 border border-white/10 shadow-2xl">
-              <div className="relative">
-                {/* Form Header */}
-                <div className="text-center mb-8">
-                  <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-2xl mb-4 shadow-2xl animate-float">
-                    <Sparkles className="w-10 h-10 text-white" />
-                  </div>
-                  <h2 className="text-4xl font-bold text-white mb-2 tracking-tight">Welcome Back</h2>
-                  <p className="text-gray-400">Experience the future of supply chain</p>
+      {/* Right Panel - Features */}
+      <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-blue-600 to-purple-700 text-white p-12 items-center justify-center">
+        <div className="max-w-lg">
+          <h2 className="text-4xl font-bold mb-6">
+            Welcome to the Future of Supply Chain Management
+          </h2>
+          <p className="text-lg mb-8 text-blue-100">
+            Streamline your procurement process, manage suppliers efficiently, and accelerate your business growth with HiggsFlow.
+          </p>
+
+          {/* Feature List */}
+          <div className="space-y-4">
+            {features.map((feature, index) => (
+              <div key={index} className="flex items-start space-x-3">
+                <div className="flex-shrink-0">
+                  <feature.icon className="h-6 w-6 text-blue-200" />
                 </div>
-
-                {/* Demo Accounts */}
-                <div className="space-y-3">
-                  {roles.map((roleData, index) => {
-                    const IconComponent = roleData.icon;
-                    const isHovered = hoveredRole === index;
-                    return (
-                      <button
-                        key={index}
-                        onClick={() => quickLogin(roleData.email, roleData.role)}
-                        onMouseEnter={() => setHoveredRole(index)}
-                        onMouseLeave={() => setHoveredRole(null)}
-                        className="group relative w-full overflow-hidden rounded-2xl transition-all duration-500"
-                      >
-                        {/* Background gradient */}
-                        <div className={`absolute inset-0 bg-gradient-to-r ${roleData.lightGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
-                        
-                        {/* Content */}
-                        <div className={`relative p-4 rounded-2xl border transition-all duration-300 ${
-                          isHovered 
-                            ? 'bg-white/10 border-white/20 shadow-2xl transform scale-[1.02]' 
-                            : 'bg-white/5 border-white/10'
-                        }`}>
-                          <div className="flex items-center gap-4">
-                            <div className={`relative w-14 h-14 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                              isHovered ? 'scale-110 rotate-3' : ''
-                            }`}>
-                              <div className={`absolute inset-0 bg-gradient-to-br ${roleData.gradient} rounded-xl ${
-                                isHovered ? 'animate-pulse' : ''
-                              }`}></div>
-                              <IconComponent className="relative w-7 h-7 text-white" />
-                            </div>
-                            
-                            <div className="flex-1 text-left">
-                              <div className="flex items-center gap-3 mb-1">
-                                <span className={`font-bold text-lg ${isHovered ? 'text-white' : 'text-gray-200'}`}>
-                                  {roleData.name}
-                                </span>
-                                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-all duration-300 ${
-                                  isHovered
-                                    ? 'bg-white/20 text-white'
-                                    : 'bg-white/10 text-gray-400'
-                                }`}>
-                                  <Target className="w-3 h-3" />
-                                  {roleData.stats}
-                                </div>
-                              </div>
-                              <p className={`text-sm mb-2 ${isHovered ? 'text-gray-200' : 'text-gray-400'}`}>
-                                {roleData.description}
-                              </p>
-                              <div className="flex gap-2">
-                                {roleData.features.map((feature, i) => (
-                                  <span 
-                                    key={i} 
-                                    className={`text-xs px-2 py-1 rounded-lg transition-all duration-300 ${
-                                      isHovered
-                                        ? 'bg-white/20 text-white'
-                                        : 'bg-white/5 text-gray-500'
-                                    }`}
-                                  >
-                                    {feature}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            
-                            <ChevronRight className={`w-6 h-6 transition-all duration-300 ${
-                              isHovered ? 'text-white translate-x-1' : 'text-gray-600'
-                            }`} />
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Password hint */}
-                <div className="mt-6 p-4 bg-gradient-to-r from-violet-500/10 to-indigo-500/10 rounded-xl border border-violet-500/20 backdrop-blur-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-violet-500/20 rounded-lg">
-                      <Lock className="w-5 h-5 text-violet-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-violet-300 font-medium">Demo Credentials</p>
-                      <p className="text-xs text-violet-400/80">Password: password123</p>
-                    </div>
-                  </div>
+                <div>
+                  <h3 className="font-semibold">{feature.title}</h3>
+                  <p className="text-sm text-blue-100">{feature.description}</p>
                 </div>
               </div>
-            </div>
+            ))}
+          </div>
 
-            {/* Footer */}
-            <div className="text-center mt-8 space-y-2">
-              <p className="text-gray-500 text-sm">
-                © 2024 SupplyFlow • Next Generation Supply Chain Platform
-              </p>
+          {/* Stats */}
+          <div className="mt-12 grid grid-cols-3 gap-4">
+            <div>
+              <div className="text-3xl font-bold">500+</div>
+              <div className="text-sm text-blue-200">Active Suppliers</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold">10k+</div>
+              <div className="text-sm text-blue-200">Products Managed</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold">99.9%</div>
+              <div className="text-sm text-blue-200">Uptime SLA</div>
             </div>
           </div>
         </div>
