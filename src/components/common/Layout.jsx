@@ -44,7 +44,7 @@ const Layout = () => {
         />
         
         <main className={`
-          flex-1 p-6 transition-all duration-300
+          flex-1 p-6 pt-24 transition-all duration-300
           ${isNavCollapsed ? 'lg:ml-16' : 'lg:ml-64'}
         `}>
           <div className="max-w-7xl mx-auto">
