@@ -1,6 +1,8 @@
 // src/components/purchase-orders/POModal.jsx
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, AlertCircle, Upload, FileText } from 'lucide-react';
+import { AIExtractionService } from '../../services/aiExtractionService';
+
 
 // Inline helper functions and data
 const generatePONumber = () => {
