@@ -114,20 +114,29 @@ const Header = ({ toggleMobileMenu }) => {
 
               {/* User Dropdown */}
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-50">
                   <div className="px-4 py-2 border-b border-gray-200">
                     <p className="text-sm text-gray-900">{user?.email}</p>
                     <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
                   </div>
                   <button
-                    onClick={() => {/* Handle profile */}}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Handle profile - for now just close the menu
+                      setShowUserMenu(false);
+                      // You can add navigation to profile page here
+                      // navigate('/profile');
+                    }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
                   >
                     <User className="h-4 w-4" />
                     <span>Profile</span>
                   </button>
                   <button
-                    onClick={handleLogout}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLogout();
+                    }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
                   >
                     <LogOut className="h-4 w-4" />
@@ -143,7 +152,7 @@ const Header = ({ toggleMobileMenu }) => {
       {/* Click outside to close dropdowns */}
       {(showUserMenu || showNotifications) && (
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-30"
           onClick={() => {
             setShowUserMenu(false);
             setShowNotifications(false);
