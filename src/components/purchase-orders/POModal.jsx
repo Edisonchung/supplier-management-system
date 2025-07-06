@@ -80,6 +80,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   try {
     // Use the real AI extraction service
     const extractedData = await AIExtractionService.extractFromFile(file);
+    console.log("Extracted data:", extractedData);
     
     // Validate the extracted data
     const validation = ValidationService.validateExtractedData(extractedData);
@@ -92,17 +93,17 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     // Update form data with extracted information
     setFormData(prev => ({
       ...prev,
-      orderNumber: extractedData.orderNumber || prev.orderNumber,
-      clientName: extractedData.clientName || prev.clientName,
-      orderDate: extractedData.orderDate || prev.orderDate,
-      deliveryDate: extractedData.deliveryDate || prev.deliveryDate,
-      paymentTerms: extractedData.paymentTerms || prev.paymentTerms,
-      notes: extractedData.notes || prev.notes,
+      orderNumber: extractedData.data.orderNumber || prev.orderNumber,
+      clientName: extractedData.data.clientName || prev.clientName,
+      orderDate: extractedData.data.orderDate || prev.orderDate,
+      deliveryDate: extractedData.data.deliveryDate || prev.deliveryDate,
+      paymentTerms: extractedData.data.paymentTerms || prev.paymentTerms,
+      notes: extractedData.data.notes || prev.notes,
     }));
     
     // Update items
-    if (extractedData.items && extractedData.items.length > 0) {
-      setItems(extractedData.items);
+    if (extractedData.data.items && extractedData.data.items.length > 0) {
+      setItems(extractedData.data.items);
     }
     
     // Show recommendations if any
@@ -114,8 +115,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
     
     // Show confidence score
-    if (extractedData.confidence) {
-      console.log(`Extraction confidence: ${(extractedData.confidence * 100).toFixed(0)}%`);
+    if (extractedData.metadata.confidence) {
+      console.log(`Extraction confidence: ${(extractedData.metadata.confidence * 100).toFixed(0)}%`);
     }
     
   } catch (error) {
