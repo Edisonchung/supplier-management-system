@@ -1,6 +1,6 @@
 // src/services/ai/RecommendationService.js
 // Generate AI-powered recommendations
-
+import { safeIncludes, safeEquals } from '../utils/safeString';
 import { MappingService } from './MappingService';
 import { CacheService } from './CacheService';
 
@@ -411,9 +411,10 @@ export class RecommendationService {
     const alternatives = new Set();
     
     for (const item of items) {
-      const matchingProducts = products.filter(p => 
-        p.name.toLowerCase().includes(item.productName.toLowerCase())
-      );
+     const matchingProducts = products.filter(p => 
+  p && p.name && item.productName && safeIncludes(p.name, item.productName)
+);
+
       
       for (const product of matchingProducts) {
         const supplier = suppliers.find(s => s.id === product.supplierId);
@@ -456,9 +457,8 @@ export class RecommendationService {
 
   static async checkStockAvailability(productName, requiredQuantity) {
     const products = JSON.parse(localStorage.getItem('products') || '[]');
-    const product = products.find(p => 
-      p.name.toLowerCase() === productName.toLowerCase()
-    );
+const product = safeFindByProperty(products, 'name', productName);
+
     
     if (!product) {
       return { available: 0, inStock: false };
