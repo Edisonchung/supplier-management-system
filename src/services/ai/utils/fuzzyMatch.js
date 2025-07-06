@@ -2,44 +2,116 @@
 
 import { safeToLowerCase } from './safeString';
 
-
+/**
+ * Fuzzy match two strings with safety checks
+ * @param {*} str1 - First string to compare
+ * @param {*} str2 - Second string to compare
+ * @param {number} threshold - Matching threshold (0-1)
+ * @returns {boolean} - Whether the strings match above the threshold
+ */
 export function fuzzyMatch(str1, str2, threshold = 0.8) {
-  if (!str1 || !str2) return false;
+  // Null/undefined checks
+  if (!str1 || !str2) {
+    return false;
+  }
   
+  // Convert to strings if necessary using the imported function
   const s1 = safeToLowerCase(str1).trim();
   const s2 = safeToLowerCase(str2).trim();
   
-  if (s1 === s2) return true;
-  if (s1.includes(s2) || s2.includes(s1)) return true;
+  // Empty string checks after conversion
+  if (!s1 || !s2) {
+    return false;
+  }
   
-  const similarity = calculateSimilarity(str1, str2);
+  // Exact match
+  if (s1 === s2) {
+    return true;
+  }
+  
+  // Contains match
+  if (s1.includes(s2) || s2.includes(s1)) {
+    return true;
+  }
+  
+  // Calculate similarity
+  const similarity = calculateSimilarity(s1, s2);
   return similarity >= threshold;
 }
 
+/**
+ * Calculate similarity between two strings
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @returns {number} - Similarity score (0-1)
+ */
 export function calculateSimilarity(str1, str2) {
-  const longer = str1.length > str2.length ? str1 : str2;
-  const shorter = str1.length > str2.length ? str2 : str1;
+  // Safety checks
+  if (!str1 || !str2) {
+    return 0;
+  }
   
-  if (longer.length === 0) return 1.0;
+  // Ensure strings
+  const s1 = String(str1);
+  const s2 = String(str2);
+  
+  const longer = s1.length > s2.length ? s1 : s2;
+  const shorter = s1.length > s2.length ? s2 : s1;
+  
+  if (longer.length === 0) {
+    return 1.0;
+  }
   
   const editDistance = levenshteinDistance(longer, shorter);
   return (longer.length - editDistance) / longer.length;
 }
 
+/**
+ * Calculate Levenshtein distance between two strings
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @returns {number} - Edit distance
+ */
 export function levenshteinDistance(str1, str2) {
+  // Safety checks
+  if (!str1 || !str2) {
+    return Math.max(str1?.length || 0, str2?.length || 0);
+  }
+  
+  // Ensure strings
+  const s1 = String(str1);
+  const s2 = String(str2);
+  
+  // Quick returns
+  if (s1 === s2) {
+    return 0;
+  }
+  
+  if (s1.length === 0) {
+    return s2.length;
+  }
+  
+  if (s2.length === 0) {
+    return s1.length;
+  }
+  
+  // Create matrix
   const matrix = [];
   
-  for (let i = 0; i <= str2.length; i++) {
+  // Initialize first column
+  for (let i = 0; i <= s2.length; i++) {
     matrix[i] = [i];
   }
   
-  for (let j = 0; j <= str1.length; j++) {
+  // Initialize first row
+  for (let j = 0; j <= s1.length; j++) {
     matrix[0][j] = j;
   }
   
-  for (let i = 1; i <= str2.length; i++) {
-    for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+  // Fill matrix
+  for (let i = 1; i <= s2.length; i++) {
+    for (let j = 1; j <= s1.length; j++) {
+      if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
         matrix[i][j] = matrix[i - 1][j - 1];
       } else {
         matrix[i][j] = Math.min(
@@ -51,134 +123,96 @@ export function levenshteinDistance(str1, str2) {
     }
   }
   
-  return matrix[str2.length][str1.length];
+  return matrix[s2.length][s1.length];
 }
 
-// ===================================
-// src/services/ai/utils/numberParser.js
-export function parseNumber(value) {
-  if (typeof value === 'number') return value;
-  
-  if (typeof value === 'string') {
-    // Remove currency symbols, commas, and spaces
-    const cleaned = value.replace(/[^0-9.-]/g, '');
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? 0 : parsed;
+/**
+ * Find best matching string from an array
+ * @param {string} input - Input string to match
+ * @param {string[]} options - Array of strings to match against
+ * @param {number} threshold - Minimum similarity threshold
+ * @returns {string|null} - Best matching string or null
+ */
+export function findBestMatch(input, options, threshold = 0.5) {
+  if (!input || !Array.isArray(options) || options.length === 0) {
+    return null;
   }
   
-  return 0;
-}
-
-export function formatCurrency(value, currency = 'MYR') {
-  const numValue = parseNumber(value);
-  return new Intl.NumberFormat('en-MY', {
-    style: 'currency',
-    currency: currency
-  }).format(numValue);
-}
-
-export function parsePercentage(value) {
-  if (typeof value === 'string' && value.includes('%')) {
-    return parseNumber(value) / 100;
+  const inputLower = safeToLowerCase(input).trim();
+  if (!inputLower) {
+    return null;
   }
-  return parseNumber(value);
-}
-
-export function roundToDecimals(value, decimals = 2) {
-  const factor = Math.pow(10, decimals);
-  return Math.round(value * factor) / factor;
-}
-
-// ===================================
-// src/services/ai/utils/dateUtils.js
-export function normalizeDate(dateValue) {
-  if (!dateValue) return '';
-
-  // If already in YYYY-MM-DD format
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-    return dateValue;
-  }
-
-  try {
-    const date = new Date(dateValue);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
-    }
-
-    // Try parsing common formats
-    const parsedDate = parseCommonDateFormats(dateValue);
-    if (parsedDate) {
-      return parsedDate;
-    }
-
-    return dateValue; // Return original if can't parse
-  } catch (error) {
-    console.error('Date parsing error:', error);
-    return dateValue;
-  }
-}
-
-export function parseCommonDateFormats(dateString) {
-  const formats = [
-    // MM/DD/YYYY
-    {
-      regex: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
-      parser: (match) => new Date(match[3], match[1] - 1, match[2])
-    },
-    // DD/MM/YYYY
-    {
-      regex: /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
-      parser: (match) => new Date(match[3], match[2] - 1, match[1])
-    },
-    // YYYY/MM/DD
-    {
-      regex: /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/,
-      parser: (match) => new Date(match[1], match[2] - 1, match[3])
-    },
-    // DD Month YYYY
-    {
-      regex: /^(\d{1,2})\s+(\w+)\s+(\d{4})$/,
-      parser: (match) => new Date(`${match[2]} ${match[1]}, ${match[3]}`)
-    }
-  ];
-
-  for (const format of formats) {
-    const match = dateString.match(format.regex);
-    if (match) {
-      const date = format.parser(match);
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-      }
-    }
-  }
-
-  return null;
-}
-
-export function isValidDate(dateString) {
-  const date = new Date(dateString);
-  return date instanceof Date && !isNaN(date);
-}
-
-export function daysBetween(date1, date2) {
-  const diffTime = Math.abs(date2 - date1);
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-}
-
-export function addDays(date, days) {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-}
-
-export function formatDate(date, format = 'YYYY-MM-DD') {
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
   
-  return format
-    .replace('YYYY', year)
-    .replace('MM', month)
-    .replace('DD', day);
+  let bestMatch = null;
+  let bestScore = 0;
+  
+  for (const option of options) {
+    if (!option) continue;
+    
+    const optionLower = safeToLowerCase(option).trim();
+    if (!optionLower) continue;
+    
+    // Exact match
+    if (optionLower === inputLower) {
+      return option;
+    }
+    
+    // Calculate similarity
+    const similarity = calculateSimilarity(inputLower, optionLower);
+    
+    if (similarity > bestScore && similarity >= threshold) {
+      bestScore = similarity;
+      bestMatch = option;
+    }
+  }
+  
+  return bestMatch;
 }
+
+/**
+ * Check if two strings are similar enough
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @param {number} maxDistance - Maximum allowed edit distance
+ * @returns {boolean} - Whether strings are similar
+ */
+export function areSimilar(str1, str2, maxDistance = 3) {
+  if (!str1 || !str2) {
+    return false;
+  }
+  
+  const s1 = safeToLowerCase(str1).trim();
+  const s2 = safeToLowerCase(str2).trim();
+  
+  if (!s1 || !s2) {
+    return false;
+  }
+  
+  if (s1 === s2) {
+    return true;
+  }
+  
+  const distance = levenshteinDistance(s1, s2);
+  return distance <= maxDistance;
+}
+
+/**
+ * Get similarity percentage between two strings
+ * @param {string} str1 - First string
+ * @param {string} str2 - Second string
+ * @returns {number} - Similarity percentage (0-100)
+ */
+export function getSimilarityPercentage(str1, str2) {
+  const similarity = calculateSimilarity(str1, str2);
+  return Math.round(similarity * 100);
+}
+
+// Export all functions as default as well
+export default {
+  fuzzyMatch,
+  calculateSimilarity,
+  levenshteinDistance,
+  findBestMatch,
+  areSimilar,
+  getSimilarityPercentage
+};
