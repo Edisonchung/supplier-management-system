@@ -160,10 +160,19 @@ export class ValidationService {
    * Validate supplier existence
    */
   static async validateSupplier(supplierName) {
+    // Early return if no supplier name provided
+    if (!supplierName) {
+      return {
+        exists: false,
+        suggestion: null,
+        suggestedId: null
+      };
+    }
+
     // Check cache first
     const cachedSuppliers = CacheService.getAllCachedSuppliers();
     let found = cachedSuppliers.find(s => 
-      s.name.toLowerCase() === supplierName.toLowerCase()
+      s && s.name && s.name.toLowerCase() === supplierName.toLowerCase()
     );
     
     if (found) {
@@ -173,7 +182,7 @@ export class ValidationService {
     // Check localStorage
     const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
     found = suppliers.find(s => 
-      s.name.toLowerCase() === supplierName.toLowerCase()
+      s && s.name && s.name.toLowerCase() === supplierName.toLowerCase()
     );
 
     if (found) {
@@ -181,11 +190,15 @@ export class ValidationService {
       return { exists: true, supplier: found };
     }
 
-    // Find best match using fuzzy matching
-    const suggestion = this.findBestMatch(supplierName, suppliers.map(s => ({
-      id: s.id,
-      name: s.name
-    })));
+    // Find best match using fuzzy matching - filter out invalid suppliers first
+    const validSuppliers = suppliers
+      .filter(s => s && s.name && s.id)
+      .map(s => ({
+        id: s.id,
+        name: s.name
+      }));
+
+    const suggestion = this.findBestMatch(supplierName, validSuppliers);
     
     return {
       exists: false,
@@ -285,9 +298,18 @@ export class ValidationService {
    * Validate product existence
    */
   static async validateProduct(productName) {
+    // Early return if no product name provided
+    if (!productName) {
+      return {
+        exists: false,
+        suggestion: null,
+        suggestedId: null
+      };
+    }
+
     const cachedProducts = CacheService.getAllCachedProducts();
     let found = cachedProducts.find(p => 
-      p.name.toLowerCase() === productName.toLowerCase()
+      p && p.name && p.name.toLowerCase() === productName.toLowerCase()
     );
 
     if (found) {
@@ -296,7 +318,7 @@ export class ValidationService {
 
     const products = JSON.parse(localStorage.getItem('products') || '[]');
     found = products.find(p => 
-      p.name.toLowerCase() === productName.toLowerCase()
+      p && p.name && p.name.toLowerCase() === productName.toLowerCase()
     );
 
     if (found) {
@@ -304,10 +326,16 @@ export class ValidationService {
       return { exists: true, product: found };
     }
 
-    const suggestion = this.findBestMatch(productName, products.map(p => ({
-      id: p.id,
-      name: p.name
-    })));
+    // Filter out invalid products first
+    const validProducts = products
+      .filter(p => p && p.name && p.id)
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        stock: p.stock || 0
+      }));
+
+    const suggestion = this.findBestMatch(productName, validProducts);
     
     return {
       exists: false,
@@ -441,11 +469,17 @@ export class ValidationService {
   }
 
   static findBestMatch(input, options) {
+    if (!input || !options || options.length === 0) {
+      return null;
+    }
+
     const lowInput = input.toLowerCase();
     let bestMatch = null;
     let bestScore = 0;
 
     for (const option of options) {
+      if (!option || !option.name) continue;
+      
       const lowOption = option.name.toLowerCase();
       
       // Exact match
@@ -469,9 +503,15 @@ export class ValidationService {
       
       score = Math.max(score, wordScore);
 
-      // Fuzzy match
-      if (MappingService.fuzzyMatch(lowInput, lowOption, 0.6)) {
-        score = Math.max(score, 0.6);
+      // Fuzzy match (check if MappingService has fuzzyMatch method)
+      if (typeof MappingService.fuzzyMatch === 'function') {
+        try {
+          if (MappingService.fuzzyMatch(lowInput, lowOption, 0.6)) {
+            score = Math.max(score, 0.6);
+          }
+        } catch (error) {
+          // Ignore fuzzy match errors
+        }
       }
 
       if (score > bestScore) {
