@@ -443,7 +443,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     value={formData.clientName}
                     onChange={(e) => handleInputChange('clientName', e.target.value)}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                      validationErrors.find(e => e.field === 'clientName') 
+                      validationErrors && validationErrors.find(e => e.field === 'clientName') 
                         ? 'border-red-500' 
                         : 'border-gray-300'
                     }`}
@@ -654,10 +654,10 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
               </div>
 
               {/* Items List */}
-              {validationErrors.find(e => e.field === 'items') && (
+              {validationErrors && validationErrors.find(e => e.field === 'items') && (
                 <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-600">
-                    {validationErrors.find(e => e.field === 'items').message}
+                    {validationErrors && validationErrors.find(e => e.field === 'items')?.message}
                   </p>
                 </div>
               )}
