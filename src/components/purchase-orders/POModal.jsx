@@ -68,84 +68,63 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   }, [editingPO]);
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+ const handleFileUpload = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
 
-    setExtracting(true);
-    setExtractionResult(null);
-    setValidationErrors([]);
-    setValidationWarnings([]);
+  setIsExtracting(true);
+  setExtractionError('');
 
-    try {
-      const formData = new FormData();
-      formData.append('pdf', file);
-
-      const response = await fetch(`${MCP_SERVER_URL}/api/extract-po`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to extract data');
-      }
-
-      const result = await response.json();
-      
-      if (!result.success) {
-        throw new Error(result.message || 'Extraction failed');
-      }
-
-      // Update form data with extracted information
-      setFormData(prev => ({
-        ...prev,
-        clientPoNumber: result.data.clientPoNumber || prev.clientPoNumber,
-        clientName: result.data.clientName || '',
-        clientContact: result.data.clientContact || '',
-        clientEmail: result.data.clientEmail || '',
-        clientPhone: result.data.clientPhone || '',
-        orderDate: result.data.orderDate || prev.orderDate,
-        requiredDate: result.data.requiredDate || '',
-        paymentTerms: result.data.paymentTerms || 'Net 30',
-        deliveryTerms: result.data.deliveryTerms || 'FOB',
-        items: result.data.items || []
-      }));
-      
-      // Store extraction result for display
-      setExtractionResult({
-        success: result.success,
-        confidence: result.confidence || 0.95,
-        model: result.model || 'AI Model',
-        validation: result.data._validation,
-        recommendations: result.data.recommendations
-      });
-      
-      // Check for duplicates
-      if (result.data.warnings) {
-        const dupWarning = result.data.warnings.find(w => w.type === 'duplicate');
-        if (dupWarning) {
-          setDuplicateWarning(dupWarning);
-        }
-      }
-      
-      // Set validation results
-      if (result.data._validation) {
-        setValidationErrors(result.data._validation.errors || []);
-        setValidationWarnings(result.data._validation.warnings || []);
-      }
-      
-      // Show recommendations if available
-      if (result.data.recommendations && result.data.recommendations.length > 0) {
-        setShowRecommendations(true);
-      }
-      
-    } catch (error) {
-      console.error('Extraction failed:', error);
-      alert('Failed to extract data from file. Please try again or enter manually.');
-    } finally {
-      setExtracting(false);
+  try {
+    // Use the real AI extraction service
+    const extractedData = await AIExtractionService.extractFromFile(file);
+    
+    // Validate the extracted data
+    const validation = AIExtractionService.validateExtraction(extractedData);
+    
+    if (!validation.isValid) {
+      setExtractionError(validation.errors.join(', '));
+      // Still populate form with partial data
     }
-  };
+    
+    // Update form data with extracted information
+    setFormData(prev => ({
+      ...prev,
+      orderNumber: extractedData.orderNumber || prev.orderNumber,
+      clientName: extractedData.clientName || prev.clientName,
+      orderDate: extractedData.orderDate || prev.orderDate,
+      deliveryDate: extractedData.deliveryDate || prev.deliveryDate,
+      paymentTerms: extractedData.paymentTerms || prev.paymentTerms,
+      notes: extractedData.notes || prev.notes,
+    }));
+    
+    // Update items
+    if (extractedData.items && extractedData.items.length > 0) {
+      setItems(extractedData.items);
+    }
+    
+    // Show recommendations if any
+    if (extractedData.recommendations && extractedData.recommendations.length > 0) {
+      const recommendationMessages = extractedData.recommendations
+        .map(rec => rec.message)
+        .join('\n');
+      alert(`AI Recommendations:\n${recommendationMessages}`);
+    }
+    
+    // Show confidence score
+    if (extractedData.confidence) {
+      console.log(`Extraction confidence: ${(extractedData.confidence * 100).toFixed(0)}%`);
+    }
+    
+  } catch (error) {
+    console.error('Extraction failed:', error);
+    setExtractionError(error.message || 'Failed to extract data from file');
+  } finally {
+    setIsExtracting(false);
+    // Reset file input
+    event.target.value = '';
+  }
+};
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
