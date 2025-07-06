@@ -1,6 +1,6 @@
 // src/services/ai/CacheService.js
 // Handle all caching logic
-
+import { safeEquals } from './utils/safeString';
 import { AI_CONFIG } from './config';
 
 export class CacheService {
@@ -158,16 +158,20 @@ export class CacheService {
   static refreshFromLocalStorage() {
     try {
       // Load suppliers
-      const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
-      suppliers.forEach(supplier => this.cacheSupplier(supplier));
+    const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
+    // Filter out invalid suppliers before caching
+    const validSuppliers = suppliers.filter(s => s && s.id && s.name);
+    validSuppliers.forEach(supplier => this.cacheSupplier(supplier));
 
-      // Load products
-      const products = JSON.parse(localStorage.getItem('products') || '[]');
-      products.forEach(product => this.cacheProduct(product));
-    } catch (error) {
-      console.error('Failed to refresh cache from localStorage:', error);
-    }
+    // Load products
+    const products = JSON.parse(localStorage.getItem('products') || '[]');
+    // Filter out invalid products before caching
+    const validProducts = products.filter(p => p && p.id && p.name);
+    validProducts.forEach(product => this.cacheProduct(product));
+  } catch (error) {
+    console.error('Failed to refresh cache from localStorage:', error);
   }
+}
 
   // Initialize cache
   static initialize() {
