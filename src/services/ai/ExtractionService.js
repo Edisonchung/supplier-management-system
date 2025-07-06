@@ -150,28 +150,47 @@ export class ExtractionService {
    * Determine file type
    */
   static getFileType(file) {
-    const extension = file.name.split('.').pop().toLowerCase();
-    const mimeType = file.type.toLowerCase();
+  // Safely get the file extension
+  const fileName = file.name || '';
+  const extension = fileName.split('.').pop().toLowerCase();
+  
+  // Safely get the mime type (file.type might be undefined or empty)
+  const mimeType = (file.type || '').toLowerCase();
 
-    if (mimeType === 'application/pdf' || extension === 'pdf') {
-      return 'pdf';
-    } else if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(extension)) {
-      return 'image';
-    } else if (
-      mimeType.includes('spreadsheet') || 
-      mimeType.includes('excel') || 
-      ['xlsx', 'xls', 'csv'].includes(extension)
-    ) {
-      return 'excel';
-    } else if (
-      mimeType === 'message/rfc822' || 
-      ['eml', 'msg'].includes(extension)
-    ) {
-      return 'email';
-    }
-    
-    return 'unknown';
+  // Check for PDF
+  if (mimeType === 'application/pdf' || extension === 'pdf') {
+    return 'pdf';
   }
+  
+  // Check for images
+  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(extension)) {
+    return 'image';
+  }
+  
+  // Check for Excel files
+  if (
+    mimeType.includes('spreadsheet') || 
+    mimeType.includes('excel') || 
+    ['xlsx', 'xls', 'csv'].includes(extension)
+  ) {
+    return 'excel';
+  }
+  
+  // Check for email files
+  if (
+    mimeType === 'message/rfc822' || 
+    ['eml', 'msg'].includes(extension)
+  ) {
+    return 'email';
+  }
+  
+  // If we can't determine the type, try to infer from extension
+  if (extension) {
+    console.warn(`Unknown file type for extension: ${extension}, mime: ${mimeType || 'none'}`);
+  }
+  
+  return 'unknown';
+}
 
   /**
    * Get mock extraction data for testing
