@@ -1,6 +1,6 @@
 // src/services/ai/ValidationService.js
 // Handle all validation logic
-
+import { safeEquals, safeFindByProperty } from './utils/safeString';
 import { CacheService } from './CacheService';
 import { MappingService } from './MappingService';
 import { fuzzyMatch, levenshteinDistance } from './utils/fuzzyMatch';
@@ -171,9 +171,8 @@ export class ValidationService {
 
     // Check cache first
     const cachedSuppliers = CacheService.getAllCachedSuppliers();
-    let found = cachedSuppliers.find(s => 
-      s && s.name && s.name.toLowerCase() === supplierName.toLowerCase()
-    );
+    let found = safeFindByProperty(cachedSuppliers, 'name', supplierName);
+
     
     if (found) {
       return { exists: true, supplier: found };
@@ -181,9 +180,8 @@ export class ValidationService {
 
     // Check localStorage
     const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
-    found = suppliers.find(s => 
-      s && s.name && s.name.toLowerCase() === supplierName.toLowerCase()
-    );
+    found = safeFindByProperty(suppliers, 'name', supplierName);
+
 
     if (found) {
       CacheService.cacheSupplier(found);
@@ -308,18 +306,16 @@ export class ValidationService {
     }
 
     const cachedProducts = CacheService.getAllCachedProducts();
-    let found = cachedProducts.find(p => 
-      p && p.name && p.name.toLowerCase() === productName.toLowerCase()
-    );
+    let found = safeFindByProperty(cachedProducts, 'name', productName);
+
 
     if (found) {
       return { exists: true, product: found };
     }
 
     const products = JSON.parse(localStorage.getItem('products') || '[]');
-    found = products.find(p => 
-      p && p.name && p.name.toLowerCase() === productName.toLowerCase()
-    );
+    found = safeFindByProperty(products, 'name', productName);
+
 
     if (found) {
       CacheService.cacheProduct(found);
