@@ -67,6 +67,11 @@ export class MappingService {
    * Find field value using multiple variations
    */
   static findFieldValue(data, variations) {
+    // Ensure data is an object and variations is an array
+    if (!data || typeof data !== 'object' || !Array.isArray(variations)) {
+      return null;
+    }
+
     // Direct match
     for (const variation of variations) {
       if (data[variation] !== undefined && data[variation] !== null) {
@@ -77,9 +82,15 @@ export class MappingService {
     // Case-insensitive match
     const dataKeys = Object.keys(data);
     for (const variation of variations) {
-      const key = dataKeys.find(k => 
-        k.toLowerCase() === variation.toLowerCase()
-      );
+      // Ensure variation is a string
+      if (typeof variation !== 'string') continue;
+      
+      const key = dataKeys.find(k => {
+        // Ensure k is a string before calling toLowerCase
+        if (typeof k !== 'string') return false;
+        return k.toLowerCase() === variation.toLowerCase();
+      });
+      
       if (key && data[key] !== undefined && data[key] !== null) {
         return data[key];
       }
@@ -87,10 +98,17 @@ export class MappingService {
 
     // Partial match
     for (const variation of variations) {
-      const key = dataKeys.find(k => 
-        k.toLowerCase().includes(variation.toLowerCase()) ||
-        variation.toLowerCase().includes(k.toLowerCase())
-      );
+      // Ensure variation is a string
+      if (typeof variation !== 'string') continue;
+      
+      const key = dataKeys.find(k => {
+        // Ensure k is a string before calling toLowerCase
+        if (typeof k !== 'string') return false;
+        const kLower = k.toLowerCase();
+        const variationLower = variation.toLowerCase();
+        return kLower.includes(variationLower) || variationLower.includes(kLower);
+      });
+      
       if (key && data[key] !== undefined && data[key] !== null) {
         return data[key];
       }
@@ -115,29 +133,16 @@ export class MappingService {
   static extractItems(data) {
     // Check for items in various locations
     const itemsArray = data.items || data.lineItems || data.products || 
-                      data.line_items || data['line items'] || data.details || [];
+                      data.line_items || data['line items'] || [];
 
-    // If it's not an array, try to extract from table structure
     if (!Array.isArray(itemsArray)) {
-      if (data.table || data.itemTable) {
-        return this.extractItemsFromTable(data.table || data.itemTable);
-      }
       return [];
     }
 
-    // Map items to our schema
     return itemsArray.map((item, index) => {
-      const mappedItem = {
-        id: item.id || `item-${Date.now()}-${index}`,
-        productName: '',
-        productCode: '',
-        quantity: 1,
-        unitPrice: 0,
-        totalPrice: 0,
-        description: ''
-      };
+      const mappedItem = {};
 
-      // Map fields for each item
+      // Map item fields
       for (const [targetField, variations] of Object.entries(ITEM_FIELD_MAPPINGS)) {
         const value = this.findFieldValue(item, variations);
         if (value !== null && value !== undefined) {
@@ -145,42 +150,30 @@ export class MappingService {
         }
       }
 
-      // Parse numeric values
-      mappedItem.quantity = this.parseNumber(mappedItem.quantity) || 1;
-      mappedItem.unitPrice = this.parseNumber(mappedItem.unitPrice) || 0;
-      mappedItem.totalPrice = this.parseNumber(mappedItem.totalPrice) || 
-                             (mappedItem.quantity * mappedItem.unitPrice);
-
-      // Ensure product name is filled
-      if (!mappedItem.productName) {
-        mappedItem.productName = mappedItem.description || 
-                                item.name || item.title || 'Unknown Product';
+      // Ensure numeric fields are properly parsed
+      if (mappedItem.quantity !== undefined) {
+        mappedItem.quantity = this.parseNumber(mappedItem.quantity);
       }
+      if (mappedItem.unitPrice !== undefined) {
+        mappedItem.unitPrice = this.parseNumber(mappedItem.unitPrice);
+      }
+      if (mappedItem.totalPrice !== undefined) {
+        mappedItem.totalPrice = this.parseNumber(mappedItem.totalPrice);
+      }
+
+      // Calculate total if not provided
+      if (!mappedItem.totalPrice && mappedItem.quantity && mappedItem.unitPrice) {
+        mappedItem.totalPrice = mappedItem.quantity * mappedItem.unitPrice;
+      }
+
+      // Set defaults
+      mappedItem.productName = mappedItem.productName || `Item ${index + 1}`;
+      mappedItem.quantity = mappedItem.quantity || 1;
+      mappedItem.unitPrice = mappedItem.unitPrice || 0;
+      mappedItem.totalPrice = mappedItem.totalPrice || 0;
 
       return mappedItem;
     });
-  }
-
-  /**
-   * Extract items from table structure
-   */
-  static extractItemsFromTable(tableData) {
-    if (!Array.isArray(tableData)) return [];
-
-    // Skip header row if it exists
-    const hasHeader = tableData[0] && typeof tableData[0][0] === 'string' && 
-                     tableData[0][0].toLowerCase().includes('product');
-    const dataRows = hasHeader ? tableData.slice(1) : tableData;
-
-    return dataRows.map((row, index) => ({
-      id: `item-${Date.now()}-${index}`,
-      productName: row[0] || row.description || '',
-      productCode: row[1] || row.code || '',
-      quantity: this.parseNumber(row[2] || row.quantity || 1),
-      unitPrice: this.parseNumber(row[3] || row.price || 0),
-      totalPrice: this.parseNumber(row[4] || row.total || 0),
-      description: row[5] || row.notes || ''
-    }));
   }
 
   /**
@@ -188,29 +181,28 @@ export class MappingService {
    */
   static extractAddress(data, type) {
     const addressFields = {
-      shipping: ['shippingAddress', 'shipping_address', 'ship to', 'delivery address'],
-      billing: ['billingAddress', 'billing_address', 'bill to', 'invoice address']
+      shipping: ['shippingAddress', 'shipping_address', 'ship to', 'ship_to', 'delivery_address'],
+      billing: ['billingAddress', 'billing_address', 'bill to', 'bill_to', 'invoice_address']
     };
 
     const fields = addressFields[type] || [];
-    const addressData = this.findFieldValue(data, fields);
+    const addressValue = this.findFieldValue(data, fields);
 
-    if (typeof addressData === 'string') {
-      return addressData;
+    if (typeof addressValue === 'string') {
+      return addressValue;
     }
 
-    if (typeof addressData === 'object' && addressData !== null) {
-      // Construct address from parts
-      const parts = [
-        addressData.line1 || addressData.street || addressData.address1,
-        addressData.line2 || addressData.address2,
-        addressData.city,
-        addressData.state || addressData.province,
-        addressData.postalCode || addressData.zip || addressData.postcode,
-        addressData.country
-      ].filter(Boolean);
-
-      return parts.join(', ');
+    if (typeof addressValue === 'object' && addressValue !== null) {
+      // Format address object into string
+      const parts = [];
+      if (addressValue.street || addressValue.address1) parts.push(addressValue.street || addressValue.address1);
+      if (addressValue.address2) parts.push(addressValue.address2);
+      if (addressValue.city) parts.push(addressValue.city);
+      if (addressValue.state || addressValue.province) parts.push(addressValue.state || addressValue.province);
+      if (addressValue.zip || addressValue.postal_code) parts.push(addressValue.zip || addressValue.postal_code);
+      if (addressValue.country) parts.push(addressValue.country);
+      
+      return parts.filter(Boolean).join(', ');
     }
 
     return '';
@@ -239,7 +231,7 @@ export class MappingService {
     if (!dateValue) return '';
 
     // If already in YYYY-MM-DD format
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
       return dateValue;
     }
 
@@ -254,12 +246,13 @@ export class MappingService {
           /(\d{1,2})\s+(\w+)\s+(\d{4})/ // DD Month YYYY
         ];
 
-        for (const format of formats) {
-          const match = dateValue.match(format);
-          if (match) {
-            // Convert to Date object based on format
-            // This is simplified - you might want more robust parsing
-            return this.parseMatchedDate(match);
+        if (typeof dateValue === 'string') {
+          for (const format of formats) {
+            const match = dateValue.match(format);
+            if (match) {
+              // Convert to Date object based on format
+              return this.parseMatchedDate(match);
+            }
           }
         }
 
@@ -304,17 +297,22 @@ export class MappingService {
    * Apply fuzzy matching for field values
    */
   static fuzzyMatch(input, target, threshold = 0.8) {
+    // Ensure both inputs are strings
+    if (typeof input !== 'string' || typeof target !== 'string') {
+      return false;
+    }
+    
     const s1 = input.toLowerCase().trim();
     const s2 = target.toLowerCase().trim();
     
-    if (s1 === s2) return 1;
-    if (s1.includes(s2) || s2.includes(s1)) return 0.9;
+    if (s1 === s2) return true;
+    if (s1.includes(s2) || s2.includes(s1)) return true;
     
     // Simple similarity calculation
     const longer = s1.length > s2.length ? s1 : s2;
     const shorter = s1.length > s2.length ? s2 : s1;
     
-    if (longer.length === 0) return 1.0;
+    if (longer.length === 0) return true;
     
     const editDistance = this.levenshteinDistance(longer, shorter);
     const similarity = (longer.length - editDistance) / longer.length;
@@ -326,6 +324,11 @@ export class MappingService {
    * Calculate Levenshtein distance
    */
   static levenshteinDistance(str1, str2) {
+    // Ensure inputs are strings
+    if (typeof str1 !== 'string' || typeof str2 !== 'string') {
+      return 0;
+    }
+
     const matrix = [];
     
     for (let i = 0; i <= str2.length; i++) {
