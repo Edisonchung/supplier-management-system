@@ -3,6 +3,9 @@
 
 import { FIELD_MAPPINGS, ITEM_FIELD_MAPPINGS } from './config';
 import { CacheService } from './CacheService';
+import { fuzzyMatch, levenshteinDistance } from './utils/fuzzyMatch';
+import { parseNumber, formatCurrency } from './utils/numberParser';
+import { normalizeDate, isValidDate } from './utils/dateUtils';
 
 export class MappingService {
   /**
