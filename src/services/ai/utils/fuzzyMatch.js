@@ -1,12 +1,18 @@
 // src/services/ai/utils/fuzzyMatch.js
+
+import { safeToLowerCase } from './safeString';
+
+
 export function fuzzyMatch(str1, str2, threshold = 0.8) {
-  const s1 = str1.toLowerCase().trim();
-  const s2 = str2.toLowerCase().trim();
+  if (!str1 || !str2) return false;
   
-  if (s1 === s2) return 1;
-  if (s1.includes(s2) || s2.includes(s1)) return 0.9;
+  const s1 = safeToLowerCase(str1).trim();
+  const s2 = safeToLowerCase(str2).trim();
   
-  const similarity = calculateSimilarity(s1, s2);
+  if (s1 === s2) return true;
+  if (s1.includes(s2) || s2.includes(s1)) return true;
+  
+  const similarity = calculateSimilarity(str1, str2);
   return similarity >= threshold;
 }
 
