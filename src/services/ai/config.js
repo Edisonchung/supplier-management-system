@@ -3,7 +3,7 @@
 
 export const AI_CONFIG = {
   MCP_SERVER_URL: import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:3001',
-  TIMEOUT: 30000, // 30 seconds
+  TIMEOUT: 60000, // 30 seconds
   MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
   MAX_HISTORY_SIZE: 100,
   SUPPORTED_FORMATS: ['pdf', 'image', 'excel', 'email'],
