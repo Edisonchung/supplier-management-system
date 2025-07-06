@@ -103,7 +103,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     
     // Update items
     if (extractedData.data.items && extractedData.data.items.length > 0) {
-      setItems(extractedData.data.items);
+      setFormData(prev => ({ ...prev, items: extractedData.data.items }));
     }
     
     // Show recommendations if any
