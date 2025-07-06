@@ -1,6 +1,7 @@
 // src/components/purchase-orders/POModal.jsx
 import React, { useState, useEffect } from 'react';
 import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { AIExtractionService, ValidationService } from "../../services/ai";
 
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
@@ -80,7 +81,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     const extractedData = await AIExtractionService.extractFromFile(file);
     
     // Validate the extracted data
-    const validation = AIExtractionService.validateExtraction(extractedData);
+    const validation = ValidationService.validateExtractedData(extractedData);
     
     if (!validation.isValid) {
       setExtractionError(validation.errors.join(', '));
