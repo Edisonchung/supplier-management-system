@@ -3,6 +3,9 @@
 
 import { CacheService } from './CacheService';
 import { MappingService } from './MappingService';
+import { fuzzyMatch, levenshteinDistance } from './utils/fuzzyMatch';
+import { parseNumber, formatCurrency } from './utils/numberParser';
+import { normalizeDate, isValidDate } from './utils/dateUtils';
 
 export class ValidationService {
   /**
