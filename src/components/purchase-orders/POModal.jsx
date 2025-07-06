@@ -6,6 +6,7 @@ import { AIExtractionService, ValidationService } from "../../services/ai";
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [extractionError, setExtractionError] = useState("");
   const [formData, setFormData] = useState({
     poNumber: '',
     clientPoNumber: '',
@@ -73,8 +74,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const file = event.target.files[0];
   if (!file) return;
 
-  setIsExtracting(true);
-  setExtractionError('');
+  setExtracting(true);
+  setValidationErrors([]);
 
   try {
     // Use the real AI extraction service
@@ -84,7 +85,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     const validation = ValidationService.validateExtractedData(extractedData);
     
     if (!validation.isValid) {
-      setExtractionError(validation.errors.join(', '));
+      setValidationErrors(validation.errors);
       // Still populate form with partial data
     }
     
@@ -119,9 +120,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     
   } catch (error) {
     console.error('Extraction failed:', error);
-    setExtractionError(error.message || 'Failed to extract data from file');
+    setValidationErrors([{ field: 'file', message: error.message || 'Failed to extract data from file' }]);
   } finally {
-    setIsExtracting(false);
+    setExtracting(false);
     // Reset file input
     event.target.value = '';
   }
@@ -304,6 +305,16 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 </div>
               </label>
             </div>
+            {/* Extraction Error Display */}
+            {extractionError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-red-800">Extraction Error</p>
+                  <p className="text-sm text-red-600 mt-1">{extractionError}</p>
+                </div>
+              </div>
+            )}
 
             {/* Extraction Result */}
             {extractionResult && (
