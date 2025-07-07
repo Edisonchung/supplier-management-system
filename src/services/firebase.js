@@ -10,7 +10,8 @@ class MockFirebase {
       purchaseOrders: JSON.parse(localStorage.getItem('purchaseOrders') || '[]'),
       users: JSON.parse(localStorage.getItem('users') || '[]'),
       proformaInvoices: JSON.parse(localStorage.getItem('proformaInvoices') || '[]'),
-      clientInvoices: JSON.parse(localStorage.getItem('clientInvoices') || '[]')
+      clientInvoices: JSON.parse(localStorage.getItem('clientInvoices') || '[]'),
+      clientPurchaseOrders: JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]')
     };
     
     // Initialize with sample data if empty
@@ -225,6 +226,110 @@ class MockFirebase {
 
 // Create singleton instance
 export const mockFirebase = new MockFirebase();
+
+// Create a mock Firestore-compatible db object
+export const db = {
+  // Mock collection method for Firestore compatibility
+  collection: (collectionName) => {
+    return {
+      // Mock add method
+      add: async (data) => {
+        const result = await mockFirebase.firestore.collection(collectionName).add(data);
+        return { id: result.id };
+      },
+      // Mock doc method
+      doc: (docId) => ({
+        get: () => mockFirebase.firestore.collection(collectionName).doc(docId).get(),
+        update: (data) => mockFirebase.firestore.collection(collectionName).doc(docId).update(data),
+        delete: () => mockFirebase.firestore.collection(collectionName).doc(docId).delete()
+      })
+    };
+  }
+};
+
+// Mock Firestore functions for compatibility
+export const collection = (db, collectionName) => {
+  return mockFirebase.firestore.collection(collectionName);
+};
+
+export const doc = (db, collectionName, docId) => {
+  return mockFirebase.firestore.collection(collectionName).doc(docId);
+};
+
+export const addDoc = async (collectionRef, data) => {
+  if (collectionRef.add) {
+    return await collectionRef.add(data);
+  }
+  // Handle case where collectionRef is a string (collection name)
+  const collectionName = typeof collectionRef === 'string' ? collectionRef : 'unknown';
+  return await mockFirebase.firestore.collection(collectionName).add(data);
+};
+
+export const updateDoc = async (docRef, data) => {
+  if (docRef.update) {
+    return await docRef.update(data);
+  }
+  throw new Error('Invalid document reference');
+};
+
+export const deleteDoc = async (docRef) => {
+  if (docRef.delete) {
+    return await docRef.delete();
+  }
+  throw new Error('Invalid document reference');
+};
+
+export const getDoc = async (docRef) => {
+  if (docRef.get) {
+    return await docRef.get();
+  }
+  throw new Error('Invalid document reference');
+};
+
+export const getDocs = async (collectionRef) => {
+  if (collectionRef.get) {
+    return await collectionRef.get();
+  }
+  // Handle case where collectionRef is a string (collection name)
+  const collectionName = typeof collectionRef === 'string' ? collectionRef : 'unknown';
+  return await mockFirebase.firestore.collection(collectionName).get();
+};
+
+// Mock query functions
+export const query = (collectionRef, ...constraints) => {
+  // For now, just return the collection ref
+  // In a real implementation, you'd apply the constraints
+  return collectionRef;
+};
+
+export const where = (field, operator, value) => {
+  return { field, operator, value };
+};
+
+export const orderBy = (field, direction = 'asc') => {
+  return { field, direction };
+};
+
+export const serverTimestamp = () => {
+  return new Date().toISOString();
+};
+
+// Mock real-time listeners
+export const onSnapshot = (ref, callback, errorCallback) => {
+  // Simulate real-time updates by calling the callback immediately
+  if (ref.get) {
+    ref.get().then(snapshot => {
+      callback(snapshot);
+    }).catch(error => {
+      if (errorCallback) errorCallback(error);
+    });
+  }
+  
+  // Return a mock unsubscribe function
+  return () => {
+    // Cleanup logic would go here
+  };
+};
 
 // Initialize sample data
 initializeSampleData();
