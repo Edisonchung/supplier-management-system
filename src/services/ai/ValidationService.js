@@ -1,11 +1,12 @@
 // src/services/ai/ValidationService.js
 // Handle all validation logic
-import { safeEquals, safeFindByProperty } from './utils/safeString';
+
 import { CacheService } from './CacheService';
 import { MappingService } from './MappingService';
 import { fuzzyMatch, levenshteinDistance } from './utils/fuzzyMatch';
 import { parseNumber, formatCurrency } from './utils/numberParser';
 import { normalizeDate, isValidDate } from './utils/dateUtils';
+import { safeEquals, safeFindByProperty } from './utils/safeString';
 
 export class ValidationService {
   /**
@@ -161,7 +162,7 @@ export class ValidationService {
    */
   static async validateSupplier(supplierName) {
     // Early return if no supplier name provided
-    if (!supplierName) {
+    if (!supplierName || typeof supplierName !== 'string') {
       return {
         exists: false,
         suggestion: null,
@@ -172,7 +173,6 @@ export class ValidationService {
     // Check cache first
     const cachedSuppliers = CacheService.getAllCachedSuppliers();
     let found = safeFindByProperty(cachedSuppliers, 'name', supplierName);
-
     
     if (found) {
       return { exists: true, supplier: found };
@@ -182,7 +182,6 @@ export class ValidationService {
     const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
     found = safeFindByProperty(suppliers, 'name', supplierName);
 
-
     if (found) {
       CacheService.cacheSupplier(found);
       return { exists: true, supplier: found };
@@ -190,7 +189,7 @@ export class ValidationService {
 
     // Find best match using fuzzy matching - filter out invalid suppliers first
     const validSuppliers = suppliers
-      .filter(s => s && s.name && s.id)
+      .filter(s => s && s.name && s.id && typeof s.name === 'string')
       .map(s => ({
         id: s.id,
         name: s.name
@@ -297,7 +296,7 @@ export class ValidationService {
    */
   static async validateProduct(productName) {
     // Early return if no product name provided
-    if (!productName) {
+    if (!productName || typeof productName !== 'string') {
       return {
         exists: false,
         suggestion: null,
@@ -308,14 +307,12 @@ export class ValidationService {
     const cachedProducts = CacheService.getAllCachedProducts();
     let found = safeFindByProperty(cachedProducts, 'name', productName);
 
-
     if (found) {
       return { exists: true, product: found };
     }
 
     const products = JSON.parse(localStorage.getItem('products') || '[]');
     found = safeFindByProperty(products, 'name', productName);
-
 
     if (found) {
       CacheService.cacheProduct(found);
@@ -324,7 +321,7 @@ export class ValidationService {
 
     // Filter out invalid products first
     const validProducts = products
-      .filter(p => p && p.name && p.id)
+      .filter(p => p && p.name && p.id && typeof p.name === 'string')
       .map(p => ({
         id: p.id,
         name: p.name,
@@ -465,7 +462,7 @@ export class ValidationService {
   }
 
   static findBestMatch(input, options) {
-    if (!input || !options || options.length === 0) {
+    if (!input || !options || options.length === 0 || typeof input !== 'string') {
       return null;
     }
 
@@ -474,7 +471,7 @@ export class ValidationService {
     let bestScore = 0;
 
     for (const option of options) {
-      if (!option || !option.name) continue;
+      if (!option || !option.name || typeof option.name !== 'string') continue;
       
       const lowOption = option.name.toLowerCase();
       
