@@ -1,6 +1,13 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from '../services/firebase';
+import { 
+  auth,
+  signInWithEmailAndPassword as firebaseSignIn,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged
+} from '../config/firebase';
 
 const AuthContext = createContext({});
 
@@ -17,30 +24,49 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (error) {
-        console.error('Error parsing saved user:', error);
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // User is signed in
+        const userData = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+          photoURL: firebaseUser.photoURL,
+          // Default role for new users - in production, fetch from Firestore
+          role: determineUserRole(firebaseUser.email)
+        };
+        setUser(userData);
+        localStorage.setItem('currentUser', JSON.stringify(userData));
+      } else {
+        // User is signed out
+        setUser(null);
         localStorage.removeItem('currentUser');
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    });
+
+    // Cleanup subscription
+    return () => unsubscribe();
   }, []);
+
+  // Helper function to determine user role
+  // In production, this should fetch from Firestore based on user document
+  const determineUserRole = (email) => {
+    // Demo accounts
+    if (email === 'admin@company.com') return 'admin';
+    if (email === 'manager@company.com') return 'manager';
+    if (email === 'employee@company.com') return 'employee';
+    if (email === 'viewer@company.com') return 'viewer';
+    
+    // Default role for Google sign-in users
+    return 'viewer'; // You can change this default role
+  };
 
   const login = async (email, password) => {
     try {
-      const result = await signInWithEmailAndPassword(email, password);
-      const userData = {
-        uid: result.user.uid,
-        email: result.user.email,
-        displayName: result.user.displayName,
-        role: result.user.role
-      };
-      setUser(userData);
-      localStorage.setItem('currentUser', JSON.stringify(userData));
+      const result = await firebaseSignIn(auth, email, password);
+      // The onAuthStateChanged listener will handle setting the user
       return result;
     } catch (error) {
       console.error('Login error:', error);
@@ -48,26 +74,42 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const loginWithGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      // Optional: Add custom parameters
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      
+      const result = await signInWithPopup(auth, provider);
+      // The onAuthStateChanged listener will handle setting the user
+      return result;
+    } catch (error) {
+      console.error('Google login error:', error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
-      await signOut();
-      setUser(null);
-      // Clear all auth-related data
-      localStorage.removeItem('currentUser');
-      // Clear navigation state
+      await signOut(auth);
+      // Clear any additional local data
       localStorage.removeItem('navCollapsed');
-      // Redirect will be handled by the component
+      // The onAuthStateChanged listener will handle clearing the user
     } catch (error) {
       console.error('Logout error:', error);
       // Even if signOut fails, clear local state
       setUser(null);
       localStorage.removeItem('currentUser');
+      throw error;
     }
   };
 
   const value = {
     user,
     login,
+    loginWithGoogle,
     logout,
     loading
   };
