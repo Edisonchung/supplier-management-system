@@ -5,17 +5,20 @@ import {
   AlertCircle, X, Eye, Download, 
   FileSpreadsheet, Image, Zap, ArrowRight,
   Info, Edit2, Save, AlertTriangle,
-  Package, Building2, FileCheck, Brain
+  Package, Building2, FileCheck, Brain,
+  ShoppingCart
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { AIExtractionService } from '../../services/ai/AIExtractionService';
 import { useSuppliersDual } from '../../hooks/useSuppliersDual';
 import { useProductsDual } from '../../hooks/useProductsDual';
+import { useNavigate } from 'react-router-dom';
 
 const QuickImport = ({ showNotification }) => {
   const { user } = useAuth();
   const permissions = usePermissions();
+  const navigate = useNavigate();
   const { suppliers, addSupplier } = useSuppliersDual();
   const { products, addProduct } = useProductsDual();
   
@@ -107,7 +110,7 @@ const QuickImport = ({ showNotification }) => {
                           (result.data.buyer && result.data.buyer.includes('Flow Solution')) ||
                           (result.data.type === 'purchase_order' && !result.data.supplierName);
         
-        if (isClientPO) {
+        if (isClientPO || importType === 'client_po') {
           // This is a CLIENT PO - extract client info, not supplier
           cleanedData = {
             ...result.data,
@@ -123,10 +126,17 @@ const QuickImport = ({ showNotification }) => {
             documentNumber: result.data.documentNumber || result.data.poNumber,
             date: result.data.date || result.data.orderDate,
             totalAmount: result.data.totalAmount || result.data.grandTotal || result.data.total || 0,
-            items: result.data.items || [],
+            items: (result.data.items || []).map(item => ({
+              ...item,
+              sourcingStatus: 'pending' // Mark all items as needing sourcing
+            })),
             // Add sourcing status
             sourcingStatus: 'pending',
-            sourcingNotes: 'Suppliers need to be identified for these items'
+            sourcingNotes: 'Suppliers need to be identified for these items',
+            // Add delivery info if available
+            deliveryAddress: result.data.shipTo || result.data.deliveryAddress,
+            deliveryDate: result.data.deliveryDate || result.data.requiredDate,
+            paymentTerms: result.data.paymentTerms || 'Net 30 days'
           };
         } else if (result.data.supplierName || result.data.vendor) {
           // This is a SUPPLIER document (PI or Invoice)
@@ -217,10 +227,46 @@ const QuickImport = ({ showNotification }) => {
       // Import based on detected type
       if (data.type === 'client_purchase_order') {
         // Import as Client PO - needs sourcing
-        showNotification('Client PO import - You need to source suppliers for these items', 'info');
-        // Here you would save the client PO and mark items as needing sourcing
-        // This could create entries in a "sourcing_required" collection
-      } else if (data.type === 'purchase_order' || importType === 'client_po') {
+        // Save to localStorage/Firestore through your service
+        const clientPOData = {
+          clientName: data.clientName,
+          clientPONumber: data.clientPONumber,
+          date: data.date,
+          items: data.items,
+          totalAmount: data.totalAmount,
+          deliveryAddress: data.deliveryAddress,
+          deliveryDate: data.deliveryDate,
+          paymentTerms: data.paymentTerms,
+          notes: data.sourcingNotes,
+          status: 'sourcing_required',
+          sourcingStatus: 'pending',
+          uploadedFile: {
+            name: file.name,
+            size: file.size,
+            type: file.type
+          },
+          createdAt: new Date().toISOString(),
+          createdBy: user?.email || 'system'
+        };
+
+        // Here you would save using your dual-mode service
+        // For now, we'll use localStorage as example
+        const existingClientPOs = JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]');
+        const newClientPO = {
+          id: `CPO-${Date.now()}`,
+          ...clientPOData
+        };
+        existingClientPOs.push(newClientPO);
+        localStorage.setItem('clientPurchaseOrders', JSON.stringify(existingClientPOs));
+        
+        showNotification('Client PO imported successfully! Redirecting to sourcing dashboard...', 'success');
+        
+        // Navigate to sourcing dashboard after 2 seconds
+        setTimeout(() => {
+          navigate('/sourcing');
+        }, 2000);
+        
+      } else if (data.type === 'purchase_order' || importType === 'supplier_po') {
         // Legacy PO handling
         showNotification('Purchase Order import functionality coming soon!', 'info');
       } else if (data.type === 'proforma_invoice' || importType === 'supplier_pi') {
@@ -266,6 +312,7 @@ const QuickImport = ({ showNotification }) => {
     if (!extractedData) return null;
 
     const { data, validation, duplicateCheck, recommendations, metadata } = extractedData;
+    const isClientPO = data.type === 'client_purchase_order';
 
     return (
       <div className="space-y-6">
@@ -279,10 +326,35 @@ const QuickImport = ({ showNotification }) => {
                 <p>Confidence: <span className="font-medium">{(metadata?.confidence * 100 || 85).toFixed(0)}%</span></p>
                 <p>Processing Time: <span className="font-medium">{metadata?.extractionTime?.toFixed(0) || 'N/A'}ms</span></p>
                 <p>Document Type: <span className="font-medium">{data.type?.replace('_', ' ').toUpperCase() || 'Unknown'}</span></p>
+                {isClientPO && (
+                  <p className="text-orange-700 font-medium">
+                    ⚠️ This is a Client PO - suppliers need to be sourced for these items
+                  </p>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Client PO Sourcing Alert */}
+        {isClientPO && (
+          <div className="bg-orange-50 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <ShoppingCart className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-medium text-orange-900">Sourcing Required</h3>
+                <p className="mt-1 text-sm text-orange-700">
+                  This is a purchase order from your client. After importing, you'll need to:
+                </p>
+                <ul className="mt-2 text-sm text-orange-700 list-disc list-inside">
+                  <li>Find suppliers for each item</li>
+                  <li>Create purchase orders to those suppliers</li>
+                  <li>Track fulfillment and delivery</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Validation Warnings */}
         {validation && !validation.isValid && (
@@ -346,6 +418,24 @@ const QuickImport = ({ showNotification }) => {
 
           {/* Main Data Fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.clientName && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Client Name
+                </label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedData.clientName || ''}
+                    onChange={(e) => handleFieldChange('clientName', e.target.value)}
+                    className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  />
+                ) : (
+                  <p className="text-gray-900">{data.clientName}</p>
+                )}
+              </div>
+            )}
+
             {data.supplierName && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -364,20 +454,20 @@ const QuickImport = ({ showNotification }) => {
               </div>
             )}
 
-            {data.documentNumber && (
+            {(data.documentNumber || data.clientPONumber) && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Document Number
+                  {isClientPO ? 'Client PO Number' : 'Document Number'}
                 </label>
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.documentNumber}
-                    onChange={(e) => handleFieldChange('documentNumber', e.target.value)}
+                    value={editedData.documentNumber || editedData.clientPONumber}
+                    onChange={(e) => handleFieldChange(isClientPO ? 'clientPONumber' : 'documentNumber', e.target.value)}
                     className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
                   />
                 ) : (
-                  <p className="text-gray-900">{data.documentNumber}</p>
+                  <p className="text-gray-900">{data.documentNumber || data.clientPONumber}</p>
                 )}
               </div>
             )}
@@ -417,6 +507,24 @@ const QuickImport = ({ showNotification }) => {
                 )}
               </div>
             )}
+
+            {data.deliveryDate && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Delivery Date
+                </label>
+                {editMode ? (
+                  <input
+                    type="date"
+                    value={editedData.deliveryDate}
+                    onChange={(e) => handleFieldChange('deliveryDate', e.target.value)}
+                    className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+                  />
+                ) : (
+                  <p className="text-gray-900">{new Date(data.deliveryDate).toLocaleDateString()}</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Items Table */}
@@ -431,17 +539,26 @@ const QuickImport = ({ showNotification }) => {
                       <th className="px-4 py-2 text-center">Quantity</th>
                       <th className="px-4 py-2 text-right">Unit Price</th>
                       <th className="px-4 py-2 text-right">Total</th>
+                      {isClientPO && <th className="px-4 py-2 text-center">Sourcing</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {data.items.map((item, idx) => (
                       <tr key={idx}>
-                        <td className="px-4 py-2">{String(item.productName || item.name || '')}</td>
+                        <td className="px-4 py-2">{String(item.productName || item.name || item.description || '')}</td>
                         <td className="px-4 py-2 text-center">{Number(item.quantity || 0)}</td>
                         <td className="px-4 py-2 text-right">RM {Number(item.unitPrice || 0).toFixed(2)}</td>
                         <td className="px-4 py-2 text-right">
                           RM {(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toFixed(2)}
                         </td>
+                        {isClientPO && (
+                          <td className="px-4 py-2 text-center">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              Pending
+                            </span>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -485,7 +602,7 @@ const QuickImport = ({ showNotification }) => {
             className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors inline-flex items-center gap-2"
           >
             <CheckCircle className="h-4 w-4" />
-            Import Data
+            {isClientPO ? 'Import to Sourcing' : 'Import Data'}
           </button>
         </div>
       </div>
