@@ -1,13 +1,15 @@
-// src/context/AuthContext.jsx
+// src/context/AuthContext.jsx - Enhanced version with Firestore roles
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { 
   auth,
+  db,
   signInWithEmailAndPassword as firebaseSignIn,
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged
 } from '../config/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const AuthContext = createContext({});
 
@@ -28,16 +30,38 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // User is signed in
-        const userData = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
-          photoURL: firebaseUser.photoURL,
-          // Default role for new users - in production, fetch from Firestore
-          role: determineUserRole(firebaseUser.email)
-        };
-        setUser(userData);
-        localStorage.setItem('currentUser', JSON.stringify(userData));
+        try {
+          // Get or create user document in Firestore
+          const userDoc = await getUserDocument(firebaseUser);
+          
+          // Always override role for super admin
+          const userRole = firebaseUser.email === 'edisonchung@flowsolution.net' 
+            ? 'admin' 
+            : (userDoc.role || 'viewer');
+          
+          const userData = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+            photoURL: firebaseUser.photoURL,
+            role: userRole
+          };
+          
+          setUser(userData);
+          localStorage.setItem('currentUser', JSON.stringify(userData));
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+          // Fallback to basic user data
+          const userData = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+            photoURL: firebaseUser.photoURL,
+            role: determineUserRole(firebaseUser.email)
+          };
+          setUser(userData);
+          localStorage.setItem('currentUser', JSON.stringify(userData));
+        }
       } else {
         // User is signed out
         setUser(null);
@@ -50,23 +74,52 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
-  // Helper function to determine user role
-  // In production, this should fetch from Firestore based on user document
+  // Get or create user document in Firestore
+  const getUserDocument = async (firebaseUser) => {
+    const userRef = doc(db, 'users', firebaseUser.uid);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      return userSnap.data();
+    } else {
+      // Create new user document
+      const newUserData = {
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+        photoURL: firebaseUser.photoURL || null,
+        role: determineUserRole(firebaseUser.email),
+        createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp()
+      };
+      
+      await setDoc(userRef, newUserData);
+      return newUserData;
+    }
+  };
+
+  // Helper function to determine initial user role
   const determineUserRole = (email) => {
-    // Demo accounts
+    // Super admin - always admin regardless of Firestore data
+    if (email === 'edisonchung@flowsolution.net') return 'admin';
+    
+    // Demo accounts (for testing purposes)
     if (email === 'admin@company.com') return 'admin';
     if (email === 'manager@company.com') return 'manager';
     if (email === 'employee@company.com') return 'employee';
     if (email === 'viewer@company.com') return 'viewer';
     
-    // Default role for Google sign-in users
-    return 'viewer'; // You can change this default role
+    // DEFAULT: All new users are viewers
+    return 'viewer';
   };
 
   const login = async (email, password) => {
     try {
       const result = await firebaseSignIn(auth, email, password);
-      // The onAuthStateChanged listener will handle setting the user
+      // Update last login time
+      if (result.user) {
+        const userRef = doc(db, 'users', result.user.uid);
+        await setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true });
+      }
       return result;
     } catch (error) {
       console.error('Login error:', error);
@@ -77,13 +130,12 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      // Optional: Add custom parameters
       provider.setCustomParameters({
         prompt: 'select_account'
       });
       
       const result = await signInWithPopup(auth, provider);
-      // The onAuthStateChanged listener will handle setting the user
+      // The onAuthStateChanged listener will handle creating/updating the user document
       return result;
     } catch (error) {
       console.error('Google login error:', error);
@@ -94,14 +146,32 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       await signOut(auth);
-      // Clear any additional local data
       localStorage.removeItem('navCollapsed');
-      // The onAuthStateChanged listener will handle clearing the user
     } catch (error) {
       console.error('Logout error:', error);
-      // Even if signOut fails, clear local state
       setUser(null);
       localStorage.removeItem('currentUser');
+      throw error;
+    }
+  };
+
+  // Function to update user role (admin only)
+  const updateUserRole = async (userId, newRole) => {
+    if (user?.role !== 'admin') {
+      throw new Error('Only admins can update user roles');
+    }
+    
+    try {
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, { role: newRole }, { merge: true });
+      
+      // If updating current user, refresh their data
+      if (userId === user.uid) {
+        setUser(prev => ({ ...prev, role: newRole }));
+        localStorage.setItem('currentUser', JSON.stringify({ ...user, role: newRole }));
+      }
+    } catch (error) {
+      console.error('Error updating user role:', error);
       throw error;
     }
   };
@@ -111,6 +181,7 @@ export const AuthProvider = ({ children }) => {
     login,
     loginWithGoogle,
     logout,
+    updateUserRole,
     loading
   };
 
