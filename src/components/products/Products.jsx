@@ -2,14 +2,16 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Package, Plus, Search, Filter, AlertCircle, 
-  TrendingUp, DollarSign, Layers, Clock, CheckCircle
+  TrendingUp, DollarSign, Layers, Clock, CheckCircle,
+  RefreshCw, Database, Cloud
 } from 'lucide-react';
-import { useProducts } from '../../hooks/useProducts';
+import { useProductsDual } from '../../hooks/useProductsDual';
 import { useSuppliers } from '../../hooks/useSuppliers';
 import { usePermissions } from '../../hooks/usePermissions';
 import ProductCard from './ProductCard';
 import ProductModal from './ProductModal';
 import FurnishModal from './FurnishModal';
+import DataSourceToggle from '../common/DataSourceToggle';
 
 const Products = ({ showNotification }) => {
   const permissions = usePermissions();
@@ -17,12 +19,16 @@ const Products = ({ showNotification }) => {
     products, 
     loading, 
     error,
+    dataSource,
     addProduct,
     updateProduct,
     deleteProduct,
     updateProductStock,
-    getLowStockProducts
-  } = useProducts();
+    getLowStockProducts,
+    toggleDataSource,
+    migrateToFirestore,
+    refetch
+  } = useProductsDual();
   
   const { suppliers } = useSuppliers();
   
@@ -34,6 +40,7 @@ const Products = ({ showNotification }) => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterStock, setFilterStock] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const canEdit = permissions.canEditProducts || permissions.isAdmin;
   const canView = permissions.canViewProducts || permissions.isAdmin;
@@ -50,17 +57,36 @@ const Products = ({ showNotification }) => {
     const matchesCategory = filterCategory === 'all' || product.category === filterCategory;
     const matchesStatus = filterStatus === 'all' || product.status === filterStatus;
     
-    let matchesStock = true;
-    if (filterStock === 'low') {
-      matchesStock = product.stock <= product.minStock;
-    } else if (filterStock === 'out') {
-      matchesStock = product.stock === 0;
-    } else if (filterStock === 'in-stock') {
-      matchesStock = product.stock > product.minStock;
-    }
+    // Stock filter - handle both 'stock' and 'currentStock' field names
+    const productStock = product.stock || product.currentStock || 0;
+    const productMinStock = product.minStock || product.minStockLevel || 10;
+    
+    const matchesStock = filterStock === 'all' ||
+      (filterStock === 'low' && productStock <= productMinStock && productStock > 0) ||
+      (filterStock === 'out' && productStock === 0) ||
+      (filterStock === 'ok' && productStock > productMinStock);
     
     return matchesSearch && matchesCategory && matchesStatus && matchesStock;
   });
+
+  // Get categories from products
+  const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
+  
+  // Calculate stats
+  const lowStockProducts = getLowStockProducts();
+  const stats = {
+    total: products.length,
+    lowStock: lowStockProducts.length,
+    outOfStock: products.filter(p => {
+      const stock = p.stock || p.currentStock || 0;
+      return stock === 0;
+    }).length,
+    totalValue: products.reduce((sum, p) => {
+      const stock = p.stock || p.currentStock || 0;
+      const price = p.unitCost || p.unitPrice || 0;
+      return sum + (stock * price);
+    }, 0)
+  };
 
   const handleAddProduct = () => {
     setSelectedProduct(null);
@@ -71,12 +97,6 @@ const Products = ({ showNotification }) => {
     if (!canEdit) return;
     setSelectedProduct(product);
     setShowModal(true);
-  };
-
-  const handleFurnishProduct = (product) => {
-    if (!canEdit) return;
-    setSelectedProduct(product);
-    setShowFurnishModal(true);
   };
 
   const handleDeleteProduct = async (id) => {
@@ -112,30 +132,57 @@ const Products = ({ showNotification }) => {
     }
   };
 
-  const handleFurnish = async (furnishData) => {
-    const result = await updateProduct(selectedProduct.id, {
-      status: 'furnished',
-      furnishedAt: new Date().toISOString(),
-      furnishDetails: furnishData
-    });
+  const handleFurnishProduct = (product) => {
+    if (!canEdit) return;
+    setSelectedProduct(product);
+    setShowFurnishModal(true);
+  };
+
+  const handleFurnish = async (quantity) => {
+    if (!selectedProduct || !canEdit) return;
     
+    const result = await updateProductStock(selectedProduct.id, quantity, 'subtract');
     if (result.success) {
-      showNotification('Product furnished successfully', 'success');
+      await updateProduct(selectedProduct.id, { status: 'furnished' });
+      showNotification(`Furnished ${quantity} units successfully`, 'success');
       setShowFurnishModal(false);
     } else {
       showNotification(result.error || 'Failed to furnish product', 'error');
     }
   };
 
-  // Calculate statistics
-  const stats = {
-    total: products.length,
-    lowStock: getLowStockProducts().length,
-    outOfStock: products.filter(p => p.stock === 0).length,
-    totalValue: products.reduce((sum, p) => sum + (p.price * p.stock), 0)
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+      showNotification('Data refreshed successfully', 'success');
+    } catch (error) {
+      showNotification('Failed to refresh data', 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  if (loading) {
+  const handleMigrate = async () => {
+    try {
+      const result = await migrateToFirestore();
+      showNotification(`Successfully migrated ${result.migrated} products to Firestore`, 'success');
+      return result;
+    } catch (error) {
+      showNotification('Migration failed: ' + error.message, 'error');
+      throw error;
+    }
+  };
+
+  if (!canView) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">You do not have permission to view products.</p>
+      </div>
+    );
+  }
+
+  if (loading && products.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -145,22 +192,53 @@ const Products = ({ showNotification }) => {
 
   return (
     <div className="space-y-6">
+      {/* Data Source Toggle */}
+      <DataSourceToggle
+        dataSource={dataSource}
+        onToggle={toggleDataSource}
+        onMigrate={handleMigrate}
+        loading={loading}
+        supplierCount={products.length}
+      />
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-          <p className="text-gray-600 mt-1">Manage your product inventory</p>
+          <p className="text-gray-600 mt-1">
+            Manage your product inventory
+            {dataSource === 'firestore' && (
+              <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
+            )}
+          </p>
         </div>
-        {canEdit && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleAddProduct}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            onClick={handleRefresh}
+            disabled={loading || isRefreshing}
+            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
+            title="Refresh data"
           >
-            <Plus size={20} />
-            Add Product
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
-        )}
+          {canEdit && (
+            <button
+              onClick={handleAddProduct}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Plus size={20} />
+              Add Product
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -198,24 +276,14 @@ const Products = ({ showNotification }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Total Value</p>
-              <p className="text-2xl font-bold">${stats.totalValue.toFixed(0)}</p>
+              <p className="text-2xl font-bold">
+                RM{stats.totalValue.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
             </div>
             <DollarSign className="h-8 w-8 text-green-500" />
           </div>
         </div>
       </div>
-
-      {/* Low Stock Alert */}
-      {stats.lowStock > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-orange-600" />
-            <p className="text-orange-800">
-              <span className="font-medium">{stats.lowStock} products</span> are running low on stock
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
@@ -239,13 +307,9 @@ const Products = ({ showNotification }) => {
             onChange={(e) => setFilterCategory(e.target.value)}
           >
             <option value="all">All Categories</option>
-            <option value="electronics">Electronics</option>
-            <option value="hydraulics">Hydraulics</option>
-            <option value="pneumatics">Pneumatics</option>
-            <option value="automation">Automation</option>
-            <option value="sensors">Sensors</option>
-            <option value="cables">Cables</option>
-            <option value="components">Components</option>
+            {categories.map(category => (
+              <option key={category} value={category}>{category}</option>
+            ))}
           </select>
 
           <select
@@ -264,8 +328,8 @@ const Products = ({ showNotification }) => {
             value={filterStock}
             onChange={(e) => setFilterStock(e.target.value)}
           >
-            <option value="all">All Stock</option>
-            <option value="in-stock">In Stock</option>
+            <option value="all">All Stock Levels</option>
+            <option value="ok">In Stock</option>
             <option value="low">Low Stock</option>
             <option value="out">Out of Stock</option>
           </select>
@@ -291,8 +355,12 @@ const Products = ({ showNotification }) => {
         </div>
       </div>
 
-      {/* Product List/Grid */}
-      {viewMode === 'grid' ? (
+      {/* Products Display */}
+      {loading && products.length > 0 ? (
+        <div className="text-center py-4">
+          <p className="text-gray-500">Updating...</p>
+        </div>
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredProducts.map(product => (
             <ProductCard
@@ -307,107 +375,14 @@ const Products = ({ showNotification }) => {
           ))}
         </div>
       ) : (
+        // List view would go here - keeping it simple for now
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Product
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  SKU
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Supplier
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Stock
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredProducts.map(product => {
-                const supplier = suppliers.find(s => s.id === product.supplierId);
-                const isLowStock = product.stock <= product.minStock;
-                
-                return (
-                  <tr key={product.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="font-medium">{product.name}</div>
-                        <div className="text-sm text-gray-500">{product.brand}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {product.sku || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {supplier?.name || 'Unknown'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium">
-                      ${product.price}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`font-medium ${
-                        product.stock === 0 ? 'text-red-600' :
-                        isLowStock ? 'text-orange-600' : 'text-gray-900'
-                      }`}>
-                        {product.stock}
-                      </span>
-                      <span className="text-gray-500 text-sm"> / {product.minStock}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        product.status === 'complete' ? 'bg-green-100 text-green-800' :
-                        product.status === 'furnished' ? 'bg-blue-100 text-blue-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {product.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                      <button
-                        onClick={() => handleEditProduct(product)}
-                        className="text-blue-600 hover:text-blue-800 mr-3"
-                      >
-                        Edit
-                      </button>
-                      {canEdit && product.status === 'complete' && (
-                        <button
-                          onClick={() => handleFurnishProduct(product)}
-                          className="text-green-600 hover:text-green-800 mr-3"
-                        >
-                          Furnish
-                        </button>
-                      )}
-                      {canEdit && (
-                        <button
-                          onClick={() => handleDeleteProduct(product.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <p className="p-4 text-gray-500">List view coming soon...</p>
         </div>
       )}
 
       {/* Empty State */}
-      {filteredProducts.length === 0 && (
+      {filteredProducts.length === 0 && !loading && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12">
           <div className="text-center">
             <Package className="mx-auto h-12 w-12 text-gray-400" />
