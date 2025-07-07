@@ -98,24 +98,8 @@ export const useSuppliersDual = () => {
     setError(null);
     try {
       if (dataSource === 'firestore') {
-        // Add to Firestore
+        // Add to Firestore only - no localStorage backup needed
         const result = await suppliersService.create(supplierData);
-        
-        // Also save to localStorage as backup
-        const newSupplier = {
-          ...supplierData,
-          id: result.id,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        
-        // Get current localStorage data
-        const snapshot = await mockFirebase.firestore.collection('suppliers').get();
-        const currentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Add to localStorage
-        await mockFirebase.firestore.collection('suppliers').doc(result.id).set(newSupplier);
-        
         return result.id;
       } else {
         // localStorage only
@@ -137,14 +121,8 @@ export const useSuppliersDual = () => {
     setError(null);
     try {
       if (dataSource === 'firestore') {
-        // Update in Firestore
+        // Update in Firestore only - no localStorage backup needed
         await suppliersService.update(id, updates);
-        
-        // Also update localStorage backup
-        await mockFirebase.firestore.collection('suppliers').doc(id).update({
-          ...updates,
-          updatedAt: new Date().toISOString()
-        });
       } else {
         // localStorage only
         await mockFirebase.firestore.collection('suppliers').doc(id).update({
@@ -164,11 +142,8 @@ export const useSuppliersDual = () => {
     setError(null);
     try {
       if (dataSource === 'firestore') {
-        // Delete from Firestore
+        // Delete from Firestore only - no localStorage backup needed
         await suppliersService.delete(id);
-        
-        // Also delete from localStorage backup
-        await mockFirebase.firestore.collection('suppliers').doc(id).delete();
       } else {
         // localStorage only
         await mockFirebase.firestore.collection('suppliers').doc(id).delete();
