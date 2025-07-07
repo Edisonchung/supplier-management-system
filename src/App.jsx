@@ -19,8 +19,6 @@ import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
-import FirestoreHealthCheck from './components/FirestoreHealthCheck'; // ADD THIS
-
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
