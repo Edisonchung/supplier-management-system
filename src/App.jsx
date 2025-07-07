@@ -210,9 +210,9 @@ function AppContent() {
             <Route 
               path="/sourcing" 
               element={
-                <PrivateRoute requiredPermission="canViewOrders">
+                <ProtectedRoute requiredPermission="canViewOrders">
                   <SourcingDashboard showNotification={showNotification} />
-                </PrivateRoute>
+                </ProtectedRoute>
               } 
             />
 
