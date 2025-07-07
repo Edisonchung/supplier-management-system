@@ -1,31 +1,47 @@
-// src/App.jsx
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import LoginForm from './components/auth/LoginForm';
-import Layout from './components/common/Layout';
-import Dashboard from './components/dashboard/Dashboard';
-import Suppliers from './components/suppliers/Suppliers';
-import Products from './components/products/Products';
-import ProformaInvoices from './components/procurement/ProformaInvoices';
-import PublicPIView from './components/procurement/PublicPIView';
-import PurchaseOrders from './components/purchase-orders';
-import ClientInvoices from './components/invoices/ClientInvoices';
-import QuickImport from './components/import/QuickImport';
-import UserManagement from './components/users/UserManagement';
-import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
-import { Truck, Upload, Users } from 'lucide-react';
+import Layout from './components/common/Layout';
+import LoginForm from './components/auth/LoginForm';
+import Dashboard from './components/dashboard/Dashboard';
+import Notification from './components/common/Notification';
+import FirestoreTest from './components/FirestoreTest';
+import { 
+  Package, 
+  ShoppingCart, 
+  FileText, 
+  Upload, 
+  Users,
+  Eye,
+  Shield 
+} from 'lucide-react';
+
+// Lazy load components for better performance
+const Suppliers = lazy(() => import('./components/suppliers/Suppliers'));
+const Products = lazy(() => import('./components/products/Products'));
+const ProformaInvoices = lazy(() => import('./components/proforma-invoices/ProformaInvoices'));
+const PublicPIView = lazy(() => import('./components/proforma-invoices/PublicPIView'));
+const PurchaseOrders = lazy(() => import('./components/purchase-orders/PurchaseOrders'));
+const QuickImport = lazy(() => import('./components/import/QuickImport'));
+const UserManagement = lazy(() => import('./components/users/UserManagement'));
+
+// Loading component
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center h-64">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+);
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+    return { hasError: true };
   }
 
   componentDidCatch(error, errorInfo) {
@@ -36,12 +52,12 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div className="flex items-center justify-center h-screen">
-          <div className="text-center p-8">
-            <h1 className="text-2xl font-bold text-red-600 mb-4">Something went wrong</h1>
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h2>
             <p className="text-gray-600 mb-4">Please refresh the page to try again</p>
             <button 
               onClick={() => window.location.reload()} 
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
             >
               Refresh Page
             </button>
@@ -56,17 +72,13 @@ class ErrorBoundary extends React.Component {
 
 // Protected Route Component
 const ProtectedRoute = ({ children, permission }) => {
-  const { user } = useAuth();
   const permissions = usePermissions();
   
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-  
-  if (permission && permissions[permission] === false) {
+  if (permission && !permissions[permission]) {
     return (
-      <div className="flex items-center justify-center h-full p-8">
+      <div className="flex items-center justify-center h-full">
         <div className="text-center">
+          <Shield className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
           <p className="text-gray-600">You don't have permission to view this page</p>
         </div>
@@ -91,6 +103,7 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
 function AppContent() {
   const { user } = useAuth();
   const [notification, setNotification] = useState(null);
+  const [showFirestoreTest, setShowFirestoreTest] = useState(true);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -101,7 +114,11 @@ function AppContent() {
       <Router>
         <Routes>
           {/* Public PI View Route - No Authentication Required */}
-          <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
+          <Route path="/pi/view/:shareableId" element={
+            <Suspense fallback={<LoadingSpinner />}>
+              <PublicPIView />
+            </Suspense>
+          } />
           
           {/* Login Route */}
           <Route path="/login" element={!user ? <LoginForm /> : <Navigate to="/" replace />} />
@@ -123,7 +140,9 @@ function AppContent() {
               path="/suppliers" 
               element={
                 <ProtectedRoute permission="canViewSuppliers">
-                  <Suppliers showNotification={showNotification} />
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <Suppliers showNotification={showNotification} />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -133,7 +152,9 @@ function AppContent() {
               path="/products" 
               element={
                 <ProtectedRoute permission="canViewProducts">
-                  <Products showNotification={showNotification} />
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <Products showNotification={showNotification} />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -142,80 +163,76 @@ function AppContent() {
             <Route 
               path="/proforma-invoices" 
               element={
-                <ProtectedRoute permission="canViewPI">
-                  <ProformaInvoices showNotification={showNotification} />
+                <ProtectedRoute permission="canViewProformaInvoices">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <ProformaInvoices showNotification={showNotification} />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Purchase Orders */}
+            {/* Purchase Orders - Placeholder */}
             <Route 
               path="/purchase-orders" 
               element={
                 <ProtectedRoute permission="canViewPurchaseOrders">
-                  <PurchaseOrders showNotification={showNotification} />
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <PurchaseOrders showNotification={showNotification} />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Client Invoices */}
-            <Route 
-              path="/invoices" 
-              element={
-                <ProtectedRoute permission="canViewInvoices">
-                  <ClientInvoices showNotification={showNotification} />
-                </ProtectedRoute>
-              } 
-            />
-            
-            {/* Delivery Tracking - Placeholder */}
-            <Route 
-              path="/tracking" 
-              element={
-                <ProtectedRoute permission="canViewTracking">
-                  <PlaceholderComponent 
-                    title="Delivery Tracking" 
-                    description="Track deliveries and shipment status - Feature coming soon" 
-                    icon={Truck}
-                  />
-                </ProtectedRoute>
-              } 
-            />
-            
-            {/* Quick Import */}
+            {/* Quick Import - Placeholder */}
             <Route 
               path="/import" 
               element={
-                <ProtectedRoute permission="canImportData">
-                  <QuickImport showNotification={showNotification} />
+                <ProtectedRoute permission="canImport">
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <QuickImport showNotification={showNotification} />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
             
-            {/* User Management */}
+            {/* User Management - Placeholder */}
             <Route 
               path="/users" 
               element={
                 <ProtectedRoute permission="canManageUsers">
-                  <UserManagement showNotification={showNotification} />
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <UserManagement showNotification={showNotification} />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
           </Route>
-          
-          {/* Catch all - redirect to home or login */}
-          <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>
-        
-        {/* Global Notification */}
-        {notification && (
-          <Notification
-            message={notification.message}
-            type={notification.type}
-            onClose={() => setNotification(null)}
-          />
-        )}
       </Router>
+      
+      {/* Notification Component */}
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={() => setNotification(null)}
+        />
+      )}
+      
+      {/* Firestore Test Component - Only in development when user is logged in */}
+      {user && showFirestoreTest && process.env.NODE_ENV === 'development' && (
+        <FirestoreTest />
+      )}
+      
+      {/* Toggle button for Firestore Test (only in development) */}
+      {user && process.env.NODE_ENV === 'development' && (
+        <button
+          onClick={() => setShowFirestoreTest(!showFirestoreTest)}
+          className="fixed bottom-4 left-4 bg-gray-800 text-white text-xs px-3 py-1 rounded-full hover:bg-gray-700 z-50"
+        >
+          {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
+        </button>
+      )}
     </ErrorBoundary>
   );
 }
