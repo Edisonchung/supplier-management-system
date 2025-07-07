@@ -1,5 +1,5 @@
 // src/components/common/Navigation.jsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -18,17 +18,49 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
-import { useClientPOsDual } from '../../hooks/useClientPOsDual';
 
-const Navigation = ({ isCollapsed, setIsCollapsed }) => {
+const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   const location = useLocation();
   const { user } = useAuth();
   const permissions = usePermissions();
-  const { sourcingRequired } = useClientPOsDual();
-  const [expandedItems, setExpandedItems] = React.useState({});
+  const [expandedItems, setExpandedItems] = useState({});
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Get sourcing count from localStorage (temporary solution)
+  const [sourcingCount, setSourcingCount] = useState(0);
+  
+  useEffect(() => {
+    // Check localStorage for client POs requiring sourcing
+    const checkSourcingCount = () => {
+      try {
+        const clientPOs = JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]');
+        const needsSourcing = clientPOs.filter(po => 
+          po.sourcingStatus === 'pending' || po.sourcingStatus === 'partial'
+        ).length;
+        setSourcingCount(needsSourcing);
+      } catch (error) {
+        console.error('Error getting sourcing count:', error);
+      }
+    };
+    
+    checkSourcingCount();
+    // Recheck when route changes
+    checkSourcingCount();
+  }, [location]);
 
-  // Calculate sourcing count
-  const sourcingCount = sourcingRequired?.length || 0;
+  // Load collapsed state from localStorage
+  useEffect(() => {
+    const savedState = localStorage.getItem('navCollapsed') === 'true';
+    setIsCollapsed(savedState);
+  }, []);
+
+  const handleToggleCollapse = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    localStorage.setItem('navCollapsed', newState.toString());
+    // Dispatch custom event for Layout to listen to
+    window.dispatchEvent(new Event('navToggled'));
+  };
 
   const navigationItems = [
     {
@@ -119,7 +151,7 @@ const Navigation = ({ isCollapsed, setIsCollapsed }) => {
     if (!permissions[item.permission]) return null;
 
     const hasChildren = item.children && item.children.length > 0;
-    const isExpanded = expandedItems[item.name];
+    const isExpanded = expandedItems[item.name] || isParentActive(item.children || []);
     const active = item.href ? isActive(item.href) : isParentActive(item.children || []);
 
     if (hasChildren) {
@@ -132,6 +164,7 @@ const Navigation = ({ isCollapsed, setIsCollapsed }) => {
                 ? 'bg-blue-50 text-blue-700'
                 : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
             }`}
+            title={isCollapsed ? item.name : ''}
           >
             <div className="flex items-center">
               <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-5 w-5`} />
@@ -165,6 +198,7 @@ const Navigation = ({ isCollapsed, setIsCollapsed }) => {
             ? 'bg-blue-50 text-blue-700'
             : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
         } ${isChild ? 'pl-11' : ''}`}
+        title={isCollapsed ? item.name : ''}
       >
         {item.icon && <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-5 w-5`} />}
         {!isCollapsed && (
@@ -180,56 +214,98 @@ const Navigation = ({ isCollapsed, setIsCollapsed }) => {
   };
 
   return (
-    <nav className={`bg-white shadow-lg h-full transition-all duration-300 ${
-      isCollapsed ? 'w-16' : 'w-64'
-    }`}>
-      <div className="h-full flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          {!isCollapsed && (
-            <h2 className="text-xl font-bold text-gray-800">HiggsFlow</h2>
-          )}
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1 rounded-md hover:bg-gray-100 transition-colors"
-          >
-            {isCollapsed ? (
-              <Menu className="h-5 w-5 text-gray-600" />
-            ) : (
-              <X className="h-5 w-5 text-gray-600" />
+    <>
+      {/* Desktop Navigation */}
+      <nav className={`hidden lg:block bg-white shadow-lg h-screen fixed left-0 top-0 transition-all duration-300 ${
+        isCollapsed ? 'w-16' : 'w-64'
+      }`}>
+        <div className="h-full flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b h-16">
+            {!isCollapsed && (
+              <h2 className="text-xl font-bold text-gray-800">HiggsFlow</h2>
             )}
-          </button>
-        </div>
-
-        {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="space-y-1">
-            {navigationItems.map(item => renderNavItem(item))}
-          </div>
-        </div>
-
-        {/* User Info */}
-        {user && (
-          <div className="p-4 border-t">
-            <div className={`flex items-center ${isCollapsed ? 'justify-center' : ''}`}>
-              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
-                {user.email?.[0]?.toUpperCase() || 'U'}
-              </div>
-              {!isCollapsed && (
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-700 truncate">
-                    {user.email}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {user.role || 'User'}
-                  </p>
-                </div>
+            <button
+              onClick={handleToggleCollapse}
+              className="p-1 rounded-md hover:bg-gray-100 transition-colors"
+              title={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            >
+              {isCollapsed ? (
+                <Menu className="h-5 w-5 text-gray-600" />
+              ) : (
+                <X className="h-5 w-5 text-gray-600" />
               )}
+            </button>
+          </div>
+
+          {/* Navigation Items */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-1">
+              {navigationItems.map(item => renderNavItem(item))}
             </div>
           </div>
-        )}
-      </div>
-    </nav>
+
+          {/* User Info */}
+          {user && (
+            <div className="p-4 border-t">
+              <div className={`flex items-center ${isCollapsed ? 'justify-center' : ''}`}>
+                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
+                  {user.email?.[0]?.toUpperCase() || 'U'}
+                </div>
+                {!isCollapsed && (
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-gray-700 truncate">
+                      {user.email}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {user.role || 'User'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      {/* Mobile Navigation */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 flex">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setIsMobileMenuOpen(false)} />
+          <nav className="relative flex-1 flex flex-col max-w-xs w-full bg-white">
+            <div className="absolute top-0 right-0 -mr-12 pt-2">
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
+              >
+                <X className="h-6 w-6 text-white" />
+              </button>
+            </div>
+            <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
+              <div className="flex-shrink-0 flex items-center px-4">
+                <h2 className="text-xl font-bold text-gray-800">HiggsFlow</h2>
+              </div>
+              <nav className="mt-5 px-2 space-y-1">
+                {navigationItems.map(item => renderNavItem(item))}
+              </nav>
+            </div>
+            {user && (
+              <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
+                <div className="flex items-center">
+                  <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
+                    {user.email?.[0]?.toUpperCase() || 'U'}
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-gray-700">{user.email}</p>
+                    <p className="text-xs text-gray-500">{user.role || 'User'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </nav>
+        </div>
+      )}
+    </>
   );
 };
 
