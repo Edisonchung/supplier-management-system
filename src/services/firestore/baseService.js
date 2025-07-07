@@ -113,19 +113,34 @@ export class BaseFirestoreService {
     }
   }
 
-  // Real-time listener
-  subscribe(queryConstraints = [], callback) {
-    const q = query(this.collectionRef, ...queryConstraints);
-    
-    return onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      callback(data);
-    }, (error) => {
-      console.error(`Error in ${this.collectionName} subscription:`, error);
-    });
+  // Real-time listener - UPDATED to accept onNext and onError callbacks
+  subscribe(queryConstraints = [], onNext, onError) {
+    try {
+      const q = query(this.collectionRef, ...queryConstraints);
+      
+      return onSnapshot(
+        q, 
+        (snapshot) => {
+          const data = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          onNext(data);
+        },
+        (error) => {
+          console.error(`Error in ${this.collectionName} subscription:`, error);
+          if (onError) {
+            onError(error);
+          }
+        }
+      );
+    } catch (error) {
+      console.error(`Error setting up ${this.collectionName} subscription:`, error);
+      if (onError) {
+        onError(error);
+      }
+      throw error;
+    }
   }
 
   // Search documents
