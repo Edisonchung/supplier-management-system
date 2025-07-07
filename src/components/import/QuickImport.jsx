@@ -281,12 +281,12 @@ const QuickImport = ({ showNotification }) => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.supplierName}
+                    value={editedData.supplierName || ''}
                     onChange={(e) => handleFieldChange('supplierName', e.target.value)}
                     className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500"
                   />
                 ) : (
-                  <p className="text-gray-900">{data.supplierName}</p>
+                  <p className="text-gray-900">{String(data.supplierName)}</p>
                 )}
               </div>
             )}
@@ -363,11 +363,11 @@ const QuickImport = ({ showNotification }) => {
                   <tbody className="divide-y divide-gray-200">
                     {data.items.map((item, idx) => (
                       <tr key={idx}>
-                        <td className="px-4 py-2">{item.productName || item.name}</td>
-                        <td className="px-4 py-2 text-center">{item.quantity}</td>
-                        <td className="px-4 py-2 text-right">RM {item.unitPrice?.toFixed(2)}</td>
+                        <td className="px-4 py-2">{String(item.productName || item.name || '')}</td>
+                        <td className="px-4 py-2 text-center">{Number(item.quantity || 0)}</td>
+                        <td className="px-4 py-2 text-right">RM {Number(item.unitPrice || 0).toFixed(2)}</td>
                         <td className="px-4 py-2 text-right">
-                          RM {((item.quantity || 0) * (item.unitPrice || 0)).toFixed(2)}
+                          RM {(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toFixed(2)}
                         </td>
                       </tr>
                     ))}
