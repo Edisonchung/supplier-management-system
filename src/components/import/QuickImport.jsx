@@ -40,8 +40,9 @@ const QuickImport = ({ showNotification }) => {
 
   const importTypes = [
     { value: 'auto', label: 'Auto Detect', description: 'AI will determine document type', icon: Brain },
-    { value: 'pi', label: 'Proforma Invoice', description: 'Import supplier quotations', icon: FileText },
-    { value: 'po', label: 'Purchase Order', description: 'Import client orders', icon: FileCheck },
+    { value: 'client_po', label: 'Client PO', description: 'Orders from your clients', icon: FileCheck },
+    { value: 'supplier_pi', label: 'Supplier PI', description: 'Quotations from suppliers', icon: FileText },
+    { value: 'supplier_invoice', label: 'Supplier Invoice', description: 'Bills from suppliers', icon: FileText },
     { value: 'products', label: 'Product List', description: 'Import product catalog', icon: Package },
   ];
 
@@ -98,8 +99,51 @@ const QuickImport = ({ showNotification }) => {
       const result = await AIExtractionService.extractFromFile(file);
       
       if (result.success) {
-        setExtractedData(result);
-        setEditedData(result.data);
+        // Determine document type and clean up data accordingly
+        let cleanedData = { ...result.data };
+        
+        // Check if this is a client PO (has client info but no supplier)
+        const isClientPO = (result.data.billTo && result.data.billTo.includes('Flow Solution')) ||
+                          (result.data.buyer && result.data.buyer.includes('Flow Solution')) ||
+                          (result.data.type === 'purchase_order' && !result.data.supplierName);
+        
+        if (isClientPO) {
+          // This is a CLIENT PO - extract client info, not supplier
+          cleanedData = {
+            ...result.data,
+            type: 'client_purchase_order',
+            clientName: result.data.issuer || result.data.from || 
+                       extractClientFromShipTo(result.data.shipTo) || 
+                       'Unknown Client',
+            clientPONumber: result.data.documentNumber || result.data.poNumber || result.data.orderNumber,
+            // Remove supplier-related fields for client POs
+            supplierName: undefined,
+            supplierAddress: undefined,
+            // Keep the important data
+            documentNumber: result.data.documentNumber || result.data.poNumber,
+            date: result.data.date || result.data.orderDate,
+            totalAmount: result.data.totalAmount || result.data.grandTotal || result.data.total || 0,
+            items: result.data.items || [],
+            // Add sourcing status
+            sourcingStatus: 'pending',
+            sourcingNotes: 'Suppliers need to be identified for these items'
+          };
+        } else if (result.data.supplierName || result.data.vendor) {
+          // This is a SUPPLIER document (PI or Invoice)
+          cleanedData = {
+            ...result.data,
+            type: result.data.type || 'supplier_document',
+            supplierName: extractSupplierName(result.data.supplierName || result.data.vendor),
+            documentNumber: result.data.documentNumber || result.data.invoiceNumber || result.data.piNumber,
+            totalAmount: result.data.totalAmount || result.data.grandTotal || result.data.total || 0,
+          };
+        }
+        
+        setExtractedData({
+          ...result,
+          data: cleanedData
+        });
+        setEditedData(cleanedData);
         showNotification('Data extracted successfully!', 'success');
       } else {
         throw new Error('Extraction failed');
@@ -110,6 +154,31 @@ const QuickImport = ({ showNotification }) => {
     } finally {
       setExtracting(false);
     }
+  };
+
+  // Helper function to extract client name from ship-to address
+  const extractClientFromShipTo = (shipTo) => {
+    if (!shipTo) return null;
+    // Look for company indicators
+    const lines = shipTo.toString().split('\n');
+    for (const line of lines) {
+      if (line.includes('Pelabuhan') || line.includes('PTP') || 
+          line.includes('Sdn') || line.includes('Bhd')) {
+        return line.trim();
+      }
+    }
+    return lines[0]?.trim();
+  };
+
+  // Helper function to extract supplier name from various formats
+  const extractSupplierName = (supplier) => {
+    if (typeof supplier === 'string') return supplier;
+    if (typeof supplier === 'object') {
+      return supplier.name || supplier.companyName || supplier.value || 
+             Object.values(supplier).find(v => typeof v === 'string') ||
+             JSON.stringify(supplier);
+    }
+    return String(supplier);
   };
 
   const handleEdit = () => {
@@ -146,20 +215,24 @@ const QuickImport = ({ showNotification }) => {
       let importCount = 0;
 
       // Import based on detected type
-      if (data.type === 'purchase_order' || importType === 'po') {
-        // Import as Purchase Order
-        // This would integrate with your PO module
+      if (data.type === 'client_purchase_order') {
+        // Import as Client PO - needs sourcing
+        showNotification('Client PO import - You need to source suppliers for these items', 'info');
+        // Here you would save the client PO and mark items as needing sourcing
+        // This could create entries in a "sourcing_required" collection
+      } else if (data.type === 'purchase_order' || importType === 'client_po') {
+        // Legacy PO handling
         showNotification('Purchase Order import functionality coming soon!', 'info');
-      } else if (data.type === 'proforma_invoice' || importType === 'pi') {
-        // Import as Proforma Invoice
-        showNotification('Proforma Invoice import functionality coming soon!', 'info');
+      } else if (data.type === 'proforma_invoice' || importType === 'supplier_pi') {
+        // Import as Supplier PI
+        showNotification('Supplier Proforma Invoice import functionality coming soon!', 'info');
       } else if (data.type === 'product_list' || importType === 'products') {
         // Import products
         if (data.items && Array.isArray(data.items)) {
           for (const item of data.items) {
             const productData = {
-              name: item.productName || item.name,
-              sku: item.productCode || item.sku || `SKU-${Date.now()}`,
+              name: item.productName || item.name || item.description,
+              sku: item.productCode || item.partNumber || item.sku || `SKU-${Date.now()}`,
               category: item.category || 'General',
               brand: item.brand || '',
               supplierId: data.supplierId || suppliers[0]?.id,
