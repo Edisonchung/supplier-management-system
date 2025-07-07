@@ -17,6 +17,8 @@ import Notification from './components/common/Notification';
 import FirestoreTest from './components/FirestoreTest';
 import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users } from 'lucide-react';
+import SetupFirestore from './components/SetupFirestore';
+
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -233,6 +235,7 @@ function AppContent() {
             {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
           </button>
         )}
+        {import.meta.env.DEV && <SetupFirestore />}
       </Router>
     </ErrorBoundary>
   );
