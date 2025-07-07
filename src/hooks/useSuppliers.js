@@ -1,22 +1,58 @@
-// src/hooks/useSuppliers.js
+// src/hooks/useSuppliers.js - Example of dual-mode implementation
 import { useState, useEffect } from 'react';
-import { mockFirebase } from '../services/firebase';
+import { db } from '../config/firebase';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp 
+} from 'firebase/firestore';
 
 export const useSuppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [useFirestore, setUseFirestore] = useState(true); // Toggle for testing
 
-  const loadSuppliers = async () => {
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
+    if (useFirestore) {
+      // Firestore real-time listener
+      const q = query(collection(db, 'suppliers'), orderBy('createdAt', 'desc'));
+      
+      const unsubscribe = onSnapshot(q, 
+        (snapshot) => {
+          const suppliersData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          setSuppliers(suppliersData);
+          setLoading(false);
+        },
+        (error) => {
+          console.error('Firestore error:', error);
+          // Fallback to localStorage
+          loadFromLocalStorage();
+        }
+      );
+
+      return () => unsubscribe();
+    } else {
+      // localStorage mode
+      loadFromLocalStorage();
+    }
+  }, [useFirestore]);
+
+  const loadFromLocalStorage = () => {
     try {
-      const snapshot = await mockFirebase.firestore.collection('suppliers').get();
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSuppliers(data);
+      const localData = JSON.parse(localStorage.getItem('suppliers') || '[]');
+      setSuppliers(localData);
     } catch (error) {
-      console.error('Error loading suppliers:', error);
-      setError('Failed to load suppliers');
+      console.error('localStorage error:', error);
+      setSuppliers([]);
     } finally {
       setLoading(false);
     }
@@ -24,69 +60,80 @@ export const useSuppliers = () => {
 
   const addSupplier = async (supplierData) => {
     try {
-      const newSupplier = {
-        ...supplierData,
-        dateAdded: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      
-      const docRef = await mockFirebase.firestore.collection('suppliers').add(newSupplier);
-      await loadSuppliers();
-      
-      return { success: true, id: docRef.id };
+      if (useFirestore) {
+        // Add to Firestore
+        const docRef = await addDoc(collection(db, 'suppliers'), {
+          ...supplierData,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        
+        // Also save to localStorage as backup
+        const newSupplier = { id: docRef.id, ...supplierData };
+        const localData = [...suppliers, newSupplier];
+        localStorage.setItem('suppliers', JSON.stringify(localData));
+        
+        return docRef.id;
+      } else {
+        // Add to localStorage only
+        const newSupplier = {
+          id: `local-${Date.now()}`,
+          ...supplierData,
+          createdAt: new Date().toISOString()
+        };
+        const updatedSuppliers = [...suppliers, newSupplier];
+        localStorage.setItem('suppliers', JSON.stringify(updatedSuppliers));
+        setSuppliers(updatedSuppliers);
+        return newSupplier.id;
+      }
     } catch (error) {
       console.error('Error adding supplier:', error);
-      return { success: false, error: error.message };
+      throw error;
     }
   };
 
-  const updateSupplier = async (id, supplierData) => {
+  const updateSupplier = async (id, updates) => {
     try {
-      await mockFirebase.firestore.collection('suppliers').doc(id).update({
-        ...supplierData,
-        updatedAt: new Date().toISOString()
-      });
-      
-      await loadSuppliers();
-      return { success: true };
+      if (useFirestore) {
+        await updateDoc(doc(db, 'suppliers', id), {
+          ...updates,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        const updatedSuppliers = suppliers.map(s => 
+          s.id === id ? { ...s, ...updates, updatedAt: new Date().toISOString() } : s
+        );
+        localStorage.setItem('suppliers', JSON.stringify(updatedSuppliers));
+        setSuppliers(updatedSuppliers);
+      }
     } catch (error) {
       console.error('Error updating supplier:', error);
-      return { success: false, error: error.message };
+      throw error;
     }
   };
 
   const deleteSupplier = async (id) => {
     try {
-      await mockFirebase.firestore.collection('suppliers').doc(id).delete();
-      await loadSuppliers();
-      return { success: true };
+      if (useFirestore) {
+        await deleteDoc(doc(db, 'suppliers', id));
+      } else {
+        const updatedSuppliers = suppliers.filter(s => s.id !== id);
+        localStorage.setItem('suppliers', JSON.stringify(updatedSuppliers));
+        setSuppliers(updatedSuppliers);
+      }
     } catch (error) {
       console.error('Error deleting supplier:', error);
-      return { success: false, error: error.message };
+      throw error;
     }
   };
-
-  const getSupplierById = (id) => {
-    return suppliers.find(supplier => supplier.id === id);
-  };
-
-  const getActiveSuppliers = () => {
-    return suppliers.filter(supplier => supplier.status === 'active');
-  };
-
-  useEffect(() => {
-    loadSuppliers();
-  }, []);
 
   return {
     suppliers,
     loading,
-    error,
     addSupplier,
     updateSupplier,
     deleteSupplier,
-    getSupplierById,
-    getActiveSuppliers,
-    refetch: loadSuppliers
+    useFirestore,
+    setUseFirestore // For testing toggle
   };
 };
