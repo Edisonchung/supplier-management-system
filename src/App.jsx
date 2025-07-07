@@ -14,12 +14,11 @@ import ClientInvoices from './components/invoices/ClientInvoices';
 import QuickImport from './components/import/QuickImport';
 import UserManagement from './components/users/UserManagement';
 import Notification from './components/common/Notification';
+import SourcingDashboard from './components/sourcing/SourcingDashboard';
 import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
-import SourcingDashboard from './components/sourcing/SourcingDashboard';
-
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -60,8 +59,17 @@ class ErrorBoundary extends React.Component {
 
 // Protected Route Component
 const ProtectedRoute = ({ children, permission }) => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const permissions = usePermissions();
+  
+  // Don't redirect while loading
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
   
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -93,13 +101,25 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
 );
 
 function AppContent() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth(); // Get loading state
   const [notification, setNotification] = useState(null);
   const [showFirestoreTest, setShowFirestoreTest] = useState(true);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
   };
+
+  // Show loading screen while checking auth
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading HiggsFlow...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ErrorBoundary>
@@ -143,11 +163,21 @@ function AppContent() {
               } 
             />
             
+            {/* Sourcing Dashboard */}
+            <Route 
+              path="/sourcing" 
+              element={
+                <ProtectedRoute permission="canViewOrders">
+                  <SourcingDashboard showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
             {/* Proforma Invoices */}
             <Route 
               path="/proforma-invoices" 
               element={
-                <ProtectedRoute permission="canViewPI">
+                <ProtectedRoute permission="canViewOrders">
                   <ProformaInvoices showNotification={showNotification} />
                 </ProtectedRoute>
               } 
@@ -157,7 +187,7 @@ function AppContent() {
             <Route 
               path="/purchase-orders" 
               element={
-                <ProtectedRoute permission="canViewPurchaseOrders">
+                <ProtectedRoute permission="canViewOrders">
                   <PurchaseOrders showNotification={showNotification} />
                 </ProtectedRoute>
               } 
@@ -165,7 +195,7 @@ function AppContent() {
             
             {/* Client Invoices */}
             <Route 
-              path="/invoices" 
+              path="/client-invoices" 
               element={
                 <ProtectedRoute permission="canViewInvoices">
                   <ClientInvoices showNotification={showNotification} />
@@ -173,11 +203,11 @@ function AppContent() {
               } 
             />
             
-            {/* Delivery Tracking - Placeholder */}
+            {/* Delivery Tracking */}
             <Route 
-              path="/tracking" 
+              path="/delivery-tracking" 
               element={
-                <ProtectedRoute permission="canViewTracking">
+                <ProtectedRoute permission="canViewDeliveries">
                   <PlaceholderComponent 
                     title="Delivery Tracking" 
                     description="Track deliveries and shipment status - Feature coming soon" 
@@ -189,7 +219,7 @@ function AppContent() {
             
             {/* Quick Import */}
             <Route 
-              path="/import" 
+              path="/quick-import" 
               element={
                 <ProtectedRoute permission="canImportData">
                   <QuickImport showNotification={showNotification} />
@@ -207,15 +237,6 @@ function AppContent() {
               } 
             />
           </Route>
-            <Route 
-              path="/sourcing" 
-              element={
-                <ProtectedRoute requiredPermission="canViewOrders">
-                  <SourcingDashboard showNotification={showNotification} />
-                </ProtectedRoute>
-              } 
-            />
-
           
           {/* Catch all - redirect to home or login */}
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
@@ -245,7 +266,7 @@ function AppContent() {
             {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
           </button>
         )}
-        {console.log('Dev mode:', import.meta.env.DEV, 'User:', !!user)}
+        
         {user && <FirestoreHealthCheck />}
       </Router>
     </ErrorBoundary>
