@@ -1,21 +1,26 @@
 // src/hooks/useSuppliersDual.js
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { suppliersService } from '../services/firestore/suppliers.service';
 import { mockFirebase } from '../services/firebase';
+import { orderBy } from 'firebase/firestore';
 
 export const useSuppliersDual = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [dataSource, setDataSource] = useState('localStorage'); // 'localStorage' or 'firestore'
+  const [dataSource, setDataSource] = useState(() => {
+    // Initialize from localStorage preference
+    return localStorage.getItem('preferredDataSource') || 'localStorage';
+  });
   
-  // Initialize unsubscribe function
-  let unsubscribe = null;
+  // Store unsubscribe function
+  const unsubscribeRef = useRef(null);
 
   useEffect(() => {
     // Cleanup previous subscription
-    if (unsubscribe) {
-      unsubscribe();
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
     }
 
     if (dataSource === 'firestore') {
@@ -26,8 +31,8 @@ export const useSuppliersDual = () => {
 
     // Cleanup on unmount
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
       }
     };
   }, [dataSource]);
@@ -41,6 +46,12 @@ export const useSuppliersDual = () => {
         id: doc.id, 
         ...doc.data() 
       }));
+      // Sort by createdAt or dateAdded
+      data.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.dateAdded);
+        const dateB = new Date(b.createdAt || b.dateAdded);
+        return dateB - dateA;
+      });
       setSuppliers(data);
     } catch (err) {
       console.error('Error loading from localStorage:', err);
@@ -55,20 +66,24 @@ export const useSuppliersDual = () => {
     setError(null);
     
     try {
-      // Set up real-time listener
-      unsubscribe = suppliersService.subscribe(
+      // Use the subscribe method from the base service
+      unsubscribeRef.current = suppliersService.subscribe(
+        [orderBy('createdAt', 'desc')],
         (suppliersData) => {
           setSuppliers(suppliersData);
           setLoading(false);
+          setError(null);
         },
         (err) => {
-          console.error('Firestore error:', err);
+          console.error('Firestore subscription error:', err);
           setError(err.message);
           setLoading(false);
-          // Optionally fallback to localStorage
+          
+          // Handle permission errors by falling back to localStorage
           if (err.code === 'permission-denied') {
-            console.log('Falling back to localStorage due to permissions');
+            console.log('Permission denied, falling back to localStorage');
             setDataSource('localStorage');
+            localStorage.setItem('preferredDataSource', 'localStorage');
           }
         }
       );
@@ -80,17 +95,28 @@ export const useSuppliersDual = () => {
   };
 
   const addSupplier = async (supplierData) => {
+    setError(null);
     try {
       if (dataSource === 'firestore') {
-        const docId = await suppliersService.create(supplierData);
+        // Add to Firestore
+        const result = await suppliersService.create(supplierData);
         
         // Also save to localStorage as backup
-        await mockFirebase.firestore.collection('suppliers').add({
+        const newSupplier = {
           ...supplierData,
-          dateAdded: new Date().toISOString()
-        });
+          id: result.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
         
-        return docId;
+        // Get current localStorage data
+        const snapshot = await mockFirebase.firestore.collection('suppliers').get();
+        const currentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Add to localStorage
+        await mockFirebase.firestore.collection('suppliers').doc(result.id).set(newSupplier);
+        
+        return result.id;
       } else {
         // localStorage only
         const result = await mockFirebase.firestore.collection('suppliers').add({
@@ -108,8 +134,10 @@ export const useSuppliersDual = () => {
   };
 
   const updateSupplier = async (id, updates) => {
+    setError(null);
     try {
       if (dataSource === 'firestore') {
+        // Update in Firestore
         await suppliersService.update(id, updates);
         
         // Also update localStorage backup
@@ -133,8 +161,10 @@ export const useSuppliersDual = () => {
   };
 
   const deleteSupplier = async (id) => {
+    setError(null);
     try {
       if (dataSource === 'firestore') {
+        // Delete from Firestore
         await suppliersService.delete(id);
         
         // Also delete from localStorage backup
@@ -158,17 +188,17 @@ export const useSuppliersDual = () => {
     localStorage.setItem('preferredDataSource', newSource);
   };
 
-  // Migration helper
   const migrateToFirestore = async () => {
     if (dataSource !== 'localStorage') {
       setError('Already using Firestore');
-      return;
+      return { migrated: 0, failed: 0 };
     }
 
     setLoading(true);
     setError(null);
 
     try {
+      // Get all suppliers from localStorage
       const snapshot = await mockFirebase.firestore.collection('suppliers').get();
       const localSuppliers = snapshot.docs.map(doc => ({ 
         id: doc.id, 
@@ -177,24 +207,42 @@ export const useSuppliersDual = () => {
 
       let migrated = 0;
       let failed = 0;
+      const errors = [];
 
+      // Migrate each supplier
       for (const supplier of localSuppliers) {
         try {
           const { id, ...supplierData } = supplier;
-          await suppliersService.create(supplierData);
+          
+          // Ensure proper date fields
+          const dataToMigrate = {
+            ...supplierData,
+            createdAt: supplierData.createdAt || supplierData.dateAdded || new Date().toISOString(),
+            updatedAt: supplierData.updatedAt || new Date().toISOString()
+          };
+          
+          // Remove dateAdded if it exists (use createdAt instead)
+          delete dataToMigrate.dateAdded;
+          
+          await suppliersService.create(dataToMigrate);
           migrated++;
         } catch (err) {
           console.error(`Failed to migrate supplier ${supplier.id}:`, err);
+          errors.push({ supplier: supplier.name, error: err.message });
           failed++;
         }
       }
 
       console.log(`Migration complete: ${migrated} migrated, ${failed} failed`);
+      if (errors.length > 0) {
+        console.error('Migration errors:', errors);
+      }
       
       // Switch to Firestore after migration
       setDataSource('firestore');
+      localStorage.setItem('preferredDataSource', 'firestore');
       
-      return { migrated, failed };
+      return { migrated, failed, errors };
     } catch (err) {
       console.error('Migration error:', err);
       setError(err.message);
@@ -204,13 +252,16 @@ export const useSuppliersDual = () => {
     }
   };
 
-  // Load saved preference on mount
-  useEffect(() => {
-    const savedSource = localStorage.getItem('preferredDataSource');
-    if (savedSource && (savedSource === 'localStorage' || savedSource === 'firestore')) {
-      setDataSource(savedSource);
+  const refetch = async () => {
+    if (dataSource === 'firestore') {
+      // For Firestore, we're using real-time updates, so just ensure subscription is active
+      if (!unsubscribeRef.current) {
+        loadFirestoreData();
+      }
+    } else {
+      await loadLocalStorageData();
     }
-  }, []);
+  };
 
   return {
     suppliers,
@@ -222,6 +273,6 @@ export const useSuppliersDual = () => {
     deleteSupplier,
     toggleDataSource,
     migrateToFirestore,
-    refetch: dataSource === 'firestore' ? loadFirestoreData : loadLocalStorageData
+    refetch
   };
 };
