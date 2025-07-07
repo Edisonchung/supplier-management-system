@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, Plus, Search, Filter, Mail, Phone, 
-  MapPin, User, Calendar, MoreVertical
+  MapPin, User, Calendar, MoreVertical, RefreshCw,
+  Database, Cloud
 } from 'lucide-react';
-import { useSuppliers } from '../../hooks/useSuppliers';
+import { useSuppliersDual } from '../../hooks/useSuppliersDual';
 import { usePermissions } from '../../hooks/usePermissions';
 import SupplierCard from './SupplierCard';
 import SupplierModal from './SupplierModal';
+import DataSourceToggle from '../common/DataSourceToggle';
 
 const Suppliers = ({ showNotification }) => {
   const permissions = usePermissions();
@@ -15,16 +17,21 @@ const Suppliers = ({ showNotification }) => {
     suppliers, 
     loading, 
     error,
+    dataSource,
     addSupplier,
     updateSupplier,
-    deleteSupplier
-  } = useSuppliers();
+    deleteSupplier,
+    toggleDataSource,
+    migrateToFirestore,
+    refetch
+  } = useSuppliersDual();
   
   const [showModal, setShowModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const canEdit = permissions.canEditSuppliers || permissions.isAdmin;
 
@@ -55,32 +62,50 @@ const Suppliers = ({ showNotification }) => {
     if (!canEdit) return;
     
     if (window.confirm('Are you sure you want to delete this supplier?')) {
-      const result = await deleteSupplier(id);
-      if (result.success) {
+      try {
+        await deleteSupplier(id);
         showNotification('Supplier deleted successfully', 'success');
-      } else {
-        showNotification(result.error || 'Failed to delete supplier', 'error');
+      } catch (error) {
+        showNotification(error.message || 'Failed to delete supplier', 'error');
       }
     }
   };
 
   const handleSaveSupplier = async (supplierData) => {
-    if (selectedSupplier) {
-      const result = await updateSupplier(selectedSupplier.id, supplierData);
-      if (result.success) {
+    try {
+      if (selectedSupplier) {
+        await updateSupplier(selectedSupplier.id, supplierData);
         showNotification('Supplier updated successfully', 'success');
-        setShowModal(false);
       } else {
-        showNotification(result.error || 'Failed to update supplier', 'error');
-      }
-    } else {
-      const result = await addSupplier(supplierData);
-      if (result.success) {
+        await addSupplier(supplierData);
         showNotification('Supplier added successfully', 'success');
-        setShowModal(false);
-      } else {
-        showNotification(result.error || 'Failed to add supplier', 'error');
       }
+      setShowModal(false);
+    } catch (error) {
+      showNotification(error.message || 'Failed to save supplier', 'error');
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+      showNotification('Data refreshed successfully', 'success');
+    } catch (error) {
+      showNotification('Failed to refresh data', 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleMigrate = async () => {
+    try {
+      const result = await migrateToFirestore();
+      showNotification(`Successfully migrated ${result.migrated} suppliers to Firestore`, 'success');
+      return result;
+    } catch (error) {
+      showNotification('Migration failed: ' + error.message, 'error');
+      throw error;
     }
   };
 
@@ -91,7 +116,7 @@ const Suppliers = ({ showNotification }) => {
     inactive: suppliers.filter(s => s.status === 'inactive').length
   };
 
-  if (loading) {
+  if (loading && suppliers.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -101,22 +126,53 @@ const Suppliers = ({ showNotification }) => {
 
   return (
     <div className="space-y-6">
+      {/* Data Source Toggle */}
+      <DataSourceToggle
+        dataSource={dataSource}
+        onToggle={toggleDataSource}
+        onMigrate={handleMigrate}
+        loading={loading}
+        supplierCount={suppliers.length}
+      />
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Suppliers</h1>
-          <p className="text-gray-600 mt-1">Manage your supplier relationships</p>
+          <p className="text-gray-600 mt-1">
+            Manage your supplier relationships
+            {dataSource === 'firestore' && (
+              <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
+            )}
+          </p>
         </div>
-        {canEdit && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleAddSupplier}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            onClick={handleRefresh}
+            disabled={loading || isRefreshing}
+            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
+            title="Refresh data"
           >
-            <Plus size={20} />
-            Add Supplier
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
-        )}
+          {canEdit && (
+            <button
+              onClick={handleAddSupplier}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <Plus size={20} />
+              Add Supplier
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -216,7 +272,11 @@ const Suppliers = ({ showNotification }) => {
       </div>
 
       {/* Supplier List/Grid */}
-      {viewMode === 'grid' ? (
+      {loading && suppliers.length > 0 ? (
+        <div className="text-center py-4">
+          <p className="text-gray-500">Updating...</p>
+        </div>
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredSuppliers.map(supplier => (
             <SupplierCard
@@ -301,7 +361,7 @@ const Suppliers = ({ showNotification }) => {
       )}
 
       {/* Empty State */}
-      {filteredSuppliers.length === 0 && (
+      {filteredSuppliers.length === 0 && !loading && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12">
           <div className="text-center">
             <Building2 className="mx-auto h-12 w-12 text-gray-400" />
