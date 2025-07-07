@@ -1,166 +1,235 @@
 // src/components/common/Navigation.jsx
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { 
-  Grid, Building2, Package, FileText, ShoppingCart, 
-  DollarSign, Truck, Upload, Users, X, ChevronLeft, ChevronRight
+  LayoutDashboard, 
+  Building2, 
+  Package, 
+  FileText, 
+  ShoppingCart, 
+  Receipt,
+  Truck,
+  Upload,
+  Users,
+  ChevronDown,
+  ChevronRight,
+  Menu,
+  X
 } from 'lucide-react';
-import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import { useClientPOsDual } from '../../hooks/useClientPOsDual';
 
-const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
-  const permissions = usePermissions();
-  const { user } = useAuth();
-  const navigate = useNavigate();
+const Navigation = ({ isCollapsed, setIsCollapsed }) => {
   const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { user } = useAuth();
+  const permissions = usePermissions();
+  const { sourcingRequired } = useClientPOsDual();
+  const [expandedItems, setExpandedItems] = React.useState({});
 
-  // Load collapsed state from localStorage
-  useEffect(() => {
-    const savedCollapsed = localStorage.getItem('navCollapsed');
-    if (savedCollapsed === 'true') {
-      setIsCollapsed(true);
+  // Calculate sourcing count
+  const sourcingCount = sourcingRequired?.length || 0;
+
+  const navigationItems = [
+    {
+      name: 'Dashboard',
+      href: '/',
+      icon: LayoutDashboard,
+      permission: 'canViewDashboard'
+    },
+    {
+      name: 'Suppliers',
+      href: '/suppliers',
+      icon: Building2,
+      permission: 'canViewSuppliers'
+    },
+    {
+      name: 'Products',
+      href: '/products',
+      icon: Package,
+      permission: 'canViewProducts'
+    },
+    {
+      name: 'Sourcing',
+      href: '/sourcing',
+      icon: ShoppingCart,
+      permission: 'canViewOrders',
+      badge: sourcingCount > 0 ? sourcingCount : null,
+      badgeColor: 'bg-red-500'
+    },
+    {
+      name: 'Procurement',
+      icon: FileText,
+      permission: 'canViewOrders',
+      children: [
+        {
+          name: 'Proforma Invoices',
+          href: '/proforma-invoices',
+          permission: 'canViewOrders'
+        },
+        {
+          name: 'Purchase Orders',
+          href: '/purchase-orders',
+          permission: 'canViewOrders'
+        }
+      ]
+    },
+    {
+      name: 'Client Invoices',
+      href: '/client-invoices',
+      icon: Receipt,
+      permission: 'canViewInvoices'
+    },
+    {
+      name: 'Delivery Tracking',
+      href: '/delivery-tracking',
+      icon: Truck,
+      permission: 'canViewDeliveries'
+    },
+    {
+      name: 'Quick Import',
+      href: '/quick-import',
+      icon: Upload,
+      permission: 'canImportData'
+    },
+    {
+      name: 'User Management',
+      href: '/users',
+      icon: Users,
+      permission: 'canManageUsers'
     }
-  }, []);
-
-  // Save collapsed state to localStorage
-  const toggleCollapse = () => {
-    const newCollapsed = !isCollapsed;
-    setIsCollapsed(newCollapsed);
-    localStorage.setItem('navCollapsed', newCollapsed.toString());
-    // Dispatch custom event for same-tab updates
-    window.dispatchEvent(new Event('navToggled'));
-  };
-
-  const tabs = [
-    { id: 'dashboard', path: '/', label: 'Dashboard', icon: Grid, permission: 'canViewDashboard' },
-    { id: 'suppliers', path: '/suppliers', label: 'Suppliers', icon: Building2, permission: 'canViewSuppliers' },
-    { id: 'products', path: '/products', label: 'Products', icon: Package, permission: 'canViewProducts' },
-    { id: 'proforma-invoices', path: '/proforma-invoices', label: 'Proforma Invoices', icon: FileText, permission: 'canViewPI' },
-    { id: 'purchase-orders', path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart, permission: 'canViewPurchaseOrders' },
-    { id: 'invoices', path: '/invoices', label: 'Client Invoices', icon: DollarSign, permission: 'canViewInvoices' },
-    { id: 'tracking', path: '/tracking', label: 'Delivery Tracking', icon: Truck, permission: 'canViewTracking' },
-    { id: 'import', path: '/import', label: 'Quick Import', icon: Upload, permission: 'canImportData' },
-    { id: 'users', path: '/users', label: 'User Management', icon: Users, permission: 'canManageUsers' }
   ];
 
-  const handleNavigation = (path) => {
-    navigate(path);
-    setIsMobileMenuOpen(false);
+  const toggleExpanded = (itemName) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [itemName]: !prev[itemName]
+    }));
   };
 
-  const isActive = (path) => {
-    if (path === '/') {
-      return location.pathname === '/';
+  const isActive = (href) => {
+    return location.pathname === href;
+  };
+
+  const isParentActive = (children) => {
+    return children.some(child => isActive(child.href));
+  };
+
+  const renderNavItem = (item, isChild = false) => {
+    if (!permissions[item.permission]) return null;
+
+    const hasChildren = item.children && item.children.length > 0;
+    const isExpanded = expandedItems[item.name];
+    const active = item.href ? isActive(item.href) : isParentActive(item.children || []);
+
+    if (hasChildren) {
+      return (
+        <div key={item.name}>
+          <button
+            onClick={() => toggleExpanded(item.name)}
+            className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+              active
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center">
+              <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-5 w-5`} />
+              {!isCollapsed && <span>{item.name}</span>}
+            </div>
+            {!isCollapsed && (
+              <div className="ml-auto">
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </div>
+            )}
+          </button>
+          {isExpanded && !isCollapsed && (
+            <div className="ml-6 mt-1 space-y-1">
+              {item.children.map(child => renderNavItem(child, true))}
+            </div>
+          )}
+        </div>
+      );
     }
-    return location.pathname.startsWith(path);
+
+    return (
+      <Link
+        key={item.name}
+        to={item.href}
+        className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+          active
+            ? 'bg-blue-50 text-blue-700'
+            : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+        } ${isChild ? 'pl-11' : ''}`}
+      >
+        {item.icon && <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-5 w-5`} />}
+        {!isCollapsed && (
+          <span className="flex-1">{item.name}</span>
+        )}
+        {!isCollapsed && item.badge && (
+          <span className={`ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white ${item.badgeColor || 'bg-gray-500'}`}>
+            {item.badge}
+          </span>
+        )}
+      </Link>
+    );
   };
 
   return (
-    <>
-      {/* Mobile Menu Overlay */}
-      {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-      
-      {/* Navigation Sidebar */}
-      <nav className={`
-        fixed top-0 left-0 z-40 h-screen pt-20 transition-all duration-300 bg-white border-r border-gray-200
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0
-        ${isCollapsed ? 'w-16' : 'w-64'}
-      `}>
-        {/* Collapse Toggle Button - Desktop Only */}
-        <button
-          onClick={toggleCollapse}
-          className="hidden lg:flex absolute -right-3 top-24 w-6 h-6 bg-white border border-gray-200 rounded-full items-center justify-center shadow-sm hover:shadow-md transition-shadow"
-        >
-          {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </button>
-
-        <div className="h-full px-3 pb-4 overflow-y-auto">
-          {/* Mobile Close Button */}
+    <nav className={`bg-white shadow-lg h-full transition-all duration-300 ${
+      isCollapsed ? 'w-16' : 'w-64'
+    }`}>
+      <div className="h-full flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b">
+          {!isCollapsed && (
+            <h2 className="text-xl font-bold text-gray-800">HiggsFlow</h2>
+          )}
           <button
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="lg:hidden absolute top-4 right-4 p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-1 rounded-md hover:bg-gray-100 transition-colors"
           >
-            <X size={20} />
+            {isCollapsed ? (
+              <Menu className="h-5 w-5 text-gray-600" />
+            ) : (
+              <X className="h-5 w-5 text-gray-600" />
+            )}
           </button>
-          
-          <ul className="space-y-2 font-medium">
-            {tabs.map(tab => {
-              const hasPermission = !tab.permission || permissions[tab.permission];
-              
-              if (!hasPermission) return null;
-              
-              const Icon = tab.icon;
-              const active = isActive(tab.path);
-              
-              return (
-                <li key={tab.id}>
-                  <button
-                    onClick={() => handleNavigation(tab.path)}
-                    className={`
-                      w-full flex items-center p-2 rounded-lg transition-colors text-left group
-                      ${active 
-                        ? 'bg-blue-50 text-blue-700' 
-                        : 'text-gray-700 hover:bg-gray-100'
-                      }
-                    `}
-                    title={isCollapsed ? tab.label : ''}
-                  >
-                    <Icon className={`
-                      ${isCollapsed ? 'w-6 h-6' : 'w-5 h-5'} 
-                      ${active ? 'text-blue-700' : 'text-gray-500'}
-                      transition-all duration-200
-                    `} />
-                    
-                    {!isCollapsed && (
-                      <>
-                        <span className="ml-3">{tab.label}</span>
-                        {tab.id === 'proforma-invoices' && (
-                          <span className="ml-auto bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                            New
-                          </span>
-                        )}
-                      </>
-                    )}
-                    
-                    {/* Tooltip for collapsed state */}
-                    {isCollapsed && (
-                      <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                        {tab.label}
-                      </div>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          
-          {/* User Info */}
-          <div className="pt-4 mt-4 border-t border-gray-200">
-            <div className={`${isCollapsed ? 'px-0' : 'px-2'} py-3`}>
-              {!isCollapsed ? (
-                <>
-                  <p className="text-sm text-gray-500">Current Role</p>
-                  <p className="text-sm font-medium text-gray-900 capitalize">{user?.role}</p>
-                </>
-              ) : (
-                <div className="flex justify-center">
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                    {user?.role?.charAt(0).toUpperCase()}
-                  </div>
+        </div>
+
+        {/* Navigation Items */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="space-y-1">
+            {navigationItems.map(item => renderNavItem(item))}
+          </div>
+        </div>
+
+        {/* User Info */}
+        {user && (
+          <div className="p-4 border-t">
+            <div className={`flex items-center ${isCollapsed ? 'justify-center' : ''}`}>
+              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
+                {user.email?.[0]?.toUpperCase() || 'U'}
+              </div>
+              {!isCollapsed && (
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-gray-700 truncate">
+                    {user.email}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {user.role || 'User'}
+                  </p>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      </nav>
-    </>
+        )}
+      </div>
+    </nav>
   );
 };
 
