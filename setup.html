@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HiggsFlow - Firestore Setup</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffecb5;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        button:hover {
+            background: #1557b0;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+        }
+        .error {
+            color: #721c24;
+            background-color: #f8d7da;
+        }
+        .info {
+            color: #004085;
+            background-color: #d1ecf1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 HiggsFlow Firestore Setup</h1>
+        <p>This utility will create the initial Firestore collections and sample data.</p>
+        
+        <div class="warning">
+            ⚠️ <strong>Warning:</strong> Run this setup only once! Running it multiple times will create duplicate documents.
+        </div>
+
+        <button id="setupBtn" onclick="runSetup()">Run Firestore Setup</button>
+
+        <div id="log" class="log"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            setDoc, 
+            addDoc,
+            serverTimestamp 
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBxNZe2RYL1vJZgu93C3zdz2i0J-lDYgCY",
+            authDomain: "higgsflow-b9f81.firebaseapp.com",
+            projectId: "higgsflow-b9f81",
+            storageBucket: "higgsflow-b9f81.firebasestorage.app",
+            messagingSenderId: "717201513347",
+            appId: "1:717201513347:web:86abc12a7dcebe914834b6"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        window.runSetup = async function() {
+            const btn = document.getElementById('setupBtn');
+            btn.disabled = true;
+            btn.textContent = 'Running setup...';
+            
+            try {
+                log('🔥 Starting Firestore setup...', 'info');
+
+                // System settings
+                log('⚙️ Creating system settings...', 'info');
+                await setDoc(doc(db, 'settings', 'system'), {
+                    companyName: 'HiggsFlow',
+                    version: '1.1.0',
+                    setupDate: serverTimestamp(),
+                    features: {
+                        aiExtraction: true,
+                        emailNotifications: false,
+                        advancedReporting: false
+                    }
+                });
+                log('✅ System settings created', 'success');
+
+                // Sample supplier
+                log('🏢 Creating sample supplier...', 'info');
+                const supplierRef = await addDoc(collection(db, 'suppliers'), {
+                    name: 'Sample Supplier Co.',
+                    email: 'sample@supplier.com',
+                    phone: '+1234567890',
+                    address: '123 Demo Street',
+                    contactPerson: 'John Demo',
+                    status: 'active',
+                    createdAt: serverTimestamp(),
+                    createdBy: 'system',
+                    metadata: { isDemo: true }
+                });
+                log(`✅ Supplier created with ID: ${supplierRef.id}`, 'success');
+
+                // Sample product
+                log('📦 Creating sample product...', 'info');
+                const productRef = await addDoc(collection(db, 'products'), {
+                    name: 'Sample Product',
+                    brand: 'Demo Brand',
+                    category: 'electronics',
+                    sku: 'DEMO-001',
+                    price: 100,
+                    stock: 50,
+                    minStock: 10,
+                    status: 'pending',
+                    supplierId: supplierRef.id,
+                    createdAt: serverTimestamp(),
+                    createdBy: 'system',
+                    metadata: { isDemo: true }
+                });
+                log(`✅ Product created with ID: ${productRef.id}`, 'success');
+
+                // Create empty collections by adding a placeholder document
+                log('📄 Creating proformaInvoices collection...', 'info');
+                const piRef = await addDoc(collection(db, 'proformaInvoices'), {
+                    piNumber: 'PI-DEMO-001',
+                    supplierName: 'Sample Supplier Co.',
+                    date: serverTimestamp(),
+                    items: [],
+                    totalAmount: 0,
+                    status: 'draft',
+                    createdAt: serverTimestamp(),
+                    metadata: { isDemo: true, placeholder: true }
+                });
+                log(`✅ ProformaInvoices collection created`, 'success');
+
+                log('📦 Creating purchaseOrders collection...', 'info');
+                const poRef = await addDoc(collection(db, 'purchaseOrders'), {
+                    poNumber: 'PO-DEMO-001',
+                    clientName: 'Demo Client',
+                    date: serverTimestamp(),
+                    items: [],
+                    totalAmount: 0,
+                    status: 'draft',
+                    createdAt: serverTimestamp(),
+                    metadata: { isDemo: true, placeholder: true }
+                });
+                log(`✅ PurchaseOrders collection created`, 'success');
+
+                log('💰 Creating clientInvoices collection...', 'info');
+                const invRef = await addDoc(collection(db, 'clientInvoices'), {
+                    invoiceNumber: 'INV-DEMO-001',
+                    clientName: 'Demo Client',
+                    date: serverTimestamp(),
+                    items: [],
+                    totalAmount: 0,
+                    paymentStatus: 'pending',
+                    createdAt: serverTimestamp(),
+                    metadata: { isDemo: true, placeholder: true }
+                });
+                log(`✅ ClientInvoices collection created`, 'success');
+
+                log('🚚 Creating deliveries collection...', 'info');
+                const delRef = await addDoc(collection(db, 'deliveries'), {
+                    trackingNumber: 'TRACK-DEMO-001',
+                    poNumber: 'PO-DEMO-001',
+                    status: 'pending',
+                    estimatedDate: serverTimestamp(),
+                    createdAt: serverTimestamp(),
+                    metadata: { isDemo: true, placeholder: true }
+                });
+                log(`✅ Deliveries collection created`, 'success');
+
+                // Create users collection with admin user
+                log('👤 Creating users collection...', 'info');
+                const userRef = await addDoc(collection(db, 'users'), {
+                    email: 'edisonchung@flowsolution.net',
+                    displayName: 'Edison Chung',
+                    role: 'admin',
+                    status: 'active',
+                    createdAt: serverTimestamp(),
+                    lastLogin: serverTimestamp()
+                });
+                log(`✅ Users collection created with admin user`, 'success');
+
+                // Activity log
+                log('📝 Creating activity log...', 'info');
+                await addDoc(collection(db, 'activityLogs'), {
+                    action: 'system_setup',
+                    description: 'Initial Firestore setup completed',
+                    userId: 'system',
+                    timestamp: serverTimestamp(),
+                    metadata: {
+                        collections: ['users', 'suppliers', 'products', 'proformaInvoices', 'purchaseOrders', 'clientInvoices', 'deliveries', 'settings', 'activityLogs']
+                    }
+                });
+                log('✅ Activity log created', 'success');
+
+                log('🎉 Setup completed successfully!', 'success');
+                log('', 'info');
+                log('📊 Collections created:', 'info');
+                log('• users (with admin user)', 'success');
+                log('• suppliers (with sample)', 'success');
+                log('• products (with sample)', 'success');
+                log('• proformaInvoices', 'success');
+                log('• purchaseOrders', 'success');
+                log('• clientInvoices', 'success');
+                log('• deliveries', 'success');
+                log('• settings', 'success');
+                log('• activityLogs', 'success');
+                log('', 'info');
+                log('📋 Next: Create composite indexes in Firebase Console', 'info');
+                
+                btn.textContent = 'Setup Complete!';
+                btn.style.background = '#28a745';
+
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, 'error');
+                console.error(error);
+                btn.textContent = 'Setup Failed - Check Console';
+                btn.style.background = '#dc3545';
+            }
+        }
+    </script>
+</body>
+</html>
