@@ -227,87 +227,125 @@ class MockFirebase {
 // Create singleton instance
 export const mockFirebase = new MockFirebase();
 
-// Create a mock Firestore-compatible db object
+// Create a mock Firestore database object
 export const db = {
-  // Mock collection method for Firestore compatibility
-  collection: (collectionName) => {
-    return {
-      // Mock add method
-      add: async (data) => {
-        const result = await mockFirebase.firestore.collection(collectionName).add(data);
-        return { id: result.id };
-      },
-      // Mock doc method
-      doc: (docId) => ({
-        get: () => mockFirebase.firestore.collection(collectionName).doc(docId).get(),
-        update: (data) => mockFirebase.firestore.collection(collectionName).doc(docId).update(data),
-        delete: () => mockFirebase.firestore.collection(collectionName).doc(docId).delete()
-      })
-    };
+  // Mock properties to satisfy Firestore checks
+  _delegate: {},
+  _persistenceKey: 'mock',
+  _settings: {},
+  type: 'firestore',
+  
+  toJSON: () => ({ type: 'firestore-mock' })
+};
+
+// Mock collection reference class
+class MockCollectionReference {
+  constructor(db, collectionName) {
+    this._db = db;
+    this._collectionName = collectionName;
+    this.firestore = db;
+    this.path = collectionName;
+    this.id = collectionName;
   }
+}
+
+// Mock document reference class
+class MockDocumentReference {
+  constructor(collectionRef, docId) {
+    this._collectionRef = collectionRef;
+    this._docId = docId;
+    this.firestore = collectionRef._db;
+    this.path = `${collectionRef.path}/${docId}`;
+    this.id = docId;
+  }
+}
+
+// Mock Firestore functions
+export const collection = (database, collectionName) => {
+  const collectionRef = new MockCollectionReference(database, collectionName);
+  
+  // Add methods to the collection reference
+  collectionRef.add = async (data) => {
+    return mockFirebase.firestore.collection(collectionName).add(data);
+  };
+  
+  collectionRef.get = async () => {
+    return mockFirebase.firestore.collection(collectionName).get();
+  };
+  
+  collectionRef.doc = (docId) => {
+    return doc(database, collectionName, docId);
+  };
+  
+  return collectionRef;
 };
 
-// Mock Firestore functions for compatibility
-export const collection = (db, collectionName) => {
-  return mockFirebase.firestore.collection(collectionName);
-};
-
-export const doc = (db, collectionName, docId) => {
-  return mockFirebase.firestore.collection(collectionName).doc(docId);
+export const doc = (database, collectionName, docId) => {
+  const collectionRef = new MockCollectionReference(database, collectionName);
+  const docRef = new MockDocumentReference(collectionRef, docId);
+  
+  // Add methods to the document reference
+  docRef.get = async () => {
+    return mockFirebase.firestore.collection(collectionName).doc(docId).get();
+  };
+  
+  docRef.update = async (data) => {
+    return mockFirebase.firestore.collection(collectionName).doc(docId).update(data);
+  };
+  
+  docRef.delete = async () => {
+    return mockFirebase.firestore.collection(collectionName).doc(docId).delete();
+  };
+  
+  return docRef;
 };
 
 export const addDoc = async (collectionRef, data) => {
-  if (collectionRef.add) {
-    return await collectionRef.add(data);
-  }
-  // Handle case where collectionRef is a string (collection name)
-  const collectionName = typeof collectionRef === 'string' ? collectionRef : 'unknown';
-  return await mockFirebase.firestore.collection(collectionName).add(data);
+  const collectionName = collectionRef._collectionName || collectionRef.path || 'unknown';
+  return mockFirebase.firestore.collection(collectionName).add(data);
 };
 
 export const updateDoc = async (docRef, data) => {
-  if (docRef.update) {
-    return await docRef.update(data);
-  }
-  throw new Error('Invalid document reference');
+  const pathParts = docRef.path.split('/');
+  const collectionName = pathParts[0];
+  const docId = pathParts[1];
+  return mockFirebase.firestore.collection(collectionName).doc(docId).update(data);
 };
 
 export const deleteDoc = async (docRef) => {
-  if (docRef.delete) {
-    return await docRef.delete();
-  }
-  throw new Error('Invalid document reference');
+  const pathParts = docRef.path.split('/');
+  const collectionName = pathParts[0];
+  const docId = pathParts[1];
+  return mockFirebase.firestore.collection(collectionName).doc(docId).delete();
 };
 
 export const getDoc = async (docRef) => {
-  if (docRef.get) {
-    return await docRef.get();
-  }
-  throw new Error('Invalid document reference');
+  const pathParts = docRef.path.split('/');
+  const collectionName = pathParts[0];
+  const docId = pathParts[1];
+  return mockFirebase.firestore.collection(collectionName).doc(docId).get();
 };
 
-export const getDocs = async (collectionRef) => {
-  if (collectionRef.get) {
-    return await collectionRef.get();
-  }
-  // Handle case where collectionRef is a string (collection name)
-  const collectionName = typeof collectionRef === 'string' ? collectionRef : 'unknown';
-  return await mockFirebase.firestore.collection(collectionName).get();
+export const getDocs = async (queryOrCollection) => {
+  const collectionName = queryOrCollection._collectionName || queryOrCollection.path || 'unknown';
+  return mockFirebase.firestore.collection(collectionName).get();
 };
 
 // Mock query functions
 export const query = (collectionRef, ...constraints) => {
-  // For now, just return the collection ref
-  // In a real implementation, you'd apply the constraints
-  return collectionRef;
+  // Create a query object that extends the collection reference
+  const queryObj = Object.create(collectionRef);
+  queryObj._constraints = constraints;
+  queryObj._isQuery = true;
+  return queryObj;
 };
 
 export const where = (field, operator, value) => {
-  return { field, operator, value };
+  return { type: 'where', field, operator, value };
 };
 
 export const orderBy = (field, direction = 'asc') => {
-  return { field, direction };
+  return { type: 'orderBy', field, direction };
 };
 
 export const serverTimestamp = () => {
@@ -315,19 +353,71 @@ export const serverTimestamp = () => {
 };
 
 // Mock real-time listeners
-export const onSnapshot = (ref, callback, errorCallback) => {
-  // Simulate real-time updates by calling the callback immediately
-  if (ref.get) {
-    ref.get().then(snapshot => {
-      callback(snapshot);
-    }).catch(error => {
-      if (errorCallback) errorCallback(error);
-    });
+export const onSnapshot = (ref, callbackOrOptions, errorCallback) => {
+  const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : callbackOrOptions.next;
+  const onError = errorCallback || (typeof callbackOrOptions === 'object' ? callbackOrOptions.error : undefined);
+  
+  // Determine collection name
+  let collectionName;
+  if (ref._collectionName) {
+    collectionName = ref._collectionName;
+  } else if (ref.path && !ref.path.includes('/')) {
+    collectionName = ref.path;
+  } else {
+    collectionName = 'unknown';
   }
   
-  // Return a mock unsubscribe function
+  // Initial data fetch
+  const fetchData = async () => {
+    try {
+      const snapshot = await mockFirebase.firestore.collection(collectionName).get();
+      
+      // Apply query constraints if any
+      let docs = snapshot.docs;
+      if (ref._constraints) {
+        ref._constraints.forEach(constraint => {
+          if (constraint.type === 'where') {
+            docs = docs.filter(doc => {
+              const data = doc.data();
+              const fieldValue = data[constraint.field];
+              
+              if (constraint.operator === '==') {
+                return fieldValue === constraint.value;
+              } else if (constraint.operator === 'in') {
+                return constraint.value.includes(fieldValue);
+              }
+              // Add more operators as needed
+              return true;
+            });
+          } else if (constraint.type === 'orderBy') {
+            docs.sort((a, b) => {
+              const aValue = a.data()[constraint.field];
+              const bValue = b.data()[constraint.field];
+              const multiplier = constraint.direction === 'desc' ? -1 : 1;
+              
+              if (aValue < bValue) return -1 * multiplier;
+              if (aValue > bValue) return 1 * multiplier;
+              return 0;
+            });
+          }
+        });
+      }
+      
+      callback({ docs });
+    } catch (error) {
+      if (onError) onError(error);
+    }
+  };
+  
+  // Fetch initial data
+  fetchData();
+  
+  // Set up polling for updates (simulate real-time)
+  const intervalId = setInterval(fetchData, 5000);
+  
+  // Return unsubscribe function
   return () => {
-    // Cleanup logic would go here
+    clearInterval(intervalId);
   };
 };
 
