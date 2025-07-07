@@ -17,6 +17,7 @@ import Notification from './components/common/Notification';
 import FirestoreTest from './components/FirestoreTest';
 import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users } from 'lucide-react';
+import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 
 
 // Error Boundary Component
@@ -234,6 +235,7 @@ function AppContent() {
             {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
           </button>
         )}
+        {import.meta.env.DEV && user && <FirestoreHealthCheck />}
       </Router>
     </ErrorBoundary>
   );
