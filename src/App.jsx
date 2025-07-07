@@ -235,7 +235,7 @@ function AppContent() {
           </button>
         )}
         {console.log('Dev mode:', import.meta.env.DEV, 'User:', !!user)}
-        {import.meta.env.DEV && user && <FirestoreHealthCheck />}
+        {user && <FirestoreHealthCheck />}
       </Router>
     </ErrorBoundary>
   );
