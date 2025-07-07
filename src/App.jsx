@@ -237,6 +237,7 @@ function AppContent() {
             {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
           </button>
         )}
+        {console.log('Dev mode:', import.meta.env.DEV, 'User:', !!user)}
         {import.meta.env.DEV && user && <FirestoreHealthCheck />}
       </Router>
     </ErrorBoundary>
