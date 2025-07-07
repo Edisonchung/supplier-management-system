@@ -14,7 +14,6 @@ import ClientInvoices from './components/invoices/ClientInvoices';
 import QuickImport from './components/import/QuickImport';
 import UserManagement from './components/users/UserManagement';
 import Notification from './components/common/Notification';
-import FirestoreTest from './components/FirestoreTest';
 import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
