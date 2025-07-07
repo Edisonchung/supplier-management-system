@@ -207,6 +207,15 @@ function AppContent() {
               } 
             />
           </Route>
+            <Route 
+              path="/sourcing" 
+              element={
+                <PrivateRoute requiredPermission="canViewOrders">
+                  <SourcingDashboard showNotification={showNotification} />
+                </PrivateRoute>
+              } 
+            />
+
           
           {/* Catch all - redirect to home or login */}
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
