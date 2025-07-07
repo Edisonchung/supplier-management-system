@@ -22,6 +22,11 @@ export const usePermissions = () => {
     canEditProducts: PERMISSIONS?.canEditProducts?.includes(userRole) ?? false,
     canViewProducts: PERMISSIONS?.canViewProducts?.includes(userRole) ?? false,
     
+    // Order permissions (for Sourcing & Procurement menu items)
+    canViewOrders: PERMISSIONS?.canViewOrders?.includes(userRole) ?? 
+                   PERMISSIONS?.canViewPurchaseOrders?.includes(userRole) ?? 
+                   (userRole === 'admin' || userRole === 'manager' || userRole === 'employee'),
+    
     // Purchase Order permissions
     canEditPurchaseOrders: PERMISSIONS?.canEditPurchaseOrders?.includes(userRole) ?? false,
     canViewPurchaseOrders: PERMISSIONS?.canViewPurchaseOrders?.includes(userRole) ?? false,
@@ -36,7 +41,10 @@ export const usePermissions = () => {
     canViewInvoices: PERMISSIONS?.canViewInvoices?.includes(userRole) ?? false,
     canEditInvoices: PERMISSIONS?.canEditInvoices?.includes(userRole) ?? false,
     
-    // Tracking permissions
+    // Delivery/Tracking permissions
+    canViewDeliveries: PERMISSIONS?.canViewDeliveries?.includes(userRole) ?? 
+                      PERMISSIONS?.canViewTracking?.includes(userRole) ?? 
+                      (userRole === 'admin' || userRole === 'manager' || userRole === 'employee'),
     canViewTracking: PERMISSIONS?.canViewTracking?.includes(userRole) ?? false,
     canUpdateDeliveryStatus: PERMISSIONS?.canUpdateDeliveryStatus?.includes(userRole) ?? false,
     
