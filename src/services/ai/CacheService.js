@@ -9,6 +9,7 @@ export class CacheService {
   static extractionHistory = [];
   static corrections = new Map();
   static fieldMappingCache = new Map();
+  static extractionCache = new Map(); // General cache for extraction results
 
   // Supplier caching
   static cacheSupplier(supplier) {
@@ -42,6 +43,39 @@ export class CacheService {
 
   static clearProductCache() {
     this.productCache.clear();
+  }
+
+  // General cache methods for extraction results
+  static get(key) {
+    const cached = this.extractionCache.get(key);
+    if (!cached) return null;
+    
+    // Check if expired (if expiry is set)
+    if (cached.expiry && Date.now() > cached.expiry) {
+      this.extractionCache.delete(key);
+      return null;
+    }
+    
+    return cached.value;
+  }
+
+  static set(key, value, ttl = 3600000) { // 1 hour default
+    this.extractionCache.set(key, {
+      value: value,
+      timestamp: Date.now(),
+      expiry: ttl ? Date.now() + ttl : null
+    });
+    
+    // Limit cache size to prevent memory issues
+    if (this.extractionCache.size > 100) {
+      // Remove oldest entries
+      const firstKey = this.extractionCache.keys().next().value;
+      this.extractionCache.delete(firstKey);
+    }
+  }
+
+  static clearExtractionCache() {
+    this.extractionCache.clear();
   }
 
   // Extraction history
@@ -158,26 +192,27 @@ export class CacheService {
   static refreshFromLocalStorage() {
     try {
       // Load suppliers
-    const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
-    // Filter out invalid suppliers before caching
-    const validSuppliers = suppliers.filter(s => s && s.id && s.name);
-    validSuppliers.forEach(supplier => this.cacheSupplier(supplier));
+      const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
+      // Filter out invalid suppliers before caching
+      const validSuppliers = suppliers.filter(s => s && s.id && s.name);
+      validSuppliers.forEach(supplier => this.cacheSupplier(supplier));
 
-    // Load products
-    const products = JSON.parse(localStorage.getItem('products') || '[]');
-    // Filter out invalid products before caching
-    const validProducts = products.filter(p => p && p.id && p.name);
-    validProducts.forEach(product => this.cacheProduct(product));
-  } catch (error) {
-    console.error('Failed to refresh cache from localStorage:', error);
+      // Load products
+      const products = JSON.parse(localStorage.getItem('products') || '[]');
+      // Filter out invalid products before caching
+      const validProducts = products.filter(p => p && p.id && p.name);
+      validProducts.forEach(product => this.cacheProduct(product));
+    } catch (error) {
+      console.error('Failed to refresh cache from localStorage:', error);
+    }
   }
-}
 
   // Initialize cache
   static initialize() {
     this.loadCorrectionsFromStorage();
     this.loadHistoryFromStorage();
     this.refreshFromLocalStorage();
+    this.extractionCache = new Map(); // Initialize extraction cache
   }
 
   // Get statistics
@@ -187,7 +222,23 @@ export class CacheService {
       productsInCache: this.productCache.size,
       extractionsInHistory: this.extractionHistory.length,
       correctionsLearned: this.corrections.size,
-      fieldMappingsCached: this.fieldMappingCache.size
+      fieldMappingsCached: this.fieldMappingCache.size,
+      extractionsCached: this.extractionCache.size
     };
+  }
+
+  // Helper method to check if a relationship exists
+  static cacheRelationship(key1, key2, relationship) {
+    const cacheKey = `rel_${key1}_${key2}`;
+    this.fieldMappingCache.set(cacheKey, {
+      relationship,
+      timestamp: Date.now()
+    });
+  }
+
+  static getCachedRelationship(key1, key2) {
+    const cacheKey = `rel_${key1}_${key2}`;
+    const cached = this.fieldMappingCache.get(cacheKey);
+    return cached ? cached.relationship : null;
   }
 }
