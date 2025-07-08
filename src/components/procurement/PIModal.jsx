@@ -72,33 +72,19 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
 
   useEffect(() => {
     if (proformaInvoice) {
+      console.log('PIModal received data:', proformaInvoice);
+      
       // Handle both manually created and AI-extracted PI data
       setFormData({
-        piNumber: proformaInvoice.piNumber || '',
+        piNumber: proformaInvoice.piNumber || proformaInvoice.invoiceNumber || generatePINumber(),
         supplierId: proformaInvoice.supplierId || '',
         supplierName: proformaInvoice.supplierName || '', // For extracted data without matched supplier
-        projectCode: proformaInvoice.projectCode || '',
+        projectCode: proformaInvoice.projectCode || proformaInvoice.clientRef || '',
         isPriority: proformaInvoice.isPriority || false,
         priorityReason: proformaInvoice.priorityReason || '',
         date: proformaInvoice.date?.split('T')[0] || new Date().toISOString().split('T')[0],
         
-        // Ensure items/products array has proper structure
-        items: (proformaInvoice.items || proformaInvoice.products || []).map(item => ({
-          id: item.id || `item-${Date.now()}-${Math.random()}`,
-          productCode: item.productCode || '',
-          productName: item.productName || '',
-          quantity: item.quantity || 1,
-          unitPrice: item.unitPrice || 0,
-          totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-          received: item.received || false,
-          receivedQty: item.receivedQty || 0,
-          receivedDate: item.receivedDate || '',
-          hasDiscrepancy: item.hasDiscrepancy || false,
-          discrepancyReason: item.discrepancyReason || '',
-          leadTime: item.leadTime || '',
-          warranty: item.warranty || '',
-          notes: item.notes || ''
-        })),
+        // Don't set items array here - handle separately below
         
         status: proformaInvoice.status || 'draft',
         deliveryStatus: proformaInvoice.deliveryStatus || 'pending',
@@ -106,7 +92,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
         notes: proformaInvoice.notes || '',
         specialInstructions: proformaInvoice.specialInstructions || '',
         attachments: proformaInvoice.attachments || [],
-        etaDate: proformaInvoice.etaDate?.split('T')[0] || '',
+        etaDate: proformaInvoice.etaDate?.split('T')[0] || proformaInvoice.validUntil?.split('T')[0] || '',
         receivedDate: proformaInvoice.receivedDate?.split('T')[0] || '',
         hasDiscrepancy: proformaInvoice.hasDiscrepancy || false,
         
@@ -142,18 +128,31 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
         shareableId: proformaInvoice.shareableId || generateShareableId()
       });
       
-      // Initialize items with receiving data
-      const itemsWithReceiving = (proformaInvoice.items || []).map(item => ({
-        ...item,
-        id: item.id || `item-${Date.now()}-${Math.random()}`,
+      // Handle items/products array separately to ensure proper structure
+      const items = proformaInvoice.items || proformaInvoice.products || [];
+      console.log('Processing items:', items);
+      
+      const itemsWithIds = items.map((item, index) => ({
+        id: item.id || `item-${Date.now()}-${index}`,
+        productCode: item.productCode || item.partNumber || '',
+        productName: item.productName || item.description || '',
+        quantity: parseInt(item.quantity) || 1,
+        unitPrice: parseFloat(item.unitPrice) || 0,
+        totalPrice: parseFloat(item.totalPrice) || (parseInt(item.quantity || 1) * parseFloat(item.unitPrice || 0)),
+        leadTime: item.leadTime || '',
+        warranty: item.warranty || '',
+        notes: item.notes || '',
+        // Receiving tracking fields
         received: item.received || false,
         receivedQty: item.receivedQty || 0,
         receivedDate: item.receivedDate || '',
         hasDiscrepancy: item.hasDiscrepancy || false,
-        discrepancyReason: item.discrepancyReason || ''
+        discrepancyReason: item.discrepancyReason || '',
+        receivingNotes: item.receivingNotes || ''
       }));
       
-      setSelectedProducts(itemsWithReceiving);
+      setSelectedProducts(itemsWithIds);
+      console.log('Set selected products:', itemsWithIds);
       
       // Show supplier suggestion if extracted but not matched
       if (proformaInvoice.supplierName && !proformaInvoice.supplierId) {
@@ -162,14 +161,44 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
           supplier: `Supplier "${proformaInvoice.supplierName}" not found. Please select from the list or create a new supplier.`
         }));
       }
+      
+      // If we have extracted supplier info but no match, show it in notes
+      if (proformaInvoice.supplier && !proformaInvoice.supplierId) {
+        const supplierInfo = proformaInvoice.supplier;
+        const supplierDetails = [];
+        if (supplierInfo.name) supplierDetails.push(`Supplier: ${supplierInfo.name}`);
+        if (supplierInfo.contact) supplierDetails.push(`Contact: ${supplierInfo.contact}`);
+        if (supplierInfo.email) supplierDetails.push(`Email: ${supplierInfo.email}`);
+        if (supplierInfo.phone) supplierDetails.push(`Phone: ${supplierInfo.phone}`);
+        
+        if (supplierDetails.length > 0) {
+          setFormData(prev => ({
+            ...prev,
+            notes: prev.notes ? `${prev.notes}\n\nExtracted Supplier Info:\n${supplierDetails.join('\n')}` : `Extracted Supplier Info:\n${supplierDetails.join('\n')}`
+          }));
+        }
+      }
     } else {
-      // Generate PI number and shareable ID
-      const date = new Date();
-      const piNumber = `PI-${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      // Generate new PI number for new invoices
+      const piNumber = generatePINumber();
       const shareableId = generateShareableId();
-      setFormData(prev => ({ ...prev, piNumber, shareableId }));
+      setFormData(prev => ({ 
+        ...prev, 
+        piNumber, 
+        shareableId,
+        date: new Date().toISOString().split('T')[0]
+      }));
     }
   }, [proformaInvoice]);
+
+  const generatePINumber = () => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `PI-${year}${month}${day}-${random}`;
+  };
 
   const generateShareableId = () => {
     return `pi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -190,7 +219,9 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     const newErrors = {};
     
     if (!formData.piNumber) newErrors.piNumber = 'PI Number is required';
-    if (!formData.supplierId) newErrors.supplierId = 'Supplier is required';
+    if (!formData.supplierId && !formData.supplierName) {
+      newErrors.supplierId = 'Supplier is required';
+    }
     if (!formData.date) newErrors.date = 'Date is required';
     if (selectedProducts.length === 0) newErrors.items = 'At least one item is required';
     
@@ -212,7 +243,9 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     
     if (!validateForm()) return;
     
-    const totalAmount = selectedProducts.reduce((sum, item) => sum + item.totalPrice, 0);
+    // Calculate total if not already set (for manually added items)
+    const calculatedTotal = selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+    const totalAmount = formData.totalAmount || calculatedTotal;
     
     // Check for discrepancies
     const hasDiscrepancy = selectedProducts.some(item => 
@@ -305,6 +338,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
       setSelectedProducts([
         ...selectedProducts,
         {
+          id: `item-${Date.now()}-${selectedProducts.length}`,
           productId: product.id,
           productName: product.name,
           productCode: product.sku || product.code,
@@ -330,7 +364,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     
     // Recalculate total if quantity or price changed
     if (field === 'quantity' || field === 'unitPrice') {
-      updated[index].totalPrice = (updated[index].quantity || 0) * (updated[index].unitPrice || 0);
+      updated[index].totalPrice = (parseFloat(updated[index].quantity) || 0) * (parseFloat(updated[index].unitPrice) || 0);
     }
     
     // Check if item is fully received
@@ -365,7 +399,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
   });
 
   const selectedSupplier = suppliers.find(s => s.id === formData.supplierId);
-  const totalAmount = selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+  const totalAmount = formData.totalAmount || selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
   const totalReceived = selectedProducts.reduce((sum, item) => sum + (item.receivedQty || 0), 0);
   const totalOrdered = selectedProducts.reduce((sum, item) => sum + (item.quantity || 0), 0);
   const totalPaid = formData.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
@@ -499,6 +533,12 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                       </p>
                     </div>
                   )}
+                  
+                  {errors.supplier && (
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                      <p className="text-yellow-800">{errors.supplier}</p>
+                    </div>
+                  )}
                 </div>
                 
                 <div>
@@ -541,6 +581,146 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                     value={formData.purpose}
                     onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Type
+                </label>
+                <select
+                  value={newPayment.type}
+                  onChange={(e) => setNewPayment({ ...newPayment, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="down-payment">Down Payment</option>
+                  <option value="balance">Balance Payment</option>
+                  <option value="partial">Partial Payment</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={newPayment.method}
+                  onChange={(e) => setNewPayment({ ...newPayment, method: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="bank-transfer">Bank Transfer</option>
+                  <option value="check">Check</option>
+                  <option value="cash">Cash</option>
+                  <option value="credit-card">Credit Card</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reference Number
+                </label>
+                <input
+                  type="text"
+                  value={newPayment.reference}
+                  onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Transaction ID or Check Number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Remark
+                </label>
+                <textarea
+                  value={newPayment.remark}
+                  onChange={(e) => setNewPayment({ ...newPayment, remark: e.target.value })}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Additional notes about this payment..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Upload Payment Slip
+                </label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600">
+                      <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                        <span>Upload a file</span>
+                        <input 
+                          id="file-upload" 
+                          name="file-upload" 
+                          type="file" 
+                          className="sr-only"
+                          accept="image/*,.pdf"
+                          onChange={handleFileUpload}
+                        />
+                      </label>
+                      <p className="pl-1">or drag and drop</p>
+                    </div>
+                    <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
+                  </div>
+                </div>
+                
+                {newPayment.attachments.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Uploaded Files</p>
+                    <div className="space-y-2">
+                      {newPayment.attachments.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center gap-2">
+                            <FileText size={16} className="text-gray-400" />
+                            <span className="text-sm text-gray-700">{file.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewPayment(prev => ({
+                                ...prev,
+                                attachments: prev.attachments.filter((_, i) => i !== idx)
+                              }));
+                            }}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePayment}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Save Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PIModal;:ring-blue-500"
                   >
                     <option value="stock">Stock</option>
                     <option value="r&d">R&D</option>
@@ -688,7 +868,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
               )}
 
               {/* Banking details section (if international supplier) */}
-              {formData.currency !== 'MYR' && (
+              {formData.currency !== 'MYR' && formData.bankDetails && (
                 <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                   <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
                     <CreditCard size={16} />
@@ -760,8 +940,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
                 </div>
                 
-                {/* Product Search */}
-                {formData.supplierId && (
+                {/* Product Search - Only show if supplier is selected and no extracted items */}
+                {formData.supplierId && selectedProducts.length === 0 && (
                   <div className="relative mb-4">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -815,11 +995,14 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                       </thead>
                       <tbody>
                         {selectedProducts.map((item, index) => (
-                          <tr key={index} className="border-t">
+                          <tr key={item.id || index} className="border-t">
                             <td className="px-4 py-2">
                               <div>
                                 <div className="font-medium">{item.productName}</div>
                                 <div className="text-sm text-gray-600">{item.productCode}</div>
+                                {item.leadTime && (
+                                  <div className="text-xs text-gray-500">Lead time: {item.leadTime}</div>
+                                )}
                               </div>
                             </td>
                             <td className="px-4 py-2">
@@ -846,7 +1029,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                               />
                             </td>
                             <td className="px-4 py-2 font-medium">
-                              ${item.totalPrice.toFixed(2)}
+                              {formData.currency} {item.totalPrice.toFixed(2)}
                             </td>
                             <td className="px-4 py-2">
                               <button
@@ -861,9 +1044,40 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                         ))}
                       </tbody>
                       <tfoot className="bg-gray-50">
+                        {/* Show financial breakdown if extracted */}
+                        {formData.subtotal > 0 && (
+                          <>
+                            <tr>
+                              <td colSpan="3" className="px-4 py-2 text-right text-sm">Subtotal:</td>
+                              <td className="px-4 py-2 font-medium">{formData.currency} {formData.subtotal.toFixed(2)}</td>
+                              <td></td>
+                            </tr>
+                            {formData.discount > 0 && (
+                              <tr>
+                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Discount:</td>
+                                <td className="px-4 py-2 font-medium text-red-600">-{formData.currency} {formData.discount.toFixed(2)}</td>
+                                <td></td>
+                              </tr>
+                            )}
+                            {formData.shipping > 0 && (
+                              <tr>
+                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Shipping:</td>
+                                <td className="px-4 py-2 font-medium">{formData.currency} {formData.shipping.toFixed(2)}</td>
+                                <td></td>
+                              </tr>
+                            )}
+                            {formData.tax > 0 && (
+                              <tr>
+                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Tax:</td>
+                                <td className="px-4 py-2 font-medium">{formData.currency} {formData.tax.toFixed(2)}</td>
+                                <td></td>
+                              </tr>
+                            )}
+                          </>
+                        )}
                         <tr>
                           <td colSpan="3" className="px-4 py-2 text-right font-medium">Total:</td>
-                          <td className="px-4 py-2 font-bold">${totalAmount.toFixed(2)}</td>
+                          <td className="px-4 py-2 font-bold text-lg">{formData.currency} {totalAmount.toFixed(2)}</td>
                           <td></td>
                         </tr>
                       </tfoot>
@@ -871,13 +1085,44 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   </div>
                 )}
 
-                {!formData.supplierId && (
+                {!formData.supplierId && selectedProducts.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <Package className="mx-auto h-12 w-12 text-gray-400 mb-2" />
                     <p>Select a supplier to add products</p>
                   </div>
                 )}
               </div>
+
+              {/* Additional Terms Section for Extracted Data */}
+              {(formData.deliveryTerms || formData.validity) && (
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-medium text-gray-700 mb-3">Additional Terms</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    {formData.deliveryTerms && (
+                      <div>
+                        <label className="block text-gray-600 mb-1">Delivery Terms</label>
+                        <input
+                          type="text"
+                          value={formData.deliveryTerms}
+                          onChange={(e) => setFormData({ ...formData, deliveryTerms: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                    {formData.validity && (
+                      <div>
+                        <label className="block text-gray-600 mb-1">Validity</label>
+                        <input
+                          type="text"
+                          value={formData.validity}
+                          onChange={(e) => setFormData({ ...formData, validity: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Notes */}
               <div className="mb-6">
@@ -892,6 +1137,21 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   placeholder="Additional notes..."
                 />
               </div>
+
+              {/* Special Instructions */}
+              {formData.specialInstructions && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Special Instructions
+                  </label>
+                  <textarea
+                    value={formData.specialInstructions}
+                    onChange={(e) => setFormData({ ...formData, specialInstructions: e.target.value })}
+                    rows="2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
             </>
           ) : activeTab === 'payment' ? (
             // Payment Tab
@@ -901,16 +1161,16 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-sm text-gray-600">Total Amount</p>
-                    <p className="text-2xl font-bold">${totalAmount.toFixed(2)}</p>
+                    <p className="text-2xl font-bold">{formData.currency} {totalAmount.toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Total Paid</p>
-                    <p className="text-2xl font-bold text-green-600">${totalPaid.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-green-600">{formData.currency} {totalPaid.toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Balance</p>
                     <p className="text-2xl font-bold text-orange-600">
-                      ${(totalAmount - totalPaid).toFixed(2)}
+                      {formData.currency} {(totalAmount - totalPaid).toFixed(2)}
                     </p>
                   </div>
                   <div>
@@ -1056,7 +1316,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   const hasDiscrepancy = item.receivedQty > 0 && item.receivedQty !== item.quantity;
                   
                   return (
-                    <div key={index} className={`border rounded-lg p-4 ${hasDiscrepancy ? 'border-orange-300 bg-orange-50' : 'border-gray-200'}`}>
+                    <div key={item.id || index} className={`border rounded-lg p-4 ${hasDiscrepancy ? 'border-orange-300 bg-orange-50' : 'border-gray-200'}`}>
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
                           <h4 className="font-medium">{item.productName}</h4>
@@ -1116,7 +1376,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                         <label className="block text-sm text-gray-600 mb-1">Receiving Notes</label>
                         <input
                           type="text"
-                          value={item.receivingNotes}
+                          value={item.receivingNotes || ''}
                           onChange={(e) => handleUpdateItem(index, 'receivingNotes', e.target.value)}
                           className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                           placeholder="e.g., Damaged packaging, Wrong item, etc."
@@ -1197,144 +1457,4 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   type="date"
                   value={newPayment.date}
                   onChange={(e) => setNewPayment({ ...newPayment, date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Payment Type
-                </label>
-                <select
-                  value={newPayment.type}
-                  onChange={(e) => setNewPayment({ ...newPayment, type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="down-payment">Down Payment</option>
-                  <option value="balance">Balance Payment</option>
-                  <option value="partial">Partial Payment</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Payment Method
-                </label>
-                <select
-                  value={newPayment.method}
-                  onChange={(e) => setNewPayment({ ...newPayment, method: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="bank-transfer">Bank Transfer</option>
-                  <option value="check">Check</option>
-                  <option value="cash">Cash</option>
-                  <option value="credit-card">Credit Card</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reference Number
-                </label>
-                <input
-                  type="text"
-                  value={newPayment.reference}
-                  onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Transaction ID or Check Number"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Remark
-                </label>
-                <textarea
-                  value={newPayment.remark}
-                  onChange={(e) => setNewPayment({ ...newPayment, remark: e.target.value })}
-                  rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Additional notes about this payment..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Upload Payment Slip
-                </label>
-                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
-                  <div className="space-y-1 text-center">
-                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="flex text-sm text-gray-600">
-                      <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
-                        <span>Upload a file</span>
-                        <input 
-                          id="file-upload" 
-                          name="file-upload" 
-                          type="file" 
-                          className="sr-only"
-                          accept="image/*,.pdf"
-                          onChange={handleFileUpload}
-                        />
-                      </label>
-                      <p className="pl-1">or drag and drop</p>
-                    </div>
-                    <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
-                  </div>
-                </div>
-                
-                {newPayment.attachments.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Uploaded Files</p>
-                    <div className="space-y-2">
-                      {newPayment.attachments.map((file, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <div className="flex items-center gap-2">
-                            <FileText size={16} className="text-gray-400" />
-                            <span className="text-sm text-gray-700">{file.name}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNewPayment(prev => ({
-                                ...prev,
-                                attachments: prev.attachments.filter((_, i) => i !== idx)
-                              }));
-                            }}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowPaymentModal(false)}
-                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSavePayment}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                Save Payment
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default PIModal;
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus
