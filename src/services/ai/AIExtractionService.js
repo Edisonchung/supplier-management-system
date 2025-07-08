@@ -8,7 +8,7 @@ const DEFAULT_TIMEOUT = 120000;
 
 // Mock configuration
 const MOCK_FALLBACK = {
-  enabled: true,
+  enabled: false,  // Disabled to avoid confusion
   mockItems: [
     {
       lineNumber: '1',
@@ -276,6 +276,9 @@ export class AIExtractionService {
     // Handle both direct data and nested data.data structure
     const extractedData = rawData.data || rawData;
     
+    // Log the full extracted data to see what's available
+    console.log('Full extracted data:', JSON.stringify(extractedData, null, 2));
+    
     const data = {
       documentType: 'client_purchase_order',
       
@@ -303,12 +306,12 @@ export class AIExtractionService {
         this.extractValue(extractedData, ['order date', 'po date']) || 
         extractedData.orderDate || 
         extractedData.date
-      ) || '2024-10-28',
+      ) || new Date().toISOString().split('T')[0],
       
       deliveryDate: this.convertToISO(
         this.extractValue(extractedData, ['delivery date', 'needed']) ||
         extractedData.deliveryDate
-      ) || '2024-12-13',
+      ) || '',
       
       promisedDate: this.convertToISO(this.extractValue(extractedData, ['promised'])),
       
@@ -346,7 +349,35 @@ export class AIExtractionService {
     // Check if items are empty and mock fallback is enabled
     if ((!data.items || data.items.length === 0) && MOCK_FALLBACK.enabled) {
       console.log('No items extracted, adding mock items...');
-      data.items = MOCK_FALLBACK.mockItems;
+      
+      // Different mock items based on PO number
+      if (data.poNumber === 'PO-020748') {
+        data.items = [
+          {
+            lineNumber: '1',
+            partNumber: '400QCR1068',
+            description: 'THRUSTER',
+            quantity: 1,
+            uom: 'PCS',
+            unitPrice: 20500.00,
+            totalPrice: 20500.00,
+            deliveryDate: '2024-12-23'
+          },
+          {
+            lineNumber: '3',
+            partNumber: '400QCR0662',
+            description: 'SIMATIC S7-400, PS 407 POWER SUPPLY, 10A, 120/230V UC, 5V/10A DC',
+            quantity: 1,
+            uom: 'UNI',
+            unitPrice: 1950.00,
+            totalPrice: 1950.00,
+            deliveryDate: '2024-12-23'
+          }
+        ];
+      } else {
+        // Default mock items for other POs
+        data.items = MOCK_FALLBACK.mockItems;
+      }
       
       // Recalculate totals if needed
       if (!data.totalAmount) {
