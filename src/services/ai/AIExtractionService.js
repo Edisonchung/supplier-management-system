@@ -57,8 +57,25 @@ export class AIExtractionService {
       // Step 3: Extract raw data from file
       const rawData = await this.extractRawData(file);
       
+      // Step 3.5: Pre-process document type detection
+      // Check for specific structures that indicate document type
+      let preDetectedType = null;
+      if (rawData.data?.purchase_order || rawData.purchase_order) {
+        preDetectedType = 'client_purchase_order';
+        console.log('Pre-detected as client purchase order based on structure');
+      } else if (rawData.data?.proforma_invoice || rawData.proforma_invoice) {
+        preDetectedType = 'supplier_proforma';
+        console.log('Pre-detected as supplier proforma based on structure');
+      } else if (rawData.data?.invoice || rawData.invoice) {
+        preDetectedType = 'supplier_invoice';
+        console.log('Pre-detected as supplier invoice based on structure');
+      }
+      
       // Step 4: Detect document type
-      const docType = DocumentDetector.detectDocumentType(rawData);
+      const docType = preDetectedType 
+        ? { type: preDetectedType, confidence: 0.9, preDetected: true }
+        : DocumentDetector.detectDocumentType(rawData);
+        
       console.log('Detected document type:', docType.type, 'with confidence:', docType.confidence);
       
       // Step 5: Process based on document type
@@ -72,19 +89,51 @@ export class AIExtractionService {
       }
       
       // Step 6: Validate extracted data
-      const validationResult = await ValidationService.validateExtractedData(processedData);
-      if (validationResult.warnings.length > 0) {
-        console.warn('Validation warnings:', validationResult.warnings);
+      let validationResult = { 
+        isValid: true, 
+        errors: [], 
+        warnings: [], 
+        suggestions: [],
+        validationScore: 100 
+      };
+      
+      // Only validate if we have a known document type
+      if (docType.type !== 'unknown') {
+        try {
+          validationResult = await ValidationService.validateExtractedData(processedData);
+          if (validationResult.warnings.length > 0) {
+            console.warn('Validation warnings:', validationResult.warnings);
+          }
+        } catch (validationError) {
+          console.error('Validation error:', validationError);
+          // Continue with extraction even if validation fails
+        }
       }
       
-      // Step 7: Check for duplicates
-      const duplicateCheck = await DuplicateDetectionService.checkDuplicates(processedData);
-      if (duplicateCheck.hasDuplicates) {
-        console.warn('Potential duplicates found:', duplicateCheck.duplicates);
+      // Step 7: Check for duplicates (only for known document types)
+      let duplicateCheck = { hasDuplicates: false, duplicates: [] };
+      if (docType.type !== 'unknown') {
+        try {
+          duplicateCheck = await DuplicateDetectionService.checkDuplicates(processedData);
+          if (duplicateCheck.hasDuplicates) {
+            console.warn('Potential duplicates found:', duplicateCheck.duplicates);
+          }
+        } catch (duplicateError) {
+          console.error('Duplicate check error:', duplicateError);
+          // Continue even if duplicate check fails
+        }
       }
       
       // Step 8: Generate recommendations
-      const recommendations = await RecommendationService.getRecommendations(processedData);
+      let recommendations = [];
+      if (docType.type !== 'unknown') {
+        try {
+          recommendations = await RecommendationService.getRecommendations(processedData);
+        } catch (recommendationError) {
+          console.error('Recommendation error:', recommendationError);
+          // Continue even if recommendations fail
+        }
+      }
       
       // Step 9: Prepare final result
       const result = {
@@ -97,7 +146,8 @@ export class AIExtractionService {
           fileType: ExtractionService.getFileType(file),
           extractionTime: Date.now(),
           documentType: docType.type,
-          validationScore: validationResult.validationScore
+          validationScore: validationResult.validationScore,
+          preDetected: docType.preDetected || false
         },
         validation: {
           isValid: validationResult.isValid,
@@ -109,8 +159,10 @@ export class AIExtractionService {
         recommendations: recommendations
       };
       
-      // Step 10: Cache the result
-      CacheService.set(cacheKey, result);
+      // Step 10: Cache the result (only cache successful extractions of known types)
+      if (docType.type !== 'unknown') {
+        CacheService.set(cacheKey, result);
+      }
       
       return result;
       
@@ -137,6 +189,8 @@ export class AIExtractionService {
    */
   async extractRawData(file) {
     const fileType = ExtractionService.getFileType(file);
+    
+    console.log(`Extracting from ${fileType} file: ${file.name}`);
     
     switch (fileType) {
       case 'pdf':
@@ -182,32 +236,72 @@ export class AIExtractionService {
    * Process generic/unknown document type
    */
   processGenericDocument(rawData, file) {
+    console.log('Processing as generic document');
+    
+    // Try to extract as much useful information as possible
+    const data = rawData.data || rawData;
+    
     return {
       documentType: 'unknown',
       fileName: file.name,
-      rawData: rawData,
-      extractedText: JSON.stringify(rawData, null, 2),
-      message: 'Document type could not be determined. Manual review required.'
+      rawData: data,
+      extractedText: JSON.stringify(data, null, 2),
+      message: 'Document type could not be determined. Manual review required.',
+      // Try to extract common fields
+      possibleFields: {
+        orderNumber: this.findFieldValue(data, ['order_number', 'po_number', 'invoice_number']),
+        date: this.findFieldValue(data, ['date', 'order_date', 'invoice_date']),
+        total: this.findFieldValue(data, ['total', 'grand_total', 'amount']),
+        items: data.items || data.products || data.line_items || []
+      }
     };
+  }
+
+  /**
+   * Helper to find field values in unknown structures
+   */
+  findFieldValue(data, possibleKeys) {
+    for (const key of possibleKeys) {
+      if (data[key]) return data[key];
+      
+      // Check nested objects
+      for (const prop in data) {
+        if (typeof data[prop] === 'object' && data[prop] !== null) {
+          const nested = this.findFieldValue(data[prop], possibleKeys);
+          if (nested) return nested;
+        }
+      }
+    }
+    return null;
   }
 
   /**
    * Generate cache key for file
    */
   async generateCacheKey(file) {
-    const content = await this.getFileHash(file);
-    return `extraction_${file.name}_${file.size}_${content}`;
+    try {
+      const content = await this.getFileHash(file);
+      return `extraction_${file.name}_${file.size}_${content}`;
+    } catch (error) {
+      // Fallback to simple key if hashing fails
+      return `extraction_${file.name}_${file.size}_${Date.now()}`;
+    }
   }
 
   /**
    * Simple file hash for caching
    */
   async getFileHash(file) {
-    const buffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return hashHex.substring(0, 8); // Use first 8 chars
+    try {
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hashHex.substring(0, 8); // Use first 8 chars
+    } catch (error) {
+      console.error('Error generating file hash:', error);
+      throw error;
+    }
   }
 
   /**
@@ -252,13 +346,31 @@ export class AIExtractionService {
         'OCR support for scanned documents',
         'Multi-format extraction (PDF, Images, Excel, Email)',
         'Automatic document type detection',
+        'Pre-detection for common structures',
         'Duplicate detection',
         'Data validation',
         'Smart recommendations',
         'Supplier matching',
-        'Multi-language support'
+        'Multi-language support',
+        'Caching for performance',
+        'Error recovery'
       ]
     };
+  }
+
+  /**
+   * Clear all caches
+   */
+  static clearCache() {
+    CacheService.clearExtractionCache();
+    console.log('Extraction cache cleared');
+  }
+
+  /**
+   * Get extraction statistics
+   */
+  static getStatistics() {
+    return CacheService.getStatistics();
   }
 }
 
