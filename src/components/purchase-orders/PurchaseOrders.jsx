@@ -4,32 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import AIExtractionService from '../../services/ai/AIExtractionService';
 import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle,
-  CardDescription 
-} from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
-import { Badge } from '../ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { 
   Search, 
   Plus, 
   FileText, 
@@ -46,16 +20,27 @@ import {
   Trash2,
   Download,
   Send,
-  X
+  X,
+  TrendingUp,
+  Users,
+  ShoppingCart
 } from 'lucide-react';
-import { format } from 'date-fns';
 import POModal from './POModal';
 import { toast } from 'react-hot-toast';
+
+// Simple date formatter
+const formatDate = (dateString) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  const options = { day: '2-digit', month: 'short', year: 'numeric' };
+  return date.toLocaleDateString('en-GB', options);
+};
 
 const PurchaseOrders = () => {
   const { user } = useAuth();
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [extracting, setExtracting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
@@ -84,126 +69,126 @@ const PurchaseOrders = () => {
 
   // Handle file upload with proper data mapping
   const handleFileUpload = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+    const file = event.target.files[0];
+    if (!file) return;
 
-  // Prevent double processing
-  if (loading) {
-    console.log('Already processing a file, ignoring...');
-    return;
-  }
+    // Prevent double processing
+    if (extracting) {
+      console.log('Already processing a file, ignoring...');
+      return;
+    }
 
-  console.log('Processing file:', file.name);
-  setLoading(true);
-  setUploadError(null);
+    console.log('Processing file:', file.name);
+    setExtracting(true);
+    setUploadError(null);
 
-  try {
-    const result = await AIExtractionService.extractFromFile(file);
-    console.log('Extraction result:', result);
+    try {
+      const result = await AIExtractionService.extractFromFile(file);
+      console.log('Extraction result:', result);
 
-    if (result.success && result.data) {
-      console.log('Extracted data structure:', result.data);
-      console.log('Document type:', result.data.documentType);
-      
-      // Create POModal-compatible structure based on document type
-      let modalData;
-      
-      if (result.data.documentType === 'client_purchase_order') {
-        modalData = {
-          // Map extracted fields to what POModal expects
-          orderNumber: result.data.poNumber || '',
-          client: result.data.client?.name || '',
-          clientName: result.data.client?.name || '',
+      if (result.success && result.data) {
+        console.log('Extracted data structure:', result.data);
+        console.log('Document type:', result.data.documentType);
+        
+        // Create POModal-compatible structure based on document type
+        let modalData;
+        
+        if (result.data.documentType === 'client_purchase_order') {
+          modalData = {
+            // Map extracted fields to what POModal expects
+            orderNumber: result.data.poNumber || '',
+            client: result.data.client?.name || '',
+            clientName: result.data.client?.name || '',
+            
+            // Handle dates
+            orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
+            deliveryDate: result.data.deliveryDate || new Date().toISOString().split('T')[0],
+            
+            // Terms
+            paymentTerms: result.data.paymentTerms || '30 days',
+            deliveryTerms: result.data.deliveryTerms || 'FOB',
+            
+            // Items array - ensure it matches POModal's expected structure
+            items: (result.data.items || []).map(item => ({
+              partNumber: item.partNumber || '',
+              description: item.description || '',
+              quantity: item.quantity || 0,
+              unitPrice: item.unitPrice || 0,
+              totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+              uom: item.uom || 'PCS',
+              deliveryDate: item.deliveryDate || result.data.deliveryDate || '',
+              // Include supplier matches if available
+              supplierMatches: item.supplierMatches || []
+            })),
+            
+            // Totals
+            subtotal: result.data.subtotal || 
+                      (result.data.items || []).reduce((sum, item) => sum + (item.totalPrice || 0), 0),
+            tax: result.data.tax || 0,
+            total: result.data.totalAmount || result.data.total || 0,
+            
+            // Status
+            status: 'draft',
+            
+            // Additional extracted data
+            extractedData: result.data,
+            prNumbers: result.data.prNumbers || [],
+            
+            // Sourcing plan if available
+            sourcingPlan: result.data.sourcingPlan,
+            
+            // Client details
+            clientDetails: {
+              name: result.data.client?.name || '',
+              registration: result.data.client?.registration || '',
+              address: result.data.client?.address || '',
+              shipTo: result.data.client?.shipTo || ''
+            }
+          };
           
-          // Handle dates
-          orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-          deliveryDate: result.data.deliveryDate || new Date().toISOString().split('T')[0],
+          console.log('Modal data prepared for client PO:', modalData);
           
-          // Terms
-          paymentTerms: result.data.paymentTerms || '30 days',
-          deliveryTerms: result.data.deliveryTerms || 'FOB',
+          // Set the modal data and open it
+          setCurrentPO(modalData);
+          setModalOpen(true);
           
-          // Items array - ensure it matches POModal's expected structure
-          items: (result.data.items || []).map(item => ({
-            partNumber: item.partNumber || '',
-            description: item.description || '',
-            quantity: item.quantity || 0,
-            unitPrice: item.unitPrice || 0,
-            totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-            uom: item.uom || 'PCS',
-            deliveryDate: item.deliveryDate || result.data.deliveryDate || '',
-            // Include supplier matches if available
-            supplierMatches: item.supplierMatches || []
-          })),
-          
-          // Totals
-          subtotal: result.data.subtotal || 
-                    (result.data.items || []).reduce((sum, item) => sum + (item.totalPrice || 0), 0),
-          tax: result.data.tax || 0,
-          total: result.data.totalAmount || result.data.total || 0,
-          
-          // Status
-          status: 'draft',
-          
-          // Additional extracted data
-          extractedData: result.data,
-          prNumbers: result.data.prNumbers || [],
-          
-          // Sourcing plan if available
-          sourcingPlan: result.data.sourcingPlan,
-          
-          // Client details
-          clientDetails: {
-            name: result.data.client?.name || '',
-            registration: result.data.client?.registration || '',
-            address: result.data.client?.address || '',
-            shipTo: result.data.client?.shipTo || ''
+          // Show success message with sourcing plan summary
+          if (result.data.sourcingPlan) {
+            const plan = result.data.sourcingPlan;
+            toast.success(
+              `Successfully extracted PO: ${modalData.orderNumber}\n` +
+              `${plan.matchedItems} of ${plan.totalItems} items have supplier matches`,
+              { duration: 5000 }
+            );
+          } else {
+            toast.success(`Successfully extracted PO: ${modalData.orderNumber}`);
           }
-        };
-        
-        console.log('Modal data prepared for client PO:', modalData);
-        
-        // Set the modal data and open it
-        setCurrentPO(modalData);
-        setModalOpen(true);
-        
-        // Show success message with sourcing plan summary
-        if (result.data.sourcingPlan) {
-          const plan = result.data.sourcingPlan;
-          toast.success(
-            `Successfully extracted PO: ${modalData.orderNumber}\n` +
-            `${plan.matchedItems} of ${plan.totalItems} items have supplier matches`,
-            { duration: 5000 }
-          );
+          
+        } else if (result.data.documentType === 'supplier_proforma') {
+          // Handle supplier PI differently
+          toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
+          console.log('Supplier PI data:', result.data);
+          
         } else {
-          toast.success(`Successfully extracted PO: ${modalData.orderNumber}`);
+          toast.warning('Unknown document type. Please check the extraction results.');
+          console.log('Unknown document data:', result.data);
         }
         
-      } else if (result.data.documentType === 'supplier_proforma') {
-        // Handle supplier PI differently
-        toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
-        console.log('Supplier PI data:', result.data);
-        
       } else {
-        toast.warning('Unknown document type. Please check the extraction results.');
-        console.log('Unknown document data:', result.data);
+        throw new Error(result.error || 'Extraction failed');
       }
-      
-    } else {
-      throw new Error(result.error || 'Extraction failed');
+    } catch (error) {
+      console.error('Extraction failed:', error);
+      setUploadError(error.message);
+      toast.error('Failed to extract PO: ' + error.message);
+    } finally {
+      setExtracting(false);
+      // Reset file input
+      if (event.target) {
+        event.target.value = '';
+      }
     }
-  } catch (error) {
-    console.error('Extraction failed:', error);
-    setUploadError(error.message);
-    toast.error('Failed to extract PO: ' + error.message);
-  } finally {
-    setLoading(false);
-    // Reset file input - this is important!
-    if (event.target) {
-      event.target.value = '';
-    }
-  }
-};
+  };
 
   // Handle manual PO creation
   const handleCreatePO = () => {
@@ -261,7 +246,8 @@ const PurchaseOrders = () => {
   const filteredPOs = purchaseOrders.filter(po => {
     const matchesSearch = 
       po.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.client?.toLowerCase().includes(searchTerm.toLowerCase());
+      po.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      po.clientName?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
     
@@ -279,27 +265,27 @@ const PurchaseOrders = () => {
 
   const getStatusBadge = (status) => {
     const statusConfig = {
-      draft: { variant: 'secondary', icon: Clock },
-      sent: { variant: 'default', icon: Send },
-      confirmed: { variant: 'success', icon: CheckCircle },
-      cancelled: { variant: 'destructive', icon: X }
+      draft: { color: 'bg-gray-100 text-gray-800', icon: Clock },
+      sent: { color: 'bg-blue-100 text-blue-800', icon: Send },
+      confirmed: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
+      cancelled: { color: 'bg-red-100 text-red-800', icon: X }
     };
     
     const config = statusConfig[status] || statusConfig.draft;
     const Icon = config.icon;
     
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
-        <Icon className="h-3 w-3" />
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+        <Icon className="h-3 w-3 mr-1" />
         {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Badge>
+      </span>
     );
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -307,219 +293,282 @@ const PurchaseOrders = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Purchase Orders</h2>
-          <p className="text-muted-foreground">
-            Manage your purchase orders and track their status
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4 mr-2" />
-            )}
-            Upload PO
-          </Button>
-          <Button onClick={handleCreatePO}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create PO
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
+      <div className="bg-white shadow-sm border-b">
+        <div className="px-6 py-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">Purchase Orders</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Manage your purchase orders and track their status
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => !extracting && fileInputRef.current?.click()}
+                disabled={extracting}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {extracting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload PO
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleCreatePO}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create PO
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Upload Error */}
+      {/* Upload Error Alert */}
       {uploadError && (
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              <p className="text-sm">{uploadError}</p>
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Upload Error</h3>
+              <p className="mt-1 text-sm text-red-700">{uploadError}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      {/* Statistics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total POs</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Draft</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.draft}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Confirmed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.confirmed}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              RM {stats.totalValue.toLocaleString()}
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <FileText className="h-6 w-6 text-gray-400" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Total POs</dt>
+                  <dd className="text-lg font-semibold text-gray-900">{stats.total}</dd>
+                </dl>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <Clock className="h-6 w-6 text-gray-400" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Draft</dt>
+                  <dd className="text-lg font-semibold text-gray-900">{stats.draft}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <CheckCircle className="h-6 w-6 text-green-400" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Confirmed</dt>
+                  <dd className="text-lg font-semibold text-gray-900">{stats.confirmed}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <DollarSign className="h-6 w-6 text-gray-400" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Total Value</dt>
+                  <dd className="text-lg font-semibold text-gray-900">
+                    RM {stats.totalValue.toLocaleString()}
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
+      {/* Filters and Table */}
+      <div className="bg-white shadow rounded-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex-1 max-w-lg">
               <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                <input
+                  type="text"
                   placeholder="Search PO number or client..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
+                  className="pl-10 pr-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="sent">Sent</SelectItem>
-                <SelectItem value="confirmed">Confirmed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Purchase Orders Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Purchase Orders</CardTitle>
-          <CardDescription>
-            A list of all purchase orders with their current status
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>PO Number</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Order Date</TableHead>
-                <TableHead>Delivery Date</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  PO Number
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Client
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Order Date
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Delivery Date
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Items
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="relative px-6 py-3">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
               {filteredPOs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    No purchase orders found
-                  </TableCell>
-                </TableRow>
+                <tr>
+                  <td colSpan="8" className="px-6 py-12 text-center text-sm text-gray-500">
+                    <div className="flex flex-col items-center">
+                      <FileText className="h-12 w-12 text-gray-300 mb-3" />
+                      <p className="text-gray-500">No purchase orders found</p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        Upload a PO or create a new one to get started
+                      </p>
+                    </div>
+                  </td>
+                </tr>
               ) : (
                 filteredPOs.map((po) => (
-                  <TableRow key={po.id}>
-                    <TableCell className="font-medium">{po.orderNumber}</TableCell>
-                    <TableCell>{po.client || po.clientName}</TableCell>
-                    <TableCell>
-                      {po.orderDate ? format(new Date(po.orderDate), 'dd MMM yyyy') : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {po.deliveryDate ? format(new Date(po.deliveryDate), 'dd MMM yyyy') : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Package className="h-4 w-4" />
+                  <tr key={po.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {po.orderNumber}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {po.client || po.clientName || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(po.orderDate)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(po.deliveryDate)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center">
+                        <Package className="h-4 w-4 text-gray-400 mr-1" />
                         {po.items?.length || 0}
                       </div>
-                    </TableCell>
-                    <TableCell>RM {(po.total || 0).toLocaleString()}</TableCell>
-                    <TableCell>{getStatusBadge(po.status)}</TableCell>
-                    <TableCell className="text-right">
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      RM {(po.total || 0).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getStatusBadge(po.status)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <button
                           onClick={() => {
                             setCurrentPO(po);
                             setModalOpen(true);
                           }}
+                          className="text-gray-400 hover:text-gray-500"
                         >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                          <Eye className="h-5 w-5" />
+                        </button>
+                        <button
                           onClick={() => {
                             setCurrentPO(po);
                             setModalOpen(true);
                           }}
+                          className="text-gray-400 hover:text-gray-500"
                         >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                          <Edit className="h-5 w-5" />
+                        </button>
+                        <button
                           onClick={() => handleDeletePO(po.id)}
+                          className="text-gray-400 hover:text-red-500"
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          <Trash2 className="h-5 w-5" />
+                        </button>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))
               )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* PO Modal */}
-      <POModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        purchaseOrder={currentPO}
-        onSave={handleSavePO}
-      />
+      {modalOpen && (
+        <POModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          purchaseOrder={currentPO}
+          onSave={handleSavePO}
+        />
+      )}
     </div>
   );
 };
