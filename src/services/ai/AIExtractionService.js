@@ -80,34 +80,101 @@ export class AIExtractionService {
    * Call Railway backend API
    */
   async callExtractionAPI(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
-
-    try {
-      const response = await fetch(`${this.baseUrl}/api/extract/smart`, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`Extraction failed: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        throw new Error('Extraction timeout - file processing took too long');
-      }
-      throw error;
-    }
+  const formData = new FormData();
+  
+  // Determine the field name based on file type
+  const fileType = this.getFileType(file);
+  
+  switch (fileType) {
+    case 'pdf':
+      formData.append('pdf', file); // Backend expects 'pdf' field for PDFs
+      break;
+    case 'image':
+      formData.append('image', file); // Backend expects 'image' field for images
+      break;
+    case 'excel':
+      formData.append('excel', file); // Backend expects 'excel' field for Excel files
+      break;
+    default:
+      formData.append('file', file); // Fallback to generic 'file'
   }
+
+  // Add additional parameters your backend might expect
+  formData.append('enhancedMode', 'true');
+  formData.append('validateData', 'true');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
+
+  try {
+    const response = await fetch(`${this.baseUrl}/api/extract-po`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      console.error('Extraction API error:', {
+        status: response.status,
+        message: errorData.message,
+        data: errorData
+      });
+      
+      throw new Error(errorData.message || `Extraction failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('Extraction API response:', result);
+    
+    // Ensure the response has the expected structure
+    if (!result.data) {
+      // If the result itself contains the extracted data, wrap it
+      return {
+        success: true,
+        data: result,
+        confidence: result.confidence || 0.85
+      };
+    }
+    
+    return result;
+    
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Extraction timeout - file processing took too long');
+    }
+    throw error;
+  }
+}
+
+
+  // Also add this helper method if it doesn't exist:
+getFileType(file) {
+  const fileName = file.name || '';
+  const extension = fileName.split('.').pop().toLowerCase();
+  const mimeType = (file.type || '').toLowerCase();
+
+  if (mimeType === 'application/pdf' || extension === 'pdf') {
+    return 'pdf';
+  }
+  
+  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(extension)) {
+    return 'image';
+  }
+  
+  if (
+    mimeType.includes('spreadsheet') || 
+    mimeType.includes('excel') || 
+    ['xlsx', 'xls', 'csv'].includes(extension)
+  ) {
+    return 'excel';
+  }
+  
+  return 'unknown';
+}
 
   /**
    * Detect document type from content
