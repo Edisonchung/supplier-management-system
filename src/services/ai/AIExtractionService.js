@@ -274,11 +274,74 @@ export class AIExtractionService {
     console.log('Processing client PO, raw data structure:', rawData);
     
     // Handle both direct data and nested data.data structure
-    const extractedData = rawData.data || rawData;
+    let extractedData = rawData.data || rawData;
     
     // Log the full extracted data to see what's available
     console.log('Full extracted data:', JSON.stringify(extractedData, null, 2));
     
+    // Check if data is nested in purchase_order object
+    if (extractedData.purchase_order) {
+      const po = extractedData.purchase_order;
+      
+      const data = {
+        documentType: 'client_purchase_order',
+        
+        // Extract PO details from nested structure
+        poNumber: po.order_number || this.extractPattern(extractedData, /PO-\d{6}/),
+        prNumbers: po.pr_numbers || this.extractAllPatterns(extractedData, /PR-\d{6}/),
+        
+        // Client information
+        client: {
+          name: po.bill_to?.name || this.extractClientName(extractedData),
+          registration: this.extractPattern(extractedData, /\d{6}-[A-Z]/),
+          address: po.bill_to?.address || this.extractValue(extractedData, ['bill to', 'billing address']),
+          shipTo: po.ship_to?.address || this.extractValue(extractedData, ['ship to', 'delivery address'])
+        },
+        
+        // Dates
+        orderDate: this.convertToISO(po.order_date) || new Date().toISOString().split('T')[0],
+        deliveryDate: this.convertToISO(po.items?.[0]?.delivery_date?.needed) || '',
+        promisedDate: this.convertToISO(po.items?.[0]?.delivery_date?.promised),
+        
+        // Terms - extract from the raw data if available
+        paymentTerms: po.payment_terms || '60D',
+        deliveryTerms: po.delivery_terms || 'DDP',
+        
+        // Extract line items from nested structure
+        items: po.items?.map(item => ({
+          lineNumber: item.line?.toString() || '',
+          partNumber: item.part_number || '',
+          description: item.description || '',
+          quantity: item.quantity || 0,
+          uom: item.uom || 'PCS',
+          unitPrice: item.unit_price || 0,
+          totalPrice: (item.quantity || 0) * (item.unit_price || 0),
+          deliveryDate: this.convertToISO(item.delivery_date?.needed) || '',
+          reference: item.reference || ''
+        })) || [],
+        
+        // Totals
+        subtotal: po.subtotal || 0,
+        tax: po.tax || 0,
+        totalAmount: po.grand_total || 0,
+        currency: 'MYR',
+        
+        // Notes
+        notes: po.notes || '',
+        
+        // Add sourcing plan
+        sourcingPlan: null
+      };
+      
+      console.log('Extracted PO data:', data);
+      
+      // Create sourcing plan
+      data.sourcingPlan = await this.createSourcingPlan(data);
+      
+      return data;
+    }
+    
+    // Fall back to original structure if purchase_order object not found
     const data = {
       documentType: 'client_purchase_order',
       
