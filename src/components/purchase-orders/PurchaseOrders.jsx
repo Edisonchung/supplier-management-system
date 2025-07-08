@@ -84,118 +84,126 @@ const PurchaseOrders = () => {
 
   // Handle file upload with proper data mapping
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+  const file = event.target.files[0];
+  if (!file) return;
 
-    console.log('Processing file:', file.name);
-    setLoading(true);
-    setUploadError(null);
+  // Prevent double processing
+  if (loading) {
+    console.log('Already processing a file, ignoring...');
+    return;
+  }
 
-    try {
-      const result = await AIExtractionService.extractFromFile(file);
-      console.log('Extraction result:', result);
+  console.log('Processing file:', file.name);
+  setLoading(true);
+  setUploadError(null);
 
-      if (result.success && result.data) {
-        console.log('Extracted data structure:', result.data);
-        console.log('Document type:', result.data.documentType);
-        
-        // Create POModal-compatible structure based on document type
-        let modalData;
-        
-        if (result.data.documentType === 'client_purchase_order') {
-          modalData = {
-            // Map extracted fields to what POModal expects
-            orderNumber: result.data.poNumber || '',
-            client: result.data.client?.name || '',
-            clientName: result.data.client?.name || '',
-            
-            // Handle dates
-            orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-            deliveryDate: result.data.deliveryDate || new Date().toISOString().split('T')[0],
-            
-            // Terms
-            paymentTerms: result.data.paymentTerms || '30 days',
-            deliveryTerms: result.data.deliveryTerms || 'FOB',
-            
-            // Items array - ensure it matches POModal's expected structure
-            items: (result.data.items || []).map(item => ({
-              partNumber: item.partNumber || '',
-              description: item.description || '',
-              quantity: item.quantity || 0,
-              unitPrice: item.unitPrice || 0,
-              totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-              uom: item.uom || 'PCS',
-              deliveryDate: item.deliveryDate || result.data.deliveryDate || '',
-              // Include supplier matches if available
-              supplierMatches: item.supplierMatches || []
-            })),
-            
-            // Totals
-            subtotal: result.data.subtotal || 
-                      (result.data.items || []).reduce((sum, item) => sum + (item.totalPrice || 0), 0),
-            tax: result.data.tax || 0,
-            total: result.data.totalAmount || result.data.total || 0,
-            
-            // Status
-            status: 'draft',
-            
-            // Additional extracted data
-            extractedData: result.data,
-            prNumbers: result.data.prNumbers || [],
-            
-            // Sourcing plan if available
-            sourcingPlan: result.data.sourcingPlan,
-            
-            // Client details
-            clientDetails: {
-              name: result.data.client?.name || '',
-              registration: result.data.client?.registration || '',
-              address: result.data.client?.address || '',
-              shipTo: result.data.client?.shipTo || ''
-            }
-          };
+  try {
+    const result = await AIExtractionService.extractFromFile(file);
+    console.log('Extraction result:', result);
+
+    if (result.success && result.data) {
+      console.log('Extracted data structure:', result.data);
+      console.log('Document type:', result.data.documentType);
+      
+      // Create POModal-compatible structure based on document type
+      let modalData;
+      
+      if (result.data.documentType === 'client_purchase_order') {
+        modalData = {
+          // Map extracted fields to what POModal expects
+          orderNumber: result.data.poNumber || '',
+          client: result.data.client?.name || '',
+          clientName: result.data.client?.name || '',
           
-          console.log('Modal data prepared for client PO:', modalData);
+          // Handle dates
+          orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
+          deliveryDate: result.data.deliveryDate || new Date().toISOString().split('T')[0],
           
-          // Set the modal data and open it
-          setCurrentPO(modalData);
-          setModalOpen(true);
+          // Terms
+          paymentTerms: result.data.paymentTerms || '30 days',
+          deliveryTerms: result.data.deliveryTerms || 'FOB',
           
-          // Show success message with sourcing plan summary
-          if (result.data.sourcingPlan) {
-            const plan = result.data.sourcingPlan;
-            toast.success(
-              `Successfully extracted PO: ${modalData.orderNumber}\n` +
-              `${plan.matchedItems} of ${plan.totalItems} items have supplier matches`,
-              { duration: 5000 }
-            );
-          } else {
-            toast.success(`Successfully extracted PO: ${modalData.orderNumber}`);
+          // Items array - ensure it matches POModal's expected structure
+          items: (result.data.items || []).map(item => ({
+            partNumber: item.partNumber || '',
+            description: item.description || '',
+            quantity: item.quantity || 0,
+            unitPrice: item.unitPrice || 0,
+            totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+            uom: item.uom || 'PCS',
+            deliveryDate: item.deliveryDate || result.data.deliveryDate || '',
+            // Include supplier matches if available
+            supplierMatches: item.supplierMatches || []
+          })),
+          
+          // Totals
+          subtotal: result.data.subtotal || 
+                    (result.data.items || []).reduce((sum, item) => sum + (item.totalPrice || 0), 0),
+          tax: result.data.tax || 0,
+          total: result.data.totalAmount || result.data.total || 0,
+          
+          // Status
+          status: 'draft',
+          
+          // Additional extracted data
+          extractedData: result.data,
+          prNumbers: result.data.prNumbers || [],
+          
+          // Sourcing plan if available
+          sourcingPlan: result.data.sourcingPlan,
+          
+          // Client details
+          clientDetails: {
+            name: result.data.client?.name || '',
+            registration: result.data.client?.registration || '',
+            address: result.data.client?.address || '',
+            shipTo: result.data.client?.shipTo || ''
           }
-          
-        } else if (result.data.documentType === 'supplier_proforma') {
-          // Handle supplier PI differently
-          toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
-          console.log('Supplier PI data:', result.data);
-          
+        };
+        
+        console.log('Modal data prepared for client PO:', modalData);
+        
+        // Set the modal data and open it
+        setCurrentPO(modalData);
+        setModalOpen(true);
+        
+        // Show success message with sourcing plan summary
+        if (result.data.sourcingPlan) {
+          const plan = result.data.sourcingPlan;
+          toast.success(
+            `Successfully extracted PO: ${modalData.orderNumber}\n` +
+            `${plan.matchedItems} of ${plan.totalItems} items have supplier matches`,
+            { duration: 5000 }
+          );
         } else {
-          toast.warning('Unknown document type. Please check the extraction results.');
-          console.log('Unknown document data:', result.data);
+          toast.success(`Successfully extracted PO: ${modalData.orderNumber}`);
         }
         
+      } else if (result.data.documentType === 'supplier_proforma') {
+        // Handle supplier PI differently
+        toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
+        console.log('Supplier PI data:', result.data);
+        
       } else {
-        throw new Error(result.error || 'Extraction failed');
+        toast.warning('Unknown document type. Please check the extraction results.');
+        console.log('Unknown document data:', result.data);
       }
-    } catch (error) {
-      console.error('Extraction failed:', error);
-      setUploadError(error.message);
-      toast.error('Failed to extract PO: ' + error.message);
-    } finally {
-      setLoading(false);
-      // Reset file input
+      
+    } else {
+      throw new Error(result.error || 'Extraction failed');
+    }
+  } catch (error) {
+    console.error('Extraction failed:', error);
+    setUploadError(error.message);
+    toast.error('Failed to extract PO: ' + error.message);
+  } finally {
+    setLoading(false);
+    // Reset file input - this is important!
+    if (event.target) {
       event.target.value = '';
     }
-  };
+  }
+};
 
   // Handle manual PO creation
   const handleCreatePO = () => {
