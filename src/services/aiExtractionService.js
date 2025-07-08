@@ -197,7 +197,7 @@ export class AIExtractionService {
     const data = rawData.data || rawData;
     const text = JSON.stringify(data).toLowerCase();
     
-    // Common PI indicators from your samples
+    // Enhanced PI indicators - check for invoice-like documents that could be PIs
     const piIndicators = [
       'proforma invoice',
       'pro forma invoice',
@@ -210,11 +210,6 @@ export class AIExtractionService {
       'total amount(usd)',
       'total price(usd)',
       'unit price(usd)',
-      'dg4v', // Common valve part numbers
-      'kes15pp', // Common pump models
-      'bearing', // Common products
-      'diaphragm pump',
-      'valve',
       'payment terms',
       'delivery terms',
       'delivery time',
@@ -222,26 +217,22 @@ export class AIExtractionService {
       'bank information',
       'swift code',
       'beneficiary',
-      'ddp', // Common delivery term
-      'fob', // Common delivery term
-      'freight',
-      'shipping fee',
-      'shipping cost',
-      '100% by tt', // Common payment term
-      '100% t/t',
-      'flow solution sdn bhd', // Your company name
-      'edison chung' // Contact person
+      'flow solution sdn bhd',
+      'edison chung'
     ];
     
-    // Check for PI indicators
-    const piScore = piIndicators.filter(indicator => text.includes(indicator)).length;
+    // Additional invoice indicators that suggest it's from a supplier
+    const supplierInvoiceIndicators = [
+      'invoice',
+      'bill to',
+      'ship to',
+      'total',
+      'amount',
+      'price',
+      'payment'
+    ];
     
-    if (piScore >= 3) {
-      console.log(`Detected as supplier_proforma with score: ${piScore}`);
-      return { type: 'supplier_proforma', confidence: Math.min(0.5 + (piScore * 0.1), 0.95) };
-    }
-    
-    // Check for PO indicators
+    // Check if it's a PO first
     if (
       data.purchase_order || 
       text.includes('purchase order') || 
@@ -252,7 +243,19 @@ export class AIExtractionService {
       return { type: 'client_purchase_order', confidence: 0.9 };
     }
     
-    // Check for invoice indicators (not proforma)
+    // Count PI indicators
+    const piScore = piIndicators.filter(indicator => text.includes(indicator)).length;
+    
+    // Count general invoice indicators
+    const invoiceScore = supplierInvoiceIndicators.filter(indicator => text.includes(indicator)).length;
+    
+    // If it has strong PI indicators OR it's an invoice-like document from a supplier
+    if (piScore >= 2 || (invoiceScore >= 3 && !text.includes('purchase order'))) {
+      console.log(`Detected as supplier_proforma with PI score: ${piScore}, Invoice score: ${invoiceScore}`);
+      return { type: 'supplier_proforma', confidence: Math.min(0.5 + (piScore * 0.1), 0.95) };
+    }
+    
+    // Check for tax invoice (not proforma)
     if (
       data.invoice && 
       !text.includes('proforma') && 
@@ -263,11 +266,10 @@ export class AIExtractionService {
       return { type: 'supplier_invoice', confidence: 0.8 };
     }
     
-    // If it has typical PI structure but wasn't caught above
+    // If it has typical invoice/PI structure
     if (
-      (text.includes('price') || text.includes('cost')) &&
-      (text.includes('total') || text.includes('amount')) &&
-      (text.includes('bank') || text.includes('payment')) &&
+      (text.includes('price') || text.includes('cost') || text.includes('amount')) &&
+      (text.includes('total') || text.includes('subtotal')) &&
       !text.includes('purchase order')
     ) {
       console.log('Detected as supplier_proforma based on structure');
@@ -292,6 +294,7 @@ export class AIExtractionService {
     let processedData = {
       documentType: 'supplier_proforma',
       piNumber: '',
+      invoiceNumber: '', // Also include invoice number field
       date: '',
       supplier: {},
       clientRef: {},
@@ -305,8 +308,15 @@ export class AIExtractionService {
     };
     
     try {
-      // Extract PI Number - look for various patterns
+      // Check if it's already structured data
+      if (extractedData.proforma_invoice || extractedData.invoice) {
+        const invoiceData = extractedData.proforma_invoice || extractedData.invoice;
+        return this.processStructuredInvoiceData(invoiceData, extractedData);
+      }
+      
+      // Extract PI/Invoice Number - look for various patterns
       processedData.piNumber = this.extractPINumber(extractedData);
+      processedData.invoiceNumber = processedData.piNumber; // Use same number for both
       
       // Extract Date
       processedData.date = this.extractDate(extractedData);
@@ -352,6 +362,93 @@ export class AIExtractionService {
   }
 
   /**
+   * Process structured invoice data from backend
+   */
+  static processStructuredInvoiceData(invoiceData, fullData) {
+    console.log('Processing structured invoice data');
+    
+    const processedData = {
+      documentType: 'supplier_proforma',
+      
+      // PI/Invoice identification
+      piNumber: invoiceData.invoice_number || invoiceData.pi_number || invoiceData.number || this.generatePINumber(),
+      invoiceNumber: invoiceData.invoice_number || invoiceData.pi_number || invoiceData.number || '',
+      date: this.convertToISO(invoiceData.date || invoiceData.invoice_date || invoiceData.issue_date),
+      validUntil: this.convertToISO(invoiceData.valid_until || invoiceData.expiry_date || invoiceData.validity_date),
+      
+      // Supplier details
+      supplier: {
+        name: invoiceData.supplier?.name || invoiceData.seller?.company || invoiceData.vendor?.name || '',
+        contact: invoiceData.supplier?.contact || invoiceData.seller?.contact_person || invoiceData.vendor?.contact || '',
+        email: invoiceData.supplier?.email || invoiceData.seller?.email || invoiceData.vendor?.email || '',
+        phone: invoiceData.supplier?.phone || invoiceData.supplier?.mobile || invoiceData.seller?.phone || '',
+        address: invoiceData.supplier?.address || invoiceData.seller?.address || invoiceData.vendor?.address || ''
+      },
+      
+      // Client reference
+      clientRef: {
+        name: invoiceData.buyer?.name || invoiceData.consignee?.name || invoiceData.client?.name || 'Flow Solution Sdn Bhd',
+        poNumber: invoiceData.reference?.po_number || this.extractPattern(fullData, /PO-\d{6}/) || '',
+        rfqNumber: invoiceData.reference?.rfq_number || this.extractPattern(fullData, /RFQ-\d{6}/) || '',
+        contact: invoiceData.buyer?.contact || 'Edison Chung'
+      },
+      
+      // Products/Items with enhanced mapping
+      products: (invoiceData.items || invoiceData.products || invoiceData.line_items || []).map(item => ({
+        productCode: item.part_number || item.product_code || item.sku || item.code || '',
+        productName: item.description || item.product_name || item.name || '',
+        quantity: this.parseNumber(item.quantity || item.qty || 0),
+        unitPrice: this.parseNumber(item.unit_price || item.price || 0),
+        totalPrice: this.parseNumber(item.total_price || item.total || (item.quantity * item.unit_price) || 0),
+        leadTime: item.lead_time || item.delivery_time || '',
+        warranty: item.warranty || '',
+        notes: item.notes || item.remarks || ''
+      })).filter(item => item.productCode || item.productName),
+      
+      // Financial details
+      subtotal: this.parseNumber(invoiceData.subtotal || invoiceData.net_amount || 0),
+      discount: this.parseNumber(invoiceData.discount || invoiceData.discount_amount || 0),
+      discountPercent: this.parseNumber(invoiceData.discount_percent || 0),
+      shipping: this.parseNumber(invoiceData.shipping || invoiceData.freight || invoiceData.delivery_charge || 0),
+      tax: this.parseNumber(invoiceData.tax || invoiceData.gst || invoiceData.vat || 0),
+      taxPercent: this.parseNumber(invoiceData.tax_percent || invoiceData.gst_percent || invoiceData.vat_percent || 0),
+      grandTotal: this.parseNumber(invoiceData.grand_total || invoiceData.total || invoiceData.total_amount || 0),
+      totalAmount: this.parseNumber(invoiceData.grand_total || invoiceData.total || invoiceData.total_amount || 0),
+      currency: invoiceData.currency || 'USD',
+      exchangeRate: this.parseNumber(invoiceData.exchange_rate || 1),
+      
+      // Terms and conditions
+      paymentTerms: invoiceData.payment_terms || invoiceData.terms_of_payment || '30% down payment, 70% before delivery',
+      deliveryTerms: invoiceData.delivery_terms || invoiceData.incoterms || 'FOB',
+      leadTime: invoiceData.lead_time || invoiceData.delivery_time || '2-3 weeks',
+      warranty: invoiceData.warranty || invoiceData.warranty_period || '12 months',
+      validity: invoiceData.validity || invoiceData.valid_for || '30 days',
+      
+      // Banking details (for international suppliers)
+      bankDetails: {
+        bankName: invoiceData.bank?.name || invoiceData.bank_details?.bank_name || '',
+        accountNumber: invoiceData.bank?.account_number || invoiceData.bank_details?.account || '',
+        accountName: invoiceData.bank?.account_name || invoiceData.bank_details?.beneficiary || '',
+        swiftCode: invoiceData.bank?.swift || invoiceData.bank_details?.swift_code || '',
+        iban: invoiceData.bank?.iban || invoiceData.bank_details?.iban || '',
+        routingNumber: invoiceData.bank?.routing || invoiceData.bank_details?.routing_number || '',
+        bankAddress: invoiceData.bank?.address || invoiceData.bank_details?.bank_address || ''
+      },
+      
+      // Additional extracted info
+      notes: invoiceData.notes || invoiceData.remarks || invoiceData.comments || '',
+      specialInstructions: invoiceData.special_instructions || invoiceData.instructions || ''
+    };
+    
+    // Clean up and validate the data
+    processedData.supplier.name = this.cleanText(processedData.supplier.name);
+    processedData.grandTotal = processedData.grandTotal || processedData.totalAmount || this.calculateTotal(processedData);
+    processedData.totalAmount = processedData.grandTotal;
+    
+    return processedData;
+  }
+
+  /**
    * Process Client PO (enhanced from existing)
    */
   static async processClientPO(rawData, file) {
@@ -389,9 +486,16 @@ export class AIExtractionService {
    * Process Supplier Invoice
    */
   static async processSupplierInvoice(rawData, file) {
-    // Similar to proforma but for actual invoices
+    // Process as PI since structure is similar
+    console.log('Processing as supplier invoice, using PI extraction');
     const processedData = await this.processSupplierPI(rawData, file);
     processedData.documentType = 'supplier_invoice';
+    
+    // Additional processing for actual invoices if needed
+    if (!processedData.piNumber && !processedData.invoiceNumber) {
+      processedData.invoiceNumber = this.generateInvoiceNumber();
+    }
+    
     return processedData;
   }
 
@@ -1146,6 +1250,14 @@ export class AIExtractionService {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return `PI-${year}${month}-${random}`;
+  }
+
+  static generateInvoiceNumber() {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `INV-${year}${month}-${random}`;
   }
 
   static cleanText(text) {
