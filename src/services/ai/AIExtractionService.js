@@ -6,7 +6,7 @@ import { getErrorMessage } from '../../utils/errorHandling';
 const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || 'https://supplier-mcp-server-production.up.railway.app';
 const DEFAULT_TIMEOUT = 60000;
 
-class AIExtractionService {
+export class AIExtractionService {
   constructor() {
     this.baseUrl = AI_BACKEND_URL;
     // Product matching cache
@@ -238,6 +238,25 @@ class AIExtractionService {
     this.updateSupplierCatalog(data);
     
     return data;
+  }
+
+  /**
+   * Process Supplier Invoice (placeholder)
+   */
+  processSupplierInvoice(rawData, file) {
+    // Similar to proforma but for actual invoices
+    return this.processSupplierPI(rawData, file);
+  }
+
+  /**
+   * Process generic document
+   */
+  processGenericDocument(rawData, file) {
+    return {
+      documentType: 'unknown',
+      rawData: rawData,
+      extractedText: JSON.stringify(rawData)
+    };
   }
 
   /**
@@ -685,7 +704,19 @@ class AIExtractionService {
 
     return { isValid: true };
   }
+
+  // Static methods for backward compatibility
+  static async extractFromFile(file) {
+    const instance = new AIExtractionService();
+    return instance.extractFromFile(file);
+  }
+
+  static async extractPOFromPDF(file) {
+    console.warn('extractPOFromPDF is deprecated. Use extractFromFile instead.');
+    return AIExtractionService.extractFromFile(file);
+  }
 }
 
-// Export singleton instance
-export default new AIExtractionService();
+// Create and export singleton instance for backward compatibility
+const aiExtractionServiceInstance = new AIExtractionService();
+export default aiExtractionServiceInstance;
