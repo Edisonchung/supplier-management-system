@@ -1,6 +1,12 @@
 // src/services/ai/config.js
 // Configuration and field mappings for AI extraction
-
+export const AI_CONFIG = {
+  MCP_SERVER_URL: import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:3001',
+  TIMEOUT: 60000, // 60 seconds
+  MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
+  MAX_HISTORY_SIZE: 100,
+  SUPPORTED_FORMATS: ['pdf', 'image', 'excel', 'email'],
+};
 /**
  * Field mappings for different document types
  * Maps our internal field names to various possible field names in extracted data
