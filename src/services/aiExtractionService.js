@@ -1,6 +1,6 @@
 // src/services/aiExtractionService.js
 
-const MCP_SERVER_URL = import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:3001';
+const MCP_SERVER_URL = import.meta.env.VITE_AI_BACKEND_URL || import.meta.env.VITE_MCP_SERVER_URL || 'http://localhost:3001';
 
 export class AIExtractionService {
   // Cache for supplier and product data
@@ -9,85 +9,122 @@ export class AIExtractionService {
   static extractionHistory = [];
 
   /**
-   * Extract data from multiple file formats
+   * Extract data from multiple file formats with document type detection
    */
   static async extractFromFile(file) {
-    const fileType = this.getFileType(file);
-    
-    switch (fileType) {
-      case 'pdf':
-        return await this.extractPOFromPDF(file);
-      case 'image':
-        return await this.extractFromImage(file);
-      case 'excel':
-        return await this.extractFromExcel(file);
-      case 'email':
-        return await this.extractFromEmail(file);
-      default:
-        throw new Error(`Unsupported file type: ${fileType}`);
-    }
-  }
-
-  /**
-   * Enhanced PDF extraction with validation and error correction
-   */
-  static async extractPOFromPDF(file) {
     try {
-      const formData = new FormData();
-      formData.append('pdf', file);
-      formData.append('enhancedMode', 'true');
-      formData.append('validateData', 'true');
-
-      const response = await fetch(`${MCP_SERVER_URL}/api/extract-po`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to extract data');
+      console.log('Starting AI extraction for:', file.name);
+      
+      // Validate file
+      const validation = this.validateFile(file);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: validation.error,
+          data: null
+        };
       }
 
-      const result = await response.json();
+      // Get file type
+      const fileType = this.getFileType(file);
       
-      // Apply intelligent field mapping
-      const mappedData = await this.intelligentFieldMapping(result.data);
-      
-      // Validate extracted data
-      const validatedData = await this.validateExtractedData(mappedData);
-      
-      // Check for duplicates
-      const duplicateCheck = await this.checkForDuplicates(validatedData);
-      if (duplicateCheck.isDuplicate) {
-        validatedData.warnings = validatedData.warnings || [];
-        validatedData.warnings.push({
-          type: 'duplicate',
-          message: `Similar PO found: ${duplicateCheck.similarPO.poNumber}`,
-          similarPO: duplicateCheck.similarPO
-        });
+      // Extract raw data based on file type
+      let rawData;
+      switch (fileType) {
+        case 'pdf':
+          rawData = await this.extractFromPDF(file);
+          break;
+        case 'image':
+          rawData = await this.extractFromImage(file);
+          break;
+        case 'excel':
+          rawData = await this.extractFromExcel(file);
+          break;
+        case 'email':
+          rawData = await this.extractFromEmail(file);
+          break;
+        default:
+          throw new Error(`Unsupported file type: ${fileType}`);
       }
+
+      // Detect document type from extracted data
+      const docType = this.detectDocumentType(rawData);
+      console.log('Detected document type:', docType.type);
       
-      // Get AI recommendations
-      const recommendations = await this.getAIRecommendations(validatedData);
-      validatedData.recommendations = recommendations;
+      // Process based on document type
+      let processedData;
+      switch (docType.type) {
+        case 'client_purchase_order':
+          processedData = await this.processClientPO(rawData, file);
+          break;
+        case 'supplier_proforma':
+          processedData = await this.processSupplierPI(rawData, file);
+          break;
+        case 'supplier_invoice':
+          processedData = await this.processSupplierInvoice(rawData, file);
+          break;
+        default:
+          processedData = await this.processGenericDocument(rawData, file);
+      }
       
       // Store in extraction history
       this.extractionHistory.push({
         timestamp: new Date(),
         fileName: file.name,
-        extractedData: validatedData,
-        confidence: result.confidence || 0.85
+        extractedData: processedData,
+        confidence: docType.confidence
       });
       
       return {
         success: true,
-        data: validatedData,
-        confidence: result.confidence || 0.85,
-        model: result.model || 'multi-ai'
+        data: processedData,
+        confidence: docType.confidence,
+        metadata: {
+          fileName: file.name,
+          fileSize: file.size,
+          extractionTime: Date.now(),
+          documentType: docType.type
+        }
       };
+      
     } catch (error) {
       console.error('AI Extraction failed:', error);
-      throw error;
+      return {
+        success: false,
+        error: error.message || 'Extraction failed',
+        data: null
+      };
     }
+  }
+
+  /**
+   * Enhanced PDF extraction (keeping existing method signature for backward compatibility)
+   */
+  static async extractPOFromPDF(file) {
+    console.warn('extractPOFromPDF is deprecated. Use extractFromFile instead.');
+    return this.extractFromFile(file);
+  }
+
+  /**
+   * Extract from PDF files
+   */
+  static async extractFromPDF(file) {
+    const formData = new FormData();
+    formData.append('pdf', file);
+    formData.append('enhancedMode', 'true');
+    formData.append('validateData', 'true');
+
+    const response = await fetch(`${MCP_SERVER_URL}/api/extract-po`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to extract from PDF');
+    }
+
+    const result = await response.json();
+    return result;
   }
 
   /**
@@ -108,7 +145,7 @@ export class AIExtractionService {
     }
 
     const result = await response.json();
-    return this.processExtractedData(result.data);
+    return result;
   }
 
   /**
@@ -128,7 +165,7 @@ export class AIExtractionService {
     }
 
     const result = await response.json();
-    return this.processExtractedData(result.data);
+    return result;
   }
 
   /**
@@ -148,13 +185,198 @@ export class AIExtractionService {
     }
 
     const result = await response.json();
-    return this.processExtractedData(result.data);
+    return result;
   }
 
   /**
-   * Intelligent field mapping using AI
+   * Detect document type from extracted data
+   */
+  static detectDocumentType(rawData) {
+    const data = rawData.data || rawData;
+    const text = JSON.stringify(data).toLowerCase();
+    
+    // Check for various document indicators
+    if (data.proforma_invoice || text.includes('proforma') || text.includes('quotation')) {
+      return { type: 'supplier_proforma', confidence: 0.9 };
+    }
+    
+    if (data.purchase_order || text.includes('purchase order') || text.includes('p.o.')) {
+      return { type: 'client_purchase_order', confidence: 0.9 };
+    }
+    
+    if (data.invoice && !text.includes('proforma')) {
+      return { type: 'supplier_invoice', confidence: 0.8 };
+    }
+    
+    return { type: 'unknown', confidence: 0.5 };
+  }
+
+  /**
+   * Process Supplier PI - NEW METHOD
+   */
+  static async processSupplierPI(rawData, file) {
+    console.log('Processing Supplier PI:', file.name);
+    
+    // Handle nested JSON structure from backend
+    let extractedData = rawData.data || rawData;
+    
+    // Check for nested proforma_invoice object
+    if (extractedData.proforma_invoice) {
+      const pi = extractedData.proforma_invoice;
+      
+      const processedData = {
+        documentType: 'supplier_proforma',
+        
+        // PI identification
+        piNumber: pi.invoice_number || pi.pi_number || pi.number || this.generatePINumber(),
+        date: this.convertToISO(pi.date || pi.invoice_date || pi.issue_date),
+        validUntil: this.convertToISO(pi.valid_until || pi.expiry_date || pi.validity_date),
+        
+        // Supplier details
+        supplier: {
+          name: pi.supplier?.name || pi.seller?.company || pi.vendor?.name || '',
+          contact: pi.supplier?.contact || pi.seller?.contact_person || pi.vendor?.contact || '',
+          email: pi.supplier?.email || pi.seller?.email || pi.vendor?.email || '',
+          phone: pi.supplier?.phone || pi.supplier?.mobile || pi.seller?.phone || '',
+          address: pi.supplier?.address || pi.seller?.address || pi.vendor?.address || ''
+        },
+        
+        // Client reference
+        clientRef: {
+          name: pi.buyer?.name || pi.consignee?.name || pi.client?.name || '',
+          poNumber: pi.reference?.po_number || this.extractPattern(extractedData, /PO-\d{6}/) || '',
+          rfqNumber: pi.reference?.rfq_number || this.extractPattern(extractedData, /RFQ-\d{6}/) || ''
+        },
+        
+        // Products/Items with enhanced mapping
+        products: (pi.items || pi.products || pi.line_items || []).map(item => ({
+          productCode: item.part_number || item.product_code || item.sku || item.code || '',
+          productName: item.description || item.product_name || item.name || '',
+          quantity: this.parseNumber(item.quantity || item.qty || 0),
+          unitPrice: this.parseNumber(item.unit_price || item.price || 0),
+          totalPrice: this.parseNumber(item.total_price || item.total || (item.quantity * item.unit_price) || 0),
+          leadTime: item.lead_time || item.delivery_time || '',
+          warranty: item.warranty || '',
+          notes: item.notes || item.remarks || ''
+        })).filter(item => item.productCode || item.productName),
+        
+        // Financial details
+        subtotal: this.parseNumber(pi.subtotal || pi.net_amount || 0),
+        discount: this.parseNumber(pi.discount || pi.discount_amount || 0),
+        discountPercent: this.parseNumber(pi.discount_percent || 0),
+        shipping: this.parseNumber(pi.shipping || pi.freight || pi.delivery_charge || 0),
+        tax: this.parseNumber(pi.tax || pi.gst || pi.vat || 0),
+        taxPercent: this.parseNumber(pi.tax_percent || pi.gst_percent || pi.vat_percent || 0),
+        grandTotal: this.parseNumber(pi.grand_total || pi.total || pi.total_amount || 0),
+        currency: pi.currency || 'USD',
+        exchangeRate: this.parseNumber(pi.exchange_rate || 1),
+        
+        // Terms and conditions
+        paymentTerms: pi.payment_terms || pi.terms_of_payment || '30% down payment, 70% before delivery',
+        deliveryTerms: pi.delivery_terms || pi.incoterms || 'FOB',
+        leadTime: pi.lead_time || pi.delivery_time || '2-3 weeks',
+        warranty: pi.warranty || pi.warranty_period || '12 months',
+        validity: pi.validity || pi.valid_for || '30 days',
+        
+        // Banking details (for international suppliers)
+        bankDetails: {
+          bankName: pi.bank?.name || pi.bank_details?.bank_name || '',
+          accountNumber: pi.bank?.account_number || pi.bank_details?.account || '',
+          accountName: pi.bank?.account_name || pi.bank_details?.beneficiary || '',
+          swiftCode: pi.bank?.swift || pi.bank_details?.swift_code || '',
+          iban: pi.bank?.iban || pi.bank_details?.iban || '',
+          routingNumber: pi.bank?.routing || pi.bank_details?.routing_number || ''
+        },
+        
+        // Additional extracted info
+        notes: pi.notes || pi.remarks || pi.comments || '',
+        specialInstructions: pi.special_instructions || pi.instructions || ''
+      };
+      
+      // Clean up and validate the data
+      processedData.supplier.name = this.cleanText(processedData.supplier.name);
+      processedData.grandTotal = processedData.grandTotal || this.calculateTotal(processedData);
+      
+      // Validate and add recommendations
+      const validatedData = await this.validateExtractedData(processedData);
+      const recommendations = await this.getAIRecommendations(validatedData);
+      validatedData.recommendations = recommendations;
+      
+      return validatedData;
+    }
+    
+    // Fallback to processing as generic PI
+    return this.processSupplierPIGeneric(rawData, file);
+  }
+
+  /**
+   * Process Client PO (enhanced from existing)
+   */
+  static async processClientPO(rawData, file) {
+    console.log('Processing Client PO:', file.name);
+    
+    let extractedData = rawData.data || rawData;
+    
+    // Apply intelligent field mapping
+    const mappedData = await this.intelligentFieldMapping(extractedData);
+    
+    // Validate extracted data
+    const validatedData = await this.validateExtractedData(mappedData);
+    
+    // Check for duplicates
+    const duplicateCheck = await this.checkForDuplicates(validatedData);
+    if (duplicateCheck.isDuplicate) {
+      validatedData.warnings = validatedData.warnings || [];
+      validatedData.warnings.push({
+        type: 'duplicate',
+        message: `Similar PO found: ${duplicateCheck.similarPO.poNumber}`,
+        similarPO: duplicateCheck.similarPO
+      });
+    }
+    
+    // Get AI recommendations
+    const recommendations = await this.getAIRecommendations(validatedData);
+    validatedData.recommendations = recommendations;
+    
+    validatedData.documentType = 'client_purchase_order';
+    
+    return validatedData;
+  }
+
+  /**
+   * Process Supplier Invoice
+   */
+  static processSupplierInvoice(rawData, file) {
+    // Similar to proforma but for actual invoices
+    const processedData = this.processSupplierPI(rawData, file);
+    processedData.documentType = 'supplier_invoice';
+    return processedData;
+  }
+
+  /**
+   * Process generic document
+   */
+  static async processGenericDocument(rawData, file) {
+    const mappedData = await this.intelligentFieldMapping(rawData);
+    const validatedData = await this.validateExtractedData(mappedData);
+    
+    return {
+      documentType: 'unknown',
+      ...validatedData,
+      rawData: rawData,
+      extractedText: JSON.stringify(rawData)
+    };
+  }
+
+  /**
+   * Intelligent field mapping using AI (existing method enhanced)
    */
   static async intelligentFieldMapping(rawData) {
+    // Check if it's already processed
+    if (rawData.proforma_invoice || rawData.purchase_order) {
+      return rawData;
+    }
+
     // Load field mapping rules
     const mappingRules = await this.getFieldMappingRules();
     
@@ -177,7 +399,7 @@ export class AIExtractionService {
   }
 
   /**
-   * Validate extracted data with error correction
+   * Validate extracted data with error correction (existing method maintained)
    */
   static async validateExtractedData(data) {
     const errors = [];
@@ -258,6 +480,19 @@ export class AIExtractionService {
       });
     }
 
+    // Validate products for PI documents
+    if (data.products && data.products.length > 0) {
+      data.products = data.products.map((product, index) => {
+        const validatedProduct = { ...product };
+        
+        validatedProduct.quantity = this.parseNumber(product.quantity) || 1;
+        validatedProduct.unitPrice = this.parseNumber(product.unitPrice) || 0;
+        validatedProduct.totalPrice = validatedProduct.quantity * validatedProduct.unitPrice;
+        
+        return validatedProduct;
+      });
+    }
+
     // Apply corrections
     const validatedData = { ...data, ...corrections };
     
@@ -273,7 +508,7 @@ export class AIExtractionService {
   }
 
   /**
-   * Check for duplicate POs
+   * Check for duplicate POs (existing method maintained)
    */
   static async checkForDuplicates(data) {
     try {
@@ -335,14 +570,14 @@ export class AIExtractionService {
   }
 
   /**
-   * Get AI-powered recommendations
+   * Get AI-powered recommendations (existing method maintained)
    */
   static async getAIRecommendations(data) {
     const recommendations = [];
     
     try {
       // Price optimization
-      const priceRecommendations = await this.getPriceOptimization(data.items);
+      const priceRecommendations = await this.getPriceOptimization(data.items || data.products || []);
       if (priceRecommendations.length > 0) {
         recommendations.push({
           type: 'price_optimization',
@@ -362,7 +597,7 @@ export class AIExtractionService {
       }
       
       // Inventory insights
-      const inventoryInsights = await this.getInventoryInsights(data.items);
+      const inventoryInsights = await this.getInventoryInsights(data.items || data.products || []);
       if (inventoryInsights.length > 0) {
         recommendations.push({
           type: 'inventory_insight',
@@ -389,7 +624,7 @@ export class AIExtractionService {
   }
 
   /**
-   * Price optimization analysis
+   * Price optimization analysis (existing method maintained)
    */
   static async getPriceOptimization(items) {
     const recommendations = [];
@@ -424,14 +659,14 @@ export class AIExtractionService {
   }
 
   /**
-   * Get supplier recommendations based on product categories
+   * Get supplier recommendations based on product categories (existing method maintained)
    */
   static async getSupplierRecommendations(data) {
     const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
     const recommendations = [];
     
     // Analyze product categories
-    const categories = this.extractProductCategories(data.items);
+    const categories = this.extractProductCategories(data.items || data.products || []);
     
     // Find suppliers specializing in these categories
     const relevantSuppliers = suppliers.filter(supplier => {
@@ -469,7 +704,7 @@ export class AIExtractionService {
   }
 
   /**
-   * Get inventory insights
+   * Get inventory insights (existing method maintained)
    */
   static async getInventoryInsights(items) {
     const insights = [];
@@ -509,7 +744,7 @@ export class AIExtractionService {
   }
 
   /**
-   * Auto-categorize products and suppliers
+   * Auto-categorize products and suppliers (existing method maintained)
    */
   static async autoCategorize(data) {
     const categories = {
@@ -518,8 +753,9 @@ export class AIExtractionService {
     };
     
     // Categorize products using AI patterns
-    if (data.items) {
-      for (const item of data.items) {
+    if (data.items || data.products) {
+      const items = data.items || data.products;
+      for (const item of items) {
         const category = await this.detectProductCategory(item.productName);
         categories.products.push({
           product: item.productName,
@@ -530,14 +766,98 @@ export class AIExtractionService {
     }
     
     // Categorize supplier
-    if (data.clientName) {
-      categories.supplier = await this.detectSupplierCategory(data.clientName);
+    if (data.clientName || data.supplier?.name) {
+      categories.supplier = await this.detectSupplierCategory(data.clientName || data.supplier?.name);
     }
     
     return categories;
   }
 
-  // Helper methods
+  // New helper methods for PI extraction
+  static generatePINumber() {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `PI-${year}${month}-${random}`;
+  }
+
+  static cleanText(text) {
+    if (!text) return '';
+    return String(text).trim().replace(/\s+/g, ' ');
+  }
+
+  static calculateTotal(data) {
+    const products = data.products || data.items || [];
+    const subtotal = products.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+    const discountAmount = data.discountPercent ? subtotal * (data.discountPercent / 100) : data.discount || 0;
+    const taxableAmount = subtotal - discountAmount;
+    const taxAmount = data.taxPercent ? taxableAmount * (data.taxPercent / 100) : data.tax || 0;
+    return taxableAmount + taxAmount + (data.shipping || 0);
+  }
+
+  static extractPattern(data, pattern) {
+    const text = JSON.stringify(data);
+    const match = text.match(pattern);
+    return match ? match[0] : null;
+  }
+
+  static convertToISO(dateString) {
+    if (!dateString) return '';
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      return date.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  }
+
+  static processSupplierPIGeneric(rawData, file) {
+    console.log('Using generic PI extraction');
+    
+    return {
+      documentType: 'supplier_proforma',
+      piNumber: this.generatePINumber(),
+      date: new Date().toISOString().split('T')[0],
+      supplier: { name: 'Unknown Supplier' },
+      products: [],
+      grandTotal: 0,
+      currency: 'USD',
+      paymentTerms: '30% down payment, 70% before delivery',
+      notes: 'Extracted using generic method - manual review recommended'
+    };
+  }
+
+  static validateFile(file) {
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+
+    if (!file) {
+      return { isValid: false, error: 'No file provided' };
+    }
+
+    if (file.size > maxSize) {
+      return { isValid: false, error: 'File size exceeds 50MB limit' };
+    }
+
+    const fileType = this.getFileType(file);
+    if (fileType === 'unknown') {
+      return { isValid: false, error: 'File type not supported' };
+    }
+
+    return { isValid: true };
+  }
+
+  // All existing helper methods maintained below...
   static getFileType(file) {
     const mimeType = file.type.toLowerCase();
     const fileName = file.name.toLowerCase();
@@ -776,10 +1096,6 @@ export class AIExtractionService {
     }
     
     return matchCount / Math.max(items1.length, items2.length);
-  }
-
-  static calculateTotal(items) {
-    return items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
   }
 
   static calculateSimilarityScore(po1, po2) {
