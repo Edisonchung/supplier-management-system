@@ -175,33 +175,37 @@ export class ClientPOProcessor {
    * Extract and process items
    */
   static async extractAndProcessItems(data) {
-    const items = [];
-    const rawItems = data.items || data.line_items || data.products || [];
+  const items = [];
+  // OLD: const rawItems = data.items || data.line_items || data.products || [];
+  // NEW: Check for products first since that's what the backend returns
+  const rawItems = data.products || data.items || data.line_items || [];
+  
+  for (const rawItem of rawItems) {
+    const item = {
+      lineNumber: rawItem.line || rawItem.no || rawItem.line_number || String(items.length + 1),
+      partNumber: this.cleanPartNumber(rawItem.part_number || rawItem.product_code || ''),
+      description: rawItem.description || rawItem.item_description || '',
+      quantity: parseNumber(rawItem.quantity || rawItem.qty || 0),
+      uom: rawItem.uom || rawItem.unit || 'PCS',
+      unitPrice: parseAmount(rawItem.unit_price || rawItem.price || 0),
+      totalPrice: parseAmount(rawItem.total_price || rawItem.amount || 0),
+      deliveryDate: normalizeDate(rawItem.delivery_date || rawItem.needed || ''),
+      prNumber: rawItem.pr_number || '',
+      reference: rawItem.reference || '', // Add reference field
+      promisedDate: normalizeDate(rawItem.promised_date || ''), // Add promised date
+      supplierMatches: []
+    };
     
-    for (const rawItem of rawItems) {
-      const item = {
-        lineNumber: rawItem.line || rawItem.no || rawItem.line_number || String(items.length + 1),
-        partNumber: this.cleanPartNumber(rawItem.part_number || rawItem.product_code || ''),
-        description: rawItem.description || rawItem.item_description || '',
-        quantity: parseNumber(rawItem.quantity || rawItem.qty || 0),
-        uom: rawItem.uom || rawItem.unit || 'PCS',
-        unitPrice: parseAmount(rawItem.unit_price || rawItem.price || 0),
-        totalPrice: parseAmount(rawItem.total_price || rawItem.amount || 0),
-        deliveryDate: normalizeDate(rawItem.delivery_date || rawItem.needed || ''),
-        prNumber: rawItem.pr_number || '',
-        supplierMatches: [] // Will be populated by supplier matching
-      };
-      
-      // Calculate total if not provided
-      if (!item.totalPrice && item.quantity && item.unitPrice) {
-        item.totalPrice = item.quantity * item.unitPrice;
-      }
-      
-      items.push(item);
+    // Calculate total if not provided
+    if (!item.totalPrice && item.quantity && item.unitPrice) {
+      item.totalPrice = item.quantity * item.unitPrice;
     }
     
-    return items;
+    items.push(item);
   }
+  
+  return items;
+}
 
   /**
    * Clean part number
