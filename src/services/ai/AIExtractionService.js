@@ -4,7 +4,7 @@
 import { getErrorMessage } from '../../utils/errorHandling';
 
 const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || 'https://supplier-mcp-server-production.up.railway.app';
-const DEFAULT_TIMEOUT = 60000;
+const DEFAULT_TIMEOUT = 120000;
 
 export class AIExtractionService {
   constructor() {
@@ -80,6 +80,8 @@ export class AIExtractionService {
    * Call Railway backend API
    */
   async callExtractionAPI(file) {
+  console.log(`Starting extraction for ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+  
   const formData = new FormData();
   
   // Determine the field name based on file type
@@ -87,26 +89,41 @@ export class AIExtractionService {
   
   switch (fileType) {
     case 'pdf':
-      formData.append('pdf', file); // Backend expects 'pdf' field for PDFs
+      formData.append('pdf', file);
       break;
     case 'image':
-      formData.append('image', file); // Backend expects 'image' field for images
+      formData.append('image', file);
       break;
     case 'excel':
-      formData.append('excel', file); // Backend expects 'excel' field for Excel files
+      formData.append('excel', file);
       break;
     default:
-      formData.append('file', file); // Fallback to generic 'file'
+      formData.append('file', file);
   }
 
-  // Add additional parameters your backend might expect
+  // Add additional parameters
   formData.append('enhancedMode', 'true');
   formData.append('validateData', 'true');
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
+  const startTime = Date.now();
+  
+  // Set up timeout with progress logging
+  const timeoutId = setTimeout(() => {
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.error(`Extraction timeout after ${elapsed} seconds`);
+    controller.abort();
+  }, DEFAULT_TIMEOUT);
+
+  // Log progress every 10 seconds
+  const progressInterval = setInterval(() => {
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.log(`Extraction in progress... ${elapsed} seconds elapsed`);
+  }, 10000);
 
   try {
+    console.log(`Calling ${this.baseUrl}/api/extract-po...`);
+    
     const response = await fetch(`${this.baseUrl}/api/extract-po`, {
       method: 'POST',
       body: formData,
@@ -114,6 +131,10 @@ export class AIExtractionService {
     });
 
     clearTimeout(timeoutId);
+    clearInterval(progressInterval);
+    
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.log(`Response received after ${elapsed} seconds`);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
@@ -127,11 +148,10 @@ export class AIExtractionService {
     }
 
     const result = await response.json();
-    console.log('Extraction API response:', result);
+    console.log('Extraction successful:', result);
     
     // Ensure the response has the expected structure
     if (!result.data) {
-      // If the result itself contains the extracted data, wrap it
       return {
         success: true,
         data: result,
@@ -143,8 +163,11 @@ export class AIExtractionService {
     
   } catch (error) {
     clearTimeout(timeoutId);
+    clearInterval(progressInterval);
+    
     if (error.name === 'AbortError') {
-      throw new Error('Extraction timeout - file processing took too long');
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      throw new Error(`Extraction timeout after ${elapsed} seconds. The file may be too large or complex.`);
     }
     throw error;
   }
