@@ -1417,6 +1417,7 @@ export default PIModal;:ring-blue-500"
       </div>
 
       {/* Payment Modal */}
+ 
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
@@ -1457,4 +1458,144 @@ export default PIModal;:ring-blue-500"
                   type="date"
                   value={newPayment.date}
                   onChange={(e) => setNewPayment({ ...newPayment, date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Type
+                </label>
+                <select
+                  value={newPayment.type}
+                  onChange={(e) => setNewPayment({ ...newPayment, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="down-payment">Down Payment</option>
+                  <option value="balance">Balance Payment</option>
+                  <option value="partial">Partial Payment</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={newPayment.method}
+                  onChange={(e) => setNewPayment({ ...newPayment, method: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="bank-transfer">Bank Transfer</option>
+                  <option value="check">Check</option>
+                  <option value="cash">Cash</option>
+                  <option value="credit-card">Credit Card</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reference Number
+                </label>
+                <input
+                  type="text"
+                  value={newPayment.reference}
+                  onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Transaction ID or Check Number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Remark
+                </label>
+                <textarea
+                  value={newPayment.remark}
+                  onChange={(e) => setNewPayment({ ...newPayment, remark: e.target.value })}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Additional notes about this payment..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Upload Payment Slip
+                </label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600">
+                      <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                        <span>Upload a file</span>
+                        <input 
+                          id="file-upload" 
+                          name="file-upload" 
+                          type="file" 
+                          className="sr-only"
+                          accept="image/*,.pdf"
+                          onChange={handleFileUpload}
+                        />
+                      </label>
+                      <p className="pl-1">or drag and drop</p>
+                    </div>
+                    <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
+                  </div>
+                </div>
+                
+                {newPayment.attachments.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Uploaded Files</p>
+                    <div className="space-y-2">
+                      {newPayment.attachments.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center gap-2">
+                            <FileText size={16} className="text-gray-400" />
+                            <span className="text-sm text-gray-700">{file.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewPayment(prev => ({
+                                ...prev,
+                                attachments: prev.attachments.filter((_, i) => i !== idx)
+                              }));
+                            }}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePayment}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Save Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PIModal;
