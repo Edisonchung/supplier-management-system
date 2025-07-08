@@ -96,39 +96,34 @@ const PurchaseOrders = () => {
         if (result.data.documentType === 'client_purchase_order') {
           modalData = {
             // Map extracted fields to what POModal expects
-            orderNumber: result.data.poNumber || '',
-            client: result.data.client?.name || '',
+            poNumber: result.data.poNumber || '',
+            clientPoNumber: result.data.poNumber || '',
             clientName: result.data.client?.name || '',
+            clientContact: result.data.client?.contact || '',
+            clientEmail: result.data.client?.email || '',
+            clientPhone: result.data.client?.phone || '',
             
             // Handle dates
             orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-            deliveryDate: result.data.deliveryDate || new Date().toISOString().split('T')[0],
+            requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
             
             // Terms
-            paymentTerms: result.data.paymentTerms || '30 days',
+            paymentTerms: result.data.paymentTerms || 'Net 30',
             deliveryTerms: result.data.deliveryTerms || 'FOB',
+            
+            // Status and notes
+            status: 'draft',
+            notes: result.data.notes || '',
             
             // Items array - ensure it matches POModal's expected structure
             items: (result.data.items || []).map(item => ({
-              partNumber: item.partNumber || '',
-              description: item.description || '',
+              productName: item.description || '',
+              productCode: item.partNumber || '',
               quantity: item.quantity || 0,
               unitPrice: item.unitPrice || 0,
               totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-              uom: item.uom || 'PCS',
-              deliveryDate: item.deliveryDate || result.data.deliveryDate || '',
-              // Include supplier matches if available
-              supplierMatches: item.supplierMatches || []
+              id: Date.now().toString() + Math.random()
             })),
-            
-            // Totals
-            subtotal: result.data.subtotal || 
-                      (result.data.items || []).reduce((sum, item) => sum + (item.totalPrice || 0), 0),
-            tax: result.data.tax || 0,
-            total: result.data.totalAmount || result.data.total || 0,
-            
-            // Status
-            status: 'draft',
             
             // Additional extracted data
             extractedData: result.data,
@@ -193,17 +188,19 @@ const PurchaseOrders = () => {
   // Handle manual PO creation
   const handleCreatePO = () => {
     setCurrentPO({
-      orderNumber: `PO-${Date.now().toString().slice(-6)}`,
-      client: '',
+      poNumber: `PO-${Date.now().toString().slice(-6)}`,
+      clientPoNumber: '',
+      clientName: '',
+      clientContact: '',
+      clientEmail: '',
+      clientPhone: '',
       orderDate: new Date().toISOString().split('T')[0],
-      deliveryDate: new Date().toISOString().split('T')[0],
-      paymentTerms: '30 days',
+      requiredDate: '',
+      paymentTerms: 'Net 30',
       deliveryTerms: 'FOB',
-      items: [],
-      subtotal: 0,
-      tax: 0,
-      total: 0,
-      status: 'draft'
+      status: 'draft',
+      notes: '',
+      items: []
     });
     setModalOpen(true);
   };
@@ -281,6 +278,11 @@ const PurchaseOrders = () => {
       </span>
     );
   };
+
+  // Add debug effect to track modal state
+  useEffect(() => {
+    console.log('Modal state changed:', { modalOpen, currentPO });
+  }, [modalOpen, currentPO]);
 
   if (loading) {
     return (
@@ -561,14 +563,15 @@ const PurchaseOrders = () => {
       </div>
 
       {/* PO Modal */}
-      {modalOpen && (
-        <POModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          purchaseOrder={currentPO}
-          onSave={handleSavePO}
-        />
-      )}
+      <POModal
+        isOpen={modalOpen}
+        onClose={() => {
+          console.log('Closing modal');
+          setModalOpen(false);
+        }}
+        editingPO={currentPO}
+        onSave={handleSavePO}
+      />
     </div>
   );
 };
