@@ -1,15 +1,17 @@
 // src/components/procurement/ProformaInvoices.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Plus, Search, Filter, Calendar, 
   Download, Eye, Edit, Trash2, Truck, Package,
   AlertCircle, Clock, CheckCircle, CreditCard,
-  Grid, List, Briefcase, AlertTriangle
+  Grid, List, Briefcase, AlertTriangle, Upload, Loader2
 } from 'lucide-react';
 import { useProformaInvoices } from '../../hooks/useProformaInvoices';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useSuppliers } from '../../hooks/useSuppliers';
 import { useProducts } from '../../hooks/useProducts';
+import { mockFirebase } from '../../services/firebase';
+import AIExtractionService from '../../services/ai/AIExtractionService';
 import PICard from './PICard';
 import PIModal from './PIModal';
 
@@ -38,6 +40,10 @@ const ProformaInvoices = ({ showNotification }) => {
   const [filterPriority, setFilterPriority] = useState('all');
   const [viewMode, setViewMode] = useState('grid'); // grid or list
   const [groupByYear, setGroupByYear] = useState(true);
+  
+  // AI Extraction states
+  const fileInputRef = useRef(null);
+  const [extracting, setExtracting] = useState(false);
 
   const canEdit = permissions.canEditPI || permissions.isAdmin;
   const canDelete = permissions.isAdmin;
@@ -74,6 +80,140 @@ const ProformaInvoices = ({ showNotification }) => {
     if (b === 'All') return -1;
     return b - a;
   });
+
+  // Find PO by number
+  const findPOByNumber = async (poNumber) => {
+    try {
+      // First check in existing purchase orders
+      const snapshot = await mockFirebase.firestore.collection('purchaseOrders').get();
+      const purchaseOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      return purchaseOrders.find(po => 
+        po.orderNumber === poNumber || 
+        po.poNumber === poNumber
+      );
+    } catch (error) {
+      console.error('Error finding PO:', error);
+      return null;
+    }
+  };
+
+  // Handle file upload for AI extraction
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    setExtracting(true);
+    try {
+      const result = await AIExtractionService.extractFromFile(file);
+      
+      if (result.success && result.data.documentType === 'supplier_proforma') {
+        const extractedData = result.data;
+        
+        // Find supplier by name or create suggestion
+        const supplierList = suppliers;
+        const matchedSupplier = supplierList.find(s => 
+          s.name.toLowerCase().includes(extractedData.supplier?.name?.toLowerCase()) ||
+          extractedData.supplier?.name?.toLowerCase().includes(s.name.toLowerCase())
+        );
+        
+        // Map extracted data to PI modal format
+        const piData = {
+          piNumber: extractedData.piNumber,
+          date: extractedData.date,
+          etaDate: extractedData.validUntil,
+          supplierId: matchedSupplier?.id || '',
+          supplierName: extractedData.supplier?.name || '',
+          projectCode: extractedData.clientRef?.poNumber || '',
+          isPriority: false,
+          priorityReason: '',
+          
+          // Map products/items
+          items: extractedData.products.map((product, index) => ({
+            id: `item-${Date.now()}-${index}`,
+            productCode: product.productCode,
+            productName: product.productName,
+            quantity: product.quantity,
+            unitPrice: product.unitPrice,
+            totalPrice: product.totalPrice,
+            received: false,
+            receivedQty: 0,
+            receivedDate: '',
+            hasDiscrepancy: false,
+            discrepancyReason: '',
+            leadTime: product.leadTime,
+            warranty: product.warranty,
+            notes: product.notes
+          })),
+          
+          // Financial details
+          paymentTerms: extractedData.paymentTerms,
+          deliveryTerms: extractedData.deliveryTerms,
+          currency: extractedData.currency,
+          exchangeRate: extractedData.exchangeRate || 1,
+          
+          // Calculate totals
+          subtotal: extractedData.subtotal || extractedData.products.reduce((sum, p) => sum + p.totalPrice, 0),
+          discount: extractedData.discount || 0,
+          shipping: extractedData.shipping || 0,
+          tax: extractedData.tax || 0,
+          totalAmount: extractedData.grandTotal,
+          
+          // Additional info
+          notes: extractedData.notes || '',
+          specialInstructions: extractedData.specialInstructions || '',
+          status: 'draft',
+          deliveryStatus: 'pending',
+          paymentStatus: 'pending',
+          purpose: 'stock',
+          
+          // Banking details if available
+          bankDetails: extractedData.bankDetails
+        };
+        
+        // Check for PO matches
+        if (extractedData.clientRef?.poNumber) {
+          const matchedPO = await findPOByNumber(extractedData.clientRef.poNumber);
+          if (matchedPO) {
+            showNotification(`Matched with PO: ${matchedPO.orderNumber}`, 'success');
+            piData.linkedPO = matchedPO.id;
+            piData.projectCode = matchedPO.orderNumber;
+            piData.purpose = 'client-order';
+          }
+        }
+        
+        // Suggest supplier if not found
+        if (!matchedSupplier && extractedData.supplier?.name) {
+          showNotification(
+            `Supplier "${extractedData.supplier.name}" not found. You can create it after saving the PI.`,
+            'info'
+          );
+        }
+        
+        setSelectedPI(piData);
+        setShowModal(true);
+        
+        showNotification(
+          `PI extracted successfully! ${result.confidence ? `(Confidence: ${(result.confidence * 100).toFixed(0)}%)` : ''}`,
+          'success'
+        );
+      } else {
+        throw new Error('Invalid document type or extraction failed');
+      }
+    } catch (error) {
+      console.error('Extraction failed:', error);
+      showNotification(
+        error.message || 'Failed to extract PI data. Please try again or enter manually.',
+        'error'
+      );
+    } finally {
+      setExtracting(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   // Handler functions
   const handleAddPI = () => {
@@ -171,15 +311,44 @@ const ProformaInvoices = ({ showNotification }) => {
           <h2 className="text-2xl font-bold text-gray-900">Proforma Invoices</h2>
           <p className="text-gray-600">Manage supplier quotations and track deliveries</p>
         </div>
-        {canEdit && (
-          <button
-            onClick={handleAddPI}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Plus size={20} />
-            Add PI
-          </button>
-        )}
+        <div className="flex gap-3">
+          {canEdit && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleFileUpload}
+                className="hidden"
+                disabled={extracting}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={extracting}
+                className="bg-white text-gray-700 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 inline-flex items-center gap-2 transition-colors"
+              >
+                {extracting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={20} />
+                    Extracting...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={20} />
+                    Upload PI
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleAddPI}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Plus size={20} />
+                Add PI
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}
