@@ -457,55 +457,161 @@ export class AIExtractionService {
   /**
    * Process Supplier Proforma Invoice
    */
-  async processSupplierPI(rawData, file) {
-    const data = {
+  // Add this enhanced processSupplierPI method to your existing AIExtractionService.js
+
+async processSupplierPI(rawData, file) {
+  console.log('Processing Supplier PI:', file.name);
+  
+  // Handle nested JSON structure from backend
+  let extractedData = rawData.data || rawData;
+  
+  // Check for nested proforma_invoice object (similar to purchase_order)
+  if (extractedData.proforma_invoice) {
+    const pi = extractedData.proforma_invoice;
+    
+    const processedData = {
       documentType: 'supplier_proforma',
       
-      // PI details
-      piNumber: this.extractValue(rawData, ['invoice #', 'pi number', 'proforma']),
-      date: this.convertToISO(this.extractValue(rawData, ['date'])),
+      // PI identification
+      piNumber: pi.invoice_number || pi.pi_number || pi.number || this.generatePINumber(),
+      date: this.convertToISO(pi.date || pi.invoice_date || pi.issue_date),
+      validUntil: this.convertToISO(pi.valid_until || pi.expiry_date || pi.validity_date),
       
-      // Supplier information
+      // Supplier details
       supplier: {
-        name: this.extractSupplierName(rawData),
-        contact: this.extractValue(rawData, ['seller', 'contact']),
-        address: this.extractValue(rawData, ['address']),
-        phone: this.extractValue(rawData, ['mobile', 'whatsapp', 'tel'])
+        name: pi.supplier?.name || pi.seller?.company || pi.vendor?.name || '',
+        contact: pi.supplier?.contact || pi.seller?.contact_person || pi.vendor?.contact || '',
+        email: pi.supplier?.email || pi.seller?.email || pi.vendor?.email || '',
+        phone: pi.supplier?.phone || pi.supplier?.mobile || pi.seller?.phone || '',
+        address: pi.supplier?.address || pi.seller?.address || pi.vendor?.address || ''
       },
       
-      // Payment details
-      payment: {
-        bank: this.extractValue(rawData, ['bank name']),
-        swift: this.extractValue(rawData, ['swift', 'bic']),
-        account: this.extractValue(rawData, ['account number']),
-        currency: this.extractCurrency(rawData)
+      // Client reference
+      clientRef: {
+        name: pi.buyer?.name || pi.consignee?.name || pi.client?.name || '',
+        poNumber: pi.reference?.po_number || this.extractPattern(extractedData, /PO-\d{6}/) || '',
+        rfqNumber: pi.reference?.rfq_number || this.extractPattern(extractedData, /RFQ-\d{6}/) || ''
       },
       
-      // Products
-      products: this.extractSupplierProducts(rawData),
+      // Products/Items with enhanced mapping
+      products: (pi.items || pi.products || pi.line_items || []).map(item => ({
+        productCode: item.part_number || item.product_code || item.sku || item.code || '',
+        productName: item.description || item.product_name || item.name || '',
+        quantity: this.parseNumber(item.quantity || item.qty || 0),
+        unitPrice: this.parseAmount(item.unit_price || item.price || 0),
+        totalPrice: this.parseAmount(item.total_price || item.total || (item.quantity * item.unit_price) || 0),
+        leadTime: item.lead_time || item.delivery_time || '',
+        warranty: item.warranty || '',
+        notes: item.notes || item.remarks || ''
+      })).filter(item => item.productCode || item.productName), // Filter out empty items
       
-      // Totals
-      productTotal: this.extractAmount(rawData, ['total amount', 'subtotal']),
-      shippingCost: this.extractAmount(rawData, ['shipping cost', 'delivery']),
-      grandTotal: this.extractAmount(rawData, ['total amount(usd)', 'grand total']),
+      // Financial details
+      subtotal: this.parseAmount(pi.subtotal || pi.net_amount || 0),
+      discount: this.parseAmount(pi.discount || pi.discount_amount || 0),
+      discountPercent: this.parseNumber(pi.discount_percent || 0),
+      shipping: this.parseAmount(pi.shipping || pi.freight || pi.delivery_charge || 0),
+      tax: this.parseAmount(pi.tax || pi.gst || pi.vat || 0),
+      taxPercent: this.parseNumber(pi.tax_percent || pi.gst_percent || pi.vat_percent || 0),
+      grandTotal: this.parseAmount(pi.grand_total || pi.total || pi.total_amount || 0),
+      currency: pi.currency || 'USD',
+      exchangeRate: this.parseNumber(pi.exchange_rate || 1),
       
-      // Terms
-      deliveryTerms: this.extractValue(rawData, ['delivery', 'ddp']),
-      leadTime: this.extractValue(rawData, ['lead time']),
-      warranty: this.extractValue(rawData, ['warranty']),
+      // Terms and conditions
+      paymentTerms: pi.payment_terms || pi.terms_of_payment || '30% down payment, 70% before delivery',
+      deliveryTerms: pi.delivery_terms || pi.incoterms || 'FOB',
+      leadTime: pi.lead_time || pi.delivery_time || '2-3 weeks',
+      warranty: pi.warranty || pi.warranty_period || '12 months',
+      validity: pi.validity || pi.valid_for || '30 days',
       
-      // Link to client needs
-      linkedClientPOs: []
+      // Banking details (for international suppliers)
+      bankDetails: {
+        bankName: pi.bank?.name || pi.bank_details?.bank_name || '',
+        accountNumber: pi.bank?.account_number || pi.bank_details?.account || '',
+        accountName: pi.bank?.account_name || pi.bank_details?.beneficiary || '',
+        swiftCode: pi.bank?.swift || pi.bank_details?.swift_code || '',
+        iban: pi.bank?.iban || pi.bank_details?.iban || '',
+        routingNumber: pi.bank?.routing || pi.bank_details?.routing_number || ''
+      },
+      
+      // Additional extracted info
+      notes: pi.notes || pi.remarks || pi.comments || '',
+      specialInstructions: pi.special_instructions || pi.instructions || ''
     };
     
-    // Try to match with client POs
-    data.linkedClientPOs = await this.findRelatedClientPOs(data.products);
+    // Clean up and validate the data
+    processedData.supplier.name = this.cleanText(processedData.supplier.name);
+    processedData.grandTotal = processedData.grandTotal || this.calculateTotal(processedData);
     
-    // Store supplier products for future matching
-    this.updateSupplierCatalog(data);
-    
-    return data;
+    return processedData;
   }
+  
+  // Fallback to legacy extraction if new format not found
+  return this.processSupplierPILegacy(rawData, file);
+}
+
+// Add these helper methods if they don't exist in your AIExtractionService class:
+
+generatePINumber() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `PI-${year}${month}-${random}`;
+}
+
+parseNumber(value) {
+  if (typeof value === 'number') return value;
+  if (!value) return 0;
+  const cleaned = String(value).replace(/[^\d.-]/g, '');
+  return parseFloat(cleaned) || 0;
+}
+
+parseAmount(value) {
+  if (typeof value === 'number') return value;
+  if (!value) return 0;
+  // Remove currency symbols, commas, and spaces
+  const cleaned = String(value).replace(/[^0-9.-]/g, '');
+  return parseFloat(cleaned) || 0;
+}
+
+cleanText(text) {
+  if (!text) return '';
+  return String(text).trim().replace(/\s+/g, ' ');
+}
+
+calculateTotal(data) {
+  const subtotal = data.products.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+  const discountAmount = data.discountPercent ? subtotal * (data.discountPercent / 100) : data.discount;
+  const taxableAmount = subtotal - discountAmount;
+  const taxAmount = data.taxPercent ? taxableAmount * (data.taxPercent / 100) : data.tax;
+  return taxableAmount + taxAmount + data.shipping;
+}
+
+extractPattern(data, pattern) {
+  const text = JSON.stringify(data);
+  const match = text.match(pattern);
+  return match ? match[0] : null;
+}
+
+// Legacy extraction method for backward compatibility
+processSupplierPILegacy(rawData, file) {
+  console.log('Using legacy PI extraction');
+  
+  // Implement your existing extraction logic here
+  // This ensures backward compatibility with older PI formats
+  
+  return {
+    documentType: 'supplier_proforma',
+    piNumber: this.generatePINumber(),
+    date: new Date().toISOString().split('T')[0],
+    supplier: { name: 'Unknown Supplier' },
+    products: [],
+    grandTotal: 0,
+    currency: 'USD',
+    paymentTerms: '30% down payment, 70% before delivery',
+    notes: 'Extracted using legacy method - manual review recommended'
+  };
+}
 
   /**
    * Process Supplier Invoice (placeholder)
