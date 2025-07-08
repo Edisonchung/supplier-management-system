@@ -189,263 +189,124 @@ export class AIExtractionService {
   }
 
   /**
-   * Enhanced document type detection based on real PI examples
+   * Detect document type from extracted data
    */
   static detectDocumentType(rawData) {
-    console.log('Detecting document type from:', rawData);
-    
     const data = rawData.data || rawData;
     const text = JSON.stringify(data).toLowerCase();
     
-    // Enhanced PI indicators - check for invoice-like documents that could be PIs
-    const piIndicators = [
-      'proforma invoice',
-      'pro forma invoice',
-      'pro-forma invoice',
-      'commercial proforma invoice',
-      'quotation',
-      'quote no',
-      'pi no',
-      'invoice no',
-      'total amount(usd)',
-      'total price(usd)',
-      'unit price(usd)',
-      'payment terms',
-      'delivery terms',
-      'delivery time',
-      'lead time',
-      'bank information',
-      'swift code',
-      'beneficiary',
-      'flow solution sdn bhd',
-      'edison chung'
-    ];
+    // Check for various document indicators
+    if (data.proforma_invoice || text.includes('proforma') || text.includes('quotation')) {
+      return { type: 'supplier_proforma', confidence: 0.9 };
+    }
     
-    // Additional invoice indicators that suggest it's from a supplier
-    const supplierInvoiceIndicators = [
-      'invoice',
-      'bill to',
-      'ship to',
-      'total',
-      'amount',
-      'price',
-      'payment'
-    ];
-    
-    // Check if it's a PO first
-    if (
-      data.purchase_order || 
-      text.includes('purchase order') || 
-      text.includes('p.o.') ||
-      (text.includes('po number') && !text.includes('proforma'))
-    ) {
-      console.log('Detected as client_purchase_order');
+    if (data.purchase_order || text.includes('purchase order') || text.includes('p.o.')) {
       return { type: 'client_purchase_order', confidence: 0.9 };
     }
     
-    // Count PI indicators
-    const piScore = piIndicators.filter(indicator => text.includes(indicator)).length;
-    
-    // Count general invoice indicators
-    const invoiceScore = supplierInvoiceIndicators.filter(indicator => text.includes(indicator)).length;
-    
-    // If it has strong PI indicators OR it's an invoice-like document from a supplier
-    if (piScore >= 2 || (invoiceScore >= 3 && !text.includes('purchase order'))) {
-      console.log(`Detected as supplier_proforma with PI score: ${piScore}, Invoice score: ${invoiceScore}`);
-      return { type: 'supplier_proforma', confidence: Math.min(0.5 + (piScore * 0.1), 0.95) };
-    }
-    
-    // Check for tax invoice (not proforma)
-    if (
-      data.invoice && 
-      !text.includes('proforma') && 
-      !text.includes('quotation') &&
-      (text.includes('tax invoice') || text.includes('commercial invoice'))
-    ) {
-      console.log('Detected as supplier_invoice');
+    if (data.invoice && !text.includes('proforma')) {
       return { type: 'supplier_invoice', confidence: 0.8 };
     }
     
-    // If it has typical invoice/PI structure
-    if (
-      (text.includes('price') || text.includes('cost') || text.includes('amount')) &&
-      (text.includes('total') || text.includes('subtotal')) &&
-      !text.includes('purchase order')
-    ) {
-      console.log('Detected as supplier_proforma based on structure');
-      return { type: 'supplier_proforma', confidence: 0.7 };
-    }
-    
-    console.log('Unable to detect document type, defaulting to unknown');
     return { type: 'unknown', confidence: 0.5 };
   }
 
   /**
-   * Enhanced PI processing based on real document structures
+   * Process Supplier PI - NEW METHOD
    */
   static async processSupplierPI(rawData, file) {
     console.log('Processing Supplier PI:', file.name);
-    console.log('Raw data structure:', JSON.stringify(rawData).substring(0, 500) + '...');
     
     // Handle nested JSON structure from backend
     let extractedData = rawData.data || rawData;
     
-    // Initialize with default structure
-    let processedData = {
-      documentType: 'supplier_proforma',
-      piNumber: '',
-      invoiceNumber: '', // Also include invoice number field
-      date: '',
-      supplier: {},
-      clientRef: {},
-      products: [],
-      grandTotal: 0,
-      currency: 'USD',
-      paymentTerms: '',
-      deliveryTerms: '',
-      bankDetails: {},
-      notes: ''
-    };
-    
-    try {
-      // Check if it's already structured data
-      if (extractedData.proforma_invoice || extractedData.invoice) {
-        const invoiceData = extractedData.proforma_invoice || extractedData.invoice;
-        return this.processStructuredInvoiceData(invoiceData, extractedData);
-      }
+    // Check for nested proforma_invoice object
+    if (extractedData.proforma_invoice) {
+      const pi = extractedData.proforma_invoice;
       
-      // Extract PI/Invoice Number - look for various patterns
-      processedData.piNumber = this.extractPINumber(extractedData);
-      processedData.invoiceNumber = processedData.piNumber; // Use same number for both
+      const processedData = {
+        documentType: 'supplier_proforma',
+        
+        // PI identification
+        piNumber: pi.invoice_number || pi.pi_number || pi.number || this.generatePINumber(),
+        date: this.convertToISO(pi.date || pi.invoice_date || pi.issue_date),
+        validUntil: this.convertToISO(pi.valid_until || pi.expiry_date || pi.validity_date),
+        
+        // Supplier details
+        supplier: {
+          name: pi.supplier?.name || pi.seller?.company || pi.vendor?.name || '',
+          contact: pi.supplier?.contact || pi.seller?.contact_person || pi.vendor?.contact || '',
+          email: pi.supplier?.email || pi.seller?.email || pi.vendor?.email || '',
+          phone: pi.supplier?.phone || pi.supplier?.mobile || pi.seller?.phone || '',
+          address: pi.supplier?.address || pi.seller?.address || pi.vendor?.address || ''
+        },
+        
+        // Client reference
+        clientRef: {
+          name: pi.buyer?.name || pi.consignee?.name || pi.client?.name || '',
+          poNumber: pi.reference?.po_number || this.extractPattern(extractedData, /PO-\d{6}/) || '',
+          rfqNumber: pi.reference?.rfq_number || this.extractPattern(extractedData, /RFQ-\d{6}/) || ''
+        },
+        
+        // Products/Items with enhanced mapping
+        products: (pi.items || pi.products || pi.line_items || []).map(item => ({
+          productCode: item.part_number || item.product_code || item.sku || item.code || '',
+          productName: item.description || item.product_name || item.name || '',
+          quantity: this.parseNumber(item.quantity || item.qty || 0),
+          unitPrice: this.parseNumber(item.unit_price || item.price || 0),
+          totalPrice: this.parseNumber(item.total_price || item.total || (item.quantity * item.unit_price) || 0),
+          leadTime: item.lead_time || item.delivery_time || '',
+          warranty: item.warranty || '',
+          notes: item.notes || item.remarks || ''
+        })).filter(item => item.productCode || item.productName),
+        
+        // Financial details
+        subtotal: this.parseNumber(pi.subtotal || pi.net_amount || 0),
+        discount: this.parseNumber(pi.discount || pi.discount_amount || 0),
+        discountPercent: this.parseNumber(pi.discount_percent || 0),
+        shipping: this.parseNumber(pi.shipping || pi.freight || pi.delivery_charge || 0),
+        tax: this.parseNumber(pi.tax || pi.gst || pi.vat || 0),
+        taxPercent: this.parseNumber(pi.tax_percent || pi.gst_percent || pi.vat_percent || 0),
+        grandTotal: this.parseNumber(pi.grand_total || pi.total || pi.total_amount || 0),
+        currency: pi.currency || 'USD',
+        exchangeRate: this.parseNumber(pi.exchange_rate || 1),
+        
+        // Terms and conditions
+        paymentTerms: pi.payment_terms || pi.terms_of_payment || '30% down payment, 70% before delivery',
+        deliveryTerms: pi.delivery_terms || pi.incoterms || 'FOB',
+        leadTime: pi.lead_time || pi.delivery_time || '2-3 weeks',
+        warranty: pi.warranty || pi.warranty_period || '12 months',
+        validity: pi.validity || pi.valid_for || '30 days',
+        
+        // Banking details (for international suppliers)
+        bankDetails: {
+          bankName: pi.bank?.name || pi.bank_details?.bank_name || '',
+          accountNumber: pi.bank?.account_number || pi.bank_details?.account || '',
+          accountName: pi.bank?.account_name || pi.bank_details?.beneficiary || '',
+          swiftCode: pi.bank?.swift || pi.bank_details?.swift_code || '',
+          iban: pi.bank?.iban || pi.bank_details?.iban || '',
+          routingNumber: pi.bank?.routing || pi.bank_details?.routing_number || ''
+        },
+        
+        // Additional extracted info
+        notes: pi.notes || pi.remarks || pi.comments || '',
+        specialInstructions: pi.special_instructions || pi.instructions || ''
+      };
       
-      // Extract Date
-      processedData.date = this.extractDate(extractedData);
-      
-      // Extract Supplier Information
-      processedData.supplier = this.extractSupplierInfo(extractedData);
-      
-      // Extract Client/Buyer Information
-      processedData.clientRef = this.extractClientInfo(extractedData);
-      
-      // Extract Products/Items
-      processedData.products = this.extractProducts(extractedData);
-      
-      // Extract Financial Information
-      const financials = this.extractFinancials(extractedData);
-      Object.assign(processedData, financials);
-      
-      // Extract Terms
-      processedData.paymentTerms = this.extractPaymentTerms(extractedData);
-      processedData.deliveryTerms = this.extractDeliveryTerms(extractedData);
-      
-      // Extract Banking Details
-      processedData.bankDetails = this.extractBankDetails(extractedData);
-      
-      // Extract Additional Info
-      processedData.notes = this.extractNotes(extractedData);
-      
-      // Apply intelligent field mapping for any missing data
-      const mappedData = await this.intelligentFieldMapping(processedData);
+      // Clean up and validate the data
+      processedData.supplier.name = this.cleanText(processedData.supplier.name);
+      processedData.grandTotal = processedData.grandTotal || this.calculateTotal(processedData);
       
       // Validate and add recommendations
-      const validatedData = await this.validateExtractedData(mappedData);
+      const validatedData = await this.validateExtractedData(processedData);
       const recommendations = await this.getAIRecommendations(validatedData);
       validatedData.recommendations = recommendations;
       
-      console.log('Processed PI data:', validatedData);
       return validatedData;
-      
-    } catch (error) {
-      console.error('Error processing PI:', error);
-      return processedData;
     }
-  }
-
-  /**
-   * Process structured invoice data from backend
-   */
-  static processStructuredInvoiceData(invoiceData, fullData) {
-    console.log('Processing structured invoice data');
     
-    const processedData = {
-      documentType: 'supplier_proforma',
-      
-      // PI/Invoice identification
-      piNumber: invoiceData.invoice_number || invoiceData.pi_number || invoiceData.number || this.generatePINumber(),
-      invoiceNumber: invoiceData.invoice_number || invoiceData.pi_number || invoiceData.number || '',
-      date: this.convertToISO(invoiceData.date || invoiceData.invoice_date || invoiceData.issue_date),
-      validUntil: this.convertToISO(invoiceData.valid_until || invoiceData.expiry_date || invoiceData.validity_date),
-      
-      // Supplier details
-      supplier: {
-        name: invoiceData.supplier?.name || invoiceData.seller?.company || invoiceData.vendor?.name || '',
-        contact: invoiceData.supplier?.contact || invoiceData.seller?.contact_person || invoiceData.vendor?.contact || '',
-        email: invoiceData.supplier?.email || invoiceData.seller?.email || invoiceData.vendor?.email || '',
-        phone: invoiceData.supplier?.phone || invoiceData.supplier?.mobile || invoiceData.seller?.phone || '',
-        address: invoiceData.supplier?.address || invoiceData.seller?.address || invoiceData.vendor?.address || ''
-      },
-      
-      // Client reference
-      clientRef: {
-        name: invoiceData.buyer?.name || invoiceData.consignee?.name || invoiceData.client?.name || 'Flow Solution Sdn Bhd',
-        poNumber: invoiceData.reference?.po_number || this.extractPattern(fullData, /PO-\d{6}/) || '',
-        rfqNumber: invoiceData.reference?.rfq_number || this.extractPattern(fullData, /RFQ-\d{6}/) || '',
-        contact: invoiceData.buyer?.contact || 'Edison Chung'
-      },
-      
-      // Products/Items with enhanced mapping
-      products: (invoiceData.items || invoiceData.products || invoiceData.line_items || []).map(item => ({
-        productCode: item.part_number || item.product_code || item.sku || item.code || '',
-        productName: item.description || item.product_name || item.name || '',
-        quantity: this.parseNumber(item.quantity || item.qty || 0),
-        unitPrice: this.parseNumber(item.unit_price || item.price || 0),
-        totalPrice: this.parseNumber(item.total_price || item.total || (item.quantity * item.unit_price) || 0),
-        leadTime: item.lead_time || item.delivery_time || '',
-        warranty: item.warranty || '',
-        notes: item.notes || item.remarks || ''
-      })).filter(item => item.productCode || item.productName),
-      
-      // Financial details
-      subtotal: this.parseNumber(invoiceData.subtotal || invoiceData.net_amount || 0),
-      discount: this.parseNumber(invoiceData.discount || invoiceData.discount_amount || 0),
-      discountPercent: this.parseNumber(invoiceData.discount_percent || 0),
-      shipping: this.parseNumber(invoiceData.shipping || invoiceData.freight || invoiceData.delivery_charge || 0),
-      tax: this.parseNumber(invoiceData.tax || invoiceData.gst || invoiceData.vat || 0),
-      taxPercent: this.parseNumber(invoiceData.tax_percent || invoiceData.gst_percent || invoiceData.vat_percent || 0),
-      grandTotal: this.parseNumber(invoiceData.grand_total || invoiceData.total || invoiceData.total_amount || 0),
-      totalAmount: this.parseNumber(invoiceData.grand_total || invoiceData.total || invoiceData.total_amount || 0),
-      currency: invoiceData.currency || 'USD',
-      exchangeRate: this.parseNumber(invoiceData.exchange_rate || 1),
-      
-      // Terms and conditions
-      paymentTerms: invoiceData.payment_terms || invoiceData.terms_of_payment || '30% down payment, 70% before delivery',
-      deliveryTerms: invoiceData.delivery_terms || invoiceData.incoterms || 'FOB',
-      leadTime: invoiceData.lead_time || invoiceData.delivery_time || '2-3 weeks',
-      warranty: invoiceData.warranty || invoiceData.warranty_period || '12 months',
-      validity: invoiceData.validity || invoiceData.valid_for || '30 days',
-      
-      // Banking details (for international suppliers)
-      bankDetails: {
-        bankName: invoiceData.bank?.name || invoiceData.bank_details?.bank_name || '',
-        accountNumber: invoiceData.bank?.account_number || invoiceData.bank_details?.account || '',
-        accountName: invoiceData.bank?.account_name || invoiceData.bank_details?.beneficiary || '',
-        swiftCode: invoiceData.bank?.swift || invoiceData.bank_details?.swift_code || '',
-        iban: invoiceData.bank?.iban || invoiceData.bank_details?.iban || '',
-        routingNumber: invoiceData.bank?.routing || invoiceData.bank_details?.routing_number || '',
-        bankAddress: invoiceData.bank?.address || invoiceData.bank_details?.bank_address || ''
-      },
-      
-      // Additional extracted info
-      notes: invoiceData.notes || invoiceData.remarks || invoiceData.comments || '',
-      specialInstructions: invoiceData.special_instructions || invoiceData.instructions || ''
-    };
-    
-    // Clean up and validate the data
-    processedData.supplier.name = this.cleanText(processedData.supplier.name);
-    processedData.grandTotal = processedData.grandTotal || processedData.totalAmount || this.calculateTotal(processedData);
-    processedData.totalAmount = processedData.grandTotal;
-    
-    return processedData;
+    // Fallback to processing as generic PI
+    return this.processSupplierPIGeneric(rawData, file);
   }
 
   /**
@@ -485,17 +346,10 @@ export class AIExtractionService {
   /**
    * Process Supplier Invoice
    */
-  static async processSupplierInvoice(rawData, file) {
-    // Process as PI since structure is similar
-    console.log('Processing as supplier invoice, using PI extraction');
-    const processedData = await this.processSupplierPI(rawData, file);
+  static processSupplierInvoice(rawData, file) {
+    // Similar to proforma but for actual invoices
+    const processedData = this.processSupplierPI(rawData, file);
     processedData.documentType = 'supplier_invoice';
-    
-    // Additional processing for actual invoices if needed
-    if (!processedData.piNumber && !processedData.invoiceNumber) {
-      processedData.invoiceNumber = this.generateInvoiceNumber();
-    }
-    
     return processedData;
   }
 
@@ -512,330 +366,6 @@ export class AIExtractionService {
       rawData: rawData,
       extractedText: JSON.stringify(rawData)
     };
-  }
-
-  // Enhanced extraction helper methods
-
-  static extractPINumber(data) {
-    const patterns = [
-      'invoice_no', 'invoice no', 'invoiceno',
-      'pi_no', 'pi no', 'pino',
-      'quote_no', 'quote no', 'quoteno',
-      'quotation_no', 'quotation no',
-      'ref', 'reference', 'no'
-    ];
-    
-    // Try direct field extraction
-    for (const pattern of patterns) {
-      const value = this.findValue(data, [pattern]);
-      if (value && value.length > 3) {
-        return this.cleanText(value);
-      }
-    }
-    
-    // Try regex extraction from text
-    const text = JSON.stringify(data);
-    const piRegex = /(?:invoice\s*no|pi\s*no|quote\s*no)[:\s]*([A-Z0-9\-\/]+)/i;
-    const match = text.match(piRegex);
-    if (match) {
-      return match[1];
-    }
-    
-    return this.generatePINumber();
-  }
-
-  static extractDate(data) {
-    const patterns = ['date', 'invoice_date', 'pi_date', 'quotation_date', 'issue_date'];
-    
-    for (const pattern of patterns) {
-      const value = this.findValue(data, [pattern]);
-      if (value) {
-        const date = this.convertToISO(value);
-        if (date) return date;
-      }
-    }
-    
-    // Try regex extraction
-    const text = JSON.stringify(data);
-    const dateRegex = /(?:date)[:\s]*([0-9]{1,4}[-\/][0-9]{1,2}[-\/][0-9]{1,4})/i;
-    const match = text.match(dateRegex);
-    if (match) {
-      return this.convertToISO(match[1]);
-    }
-    
-    return new Date().toISOString().split('T')[0];
-  }
-
-  static extractSupplierInfo(data) {
-    const supplier = {
-      name: '',
-      contact: '',
-      email: '',
-      phone: '',
-      address: ''
-    };
-    
-    // Common patterns from your PI samples
-    const namePatterns = ['seller', 'shipper', 'from', 'company', 'supplier', 'vendor', 'issuer'];
-    const contactPatterns = ['contact_person', 'contact person', 'contact', 'attn', 'attention'];
-    const emailPatterns = ['email', 'e-mail', 'mail'];
-    const phonePatterns = ['tel', 'phone', 'mobile', 'whatsapp', 'wechat'];
-    const addressPatterns = ['address', 'add', 'from'];
-    
-    supplier.name = this.findValue(data, namePatterns) || '';
-    supplier.contact = this.findValue(data, contactPatterns) || '';
-    supplier.email = this.findValue(data, emailPatterns) || '';
-    supplier.phone = this.findValue(data, phonePatterns) || '';
-    supplier.address = this.findValue(data, addressPatterns) || '';
-    
-    // Clean up extracted values
-    Object.keys(supplier).forEach(key => {
-      supplier[key] = this.cleanText(supplier[key]);
-    });
-    
-    return supplier;
-  }
-
-  static extractClientInfo(data) {
-    const client = {
-      name: 'Flow Solution Sdn Bhd', // Default as it's common in your PIs
-      poNumber: '',
-      contact: 'Edison Chung' // Default contact
-    };
-    
-    // Look for buyer information
-    const buyerPatterns = ['buyer', 'to', 'consignee', 'receiver', 'customer'];
-    const buyerName = this.findValue(data, buyerPatterns);
-    
-    if (buyerName && buyerName.toLowerCase().includes('flow solution')) {
-      client.name = 'Flow Solution Sdn Bhd';
-    }
-    
-    // Look for PO reference
-    const poPatterns = ['po_no', 'po no', 'purchase_order', 'your_ref'];
-    client.poNumber = this.findValue(data, poPatterns) || '';
-    
-    return client;
-  }
-
-  static extractProducts(data) {
-    const products = [];
-    
-    // Look for items array
-    const itemsArray = this.findArray(data, ['items', 'products', 'line_items', 'details', 'goods']);
-    
-    if (itemsArray && itemsArray.length > 0) {
-      return itemsArray.map(item => this.mapProductItem(item));
-    }
-    
-    // Try to extract from table structure or text
-    const text = JSON.stringify(data);
-    
-    // Common product patterns from your PIs
-    const productPatterns = [
-      /([A-Z0-9\-]+)\s+(\d+)\s+(?:pcs|pc|sets|piece)\s+\$?([\d,]+\.?\d*)\s+\$?([\d,]+\.?\d*)/gi,
-      /model[:\s]*([A-Z0-9\-]+).*?quantity[:\s]*(\d+).*?price[:\s]*\$?([\d,]+\.?\d*)/gi
-    ];
-    
-    for (const pattern of productPatterns) {
-      let match;
-      while ((match = pattern.exec(text)) !== null) {
-        products.push({
-          productCode: match[1] || '',
-          productName: match[1] || '', // Use code as name if no separate name
-          quantity: parseInt(match[2]) || 1,
-          unitPrice: parseFloat(match[3].replace(/,/g, '')) || 0,
-          totalPrice: parseFloat(match[4]?.replace(/,/g, '') || match[3].replace(/,/g, '')) || 0
-        });
-      }
-    }
-    
-    return products;
-  }
-
-  static extractFinancials(data) {
-    const financials = {
-      subtotal: 0,
-      shipping: 0,
-      tax: 0,
-      grandTotal: 0,
-      currency: 'USD'
-    };
-    
-    // Extract shipping/freight
-    const shippingPatterns = ['shipping', 'freight', 'shipping_fee', 'shipping_cost', 'ship fee', 'courier fee', 'delivery'];
-    const shippingText = this.findValue(data, shippingPatterns);
-    if (shippingText) {
-      financials.shipping = this.parseAmount(shippingText);
-    }
-    
-    // Extract total
-    const totalPatterns = ['total_amount', 'total amount', 'grand_total', 'total', 'in total', 'total cost'];
-    const totalText = this.findValue(data, totalPatterns);
-    if (totalText) {
-      financials.grandTotal = this.parseAmount(totalText);
-    }
-    
-    // Extract currency
-    const currencyPatterns = ['currency', 'payment currency'];
-    financials.currency = this.findValue(data, currencyPatterns) || 'USD';
-    
-    // If no explicit currency but amounts have USD
-    const text = JSON.stringify(data);
-    if (text.includes('USD') || text.includes('US$')) {
-      financials.currency = 'USD';
-    }
-    
-    return financials;
-  }
-
-  static extractPaymentTerms(data) {
-    const patterns = ['payment_terms', 'payment terms', 'terms of payment', 'payment'];
-    let terms = this.findValue(data, patterns);
-    
-    if (!terms) {
-      // Look for common payment terms in text
-      const text = JSON.stringify(data).toLowerCase();
-      if (text.includes('100% t/t') || text.includes('100% by tt')) {
-        terms = '100% T/T in advance';
-      } else if (text.includes('30% down')) {
-        terms = '30% down payment, 70% before delivery';
-      }
-    }
-    
-    return terms || '100% T/T in advance';
-  }
-
-  static extractDeliveryTerms(data) {
-    const patterns = ['delivery_terms', 'delivery terms', 'trade terms', 'incoterms'];
-    let terms = this.findValue(data, patterns);
-    
-    if (!terms) {
-      // Look for common delivery terms
-      const text = JSON.stringify(data).toUpperCase();
-      if (text.includes('DDP')) terms = 'DDP';
-      else if (text.includes('FOB')) terms = 'FOB';
-      else if (text.includes('CIF')) terms = 'CIF';
-      else if (text.includes('CFR')) terms = 'CFR';
-      else if (text.includes('EXW')) terms = 'EXW';
-    }
-    
-    return terms || 'DDP';
-  }
-
-  static extractBankDetails(data) {
-    const bank = {
-      bankName: '',
-      accountNumber: '',
-      accountName: '',
-      swiftCode: '',
-      bankAddress: ''
-    };
-    
-    // Bank name patterns
-    bank.bankName = this.findValue(data, ['bank_name', 'bank name', 'beneficiary bank']) || '';
-    
-    // Account number patterns
-    bank.accountNumber = this.findValue(data, ['account_number', 'account number', 'account no', 'beneficiary account number']) || '';
-    
-    // Account name patterns  
-    bank.accountName = this.findValue(data, ['account_name', 'account name', 'beneficiary name', 'holder name']) || '';
-    
-    // SWIFT code patterns
-    bank.swiftCode = this.findValue(data, ['swift_code', 'swift code', 'swift', 'bic']) || '';
-    
-    // Bank address patterns
-    bank.bankAddress = this.findValue(data, ['bank_address', 'bank address']) || '';
-    
-    // Try to extract from text if not found
-    if (!bank.swiftCode) {
-      const text = JSON.stringify(data);
-      const swiftRegex = /(?:swift|bic)[:\s]*([A-Z]{6,11})/i;
-      const match = text.match(swiftRegex);
-      if (match) {
-        bank.swiftCode = match[1];
-      }
-    }
-    
-    return bank;
-  }
-
-  static extractNotes(data) {
-    const patterns = ['notes', 'remarks', 'comments', 'note', 'terms and conditions'];
-    return this.findValue(data, patterns) || '';
-  }
-
-  // Enhanced findValue method that searches more thoroughly
-  static findValue(obj, keys) {
-    // First try exact matches
-    for (const key of keys) {
-      if (obj[key]) return obj[key];
-    }
-    
-    // Then try case-insensitive search in all object keys
-    const objKeys = Object.keys(obj);
-    for (const key of keys) {
-      const found = objKeys.find(k => k.toLowerCase() === key.toLowerCase());
-      if (found && obj[found]) return obj[found];
-    }
-    
-    // Search in nested objects
-    for (const prop in obj) {
-      if (typeof obj[prop] === 'object' && obj[prop] !== null && !Array.isArray(obj[prop])) {
-        const result = this.findValue(obj[prop], keys);
-        if (result) return result;
-      }
-    }
-    
-    return '';
-  }
-
-  static findArray(obj, keys) {
-    // First try exact matches
-    for (const key of keys) {
-      if (obj[key] && Array.isArray(obj[key])) return obj[key];
-    }
-    
-    // Then try case-insensitive search
-    const objKeys = Object.keys(obj);
-    for (const key of keys) {
-      const found = objKeys.find(k => k.toLowerCase() === key.toLowerCase());
-      if (found && obj[found] && Array.isArray(obj[found])) return obj[found];
-    }
-    
-    // Search in nested objects
-    for (const prop in obj) {
-      if (typeof obj[prop] === 'object' && obj[prop] !== null && !Array.isArray(obj[prop])) {
-        const result = this.findArray(obj[prop], keys);
-        if (result) return result;
-      }
-    }
-    
-    return null;
-  }
-
-  static mapProductItem(item) {
-    return {
-      productCode: item.part_number || item.product_code || item.sku || item.code || '',
-      productName: item.description || item.product_name || item.name || '',
-      quantity: this.parseNumber(item.quantity || item.qty || 0),
-      unitPrice: this.parseNumber(item.unit_price || item.price || 0),
-      totalPrice: this.parseNumber(item.total_price || item.total || (item.quantity * item.unit_price) || 0),
-      leadTime: item.lead_time || item.delivery_time || '',
-      warranty: item.warranty || '',
-      notes: item.notes || item.remarks || ''
-    };
-  }
-
-  static parseAmount(text) {
-    if (typeof text === 'number') return text;
-    if (!text) return 0;
-    
-    // Remove currency symbols and extract number
-    const cleaned = String(text).replace(/[^0-9.,\-]/g, '');
-    const number = parseFloat(cleaned.replace(/,/g, ''));
-    
-    return isNaN(number) ? 0 : number;
   }
 
   /**
@@ -1243,21 +773,13 @@ export class AIExtractionService {
     return categories;
   }
 
-  // Helper methods
+  // New helper methods for PI extraction
   static generatePINumber() {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return `PI-${year}${month}-${random}`;
-  }
-
-  static generateInvoiceNumber() {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `INV-${year}${month}-${random}`;
   }
 
   static cleanText(text) {
@@ -1292,6 +814,22 @@ export class AIExtractionService {
     }
   }
 
+  static processSupplierPIGeneric(rawData, file) {
+    console.log('Using generic PI extraction');
+    
+    return {
+      documentType: 'supplier_proforma',
+      piNumber: this.generatePINumber(),
+      date: new Date().toISOString().split('T')[0],
+      supplier: { name: 'Unknown Supplier' },
+      products: [],
+      grandTotal: 0,
+      currency: 'USD',
+      paymentTerms: '30% down payment, 70% before delivery',
+      notes: 'Extracted using generic method - manual review recommended'
+    };
+  }
+
   static validateFile(file) {
     const maxSize = 50 * 1024 * 1024; // 50MB
     const allowedTypes = [
@@ -1319,6 +857,7 @@ export class AIExtractionService {
     return { isValid: true };
   }
 
+  // All existing helper methods maintained below...
   static getFileType(file) {
     const mimeType = file.type.toLowerCase();
     const fileName = file.name.toLowerCase();
