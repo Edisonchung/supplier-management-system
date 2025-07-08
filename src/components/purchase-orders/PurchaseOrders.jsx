@@ -1,6 +1,6 @@
 // src/components/purchase-orders/PurchaseOrders.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import AIExtractionService from '../../services/ai/AIExtractionService';
 import { 
