@@ -600,52 +600,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                         type="text"
                         value={formData.priorityReason}
                         onChange={(e) => setFormData({ ...formData, priorityReason: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        placeholder="Bank name"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 mb-1">Account Number</label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails?.accountNumber || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          bankDetails: { ...prev.bankDetails, accountNumber: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        placeholder="Account number"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 mb-1">SWIFT Code</label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails?.swiftCode || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          bankDetails: { ...prev.bankDetails, swiftCode: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        placeholder="SWIFT code"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 mb-1">IBAN</label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails?.iban || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          bankDetails: { ...prev.bankDetails, iban: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                        placeholder="IBAN (if applicable)"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
                         placeholder="Reason for priority (e.g., Cashflow improvement, Urgent delivery needed)"
                       />
                     )}
@@ -734,64 +689,652 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
 
               {/* Banking details section (if international supplier) */}
               {formData.currency !== 'MYR' && (
-  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-    <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-      <CreditCard size={16} />
-      Banking Details (International Payment)
-    </h4>
-    <div className="grid grid-cols-2 gap-4 text-sm">
-      <div>
-        <label className="block text-gray-600 mb-1">Bank Name</label>
-        <input
-          type="text"
-          value={formData.bankDetails?.bankName || ''}
-          onChange={(e) => setFormData(prev => ({
-            ...prev,
-            bankDetails: { ...prev.bankDetails, bankName: e.target.value }
-          }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-          placeholder="Bank name"
-        />
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                    <CreditCard size={16} />
+                    Banking Details (International Payment)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <label className="block text-gray-600 mb-1">Bank Name</label>
+                      <input
+                        type="text"
+                        value={formData.bankDetails?.bankName || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          bankDetails: { ...prev.bankDetails, bankName: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Bank name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600 mb-1">Account Number</label>
+                      <input
+                        type="text"
+                        value={formData.bankDetails?.accountNumber || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          bankDetails: { ...prev.bankDetails, accountNumber: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Account number"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600 mb-1">SWIFT Code</label>
+                      <input
+                        type="text"
+                        value={formData.bankDetails?.swiftCode || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          bankDetails: { ...prev.bankDetails, swiftCode: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="SWIFT code"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-600 mb-1">IBAN</label>
+                      <input
+                        type="text"
+                        value={formData.bankDetails?.iban || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          bankDetails: { ...prev.bankDetails, iban: e.target.value }
+                        }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="IBAN (if applicable)"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Product Selection */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Items <span className="text-red-500">*</span>
+                  </label>
+                  {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
+                </div>
+                
+                {/* Product Search */}
+                {formData.supplierId && (
+                  <div className="relative mb-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                      <input
+                        type="text"
+                        placeholder="Search products..."
+                        value={searchProduct}
+                        onChange={(e) => setSearchProduct(e.target.value)}
+                        onFocus={() => setShowProductSearch(true)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    
+                    {showProductSearch && searchProduct && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {filteredProducts.length > 0 ? (
+                          filteredProducts.map(product => (
+                            <button
+                              key={product.id}
+                              type="button"
+                              onClick={() => handleAddProduct(product)}
+                              className="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center justify-between"
+                            >
+                              <div>
+                                <div className="font-medium">{product.name}</div>
+                                <div className="text-sm text-gray-600">{product.sku} - ${product.price}</div>
+                              </div>
+                              <Plus size={16} className="text-gray-400" />
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-4 py-2 text-gray-500">No products found</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Selected Products */}
+                {selectedProducts.length > 0 && (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                          <th className="px-4 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedProducts.map((item, index) => (
+                          <tr key={index} className="border-t">
+                            <td className="px-4 py-2">
+                              <div>
+                                <div className="font-medium">{item.productName}</div>
+                                <div className="text-sm text-gray-600">{item.productCode}</div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                                className={`w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                  errors[`quantity-${index}`] ? 'border-red-500' : 'border-gray-300'
+                                }`}
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.unitPrice}
+                                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                className={`w-24 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                  errors[`price-${index}`] ? 'border-red-500' : 'border-gray-300'
+                                }`}
+                              />
+                            </td>
+                            <td className="px-4 py-2 font-medium">
+                              ${item.totalPrice.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-2">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(index)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td colSpan="3" className="px-4 py-2 text-right font-medium">Total:</td>
+                          <td className="px-4 py-2 font-bold">${totalAmount.toFixed(2)}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+
+                {!formData.supplierId && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                    <p>Select a supplier to add products</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Additional notes..."
+                />
+              </div>
+            </>
+          ) : activeTab === 'payment' ? (
+            // Payment Tab
+            <div className="space-y-6">
+              {/* Payment Summary */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Total Amount</p>
+                    <p className="text-2xl font-bold">${totalAmount.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Paid</p>
+                    <p className="text-2xl font-bold text-green-600">${totalPaid.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Balance</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      ${(totalAmount - totalPaid).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Status</p>
+                    <p className="text-lg font-bold">
+                      <span className={`px-3 py-1 rounded-full text-sm ${
+                        formData.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
+                        formData.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {formData.paymentStatus}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Payment Progress Bar */}
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-1">
+                    <span>Payment Progress</span>
+                    <span>{paymentProgress.toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(paymentProgress, 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Payment Terms */}
+                <div className="mt-4 p-3 bg-white rounded border border-gray-200">
+                  <p className="text-sm font-medium text-gray-700">Payment Terms</p>
+                  <p className="text-sm text-gray-600 mt-1">{formData.paymentTerms}</p>
+                </div>
+              
+              </div>
+
+              {/* Add Payment Button */}
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">Payment History</h3>
+                <button
+                  type="button"
+                  onClick={handleAddPayment}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Plus size={20} />
+                  Add Payment
+                </button>
+              </div>
+
+              {/* Payment History */}
+              <div className="space-y-4">
+                {formData.payments && formData.payments.length > 0 ? (
+                  formData.payments.map((payment, index) => (
+                    <div key={payment.id || index} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <CreditCard className="h-5 w-5 text-gray-400" />
+                            <div>
+                              <p className="font-medium">${payment.amount.toFixed(2)}</p>
+                              <p className="text-sm text-gray-600">
+                                {new Date(payment.date).toLocaleDateString()} • {payment.type.replace('-', ' ')}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          payment.type === 'down-payment' ? 'bg-blue-100 text-blue-800' :
+                          payment.type === 'balance' ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {payment.type.replace('-', ' ')}
+                        </span>
+                      </div>
+
+                      {payment.reference && (
+                        <div className="text-sm text-gray-600 mb-2">
+                          <span className="font-medium">Reference:</span> {payment.reference}
+                        </div>
+                      )}
+
+                      {payment.remark && (
+                        <div className="text-sm text-gray-600 mb-2">
+                          <span className="font-medium">Remark:</span> {payment.remark}
+                        </div>
+                      )}
+
+                      {payment.attachments && payment.attachments.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Attachments</p>
+                          <div className="flex flex-wrap gap-2">
+                            {payment.attachments.map((file, idx) => (
+                              <a
+                                key={idx}
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 px-3 py-1 bg-gray-100 rounded text-sm hover:bg-gray-200"
+                              >
+                                <FileText size={14} />
+                                {file.name}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <DollarSign className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                    <p>No payments recorded yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            // Receiving Tab
+            <div className="space-y-6">
+              {/* Receiving Summary */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600">Total Ordered</p>
+                    <p className="text-xl font-bold">{totalOrdered} items</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Total Received</p>
+                    <p className="text-xl font-bold text-green-600">{totalReceived} items</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Pending</p>
+                    <p className="text-xl font-bold text-orange-600">{totalOrdered - totalReceived} items</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Receiving Items */}
+              <div className="space-y-4">
+                {selectedProducts.map((item, index) => {
+                  const hasDiscrepancy = item.receivedQty > 0 && item.receivedQty !== item.quantity;
+                  
+                  return (
+                    <div key={index} className={`border rounded-lg p-4 ${hasDiscrepancy ? 'border-orange-300 bg-orange-50' : 'border-gray-200'}`}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{item.productName}</h4>
+                          <p className="text-sm text-gray-600">{item.productCode}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleReceived(index)}
+                          className="ml-4"
+                        >
+                          {item.isReceived ? (
+                            <CheckSquare className="h-5 w-5 text-green-600" />
+                          ) : (
+                            <Square className="h-5 w-5 text-gray-400" />
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Ordered Qty</label>
+                          <p className="font-medium">{item.quantity}</p>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Received Qty</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={item.receivedQty}
+                            onChange={(e) => handleUpdateItem(index, 'receivedQty', parseInt(e.target.value) || 0)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Difference</label>
+                          <p className={`font-medium ${
+                            item.quantity - item.receivedQty > 0 ? 'text-orange-600' : 
+                            item.quantity - item.receivedQty < 0 ? 'text-red-600' : 
+                            'text-green-600'
+                          }`}>
+                            {item.quantity - item.receivedQty}
+                          </p>
+                        </div>
+                      </div>
+
+                      {hasDiscrepancy && (
+                        <div className="mt-3 p-2 bg-orange-100 rounded flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-orange-600" />
+                          <span className="text-sm text-orange-800">Quantity discrepancy detected</span>
+                        </div>
+                      )}
+
+                      <div className="mt-3">
+                        <label className="block text-sm text-gray-600 mb-1">Receiving Notes</label>
+                        <input
+                          type="text"
+                          value={item.receivingNotes}
+                          onChange={(e) => handleUpdateItem(index, 'receivingNotes', e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g., Damaged packaging, Wrong item, etc."
+                        />
+                      </div>
+
+                      {/* PO Allocation Section (Future Enhancement) */}
+                      {item.receivedQty > 0 && (
+                        <div className="mt-3 p-3 bg-gray-50 rounded">
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Note:</span> Stock allocation to POs will be available in the next update
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </form>
+
+        <div className="p-6 border-t flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            {proformaInvoice ? 'Update' : 'Create'} PI
+          </button>
+        </div>
       </div>
-      <div>
-        <label className="block text-gray-600 mb-1">Account Number</label>
-        <input
-          type="text"
-          value={formData.bankDetails?.accountNumber || ''}
-          onChange={(e) => setFormData(prev => ({
-            ...prev,
-            bankDetails: { ...prev.bankDetails, accountNumber: e.target.value }
-          }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-          placeholder="Account number"
-        />
-      </div>
-      <div>
-        <label className="block text-gray-600 mb-1">SWIFT Code</label>
-        <input
-          type="text"
-          value={formData.bankDetails?.swiftCode || ''}
-          onChange={(e) => setFormData(prev => ({
-            ...prev,
-            bankDetails: { ...prev.bankDetails, swiftCode: e.target.value }
-          }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-          placeholder="SWIFT code"
-        />
-      </div>
-      <div>
-        <label className="block text-gray-600 mb-1">IBAN</label>
-        <input
-          type="text"
-          value={formData.bankDetails?.iban || ''}
-          onChange={(e) => setFormData(prev => ({
-            ...prev,
-            bankDetails: { ...prev.bankDetails, iban: e.target.value }
-          }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-          placeholder="IBAN (if applicable)"
-        />
-      </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Add Payment</h3>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newPayment.amount}
+                    onChange={(e) => setNewPayment({ ...newPayment, amount: e.target.value })}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Date
+                </label>
+                <input
+                  type="date"
+                  value={newPayment.date}
+                  onChange={(e) => setNewPayment({ ...newPayment, date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Type
+                </label>
+                <select
+                  value={newPayment.type}
+                  onChange={(e) => setNewPayment({ ...newPayment, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="down-payment">Down Payment</option>
+                  <option value="balance">Balance Payment</option>
+                  <option value="partial">Partial Payment</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={newPayment.method}
+                  onChange={(e) => setNewPayment({ ...newPayment, method: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="bank-transfer">Bank Transfer</option>
+                  <option value="check">Check</option>
+                  <option value="cash">Cash</option>
+                  <option value="credit-card">Credit Card</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reference Number
+                </label>
+                <input
+                  type="text"
+                  value={newPayment.reference}
+                  onChange={(e) => setNewPayment({ ...newPayment, reference: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Transaction ID or Check Number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Remark
+                </label>
+                <textarea
+                  value={newPayment.remark}
+                  onChange={(e) => setNewPayment({ ...newPayment, remark: e.target.value })}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Additional notes about this payment..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Upload Payment Slip
+                </label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+                  <div className="space-y-1 text-center">
+                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600">
+                      <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                        <span>Upload a file</span>
+                        <input 
+                          id="file-upload" 
+                          name="file-upload" 
+                          type="file" 
+                          className="sr-only"
+                          accept="image/*,.pdf"
+                          onChange={handleFileUpload}
+                        />
+                      </label>
+                      <p className="pl-1">or drag and drop</p>
+                    </div>
+                    <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
+                  </div>
+                </div>
+                
+                {newPayment.attachments.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Uploaded Files</p>
+                    <div className="space-y-2">
+                      {newPayment.attachments.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center gap-2">
+                            <FileText size={16} className="text-gray-400" />
+                            <span className="text-sm text-gray-700">{file.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewPayment(prev => ({
+                                ...prev,
+                                attachments: prev.attachments.filter((_, i) => i !== idx)
+                              }));
+                            }}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePayment}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Save Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-)}
+  );
+};
+
+export default PIModal;
