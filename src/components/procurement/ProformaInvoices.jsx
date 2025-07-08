@@ -98,107 +98,157 @@ const ProformaInvoices = ({ showNotification }) => {
     }
   };
 
-  // Handle file upload for AI extraction
+  // Handle file upload for AI extraction - UPDATED VERSION
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     
     setExtracting(true);
     try {
+      console.log('Starting extraction for:', file.name);
       const result = await AIExtractionService.extractFromFile(file);
+      console.log('Extraction result:', result);
       
-      if (result.success && result.data.documentType === 'supplier_proforma') {
+      if (result.success) {
         const extractedData = result.data;
         
-        // Find supplier by name or create suggestion
-        const supplierList = suppliers;
-        const matchedSupplier = supplierList.find(s => 
-          s.name.toLowerCase().includes(extractedData.supplier?.name?.toLowerCase()) ||
-          extractedData.supplier?.name?.toLowerCase().includes(s.name.toLowerCase())
-        );
-        
-        // Map extracted data to PI modal format
-        const piData = {
-          piNumber: extractedData.piNumber,
-          date: extractedData.date,
-          etaDate: extractedData.validUntil,
-          supplierId: matchedSupplier?.id || '',
-          supplierName: extractedData.supplier?.name || '',
-          projectCode: extractedData.clientRef?.poNumber || '',
-          isPriority: false,
-          priorityReason: '',
+        // Handle both supplier_proforma and supplier_invoice document types
+        if (extractedData.documentType === 'supplier_proforma' || 
+            extractedData.documentType === 'supplier_invoice') {
           
-          // Map products/items
-          items: extractedData.products.map((product, index) => ({
-            id: `item-${Date.now()}-${index}`,
-            productCode: product.productCode,
-            productName: product.productName,
-            quantity: product.quantity,
-            unitPrice: product.unitPrice,
-            totalPrice: product.totalPrice,
-            received: false,
-            receivedQty: 0,
-            receivedDate: '',
-            hasDiscrepancy: false,
-            discrepancyReason: '',
-            leadTime: product.leadTime,
-            warranty: product.warranty,
-            notes: product.notes
-          })),
+          console.log('Mapping extracted data to form:', extractedData);
           
-          // Financial details
-          paymentTerms: extractedData.paymentTerms,
-          deliveryTerms: extractedData.deliveryTerms,
-          currency: extractedData.currency,
-          exchangeRate: extractedData.exchangeRate || 1,
-          
-          // Calculate totals
-          subtotal: extractedData.subtotal || extractedData.products.reduce((sum, p) => sum + p.totalPrice, 0),
-          discount: extractedData.discount || 0,
-          shipping: extractedData.shipping || 0,
-          tax: extractedData.tax || 0,
-          totalAmount: extractedData.grandTotal,
-          
-          // Additional info
-          notes: extractedData.notes || '',
-          specialInstructions: extractedData.specialInstructions || '',
-          status: 'draft',
-          deliveryStatus: 'pending',
-          paymentStatus: 'pending',
-          purpose: 'stock',
-          
-          // Banking details if available
-          bankDetails: extractedData.bankDetails
-        };
-        
-        // Check for PO matches
-        if (extractedData.clientRef?.poNumber) {
-          const matchedPO = await findPOByNumber(extractedData.clientRef.poNumber);
-          if (matchedPO) {
-            showNotification(`Matched with PO: ${matchedPO.orderNumber}`, 'success');
-            piData.linkedPO = matchedPO.id;
-            piData.projectCode = matchedPO.orderNumber;
-            piData.purpose = 'client-order';
+          // Find matching supplier by name if available
+          let matchedSupplier = null;
+          if (extractedData.supplier?.name) {
+            matchedSupplier = suppliers.find(s => 
+              s.name.toLowerCase().includes(extractedData.supplier.name.toLowerCase()) ||
+              extractedData.supplier.name.toLowerCase().includes(s.name.toLowerCase())
+            );
           }
-        }
-        
-        // Suggest supplier if not found
-        if (!matchedSupplier && extractedData.supplier?.name) {
+          
+          // Map extracted data to PI modal format
+          const piData = {
+            // Basic Information
+            piNumber: extractedData.piNumber || extractedData.invoiceNumber || '',
+            date: extractedData.date || new Date().toISOString().split('T')[0],
+            etaDate: extractedData.validUntil || extractedData.expiryDate || '',
+            
+            // Supplier Information
+            supplierId: matchedSupplier?.id || '',
+            supplierName: extractedData.supplier?.name || '',
+            supplierContact: extractedData.supplier?.contact || '',
+            supplierEmail: extractedData.supplier?.email || '',
+            supplierPhone: extractedData.supplier?.phone || '',
+            
+            // Client Reference
+            projectCode: extractedData.clientRef?.poNumber || extractedData.projectCode || '',
+            
+            // Priority Flag
+            isPriority: false,
+            priorityReason: '',
+            
+            // Products/Items - ensure proper mapping
+            items: (extractedData.products || extractedData.items || []).map((item, index) => ({
+              id: `item-${Date.now()}-${index}`,
+              productCode: item.productCode || item.partNumber || '',
+              productName: item.productName || item.description || '',
+              quantity: item.quantity || 1,
+              unitPrice: item.unitPrice || 0,
+              totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+              leadTime: item.leadTime || '',
+              warranty: item.warranty || '',
+              notes: item.notes || '',
+              // Receiving tracking fields
+              received: false,
+              receivedQty: 0,
+              receivedDate: '',
+              hasDiscrepancy: false,
+              discrepancyReason: ''
+            })),
+            
+            // Financial Information
+            currency: extractedData.currency || 'USD',
+            exchangeRate: extractedData.exchangeRate || 1,
+            subtotal: extractedData.subtotal || 0,
+            discount: extractedData.discount || 0,
+            shipping: extractedData.shipping || 0,
+            tax: extractedData.tax || 0,
+            totalAmount: extractedData.grandTotal || extractedData.totalAmount || 0,
+            
+            // Terms and Conditions
+            paymentTerms: extractedData.paymentTerms || '30% down payment, 70% before delivery',
+            deliveryTerms: extractedData.deliveryTerms || '',
+            leadTime: extractedData.leadTime || '',
+            warranty: extractedData.warranty || '',
+            validity: extractedData.validity || '30 days',
+            
+            // Additional Information
+            notes: extractedData.notes || '',
+            specialInstructions: extractedData.specialInstructions || '',
+            
+            // Default values
+            status: 'draft',
+            deliveryStatus: 'pending',
+            paymentStatus: 'pending',
+            purpose: 'stock',
+            
+            // Banking details if available
+            bankDetails: extractedData.bankDetails || {
+              bankName: '',
+              accountNumber: '',
+              accountName: '',
+              swiftCode: '',
+              iban: '',
+              bankAddress: ''
+            }
+          };
+          
+          // Calculate totals if not provided
+          if (!piData.subtotal && piData.items.length > 0) {
+            piData.subtotal = piData.items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+          }
+          
+          if (!piData.totalAmount) {
+            piData.totalAmount = piData.subtotal + piData.shipping + piData.tax - piData.discount;
+          }
+          
+          // Check for PO matches
+          if (extractedData.clientRef?.poNumber) {
+            try {
+              const matchedPO = await findPOByNumber(extractedData.clientRef.poNumber);
+              if (matchedPO) {
+                showNotification(`Matched with PO: ${matchedPO.orderNumber}`, 'success');
+                piData.linkedPO = matchedPO.id;
+                piData.projectCode = matchedPO.orderNumber;
+                piData.purpose = 'client-order';
+              }
+            } catch (error) {
+              console.error('Error matching PO:', error);
+            }
+          }
+          
+          // Suggest supplier if not found
+          if (!matchedSupplier && extractedData.supplier?.name) {
+            showNotification(
+              `Supplier "${extractedData.supplier.name}" not found. You can create it after saving the PI.`,
+              'info'
+            );
+          }
+          
+          console.log('Setting PI data:', piData);
+          setSelectedPI(piData);
+          setShowModal(true);
+          
           showNotification(
-            `Supplier "${extractedData.supplier.name}" not found. You can create it after saving the PI.`,
-            'info'
+            `PI extracted successfully! ${result.confidence ? `(Confidence: ${(result.confidence * 100).toFixed(0)}%)` : ''}`,
+            'success'
           );
+        } else {
+          throw new Error('Document type not supported. Expected Proforma Invoice.');
         }
-        
-        setSelectedPI(piData);
-        setShowModal(true);
-        
-        showNotification(
-          `PI extracted successfully! ${result.confidence ? `(Confidence: ${(result.confidence * 100).toFixed(0)}%)` : ''}`,
-          'success'
-        );
       } else {
-        throw new Error('Invalid document type or extraction failed');
+        throw new Error(result.error || 'Extraction failed');
       }
     } catch (error) {
       console.error('Extraction failed:', error);
@@ -669,7 +719,7 @@ const ProformaInvoices = ({ showNotification }) => {
           isOpen={showModal}
           onClose={() => setShowModal(false)}
           onSave={handleSavePI}
-          pi={selectedPI}
+          proformaInvoice={selectedPI}
           suppliers={suppliers}
           products={products}
         />
