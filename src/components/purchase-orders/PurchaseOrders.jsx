@@ -1,409 +1,517 @@
 // src/components/purchase-orders/PurchaseOrders.jsx
-import React, { useState } from 'react';
-import { Search, Plus, Package, Calendar, DollarSign, Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
-import POCard from './POCard';
-import POModal from './POModal';
-import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
-import { usePermissions } from '../../hooks/usePermissions';
+import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { purchaseOrderService } from '../../services/purchaseOrderService';
 import AIExtractionService from '../../services/ai/AIExtractionService';
-import { generatePONumber } from '../../utils/poHelpers';
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle,
+  CardDescription 
+} from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
+import { Badge } from '../ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { 
+  Search, 
+  Plus, 
+  FileText, 
+  Calendar,
+  DollarSign,
+  Package,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Upload,
+  Loader2,
+  Eye,
+  Edit,
+  Trash2,
+  Download,
+  Send,
+  X
+} from 'lucide-react';
+import { format } from 'date-fns';
+import POModal from './POModal';
+import { toast } from 'react-hot-toast';
 
 const PurchaseOrders = () => {
-  const {
-    purchaseOrders,
-    loading,
-    addPurchaseOrder,
-    updatePurchaseOrder,
-    deletePurchaseOrder
-  } = usePurchaseOrders();
-
+  const { user } = useAuth();
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all');
-  const [showModal, setShowModal] = useState(false);
-  const [selectedPO, setSelectedPO] = useState(null);
-  const [showUploadArea, setShowUploadArea] = useState(false);
-  const [extracting, setExtracting] = useState(false);
-  const [notification, setNotification] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [currentPO, setCurrentPO] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInputRef = useRef(null);
 
-  const permissions = usePermissions();
+  // Load purchase orders
+  useEffect(() => {
+    loadPurchaseOrders();
+  }, [user]);
 
-  const handleEdit = (po) => {
-    setSelectedPO(po);
-    setShowModal(true);
-  };
-
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this purchase order?')) {
-      await deletePurchaseOrder(id);
-    }
-  };
-
-  const handleSave = async (data) => {
-    if (selectedPO) {
-      await updatePurchaseOrder(selectedPO.id, data);
-    } else {
-      await addPurchaseOrder(data);
-    }
-    setShowModal(false);
-    setSelectedPO(null);
-  };
-
-  // AI Extraction Handler
-  const handleFileUpload = async (e) => {
-    const files = Array.from(e.target.files);
+  const loadPurchaseOrders = async () => {
+    if (!user) return;
     
-    for (const file of files) {
-      try {
-        console.log('Processing file:', file.name);
-        setExtracting(true);
-        setNotification({ type: 'info', message: `Extracting data from ${file.name}...` });
+    try {
+      const data = await purchaseOrderService.getAll();
+      setPurchaseOrders(data);
+    } catch (error) {
+      console.error('Error loading purchase orders:', error);
+      toast.error('Failed to load purchase orders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle file upload with proper data mapping
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    console.log('Processing file:', file.name);
+    setLoading(true);
+    setUploadError(null);
+
+    try {
+      const result = await AIExtractionService.extractFromFile(file);
+      console.log('Extraction result:', result);
+
+      if (result.success && result.data) {
+        console.log('Extracted data structure:', result.data);
+        console.log('Document type:', result.data.documentType);
         
-        // Call AI extraction
-        const result = await AIExtractionService.extractFromFile(file);
+        // Create POModal-compatible structure based on document type
+        let modalData;
         
-        if (result.success) {
-          console.log('Extraction successful:', result);
+        if (result.data.documentType === 'client_purchase_order') {
+          modalData = {
+            // Map extracted fields to what POModal expects
+            orderNumber: result.data.poNumber || '',
+            client: result.data.client?.name || '',
+            clientName: result.data.client?.name || '',
+            
+            // Handle dates
+            orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
+            deliveryDate: result.data.deliveryDate || new Date().toISOString().split('T')[0],
+            
+            // Terms
+            paymentTerms: result.data.paymentTerms || '30 days',
+            deliveryTerms: result.data.deliveryTerms || 'FOB',
+            
+            // Items array - ensure it matches POModal's expected structure
+            items: (result.data.items || []).map(item => ({
+              partNumber: item.partNumber || '',
+              description: item.description || '',
+              quantity: item.quantity || 0,
+              unitPrice: item.unitPrice || 0,
+              totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+              uom: item.uom || 'PCS',
+              deliveryDate: item.deliveryDate || result.data.deliveryDate || '',
+              // Include supplier matches if available
+              supplierMatches: item.supplierMatches || []
+            })),
+            
+            // Totals
+            subtotal: result.data.subtotal || 
+                      (result.data.items || []).reduce((sum, item) => sum + (item.totalPrice || 0), 0),
+            tax: result.data.tax || 0,
+            total: result.data.totalAmount || result.data.total || 0,
+            
+            // Status
+            status: 'draft',
+            
+            // Additional extracted data
+            extractedData: result.data,
+            prNumbers: result.data.prNumbers || [],
+            
+            // Sourcing plan if available
+            sourcingPlan: result.data.sourcingPlan,
+            
+            // Client details
+            clientDetails: {
+              name: result.data.client?.name || '',
+              registration: result.data.client?.registration || '',
+              address: result.data.client?.address || '',
+              shipTo: result.data.client?.shipTo || ''
+            }
+          };
           
-          // Check document type
-          if (result.data.documentType === 'client_purchase_order') {
-            // This is a client PO (like PTP)
-            console.log('Client PO detected:', result.data.poNumber);
-            
-            // Create PO from extracted data
-            const newPO = {
-              poNumber: result.data.poNumber || generatePONumber(),
-              clientName: result.data.client?.name || '',
-              clientAddress: result.data.client?.address || '',
-              orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-              deliveryDate: result.data.deliveryDate || '',
-              status: 'draft',
-              items: result.data.items?.map(item => ({
-                productCode: item.partNumber || '',
-                productName: item.description || '',
-                quantity: item.quantity || 0,
-                unitPrice: item.unitPrice || 0,
-                totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-                // Include supplier matches for visibility
-                supplierMatches: item.supplierMatches || []
-              })) || [],
-              totalAmount: result.data.totalAmount || 0,
-              paymentTerms: result.data.paymentTerms || '',
-              deliveryTerms: result.data.deliveryTerms || '',
-              notes: `Extracted from ${file.name}. PR Numbers: ${result.data.prNumbers?.join(', ') || 'None'}`,
-              attachments: [file.name],
-              
-              // Add sourcing plan
-              sourcingPlan: result.data.sourcingPlan,
-              
-              // Store extraction metadata
-              extractionMetadata: {
-                fileName: file.name,
-                extractedAt: new Date().toISOString(),
-                confidence: result.confidence,
-                documentType: result.data.documentType
-              }
-            };
-            
-            // Show extracted data in modal for review
-            setSelectedPO(newPO);
-            setShowModal(true);
-            setShowUploadArea(false);
-            
-            setNotification({ 
-              type: 'success', 
-              message: `Successfully extracted PO ${result.data.poNumber}. ${result.data.sourcingPlan?.matchedItems || 0} of ${result.data.items?.length || 0} items matched with suppliers.` 
-            });
-            
-          } else if (result.data.documentType === 'supplier_proforma') {
-            // This is a supplier PI
-            console.log('Supplier PI detected:', result.data.piNumber);
-            
-            setNotification({ 
-              type: 'info', 
-              message: `Supplier quotation detected from ${result.data.supplier?.name}. This should be processed in the Proforma Invoice module.` 
-            });
-            
+          console.log('Modal data prepared for client PO:', modalData);
+          
+          // Set the modal data and open it
+          setCurrentPO(modalData);
+          setModalOpen(true);
+          
+          // Show success message with sourcing plan summary
+          if (result.data.sourcingPlan) {
+            const plan = result.data.sourcingPlan;
+            toast.success(
+              `Successfully extracted PO: ${modalData.orderNumber}\n` +
+              `${plan.matchedItems} of ${plan.totalItems} items have supplier matches`,
+              { duration: 5000 }
+            );
           } else {
-            // Unknown document type
-            setNotification({ 
-              type: 'warning', 
-              message: 'Document type not recognized. Please review the extracted data.' 
-            });
+            toast.success(`Successfully extracted PO: ${modalData.orderNumber}`);
           }
           
+        } else if (result.data.documentType === 'supplier_proforma') {
+          // Handle supplier PI differently
+          toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
+          console.log('Supplier PI data:', result.data);
+          
         } else {
-          console.error('Extraction failed:', result.error);
-          setNotification({ 
-            type: 'error', 
-            message: `Failed to extract data: ${result.error}` 
-          });
+          toast.warning('Unknown document type. Please check the extraction results.');
+          console.log('Unknown document data:', result.data);
         }
         
-      } catch (error) {
-        console.error('Error processing file:', error);
-        setNotification({ 
-          type: 'error', 
-          message: `Error processing ${file.name}: ${error.message}` 
-        });
-      } finally {
-        setExtracting(false);
+      } else {
+        throw new Error(result.error || 'Extraction failed');
       }
+    } catch (error) {
+      console.error('Extraction failed:', error);
+      setUploadError(error.message);
+      toast.error('Failed to extract PO: ' + error.message);
+    } finally {
+      setLoading(false);
+      // Reset file input
+      event.target.value = '';
     }
-    
-    // Reset file input
-    e.target.value = '';
   };
 
-  // Filter logic
-  const filteredOrders = purchaseOrders.filter(order => {
-    const matchesSearch = order.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         order.items?.some(item => item.productName.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
-    
-    let matchesDate = true;
-    if (dateFilter !== 'all') {
-      const orderDate = new Date(order.orderDate);
-      const now = new Date();
-      const daysDiff = Math.floor((now - orderDate) / (1000 * 60 * 60 * 24));
-      
-      if (dateFilter === 'today') matchesDate = daysDiff === 0;
-      else if (dateFilter === 'week') matchesDate = daysDiff <= 7;
-      else if (dateFilter === 'month') matchesDate = daysDiff <= 30;
+  // Handle manual PO creation
+  const handleCreatePO = () => {
+    setCurrentPO({
+      orderNumber: `PO-${Date.now().toString().slice(-6)}`,
+      client: '',
+      orderDate: new Date().toISOString().split('T')[0],
+      deliveryDate: new Date().toISOString().split('T')[0],
+      paymentTerms: '30 days',
+      deliveryTerms: 'FOB',
+      items: [],
+      subtotal: 0,
+      tax: 0,
+      total: 0,
+      status: 'draft'
+    });
+    setModalOpen(true);
+  };
+
+  // Handle PO save
+  const handleSavePO = async (poData) => {
+    try {
+      if (poData.id) {
+        await purchaseOrderService.update(poData.id, poData);
+        toast.success('Purchase order updated successfully');
+      } else {
+        await purchaseOrderService.create(poData);
+        toast.success('Purchase order created successfully');
+      }
+      loadPurchaseOrders();
+      setModalOpen(false);
+    } catch (error) {
+      console.error('Error saving PO:', error);
+      toast.error('Failed to save purchase order');
     }
+  };
+
+  // Handle PO deletion
+  const handleDeletePO = async (poId) => {
+    if (!window.confirm('Are you sure you want to delete this purchase order?')) {
+      return;
+    }
+
+    try {
+      await purchaseOrderService.delete(poId);
+      toast.success('Purchase order deleted successfully');
+      loadPurchaseOrders();
+    } catch (error) {
+      console.error('Error deleting PO:', error);
+      toast.error('Failed to delete purchase order');
+    }
+  };
+
+  // Filter purchase orders
+  const filteredPOs = purchaseOrders.filter(po => {
+    const matchesSearch = 
+      po.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      po.client?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    return matchesSearch && matchesStatus && matchesDate;
+    const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
   });
 
-  // Calculate summary stats
-  const totalValue = filteredOrders.reduce((sum, order) => 
-    sum + (order.items?.reduce((itemSum, item) => itemSum + (item.totalPrice || 0), 0) || 0), 0
-  );
-  const activeOrders = filteredOrders.filter(order => 
-    ['confirmed', 'processing'].includes(order.status)
-  ).length;
+  // Calculate statistics
+  const stats = {
+    total: purchaseOrders.length,
+    draft: purchaseOrders.filter(po => po.status === 'draft').length,
+    sent: purchaseOrders.filter(po => po.status === 'sent').length,
+    confirmed: purchaseOrders.filter(po => po.status === 'confirmed').length,
+    totalValue: purchaseOrders.reduce((sum, po) => sum + (po.total || 0), 0)
+  };
+
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      draft: { variant: 'secondary', icon: Clock },
+      sent: { variant: 'default', icon: Send },
+      confirmed: { variant: 'success', icon: CheckCircle },
+      cancelled: { variant: 'destructive', icon: X }
+    };
+    
+    const config = statusConfig[status] || statusConfig.draft;
+    const Icon = config.icon;
+    
+    return (
+      <Badge variant={config.variant} className="flex items-center gap-1">
+        <Icon className="h-3 w-3" />
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Badge>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Purchase Orders</h1>
-          <p className="text-base text-gray-500">Manage client purchase orders and track fulfillment</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Purchase Orders</h2>
+          <p className="text-muted-foreground">
+            Manage your purchase orders and track their status
+          </p>
         </div>
-
-        {/* Notification */}
-        {notification && (
-          <div className={`mb-4 p-4 rounded-lg flex items-start ${
-            notification.type === 'success' ? 'bg-green-50 text-green-800' :
-            notification.type === 'error' ? 'bg-red-50 text-red-800' :
-            notification.type === 'warning' ? 'bg-yellow-50 text-yellow-800' :
-            'bg-blue-50 text-blue-800'
-          }`}>
-            {notification.type === 'success' ? <CheckCircle2 className="h-5 w-5 mr-2 flex-shrink-0" /> :
-             notification.type === 'error' ? <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" /> :
-             <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />}
-            <div className="flex-1">
-              <p>{notification.message}</p>
-            </div>
-            <button
-              onClick={() => setNotification(null)}
-              className="ml-4 text-sm underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Upload Area (Toggle) */}
-        {showUploadArea && (
-          <div className="bg-white p-6 rounded-lg shadow mb-6">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-              <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-sm text-gray-600 mb-4">
-                Upload client purchase orders (PDF, Excel, or Images)
-              </p>
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg"
-                className="hidden"
-                onChange={handleFileUpload}
-                disabled={extracting}
-                id="po-file-upload"
-              />
-              <label
-                htmlFor="po-file-upload"
-                className={`inline-block px-4 py-2 rounded-lg cursor-pointer ${
-                  extracting 
-                    ? 'bg-gray-400 text-white cursor-not-allowed' 
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                {extracting ? 'Extracting...' : 'Select Files'}
-              </label>
-              <button
-                onClick={() => setShowUploadArea(false)}
-                className="ml-2 px-4 py-2 text-gray-600 hover:text-gray-800"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Orders</p>
-                <p className="text-2xl font-bold">{filteredOrders.length}</p>
-              </div>
-              <Package className="h-10 w-10 text-blue-600" />
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active Orders</p>
-                <p className="text-2xl font-bold">{activeOrders}</p>
-              </div>
-              <Calendar className="h-10 w-10 text-green-600" />
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Value</p>
-                <p className="text-2xl font-bold">RM {totalValue.toFixed(2)}</p>
-              </div>
-              <DollarSign className="h-10 w-10 text-purple-600" />
-            </div>
-          </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 mr-2" />
+            )}
+            Upload PO
+          </Button>
+          <Button onClick={handleCreatePO}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create PO
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
         </div>
+      </div>
 
-        {/* Search and Filters */}
-        <div className="bg-white p-4 rounded-lg shadow mb-6">
-          <div className="flex flex-col md:flex-row gap-4">
+      {/* Upload Error */}
+      {uploadError && (
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              <p className="text-sm">{uploadError}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Statistics */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total POs</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.total}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Draft</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.draft}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Confirmed</CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.confirmed}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              RM {stats.totalValue.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Search by PO number, client name, or product..."
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search PO number or client..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="pl-8"
                 />
               </div>
             </div>
-            <div className="flex gap-2">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Status</option>
-                <option value="draft">Draft</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="processing">Processing</option>
-                <option value="delivered">Delivered</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Dates</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
-              {permissions.canEditPurchaseOrders && (
-                <>
-                  <button
-                    onClick={() => setShowUploadArea(!showUploadArea)}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                  >
-                    <Upload size={20} />
-                    Upload PO
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedPO(null);
-                      setShowModal(true);
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                  >
-                    <Plus size={20} />
-                    Add New
-                  </button>
-                </>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="confirmed">Confirmed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Purchase Orders Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Purchase Orders</CardTitle>
+          <CardDescription>
+            A list of all purchase orders with their current status
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>PO Number</TableHead>
+                <TableHead>Client</TableHead>
+                <TableHead>Order Date</TableHead>
+                <TableHead>Delivery Date</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredPOs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    No purchase orders found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredPOs.map((po) => (
+                  <TableRow key={po.id}>
+                    <TableCell className="font-medium">{po.orderNumber}</TableCell>
+                    <TableCell>{po.client || po.clientName}</TableCell>
+                    <TableCell>
+                      {po.orderDate ? format(new Date(po.orderDate), 'dd MMM yyyy') : '-'}
+                    </TableCell>
+                    <TableCell>
+                      {po.deliveryDate ? format(new Date(po.deliveryDate), 'dd MMM yyyy') : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Package className="h-4 w-4" />
+                        {po.items?.length || 0}
+                      </div>
+                    </TableCell>
+                    <TableCell>RM {(po.total || 0).toLocaleString()}</TableCell>
+                    <TableCell>{getStatusBadge(po.status)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setCurrentPO(po);
+                            setModalOpen(true);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setCurrentPO(po);
+                            setModalOpen(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeletePO(po.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
-            </div>
-          </div>
-        </div>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-        {/* Orders Grid */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="mt-2 text-gray-600">Loading purchase orders...</p>
-          </div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg shadow">
-            <Package className="mx-auto h-12 w-12 text-gray-400" />
-            <p className="mt-2 text-gray-600">No purchase orders found</p>
-            {permissions.canEditPurchaseOrders && (
-              <div className="mt-4 space-x-2">
-                <button
-                  onClick={() => {
-                    setSelectedPO(null);
-                    setShowModal(true);
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Create Manually
-                </button>
-                <button
-                  onClick={() => setShowUploadArea(true)}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Upload PO
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders.map(order => (
-              <POCard
-                key={order.id}
-                purchaseOrder={order}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                canEdit={permissions.canEditPurchaseOrders}
-                canDelete={permissions.isAdmin}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Modal */}
-        <POModal
-          isOpen={showModal}
-          onClose={() => {
-            setShowModal(false);
-            setSelectedPO(null);
-          }}
-          onSave={handleSave}
-          purchaseOrder={selectedPO}
-        />
-      </div>
+      {/* PO Modal */}
+      <POModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        purchaseOrder={currentPO}
+        onSave={handleSavePO}
+      />
     </div>
   );
 };
