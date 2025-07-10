@@ -19,6 +19,8 @@ import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
+import SupplierMatchingPage from './components/supplier-matching/SupplierMatchingPage';
+
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -192,6 +194,9 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+            <Route path="/purchase-orders/:poId/supplier-matching" element={<SupplierMatchingPage />} />
+
             
             {/* Client Invoices */}
             <Route 
