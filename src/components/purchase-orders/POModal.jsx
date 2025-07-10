@@ -1,7 +1,8 @@
 // src/components/purchase-orders/POModal.jsx
 import React, { useState, useEffect } from 'react';
-import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, Building2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { AIExtractionService, ValidationService } from "../../services/ai";
+import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDisplay';
 
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
@@ -37,6 +38,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     unitPrice: 0,
     totalPrice: 0
   });
+  const [showSupplierMatching, setShowSupplierMatching] = useState(false);
+  const [supplierMatchingData, setSupplierMatchingData] = useState(null);
 
   // Mock products for demo
   const mockProducts = [
@@ -81,6 +84,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     // Use the real AI extraction service
     const extractedData = await AIExtractionService.extractFromFile(file);
     console.log("Extracted data:", extractedData);
+
+    
     
     // Validate the extracted data
     const validation = ValidationService.validateExtractedData(extractedData);
@@ -105,6 +110,18 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     if (extractedData.data.items && extractedData.data.items.length > 0) {
       setFormData(prev => ({ ...prev, items: extractedData.data.items }));
     }
+
+    // Check if supplier matching data is available
+    if (extractedData.data.sourcingPlan || extractedData.data.matchingMetrics) {
+      setSupplierMatchingData({
+        items: extractedData.data.items,
+        sourcingPlan: extractedData.data.sourcingPlan,
+        metrics: extractedData.data.matchingMetrics
+      });
+      setShowSupplierMatching(true);
+    }
+    
+
     
     // Show recommendations if any
     if (extractedData.recommendations && extractedData.recommendations.length > 0) {
@@ -762,6 +779,41 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
               )}
             </div>
 
+            {/* Supplier Matching Tab */}
+{supplierMatchingData && (
+  <div className="mb-6">
+    <button
+      type="button"
+      onClick={() => setShowSupplierMatching(!showSupplierMatching)}
+      className="w-full flex justify-between items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        <Building2 className="w-5 h-5 text-blue-600" />
+        <span className="font-semibold text-blue-900">
+          Supplier Recommendations Available
+        </span>
+        {supplierMatchingData.metrics && (
+          <span className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
+            {supplierMatchingData.metrics.supplierDiversity} suppliers found
+          </span>
+        )}
+      </div>
+      {showSupplierMatching ? <ChevronUp /> : <ChevronDown />}
+    </button>
+    
+    {showSupplierMatching && (
+      <div className="mt-4">
+        <SupplierMatchingDisplay
+          items={supplierMatchingData.items}
+          sourcingPlan={supplierMatchingData.sourcingPlan}
+          metrics={supplierMatchingData.metrics}
+        />
+      </div>
+    )}
+  </div>
+)}
+
+            
             {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
