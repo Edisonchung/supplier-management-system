@@ -24,10 +24,16 @@ class PurchaseOrderService {
   async getById(id) {
     try {
       const orders = await this.getAll();
-      return orders.find(order => order.id === id) || null;
+      const order = orders.find(order => order.id === id);
+      
+      if (!order) {
+        throw new Error('Purchase order not found');
+      }
+      
+      return order;
     } catch (error) {
       console.error('Error getting purchase order:', error);
-      return null;
+      throw error;
     }
   }
 
@@ -106,6 +112,7 @@ class PurchaseOrderService {
       
       return orders.filter(order => 
         order.orderNumber?.toLowerCase().includes(searchTerm) ||
+        order.poNumber?.toLowerCase().includes(searchTerm) ||
         order.client?.toLowerCase().includes(searchTerm) ||
         order.clientName?.toLowerCase().includes(searchTerm)
       );
@@ -137,9 +144,9 @@ class PurchaseOrderService {
         sent: orders.filter(o => o.status === 'sent').length,
         confirmed: orders.filter(o => o.status === 'confirmed').length,
         cancelled: orders.filter(o => o.status === 'cancelled').length,
-        totalValue: orders.reduce((sum, o) => sum + (o.total || 0), 0),
+        totalValue: orders.reduce((sum, o) => sum + (o.total || o.totalAmount || 0), 0),
         averageValue: orders.length > 0 
-          ? orders.reduce((sum, o) => sum + (o.total || 0), 0) / orders.length 
+          ? orders.reduce((sum, o) => sum + (o.total || o.totalAmount || 0), 0) / orders.length 
           : 0
       };
     } catch (error) {
