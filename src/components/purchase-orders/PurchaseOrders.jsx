@@ -1,5 +1,6 @@
 // src/components/purchase-orders/PurchaseOrders.jsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import AIExtractionService from '../../services/ai/AIExtractionService';
@@ -23,7 +24,8 @@ import {
   X,
   TrendingUp,
   Users,
-  ShoppingCart
+  ShoppingCart,
+  Building2
 } from 'lucide-react';
 import POModal from './POModal';
 import { toast } from 'react-hot-toast';
@@ -38,6 +40,7 @@ const formatDate = (dateString) => {
 
 const PurchaseOrders = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
@@ -117,8 +120,8 @@ const PurchaseOrders = () => {
             
             // Items array - ensure it matches POModal's expected structure
             items: (result.data.items || []).map(item => ({
-              productName: item.description || '',
-              productCode: item.partNumber || '',
+              productName: item.productName || item.description || '',
+              productCode: item.productCode || item.partNumber || '',
               quantity: item.quantity || 0,
               unitPrice: item.unitPrice || 0,
               totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
@@ -131,6 +134,7 @@ const PurchaseOrders = () => {
             
             // Sourcing plan if available
             sourcingPlan: result.data.sourcingPlan,
+            matchingMetrics: result.data.matchingMetrics,
             
             // Client details
             clientDetails: {
@@ -148,15 +152,16 @@ const PurchaseOrders = () => {
           setModalOpen(true);
           
           // Show success message with sourcing plan summary
-          if (result.data.sourcingPlan) {
-            const plan = result.data.sourcingPlan;
+          if (result.data.sourcingPlan && result.data.matchingMetrics) {
+            const metrics = result.data.matchingMetrics;
             toast.success(
-              `Successfully extracted PO: ${modalData.orderNumber}\n` +
-              `${plan.matchedItems} of ${plan.totalItems} items have supplier matches`,
+              `Successfully extracted PO: ${modalData.poNumber}\n` +
+              `Found ${metrics.supplierDiversity} suppliers! ` +
+              `Potential savings: $${metrics.potentialSavings?.toFixed(2) || '0.00'}`,
               { duration: 5000 }
             );
           } else {
-            toast.success(`Successfully extracted PO: ${modalData.orderNumber}`);
+            toast.success(`Successfully extracted PO: ${modalData.poNumber}`);
           }
           
         } else if (result.data.documentType === 'supplier_proforma') {
@@ -239,10 +244,16 @@ const PurchaseOrders = () => {
     }
   };
 
+  // Navigate to supplier matching page
+  const handleViewSupplierMatching = (po) => {
+    navigate(`/purchase-orders/${po.id}/supplier-matching`);
+  };
+
   // Filter purchase orders
   const filteredPOs = purchaseOrders.filter(po => {
     const matchesSearch = 
       po.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      po.poNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       po.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       po.clientName?.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -257,7 +268,7 @@ const PurchaseOrders = () => {
     draft: purchaseOrders.filter(po => po.status === 'draft').length,
     sent: purchaseOrders.filter(po => po.status === 'sent').length,
     confirmed: purchaseOrders.filter(po => po.status === 'confirmed').length,
-    totalValue: purchaseOrders.reduce((sum, po) => sum + (po.total || 0), 0)
+    totalValue: purchaseOrders.reduce((sum, po) => sum + (po.total || po.totalAmount || 0), 0)
   };
 
   const getStatusBadge = (status) => {
@@ -503,7 +514,7 @@ const PurchaseOrders = () => {
                 filteredPOs.map((po) => (
                   <tr key={po.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {po.orderNumber}
+                      {po.orderNumber || po.poNumber}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {po.client || po.clientName || '-'}
@@ -512,7 +523,7 @@ const PurchaseOrders = () => {
                       {formatDate(po.orderDate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(po.deliveryDate)}
+                      {formatDate(po.deliveryDate || po.requiredDate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex items-center">
@@ -521,7 +532,7 @@ const PurchaseOrders = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      RM {(po.total || 0).toLocaleString()}
+                      RM {(po.total || po.totalAmount || 0).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(po.status)}
@@ -529,11 +540,19 @@ const PurchaseOrders = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
                         <button
+                          onClick={() => handleViewSupplierMatching(po)}
+                          className="text-blue-600 hover:text-blue-800 transition-colors"
+                          title="View supplier matching analysis"
+                        >
+                          <Building2 className="h-5 w-5" />
+                        </button>
+                        <button
                           onClick={() => {
                             setCurrentPO(po);
                             setModalOpen(true);
                           }}
-                          className="text-gray-400 hover:text-gray-500"
+                          className="text-gray-400 hover:text-gray-500 transition-colors"
+                          title="View details"
                         >
                           <Eye className="h-5 w-5" />
                         </button>
@@ -542,13 +561,15 @@ const PurchaseOrders = () => {
                             setCurrentPO(po);
                             setModalOpen(true);
                           }}
-                          className="text-gray-400 hover:text-gray-500"
+                          className="text-gray-400 hover:text-gray-500 transition-colors"
+                          title="Edit"
                         >
                           <Edit className="h-5 w-5" />
                         </button>
                         <button
                           onClick={() => handleDeletePO(po.id)}
-                          className="text-gray-400 hover:text-red-500"
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                          title="Delete"
                         >
                           <Trash2 className="h-5 w-5" />
                         </button>
