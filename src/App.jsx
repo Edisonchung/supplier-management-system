@@ -1,6 +1,7 @@
 // src/App.jsx
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
@@ -125,6 +126,57 @@ function AppContent() {
 
   return (
     <ErrorBoundary>
+      {/* React Hot Toast Toaster */}
+      <Toaster 
+        position="top-right"
+        reverseOrder={false}
+        gutter={8}
+        containerClassName=""
+        containerStyle={{}}
+        toastOptions={{
+          // Define default options
+          className: '',
+          duration: 4000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+          },
+          // Default options for specific types
+          success: {
+            duration: 3000,
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#fff',
+            },
+            style: {
+              background: '#10b981',
+              color: '#fff',
+            },
+          },
+          error: {
+            duration: 5000,
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+            style: {
+              background: '#ef4444',
+              color: '#fff',
+            },
+          },
+          loading: {
+            duration: Infinity,
+            style: {
+              background: '#3b82f6',
+              color: '#fff',
+            },
+          },
+        }}
+      />
+      
       <Router>
         <Routes>
           {/* Public PI View Route - No Authentication Required */}
@@ -195,7 +247,15 @@ function AppContent() {
               } 
             />
 
-            <Route path="/purchase-orders/:poId/supplier-matching" element={<SupplierMatchingPage />} />
+            {/* Supplier Matching Page */}
+            <Route 
+              path="/purchase-orders/:poId/supplier-matching" 
+              element={
+                <ProtectedRoute permission="canViewOrders">
+                  <SupplierMatchingPage />
+                </ProtectedRoute>
+              } 
+            />
 
             
             {/* Client Invoices */}
