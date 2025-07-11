@@ -174,7 +174,13 @@ if (piData.items && piData.items.length > 0) {
   console.log('ProformaInvoices - Sample mapped item:', piData.items[0]);
 }
           // Validate and enhance the data
-          piData = await enhancePIData(piData, extractedData);
+          //piData = await enhancePIData(piData, extractedData);
+          console.log('BEFORE enhancePIData - Items count:', piData.items?.length || 0);
+console.log('BEFORE enhancePIData - Sample item:', piData.items?.[0]);
+piData = await enhancePIData(piData, extractedData);
+console.log('AFTER enhancePIData - Items count:', piData.items?.length || 0);
+console.log('AFTER enhancePIData - Sample item:', piData.items?.[0]);
+
           
           setSelectedPI(piData);
           setShowModal(true);
