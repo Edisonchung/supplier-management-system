@@ -650,17 +650,28 @@ const ProformaInvoices = ({ showNotification }) => {
     showNotification('Share link copied to clipboard', 'success');
   };
 
+  // FIXED: Updated handleSavePI logic to prevent update with undefined ID
   const handleSavePI = async (piData) => {
     try {
       console.log('Saving PI data:', piData);
+      console.log('selectedPI:', selectedPI);
+      console.log('selectedPI?.id:', selectedPI?.id);
       
-      const result = selectedPI
+      // FIXED: Check if selectedPI has a valid ID, not just if it exists
+      // If selectedPI exists but has no ID, it's extracted data for a NEW PI
+      const isUpdate = selectedPI && selectedPI.id && selectedPI.id !== undefined && selectedPI.id !== null;
+      
+      console.log('isUpdate:', isUpdate);
+      
+      const result = isUpdate
         ? await updateProformaInvoice(selectedPI.id, piData)
         : await addProformaInvoice(piData);
 
+      console.log('Save result:', result);
+
       if (result.success) {
         showNotification(
-          selectedPI ? 'PI updated successfully' : 'PI created successfully',
+          isUpdate ? 'PI updated successfully' : 'PI created successfully',
           'success'
         );
         setShowModal(false);
