@@ -10,7 +10,7 @@ import {
   ChevronDown, Check
 } from 'lucide-react';
 
-/ ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
+// ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
 const autoFixPriceCalculations = (items) => {
   return items.map((item, index) => {
     const quantity = parseFloat(item.quantity) || 0;
@@ -43,8 +43,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
   console.log('=== End Props Debug ===');
   const [formData, setFormData] = useState({...});
-  const [selectedProducts, setSelectedProducts] = useState([]);
-  const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState({
     piNumber: '',
     supplierId: '',
     supplierName: '', // For extracted data without matched supplier
@@ -213,16 +212,16 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
       console.log('Processing items:', items);
 
       
-      const itemsWithIds = items.map((item, index) => ({
-        id: item.id || `item-${Date.now()}-${index}`,
-        productCode: item.productCode || item.partNumber || '',
-        productName: item.productName || item.description || '',
-        quantity: parseInt(item.quantity) || 1,
-        unitPrice: parseFloat(item.unitPrice) || 0,
-        totalPrice: parseFloat(item.totalPrice) || (parseInt(item.quantity || 1) * parseFloat(item.unitPrice || 0)),
-        leadTime: item.leadTime || '',
-        warranty: item.warranty || '',
-        notes: item.notes || '',
+     let itemsWithIds = items.map((item, index) => ({
+  id: item.id || `item-${Date.now()}-${index}`,
+  productCode: item.productCode || item.partNumber || '',
+  productName: item.productName || item.description || '',
+  quantity: parseInt(item.quantity) || 1,
+  unitPrice: parseFloat(item.unitPrice) || 0,
+  totalPrice: parseFloat(item.totalPrice) || (parseInt(item.quantity || 1) * parseFloat(item.unitPrice || 0)),
+  leadTime: item.leadTime || '',
+  warranty: item.warranty || '',
+  notes: item.notes || '',
         // Receiving tracking fields
         received: item.received || false,
         receivedQty: item.receivedQty || 0,
@@ -231,10 +230,18 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
         discrepancyReason: item.discrepancyReason || '',
         receivingNotes: item.receivingNotes || ''
       }));
+
+      // ✅ ADD THIS LINE - Auto-fix price calculations
+      itemsWithIds = autoFixPriceCalculations(itemsWithIds);
       
       setSelectedProducts(itemsWithIds);
       console.log('Set selected products:', itemsWithIds);
-      
+      const itemsSubtotal = itemsWithIds.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0);
+setFormData(prev => ({
+  ...prev,
+  subtotal: itemsSubtotal,
+  totalAmount: itemsSubtotal + (parseFloat(prev.shipping) || 0) + (parseFloat(prev.tax) || 0) - (parseFloat(prev.discount) || 0)
+}));
       // Pre-populate supplier creation form if supplier data is extracted but not matched
       if (proformaInvoice.supplier && !proformaInvoice.supplierId) {
         const supplierInfo = proformaInvoice.supplier;
@@ -1229,11 +1236,25 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
               {/* Product Selection */}
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-3">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Items <span className="text-red-500">*</span>
-                  </label>
-                  {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
-                </div>
+  <label className="block text-sm font-medium text-gray-700">
+    Items ({selectedProducts.length}) <span className="text-red-500">*</span>
+  </label>
+  <div className="flex items-center gap-2">
+    {/* ✅ ADD THIS BUTTON */}
+    {selectedProducts.length > 0 && (
+      <button
+        type="button"
+        onClick={handleFixAllPrices}
+        className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center gap-1"
+        title="Auto-fix all price calculations"
+      >
+        <Calculator size={14} />
+        Fix Prices
+      </button>
+    )}
+    {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
+  </div>
+</div>
                 
                 {/* Product Search - Only show if supplier is selected and no extracted items */}
                 {formData.supplierId && selectedProducts.length === 0 && (
