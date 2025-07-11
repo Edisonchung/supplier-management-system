@@ -50,16 +50,30 @@ const SupplierMatchingPage = () => {
       setError(null);
       
       // Load PO from localStorage with proper key and debugging
-      console.log('🔍 Looking for PO ID:', poId);
+      console.log('🔍 Looking for PO ID/Number:', poId);
       const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
       console.log('📋 Found POs in localStorage:', savedPOs.length, 'total');
       console.log('📋 Available PO IDs:', savedPOs.map(p => ({ id: p.id, poNumber: p.poNumber || p.orderNumber })));
       
-      const po = savedPOs.find(p => p.id === poId);
+      // Try to find PO by ID first, then by PO number
+      let po = savedPOs.find(p => p.id === poId);
       
       if (!po) {
-        console.error('❌ PO not found. Available IDs:', savedPOs.map(p => p.id));
-        throw new Error(`Purchase order not found. Looking for ID: ${poId}`);
+        console.log('🔄 PO not found by ID, trying by PO number...');
+        po = savedPOs.find(p => 
+          (p.poNumber === poId) || 
+          (p.orderNumber === poId) ||
+          (p.poNumber === `PO-${poId}`) ||
+          (p.orderNumber === `PO-${poId}`)
+        );
+      }
+      
+      if (!po) {
+        const availableIds = savedPOs.map(p => p.id);
+        const availableNumbers = savedPOs.map(p => p.poNumber || p.orderNumber).filter(Boolean);
+        console.error('❌ PO not found. Available IDs:', availableIds);
+        console.error('❌ Available PO Numbers:', availableNumbers);
+        throw new Error(`Purchase order not found. Looking for: ${poId}\nAvailable IDs: ${availableIds.join(', ')}\nAvailable Numbers: ${availableNumbers.join(', ')}`);
       }
 
       console.log('✅ Found PO:', po.poNumber || po.orderNumber);
