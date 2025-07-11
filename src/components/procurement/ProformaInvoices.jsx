@@ -31,12 +31,18 @@ const ProformaInvoices = ({ showNotification }) => {
   const { 
     suppliers, 
     loading: suppliersLoading, 
-    addSupplier: hookAddSupplier,  // Get addSupplier from hook
+    addSupplier: hookAddSupplier,
     updateSupplier, 
     deleteSupplier 
   } = useSuppliers();
   
-  const { products } = useProducts();
+  // ✅ Get Products hook functions for syncing
+  const { 
+    products, 
+    addProduct, 
+    updateProduct,
+    loading: productsLoading 
+  } = useProducts();
   
   const [showModal, setShowModal] = useState(false);
   const [selectedPI, setSelectedPI] = useState(null);
@@ -45,7 +51,7 @@ const ProformaInvoices = ({ showNotification }) => {
   const [filterDelivery, setFilterDelivery] = useState('all');
   const [filterPurpose, setFilterPurpose] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
-  const [viewMode, setViewMode] = useState('grid'); // grid or list
+  const [viewMode, setViewMode] = useState('grid');
   const [groupByYear, setGroupByYear] = useState(true);
   
   // AI Extraction states
@@ -54,6 +60,160 @@ const ProformaInvoices = ({ showNotification }) => {
 
   const canEdit = permissions.canEditPI || permissions.isAdmin;
   const canDelete = permissions.isAdmin;
+
+  // ✅ NEW: Product Sync Function
+  const syncPIProductsToDatabase = async (piData, savedPI) => {
+    console.log('🔄 Syncing PI products to Products database...');
+    
+    if (!piData.items || piData.items.length === 0) {
+      console.log('No items to sync');
+      return { synced: 0, created: 0, updated: 0 };
+    }
+
+    // Get supplier info
+    const supplier = suppliers.find(s => s.id === piData.supplierId);
+    let syncStats = { synced: 0, created: 0, updated: 0 };
+    
+    for (const item of piData.items) {
+      try {
+        // Check if product already exists by product code
+        const existingProduct = products.find(p => 
+          p.sku === item.productCode || 
+          p.name === item.productName ||
+          (p.sku && item.productCode && p.sku.toLowerCase() === item.productCode.toLowerCase())
+        );
+
+        if (existingProduct) {
+          // Update existing product with latest supplier pricing
+          console.log(`Updating existing product: ${item.productCode}`);
+          
+          const updateData = {
+            ...existingProduct,
+            // Update price if this is a better/newer price
+            price: item.unitPrice || existingProduct.price,
+            unitCost: item.unitPrice || existingProduct.unitCost,
+            unitPrice: item.unitPrice || existingProduct.unitPrice,
+            lastUpdated: new Date().toISOString(),
+            // Add supplier reference if not already linked
+            supplierId: existingProduct.supplierId || piData.supplierId,
+            supplierName: existingProduct.supplierName || supplier?.name,
+            // Track PI references
+            piReferences: [
+              ...(existingProduct.piReferences || []),
+              {
+                piId: savedPI.id,
+                piNumber: piData.piNumber,
+                unitPrice: item.unitPrice,
+                date: piData.date,
+                supplierName: supplier?.name
+              }
+            ].filter((ref, index, arr) => 
+              // Remove duplicates by piId
+              arr.findIndex(r => r.piId === ref.piId) === index
+            )
+          };
+
+          const result = await updateProduct(existingProduct.id, updateData);
+          if (result.success) {
+            syncStats.updated++;
+            console.log(`✅ Updated product: ${existingProduct.name}`);
+          }
+        } else {
+          // Create new product from PI item
+          console.log(`Creating new product: ${item.productCode}`);
+          
+          const newProduct = {
+            name: item.productName || 'Unnamed Product',
+            sku: item.productCode || `SKU-${Date.now()}`,
+            description: item.notes || item.specifications || '',
+            
+            // Pricing
+            price: item.unitPrice || 0,
+            unitCost: item.unitPrice || 0,
+            unitPrice: item.unitPrice || 0,
+            
+            // Supplier linking
+            supplierId: piData.supplierId,
+            supplierName: supplier?.name || 'Unknown Supplier',
+            
+            // Stock management
+            stock: 0,
+            currentStock: 0,
+            minStock: 1,
+            minStockLevel: 1,
+            
+            // Categories (try to auto-detect from product name)
+            category: detectProductCategory(item.productName),
+            brand: item.brand || '',
+            
+            // Status
+            status: 'pending',
+            
+            // Tracking
+            dateAdded: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            source: 'pi_import',
+            piReferences: [{
+              piId: savedPI.id,
+              piNumber: piData.piNumber,
+              unitPrice: item.unitPrice,
+              date: piData.date,
+              supplierName: supplier?.name
+            }],
+            
+            // Additional fields from PI
+            leadTime: item.leadTime,
+            warranty: item.warranty,
+            notes: `Imported from PI: ${piData.piNumber}${item.notes ? ('\n' + item.notes) : ''}`,
+            
+            // Photo and catalog (empty for now)
+            photo: '',
+            catalog: ''
+          };
+
+          const result = await addProduct(newProduct);
+          if (result.success) {
+            syncStats.created++;
+            console.log(`✅ Created product: ${newProduct.name}`);
+          }
+        }
+        
+        syncStats.synced++;
+      } catch (error) {
+        console.error(`Failed to sync product ${item.productCode}:`, error);
+        // Continue with other products even if one fails
+      }
+    }
+    
+    console.log('✅ PI products sync completed:', syncStats);
+    
+    // Show notification based on results
+    if (syncStats.created > 0 || syncStats.updated > 0) {
+      showNotification(
+        `Products synced: ${syncStats.created} created, ${syncStats.updated} updated`, 
+        'success'
+      );
+    }
+    
+    return syncStats;
+  };
+
+  // Helper function to detect product category
+  const detectProductCategory = (productName) => {
+    if (!productName) return 'components';
+    
+    const name = productName.toLowerCase();
+    
+    if (name.includes('sensor') || name.includes('detector')) return 'sensors';
+    if (name.includes('valve') || name.includes('pump') || name.includes('cylinder')) return 'hydraulics';
+    if (name.includes('motor') || name.includes('drive') || name.includes('inverter')) return 'automation';
+    if (name.includes('cable') || name.includes('wire') || name.includes('connector')) return 'cables';
+    if (name.includes('electronic') || name.includes('controller') || name.includes('display')) return 'electronics';
+    if (name.includes('pneumatic') || name.includes('air')) return 'pneumatics';
+    
+    return 'components'; // Default category
+  };
 
   // Enhanced addSupplier function that works with PIModal
   const addSupplier = async (supplierData) => {
@@ -74,13 +234,7 @@ const ProformaInvoices = ({ showNotification }) => {
         dateAdded: new Date().toISOString()
       };
 
-      // For localStorage implementation, you might need to update suppliers directly
-      // This would depend on your specific implementation
       console.log('Supplier created (fallback):', newSupplier);
-      
-      // If you have a way to update the suppliers state, do it here
-      // For example, if useSuppliers exposes a setSuppliers function
-      
       showNotification?.(`Supplier "${newSupplier.name}" created successfully`, 'success');
       return newSupplier;
       
@@ -109,7 +263,7 @@ const ProformaInvoices = ({ showNotification }) => {
     return matchesSearch && matchesStatus && matchesDelivery && matchesPurpose && matchesPriority;
   });
 
-  // Group PIs by year - MOVED OUTSIDE OF FILTER
+  // Group PIs by year
   const pisByYear = groupByYear ? filteredPIs.reduce((acc, pi) => {
     const year = new Date(pi.date).getFullYear();
     if (!acc[year]) acc[year] = [];
@@ -117,7 +271,7 @@ const ProformaInvoices = ({ showNotification }) => {
     return acc;
   }, {}) : { 'All': filteredPIs };
 
-  // Sort years descending (newest first) - MOVED OUTSIDE OF FILTER
+  // Sort years descending (newest first)
   const sortedYears = Object.keys(pisByYear).sort((a, b) => {
     if (a === 'All') return 1;
     if (b === 'All') return -1;
@@ -437,9 +591,9 @@ const ProformaInvoices = ({ showNotification }) => {
 
     const piData = {
       // Basic info
-      piNumber: '', // Will be auto-generated
+      piNumber: '',
       date: new Date().toISOString().split('T')[0],
-      expiryDate: '', // User will set
+      expiryDate: '',
       
       // Reference the client PO
       projectCode: extractedData.orderNumber || extractedData.poNumber || '',
@@ -453,7 +607,7 @@ const ProformaInvoices = ({ showNotification }) => {
       supplierContact: '',
       supplierEmail: '',
       supplierPhone: '',
-      supplier: null, // No extracted supplier data
+      supplier: null,
       
       // Priority Flag
       isPriority: false,
@@ -539,7 +693,7 @@ const ProformaInvoices = ({ showNotification }) => {
     const piData = await processChineseSupplierPI({
       ...extractedData,
       piNumber: extractedData.invoiceNumber || extractedData.piNumber || '',
-      validUntil: '', // Invoices don't have expiry, user will set for PI
+      validUntil: '',
       notes: `${extractedData.notes || ''}\n\nConverted from Supplier Invoice: ${extractedData.invoiceNumber || 'Unknown'}`
     });
 
@@ -650,14 +804,14 @@ const ProformaInvoices = ({ showNotification }) => {
     showNotification('Share link copied to clipboard', 'success');
   };
 
-  // FIXED: Updated handleSavePI logic to prevent update with undefined ID
+  // ✅ UPDATED: Enhanced handleSavePI with product sync
   const handleSavePI = async (piData) => {
     try {
       console.log('Saving PI data:', piData);
       console.log('selectedPI:', selectedPI);
       console.log('selectedPI?.id:', selectedPI?.id);
       
-      // FIXED: Check if selectedPI has a valid ID, not just if it exists
+      // Check if selectedPI has a valid ID, not just if it exists
       // If selectedPI exists but has no ID, it's extracted data for a NEW PI
       const isUpdate = selectedPI && selectedPI.id && selectedPI.id !== undefined && selectedPI.id !== null;
       
@@ -670,6 +824,10 @@ const ProformaInvoices = ({ showNotification }) => {
       console.log('Save result:', result);
 
       if (result.success) {
+        // ✅ NEW: Sync products to Products database
+        const savedPI = result.data || { ...piData, id: result.id || selectedPI?.id };
+        await syncPIProductsToDatabase(piData, savedPI);
+        
         showNotification(
           isUpdate ? 'PI updated successfully' : 'PI created successfully',
           'success'
@@ -1096,7 +1254,7 @@ const ProformaInvoices = ({ showNotification }) => {
           proformaInvoice={selectedPI}
           suppliers={suppliers}
           products={products}
-          addSupplier={addSupplier}  // ← Critical: Pass the addSupplier function
+          addSupplier={addSupplier}
           showNotification={showNotification}
         />
       )}
