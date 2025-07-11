@@ -772,3 +772,7 @@ export class SupplierMatcher {
     );
   }
 }
+
+if (typeof window !== 'undefined') {
+  window.SupplierMatcher = SupplierMatcher;
+}
