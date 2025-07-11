@@ -864,7 +864,9 @@ class PTPClientPODetector {
       
       // 8. Has items array
       {
-        test: data.items && Array.isArray(data.items) && data.items.length > 0,
+        test: (data.items && Array.isArray(data.items) && data.items.length > 0) ||
+              (data.purchase_order?.items && Array.isArray(data.purchase_order.items) && data.purchase_order.items.length > 0) ||
+              (data.line_items && Array.isArray(data.line_items) && data.line_items.length > 0),
         name: 'Has items array',
         weight: 5
       }
@@ -1181,7 +1183,13 @@ if (docType.type === 'client_purchase_order') {
     requiredDate: '', // Not specified in PTP POs
     
     // Items to source
-    items: this.mapClientPOItems(data.items || []),
+    items: this.mapClientPOItems(
+      data.items || 
+      data.purchase_order?.items || 
+      data.line_items || 
+      []
+    ),
+
     totalAmount: parseFloat(data.grand_total || data.subtotal || 0),
     subtotal: parseFloat(data.subtotal || 0),
     tax: parseFloat(data.tax || 0),
@@ -1371,7 +1379,20 @@ if (docType.type === 'client_purchase_order') {
 
     return { isValid: true };
   }
-
+  mapClientPOItems(items) {
+    console.log('🔧 mapClientPOItems called with:', {
+      itemsType: typeof items,
+      itemsIsArray: Array.isArray(items),
+      itemsLength: items?.length,
+      itemsSample: items?.[0]
+    });
+    
+    if (!items || !Array.isArray(items)) {
+      console.warn('❌ No items array provided to mapClientPOItems');
+      console.warn('❌ Received items:', items);
+      return [];
+    }
+    
   
   /**
    * Map items from client PO format
