@@ -49,15 +49,20 @@ const SupplierMatchingPage = () => {
       setIsLoading(true);
       setError(null);
       
-      // Load PO from localStorage
+      // Load PO from localStorage with proper key and debugging
+      console.log('🔍 Looking for PO ID:', poId);
       const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+      console.log('📋 Found POs in localStorage:', savedPOs.length, 'total');
+      console.log('📋 Available PO IDs:', savedPOs.map(p => ({ id: p.id, poNumber: p.poNumber || p.orderNumber })));
+      
       const po = savedPOs.find(p => p.id === poId);
       
       if (!po) {
-        throw new Error('Purchase order not found');
+        console.error('❌ PO not found. Available IDs:', savedPOs.map(p => p.id));
+        throw new Error(`Purchase order not found. Looking for ID: ${poId}`);
       }
 
-      console.log('📋 Loading PO:', po.orderNumber);
+      console.log('✅ Found PO:', po.poNumber || po.orderNumber);
       setPurchaseOrder(po);
 
       // Check if we have existing matching results
@@ -124,13 +129,15 @@ const SupplierMatchingPage = () => {
           supplierSelections: po.supplierSelections || null
         };
 
-        // Update localStorage
+        // Update localStorage with correct key
         const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
         const updatedPOs = savedPOs.map(savedPO => 
           savedPO.id === po.id ? updatedPO : savedPO
         );
         localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
         setPurchaseOrder(updatedPO);
+        
+        console.log('💾 Saved matching results to localStorage');
 
         // Show success with enhanced metrics
         const metrics = result.data.metrics || {};
@@ -165,6 +172,14 @@ const SupplierMatchingPage = () => {
   const handlePOUpdate = (updatedPO) => {
     console.log('📝 Updating PO with supplier selections');
     setPurchaseOrder(updatedPO);
+    
+    // Update localStorage immediately
+    const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+    const updatedPOs = savedPOs.map(savedPO => 
+      savedPO.id === updatedPO.id ? updatedPO : savedPO
+    );
+    localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
+    console.log('💾 Updated PO saved to localStorage');
     
     // Update the matching result items to reflect selections
     if (matchingResult) {
