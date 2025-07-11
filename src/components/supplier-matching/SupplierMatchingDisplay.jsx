@@ -1,4 +1,6 @@
 // src/components/supplier-matching/SupplierMatchingDisplay.jsx
+// Updated with enhanced matching features while preserving existing functionality
+
 import React, { useState } from 'react';
 import { 
   Building2, 
@@ -14,7 +16,11 @@ import {
   DollarSign,
   Truck,
   Shield,
-  Info
+  Info,
+  Brain,     // 🆕 NEW IMPORT
+  Zap,       // 🆕 NEW IMPORT
+  Target,    // 🆕 NEW IMPORT
+  CreditCard // 🆕 NEW IMPORT (was missing from your imports)
 } from 'lucide-react';
 
 const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
@@ -87,9 +93,28 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
       {/* Overview Tab */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Metrics Summary */}
+          {/* 🆕 ENHANCED Metrics Summary */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Supplier Matching Summary</h3>
+            {/* 🆕 ENHANCED HEADER with AI indicators */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Supplier Matching Summary</h3>
+              <div className="flex items-center gap-2">
+                {/* 🆕 Match rate indicator */}
+                {metrics?.matchRate && (
+                  <span className="text-sm font-medium text-green-600">
+                    {metrics.matchRate}% Match Rate (Enhanced)
+                  </span>
+                )}
+                
+                {/* 🆕 AI improvements indicator */}
+                {metrics?.improvements?.synonymMatchCount > 0 && (
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                    🧠 {metrics.improvements.synonymMatchCount} AI matches
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white rounded-lg p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
@@ -112,25 +137,70 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                 </p>
               </div>
               
+              {/* 🆕 ENHANCED: AI Synonym Matches */}
               <div className="bg-white rounded-lg p-4 shadow-sm">
-                <Building2 className="text-purple-600 w-6 h-6 mb-2" />
-                <p className="text-sm text-gray-600">Supplier Options</p>
+                <div className="flex items-center justify-between mb-2">
+                  <Brain className="text-purple-600 w-6 h-6" />
+                  <span className="text-xs text-purple-600 font-medium">AI</span>
+                </div>
+                <p className="text-sm text-gray-600">Synonym Matches</p>
                 <p className="text-xl font-bold text-gray-900">
-                  {metrics?.supplierDiversity || 0}
+                  {metrics?.improvements?.synonymMatchCount || 0}
                 </p>
               </div>
               
+              {/* 🆕 ENHANCED: High Confidence */}
               <div className="bg-white rounded-lg p-4 shadow-sm">
-                <Package className="text-orange-600 w-6 h-6 mb-2" />
-                <p className="text-sm text-gray-600">Items Matched</p>
+                <Zap className="text-orange-600 w-6 h-6 mb-2" />
+                <p className="text-sm text-gray-600">High Confidence</p>
                 <p className="text-xl font-bold text-gray-900">
-                  {metrics?.itemsWithMatches || 0}/{items.length}
+                  {metrics?.improvements?.highConfidenceRate || 0}%
                 </p>
               </div>
             </div>
+
+            {/* 🆕 AI Enhancement Summary */}
+            {metrics?.improvements && (
+              <div className="mt-6 p-4 bg-white rounded-lg border border-purple-100">
+                <h4 className="text-sm font-semibold text-purple-900 mb-2 flex items-center gap-2">
+                  <Brain className="w-4 h-4" />
+                  AI Enhancement Details
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-purple-600">
+                      {metrics.improvements.synonymMatchCount || 0}
+                    </div>
+                    <div className="text-xs text-gray-600">Synonym Matches</div>
+                    <div className="text-xs text-purple-600 mt-1">AI found variations</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-green-600">
+                      {metrics.improvements.learnedMatchCount || 0}
+                    </div>
+                    <div className="text-xs text-gray-600">Learned Matches</div>
+                    <div className="text-xs text-green-600 mt-1">From user selections</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-blue-600">
+                      {metrics.improvements.averageMatchesPerItem || 0}
+                    </div>
+                    <div className="text-xs text-gray-600">Avg Options/Item</div>
+                    <div className="text-xs text-blue-600 mt-1">More choices</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-indigo-600">
+                      {metrics.improvements.highConfidenceRate || 0}%
+                    </div>
+                    <div className="text-xs text-gray-600">High Confidence</div>
+                    <div className="text-xs text-indigo-600 mt-1">Reliable matches</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Sourcing Strategies */}
+          {/* Your existing Sourcing Strategies section */}
           {sourcingPlan?.sourcingStrategies && sourcingPlan.sourcingStrategies.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-4">Recommended Sourcing Strategies</h3>
@@ -153,7 +223,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
             </div>
           )}
 
-          {/* Timeline & Critical Path */}
+          {/* Your existing Timeline & Critical Path section */}
           {sourcingPlan?.timeline && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-4">Timeline & Critical Items</h3>
@@ -220,6 +290,39 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                   <div className="flex items-center gap-2">
                     {item.supplierMatches && item.supplierMatches.length > 0 ? (
                       <>
+                        {/* 🆕 ENHANCED: Show match type and confidence */}
+                        <div className="flex items-center gap-2">
+                          {/* Match type indicator */}
+                          {item.supplierMatches[0].matchType === 'synonym_match' && (
+                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                              🧠 AI
+                            </span>
+                          )}
+                          {item.supplierMatches[0].matchType === 'exact_match' && (
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                              🎯 Exact
+                            </span>
+                          )}
+                          
+                          {/* Confidence score */}
+                          {item.supplierMatches[0].confidence && (
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              item.supplierMatches[0].confidence >= 90 ? 'bg-green-100 text-green-700' :
+                              item.supplierMatches[0].confidence >= 70 ? 'bg-blue-100 text-blue-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {item.supplierMatches[0].confidence}%
+                            </span>
+                          )}
+                          
+                          {/* Learning indicator */}
+                          {item.supplierMatches[0].isLearned && (
+                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
+                              📚
+                            </span>
+                          )}
+                        </div>
+
                         <span className="px-3 py-1 bg-green-100 text-green-700 text-sm rounded-full">
                           {item.supplierMatches.length} matches
                         </span>
@@ -264,9 +367,32 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                                   Best Match
                                 </span>
                               )}
-                              <span className="text-sm text-gray-500">
-                                Match: {(match.matchScore * 100).toFixed(0)}%
-                              </span>
+                              
+                              {/* 🆕 ENHANCED: Match details */}
+                              <div className="flex items-center gap-2">
+                                {/* Match type badge */}
+                                {match.matchType === 'synonym_match' && (
+                                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                                    🧠 AI Synonym
+                                  </span>
+                                )}
+                                {match.matchType === 'exact_match' && (
+                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                    🎯 Exact Code
+                                  </span>
+                                )}
+                                {match.matchType === 'fuzzy_enhanced' && (
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                    ⚡ Enhanced
+                                  </span>
+                                )}
+                                
+                                {/* Confidence or match score */}
+                                <span className="text-sm text-gray-500">
+                                  {match.confidence ? `${match.confidence}%` : `Match: ${(match.matchScore * 100).toFixed(0)}%`}
+                                </span>
+                              </div>
+
                               {selectedSuppliers[item.itemNumber] === match.supplierId && (
                                 <Check className="w-5 h-5 text-blue-600" />
                               )}
@@ -310,6 +436,13 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                                 {(match.supplier.reliability * 100).toFixed(0)}% reliable
                               </span>
                             </div>
+
+                            {/* 🆕 ENHANCED: Learning note */}
+                            {match.learningNote && (
+                              <div className="mt-2 text-xs text-indigo-600 italic">
+                                💡 {match.learningNote}
+                              </div>
+                            )}
                           </div>
                           
                           <div className="text-right ml-4">
@@ -339,7 +472,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
         </div>
       )}
 
-      {/* Suppliers Tab */}
+      {/* Suppliers Tab - Keep your existing implementation */}
       {activeTab === 'suppliers' && (
         <div className="space-y-4">
           {sourcingPlan?.recommendedSuppliers && sourcingPlan.recommendedSuppliers.length > 0 ? (
@@ -451,7 +584,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
         </div>
       )}
 
-      {/* Risk Assessment (shown in all tabs) */}
+      {/* Risk Assessment (shown in all tabs) - Keep your existing implementation */}
       {sourcingPlan?.riskAssessment?.recommendations && sourcingPlan.riskAssessment.recommendations.length > 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start gap-2">
