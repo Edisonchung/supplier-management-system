@@ -1,4 +1,4 @@
-// src/config/firebase.js
+// src/config/firebase.js - Updated with all required exports
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -6,7 +6,9 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,  // 🆕 Added for team member creation
+  sendPasswordResetEmail          // 🆕 Added for password reset
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -36,13 +38,15 @@ export const analytics = import.meta.env.PROD && firebaseConfig.measurementId
   ? getAnalytics(app) 
   : null;
 
-// Export auth functions
+// Export ALL auth functions (including new ones for team management)
 export {
   signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,  // 🆕 For creating team member accounts
+  sendPasswordResetEmail           // 🆕 For password reset functionality
 };
 
 export default app;
