@@ -14,14 +14,14 @@ import PurchaseOrders from './components/purchase-orders';
 import ClientInvoices from './components/invoices/ClientInvoices';
 import QuickImport from './components/import/QuickImport';
 import UserManagement from './components/users/UserManagement';
+import TeamManagement from './components/team/TeamManagement';
 import Notification from './components/common/Notification';
 import SourcingDashboard from './components/sourcing/SourcingDashboard';
 import { usePermissions } from './hooks/usePermissions';
-import { Truck, Upload, Users } from 'lucide-react';
+import { Truck, Upload, Users, Shield, Settings, Activity, Brain } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
 import SupplierMatchingPage from './components/supplier-matching/SupplierMatchingPage';
-
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -82,8 +82,10 @@ const ProtectedRoute = ({ children, permission }) => {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <div className="text-center">
+          <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
           <p className="text-gray-600">You don't have permission to view this page</p>
+          <p className="text-sm text-gray-500 mt-2">Contact your administrator for access</p>
         </div>
       </div>
     );
@@ -98,7 +100,11 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
     <div className="text-center">
       {Icon && <Icon className="mx-auto h-12 w-12 text-gray-400 mb-4" />}
       <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
-      <p className="text-gray-600">{description}</p>
+      <p className="text-gray-600 mb-4">{description}</p>
+      <div className="mt-6 text-sm text-gray-500">
+        <p>🚀 Feature in development</p>
+        <p>Expected completion: Q1 2025</p>
+      </div>
     </div>
   </div>
 );
@@ -115,10 +121,11 @@ function AppContent() {
   // Show loading screen while checking auth
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-purple-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading HiggsFlow...</p>
+          <p className="mt-4 text-gray-600 font-medium">Loading HiggsFlow...</p>
+          <p className="mt-2 text-sm text-gray-500">Accelerating Supply Chain</p>
         </div>
       </div>
     );
@@ -197,7 +204,7 @@ function AppContent() {
               } 
             />
             
-            {/* Suppliers */}
+            {/* Core Management Routes */}
             <Route 
               path="/suppliers" 
               element={
@@ -207,7 +214,6 @@ function AppContent() {
               } 
             />
             
-            {/* Products */}
             <Route 
               path="/products" 
               element={
@@ -217,7 +223,7 @@ function AppContent() {
               } 
             />
             
-            {/* Sourcing Dashboard */}
+            {/* Operations Routes */}
             <Route 
               path="/sourcing" 
               element={
@@ -227,7 +233,20 @@ function AppContent() {
               } 
             />
             
-            {/* Proforma Invoices */}
+            <Route 
+              path="/ai-matching" 
+              element={
+                <ProtectedRoute permission="canViewOrders">
+                  <PlaceholderComponent 
+                    title="AI Supplier Matching" 
+                    description="AI-powered intelligent supplier matching and recommendation system" 
+                    icon={Brain}
+                  />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Procurement Routes */}
             <Route 
               path="/proforma-invoices" 
               element={
@@ -237,7 +256,6 @@ function AppContent() {
               } 
             />
             
-            {/* Purchase Orders */}
             <Route 
               path="/purchase-orders" 
               element={
@@ -256,9 +274,8 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
-
             
-            {/* Client Invoices */}
+            {/* Business Routes */}
             <Route 
               path="/client-invoices" 
               element={
@@ -268,21 +285,20 @@ function AppContent() {
               } 
             />
             
-            {/* Delivery Tracking */}
             <Route 
               path="/delivery-tracking" 
               element={
                 <ProtectedRoute permission="canViewDeliveries">
                   <PlaceholderComponent 
                     title="Delivery Tracking" 
-                    description="Track deliveries and shipment status - Feature coming soon" 
+                    description="Real-time shipment tracking and delivery status monitoring" 
                     icon={Truck}
                   />
                 </ProtectedRoute>
               } 
             />
             
-            {/* Quick Import */}
+            {/* Tools Routes */}
             <Route 
               path="/quick-import" 
               element={
@@ -292,7 +308,43 @@ function AppContent() {
               } 
             />
             
-            {/* User Management */}
+            {/* Administration Routes */}
+            <Route 
+              path="/team-management" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <TeamManagement showNotification={showNotification} />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/settings" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <PlaceholderComponent 
+                    title="System Settings" 
+                    description="Configure system preferences, integrations, and global settings" 
+                    icon={Settings}
+                  />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/activity-logs" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <PlaceholderComponent 
+                    title="Activity Logs" 
+                    description="Comprehensive audit trail and team activity monitoring" 
+                    icon={Activity}
+                  />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Legacy Routes (keeping for compatibility) */}
             <Route 
               path="/users" 
               element={
@@ -316,22 +368,24 @@ function AppContent() {
           />
         )}
         
-        {/* Firestore Test Component - Only in development when user is logged in */}
-        {user && showFirestoreTest && import.meta.env.DEV && (
-          <FirestoreTest />
-        )}
-        
-        {/* Toggle button for Firestore Test (only in development) */}
+        {/* Development Tools - Only show in development mode */}
         {user && import.meta.env.DEV && (
-          <button
-            onClick={() => setShowFirestoreTest(!showFirestoreTest)}
-            className="fixed bottom-4 left-4 bg-gray-800 text-white text-xs px-3 py-1 rounded-full hover:bg-gray-700 z-50 shadow-lg"
-            title={`${showFirestoreTest ? 'Hide' : 'Show'} Firestore Test Panel`}
-          >
-            {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
-          </button>
+          <>
+            {/* Firestore Test Component */}
+            {showFirestoreTest && <FirestoreTest />}
+            
+            {/* Toggle button for Firestore Test */}
+            <button
+              onClick={() => setShowFirestoreTest(!showFirestoreTest)}
+              className="fixed bottom-4 left-4 bg-gray-800 text-white text-xs px-3 py-1 rounded-full hover:bg-gray-700 z-50 shadow-lg transition-colors"
+              title={`${showFirestoreTest ? 'Hide' : 'Show'} Firestore Test Panel`}
+            >
+              {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
+            </button>
+          </>
         )}
         
+        {/* Firestore Health Check - Always show when user is logged in */}
         {user && <FirestoreHealthCheck />}
       </Router>
     </ErrorBoundary>
