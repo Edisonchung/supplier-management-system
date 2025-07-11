@@ -838,7 +838,7 @@ class PTPClientPODetector {
         weight: 5
       },
       
-      / 5. Has PR number (internal requisition) - handles both single and array
+      // 5. Has PR number (internal requisition) - handles both single and array
       {
         test: !!data.pr_number || (data.pr_numbers && Array.isArray(data.pr_numbers) && data.pr_numbers.length > 0),
         name: 'Has PR number',
@@ -853,7 +853,7 @@ class PTPClientPODetector {
         weight: 8
       },
       
-      / 7. Order structure (not invoice/proforma structure)
+      // 7. Order structure (not invoice/proforma structure)
       {
         test: (textContent.includes('purchase order') || textContent.includes('purchase_order')) &&
               !textContent.includes('proforma') &&
