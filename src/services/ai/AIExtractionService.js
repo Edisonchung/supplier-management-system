@@ -26,6 +26,40 @@ class ChineseSupplierPIExtractor {
     
     // Handle nested data structure
     let data = rawData.data || rawData;
+
+    // Quick debug fix - Add this temporarily to your ChineseSupplierPIExtractor.extractChineseSupplierPI() method
+// Right after this line: let data = rawData.data || rawData;
+
+console.log('=== PRODUCT EXTRACTION DEBUG ===');
+console.log('Full rawData structure:', rawData);
+console.log('Data keys:', Object.keys(data));
+
+if (data.products) {
+  console.log('Found data.products:', data.products);
+  console.log('Products type:', typeof data.products);
+  console.log('Products is array?', Array.isArray(data.products));
+  console.log('Products length:', data.products?.length);
+}
+
+if (data.items) {
+  console.log('Found data.items:', data.items);
+  console.log('Items type:', typeof data.items);
+  console.log('Items is array?', Array.isArray(data.items));
+  console.log('Items length:', data.items?.length);
+}
+
+if (data.invoice) {
+  console.log('Found data.invoice:', data.invoice);
+  if (data.invoice.products) {
+    console.log('Found data.invoice.products:', data.invoice.products);
+  }
+  if (data.invoice.items) {
+    console.log('Found data.invoice.items:', data.invoice.items);
+  }
+}
+
+console.log('=== END PRODUCT DEBUG ===');
+    
     if (data.proforma_invoice) {
       data = data.proforma_invoice;
     }
