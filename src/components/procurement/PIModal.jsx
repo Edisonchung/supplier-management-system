@@ -212,24 +212,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
       const items = proformaInvoice.items || proformaInvoice.products || [];
       console.log('Processing items:', items);
 
-      if (items.length > 0) {
-        let processedItems = items.map((item, index) => ({
-          id: item.id || `item-${Date.now()}-${index}`,
-          productId: item.productId || `products-${Date.now()}-${index}`,
-          productCode: item.productCode || item.partNumber || '',
-          productName: item.productName || item.description || '',
-          quantity: parseInt(item.quantity) || 1,
-          unitPrice: parseFloat(item.unitPrice) || 0,
-          totalPrice: parseFloat(item.totalPrice) || (parseInt(item.quantity) * parseFloat(item.unitPrice)),
-          unit: item.unit || 'pcs',
-          notes: item.notes || '',
-          // Receiving fields
-          receivedQty: item.receivedQty || 0,
-          isReceived: item.isReceived || false,
-          receivingNotes: item.receivingNotes || '',
-          allocations: item.allocations || []
-        }));
-
+      
          // ✅ ADD THIS LINE - Auto-fix price calculations
         processedItems = autoFixPriceCalculations(processedItems);
         
