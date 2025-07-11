@@ -408,9 +408,9 @@ if (piData.items && piData.items.length > 0) {
       priorityReason: '',
       
       // Items from PO (as requirements)
-      items: (extractedData.products || extractedData.items || []).map((item, index) => ({
-  id: `item-${Date.now()}-${index}`,
-  productCode: item
+ //     items: (extractedData.products || extractedData.items || []).map((item, index) => ({
+ // id: `item-${Date.now()}-${index}`,
+ // productCode: item
 
 // Products/Items - ensure proper mapping with COMPLETE fields
 items: (extractedData.products || extractedData.items || []).map((item, index) => {
