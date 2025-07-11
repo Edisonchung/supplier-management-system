@@ -81,7 +81,8 @@ console.log('=== END PRODUCT DEBUG ===');
       
       // Products with Chinese naming conventions
       products: this.extractChineseProducts(data),
-      
+      items: this.extractChineseProducts(data),  // ← ADD THIS LINE
+
       // Financial details (USD standard)
       ...this.extractFinancials(data),
       
