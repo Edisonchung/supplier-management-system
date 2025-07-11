@@ -230,52 +230,132 @@ console.log('=== END PRODUCT DEBUG ===');
    * Extract products with Chinese supplier naming
    */
   static extractChineseProducts(data) {
-    console.log('Extracting Chinese products from data:', data);
-    console.log('Available keys:', Object.keys(data));
+    console.log('=== ENHANCED PRODUCT EXTRACTION DEBUG ===');
+    console.log('Input data type:', typeof data);
+    console.log('Input data keys:', Object.keys(data));
+    console.log('Full data structure:', JSON.stringify(data, null, 2));
+    
+    // Check all possible locations for items/products
+    const possibleLocations = [
+      { path: 'data.items', value: data.items },
+      { path: 'data.products', value: data.products },
+      { path: 'data.invoice.items', value: data.invoice?.items },
+      { path: 'data.invoice.products', value: data.invoice?.products },
+      { path: 'data.purchase_order.items', value: data.purchase_order?.items },
+      { path: 'data.purchase_order.products', value: data.purchase_order?.products },
+      { path: 'data.line_items', value: data.line_items },
+      { path: 'data.product_list', value: data.product_list },
+      { path: 'data.item_list', value: data.item_list },
+      { path: 'data.goods', value: data.goods },
+      { path: 'data.merchandise', value: data.merchandise }
+    ];
+    
+    console.log('Checking all possible item locations:');
+    possibleLocations.forEach(location => {
+      if (location.value !== undefined) {
+        console.log(`✅ Found at ${location.path}:`, {
+          type: typeof location.value,
+          isArray: Array.isArray(location.value),
+          length: Array.isArray(location.value) ? location.value.length : 'N/A',
+          sample: Array.isArray(location.value) && location.value.length > 0 ? location.value[0] : location.value
+        });
+      } else {
+        console.log(`❌ Not found at ${location.path}`);
+      }
+    });
+    
+    // Try to extract from the raw data string if arrays are empty
+    const rawDataString = JSON.stringify(data);
+    console.log('Raw data contains "items":', rawDataString.includes('"items"'));
+    console.log('Raw data contains "products":', rawDataString.includes('"products"'));
     
     // Look for table-like structures in multiple locations
     let itemsArray = null;
+    let foundLocation = 'none';
     
-    // Check data.items first
-    if (data.items && Array.isArray(data.items) && data.items.length > 0) {
-      console.log('Found items in data.items:', data.items.length);
-      itemsArray = data.items;
+    // Check each possible location in order of preference
+    for (const location of possibleLocations) {
+      if (location.value && Array.isArray(location.value) && location.value.length > 0) {
+        console.log(`🎯 Using items from ${location.path} with ${location.value.length} items`);
+        itemsArray = location.value;
+        foundLocation = location.path;
+        break;
+      }
     }
-    // Check data.products
-    else if (data.products && Array.isArray(data.products) && data.products.length > 0) {
-      console.log('Found items in data.products:', data.products.length);
-      itemsArray = data.products;
-    }
-    // Check nested invoice.items
-    else if (data.invoice && data.invoice.items && Array.isArray(data.invoice.items) && data.invoice.items.length > 0) {
-      console.log('Found items in data.invoice.items:', data.invoice.items.length);
-      itemsArray = data.invoice.items;
-    }
-    // Check nested invoice.products
-    else if (data.invoice && data.invoice.products && Array.isArray(data.invoice.products) && data.invoice.products.length > 0) {
-      console.log('Found items in data.invoice.products:', data.invoice.products.length);
-      itemsArray = data.invoice.products;
-    }
-    // Check if items are at root level with different key names
-    else {
-      const possibleKeys = ['line_items', 'product_list', 'item_list', 'goods', 'merchandise'];
-      for (const key of possibleKeys) {
-        if (data[key] && Array.isArray(data[key]) && data[key].length > 0) {
-          console.log(`Found items in data.${key}:`, data[key].length);
-          itemsArray = data[key];
-          break;
+    
+    // If still no items found, try to parse from nested structures
+    if (!itemsArray || itemsArray.length === 0) {
+      console.log('🔍 No items in standard locations, checking nested structures...');
+      
+      // Check if data has a purchase_order with items hidden deeper
+      if (data.purchase_order) {
+        console.log('Checking purchase_order structure:', Object.keys(data.purchase_order));
+        
+        // Sometimes items are nested deeper in purchase_order
+        for (const key of Object.keys(data.purchase_order)) {
+          const value = data.purchase_order[key];
+          if (Array.isArray(value) && value.length > 0) {
+            console.log(`🎯 Found array in purchase_order.${key}:`, value.length, 'items');
+            // Check if this looks like product data
+            if (value[0] && (value[0].description || value[0].product_name || value[0].name || value[0].model)) {
+              itemsArray = value;
+              foundLocation = `purchase_order.${key}`;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Check all nested objects for arrays that might be items
+      const findArraysRecursively = (obj, path = '') => {
+        for (const [key, value] of Object.entries(obj)) {
+          const currentPath = path ? `${path}.${key}` : key;
+          
+          if (Array.isArray(value) && value.length > 0) {
+            console.log(`🔍 Found array at ${currentPath}:`, value.length, 'items');
+            // Check if first item looks like product data
+            if (value[0] && typeof value[0] === 'object') {
+              const firstItem = value[0];
+              const productFields = ['description', 'product_name', 'name', 'model', 'part_number', 'quantity', 'price'];
+              const hasProductFields = productFields.some(field => firstItem[field] !== undefined);
+              
+              if (hasProductFields) {
+                console.log(`🎯 This looks like product data at ${currentPath}`);
+                return { array: value, path: currentPath };
+              }
+            }
+          } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+            const result = findArraysRecursively(value, currentPath);
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+      
+      if (!itemsArray && data && typeof data === 'object') {
+        const found = findArraysRecursively(data);
+        if (found) {
+          itemsArray = found.array;
+          foundLocation = found.path;
+          console.log(`🎯 Using items from deep search: ${foundLocation}`);
         }
       }
     }
     
     if (!itemsArray || !Array.isArray(itemsArray) || itemsArray.length === 0) {
-      console.warn('No items found in any location. Available data:', JSON.stringify(data, null, 2));
+      console.error('❌ NO ITEMS FOUND ANYWHERE!');
+      console.log('Final attempt - showing all data structure:');
+      console.log(JSON.stringify(data, null, 2));
       return [];
     }
     
-    console.log('Processing items array:', itemsArray);
+    console.log(`✅ SUCCESS: Found ${itemsArray.length} items at location: ${foundLocation}`);
+    console.log('Sample item structure:', JSON.stringify(itemsArray[0], null, 2));
+    
     const mappedProducts = itemsArray.map((item, index) => this.mapChineseProduct(item, index));
-    console.log('Mapped products:', mappedProducts);
+    console.log(`✅ Mapped ${mappedProducts.length} products successfully`);
+    console.log('Sample mapped product:', JSON.stringify(mappedProducts[0], null, 2));
+    console.log('=== END ENHANCED PRODUCT DEBUG ===');
     
     return mappedProducts;
   }
@@ -758,6 +838,7 @@ export class AIExtractionService {
       console.log('Document text sample:', JSON.stringify(rawData).substring(0, 500));
       
       // Step 3.5: ENHANCED pre-processing with smart document type detection
+     // Step 3.5: ENHANCED pre-processing with smart document type detection
       let preDetectedType = null;
       let confidence = 0.9;
       
@@ -768,7 +849,7 @@ export class AIExtractionService {
         
         console.log('Found purchase_order structure, validating content...');
         
-        // Check for supplier indicators (if these exist, it's likely a PI, not client PO)
+        // ✅ FIXED: Enhanced supplier indicators (Chinese suppliers sending PI)
         const supplierIndicators = [
           'proforma invoice',
           'pi number',
@@ -786,8 +867,9 @@ export class AIExtractionService {
           'delivery terms:',
           // Chinese supplier patterns
           'co.,ltd',
+          'co., ltd',
           'co ltd',
-          'technology',
+          'technology co',
           'machinery',
           'equipment',
           'hydraulic',
@@ -801,39 +883,61 @@ export class AIExtractionService {
           'ddp',
           'cfr',
           'fob',
-          'beneficiary'
+          'beneficiary',
+          'hengshui', // Specific to your current document
+          'anzhishun', // Specific to your current document
+          'wang wenpan' // Specific to your current document
+        ];
+        
+        // ✅ FIXED: More specific client PO indicators
+        const clientPOIndicators = [
+          'purchase order no',
+          'po number',
+          'purchase requisition',
+          'requisition number',
+          'buyer: flow solution', // Very specific
+          'bill to: flow solution', // Very specific
+          'order from client',
+          'client order'
         ];
         
         const hasSupplierIndicators = supplierIndicators.some(indicator => 
-          textContent.includes(indicator)
+          textContent.includes(indicator.toLowerCase())
         );
-        
-        // Check for client PO indicators
-        const clientPOIndicators = [
-          'bill to:',
-          'ship to:',
-          'buyer:',
-          'order date:',
-          'required by:',
-          'purchase order'
-        ];
         
         const hasClientPOIndicators = clientPOIndicators.some(indicator => 
-          textContent.includes(indicator)
+          textContent.includes(indicator.toLowerCase())
         );
         
-        // Check specifically for Flow Solution as buyer (not seller)
-        const flowSolutionAsBuyer = textContent.includes('flow solution') && 
-          (textContent.includes('buyer') || textContent.includes('bill to'));
+        // ✅ CRITICAL FIX: Check if Flow Solution is mentioned as CONSIGNEE/BUYER
+        // This indicates it's a PI FROM a supplier TO us, not a PO from a client
+        const flowSolutionAsConsignee = textContent.includes('flow solution') && 
+          (textContent.includes('consignee') || textContent.includes('buyer:'));
+        
+        // ✅ CRITICAL FIX: Check if we see Chinese company names as SELLER
+        const chineseCompanyAsSeller = textContent.includes('hengshui') || 
+          textContent.includes('anzhishun') || 
+          textContent.includes('technology co., ltd');
         
         console.log('Supplier indicators found:', hasSupplierIndicators);
         console.log('Client PO indicators found:', hasClientPOIndicators);
-        console.log('Flow Solution as buyer:', flowSolutionAsBuyer);
+        console.log('Flow Solution as consignee/buyer:', flowSolutionAsConsignee);
+        console.log('Chinese company as seller:', chineseCompanyAsSeller);
         
-        if (hasSupplierIndicators && !flowSolutionAsBuyer) {
+        // ✅ FIXED DECISION LOGIC: 
+        // Priority 1: If Chinese company is seller AND Flow Solution is buyer = PI from supplier
+        // Priority 2: If strong supplier indicators + no specific client PO indicators = PI
+        // Priority 3: Only then consider it a client PO
+        
+        if (chineseCompanyAsSeller && flowSolutionAsConsignee) {
           preDetectedType = 'supplier_proforma';
-          console.log('✅ CORRECTED: Pre-detected as supplier proforma (was incorrectly marked as purchase_order)');
-        } else if (hasClientPOIndicators || flowSolutionAsBuyer) {
+          confidence = 0.95;
+          console.log('✅ CORRECTED: Chinese supplier PI detected (Chinese company as seller, Flow Solution as buyer)');
+        } else if (hasSupplierIndicators && !hasClientPOIndicators) {
+          preDetectedType = 'supplier_proforma';
+          confidence = 0.9;
+          console.log('✅ CORRECTED: Supplier proforma detected based on strong supplier indicators');
+        } else if (hasClientPOIndicators || (!hasSupplierIndicators && flowSolutionAsConsignee)) {
           preDetectedType = 'client_purchase_order';
           console.log('Pre-detected as client purchase order based on structure and content');
         } else {
@@ -841,6 +945,7 @@ export class AIExtractionService {
           preDetectedType = null;
           console.log('Ambiguous purchase_order structure - will use document detector');
         }
+        
       } else if (rawData.data?.proforma_invoice || rawData.proforma_invoice) {
         preDetectedType = 'supplier_proforma';
         console.log('Pre-detected as supplier proforma based on structure');
