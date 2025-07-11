@@ -1035,15 +1035,15 @@ export class AIExtractionService {
       // Step 5: Enhanced processing based on document type
       let processedData;
       
-      if (docType.type === 'supplier_proforma') {
-        // Use enhanced Chinese supplier extraction
-        processedData = ChineseSupplierPIExtractor.extractChineseSupplierPI(rawData, file);
-        console.log('Using enhanced Chinese supplier PI extraction');
-      } else if (this.processors[docType.type]) {
-        processedData = await this.processors[docType.type].process(rawData, file);
-      } else {
-        processedData = this.processGenericDocument(rawData, file);
-      }
+      if (docType.type === 'supplier_proforma' || docType.type === 'supplier_invoice') {
+  // Use enhanced Chinese supplier extraction for both proforma and invoice
+  processedData = ChineseSupplierPIExtractor.extractChineseSupplierPI(rawData, file);
+  console.log('Using enhanced Chinese supplier PI extraction');
+} else if (this.processors[docType.type]) {
+  processedData = await this.processors[docType.type].process(rawData, file);
+} else {
+  processedData = this.processGenericDocument(rawData, file);
+}
       
       // Step 6: Validate extracted data
       let validationResult = { 
