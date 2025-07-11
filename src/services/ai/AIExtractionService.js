@@ -1167,7 +1167,7 @@ if (docType.type === 'client_purchase_order') {
     confidence: docType.confidence,
     
     // Client info (the one sending us the PO)
-    clientName: data.supplier?.name || 'Unknown Client',
+    clientName: this.extractClientName(data),
     clientPONumber: data.order_number || data.po_number || '',
     clientAddress: data.supplier?.address || data.ship_to?.name || '',
     prNumber: data.pr_number || '',
@@ -1377,30 +1377,244 @@ if (docType.type === 'client_purchase_order') {
    * Map items from client PO format
    */
   mapClientPOItems(items) {
-    if (!items || !Array.isArray(items)) return [];
+    if (!items || !Array.isArray(items)) {
+      console.warn('No items array provided to mapClientPOItems');
+      return [];
+    }
     
-    return items.map((item, index) => ({
-      id: `item_${index + 1}`,
-      productCode: item.part_number || item.product_code || '',
-      productName: item.description || item.product_name || item.name || '',
-      quantity: parseFloat(item.quantity || 0),
-      unit: item.uom || item.unit || 'PCS',
-      unitPrice: parseFloat(item.unit_price?.replace(/[^0-9.]/g, '') || 0),
-      totalPrice: parseFloat(item.amount?.replace(/[^0-9.]/g, '') || 0),
+    console.log('📦 Mapping', items.length, 'client PO items...');
+    
+    return items.map((item, index) => {
+      console.log(`Mapping item ${index + 1}:`, {
+        part_number: item.part_number,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        amount: item.amount
+      });
       
-      // Sourcing status
-      sourcingStatus: 'pending',
-      supplierMatches: [],
-      recommendedSupplier: null,
+      const mappedItem = {
+        id: `item_${index + 1}`,
+        productCode: item.part_number || item.product_code || item.code || '',
+        productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
+        quantity: this.parseQuantity(item.quantity),
+        unit: item.uom || item.unit || 'PCS',
+        unitPrice: this.parsePrice(item.unit_price),
+        totalPrice: this.parsePrice(item.amount) || (this.parseQuantity(item.quantity) * this.parsePrice(item.unit_price)),
+        
+        // Sourcing status
+        sourcingStatus: 'pending',
+        supplierMatches: [],
+        recommendedSupplier: null,
+        
+        // Additional fields
+        category: this.categorizeProduct(item.description || ''),
+        specifications: item.description || '',
+        urgency: 'normal'
+      };
       
-      // Additional fields
-      category: 'General',
-      specifications: item.description || '',
-      urgency: 'normal'
-    }));
+      console.log(`✅ Mapped item ${index + 1}:`, {
+        productCode: mappedItem.productCode,
+        productName: mappedItem.productName.substring(0, 50) + '...',
+        quantity: mappedItem.quantity,
+        unitPrice: mappedItem.unitPrice,
+        totalPrice: mappedItem.totalPrice
+      });
+      
+      return mappedItem;
+    });
   }
 
+  /**
+ * Parse quantity from various formats
+ */
+parseQuantity(quantityValue) {
+  if (!quantityValue) return 0;
   
+  // Handle string values like "3.00"
+  if (typeof quantityValue === 'string') {
+    // Remove any non-numeric characters except decimal point
+    const cleaned = quantityValue.replace(/[^0-9.]/g, '');
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? 0 : Math.round(parsed); // Round to nearest integer
+  }
+  
+  // Handle numeric values
+  if (typeof quantityValue === 'number') {
+    return Math.round(quantityValue);
+  }
+  
+  return 0;
+}
+  
+  /**
+   * Extract and clean client name from various sources
+   */
+  extractClientName(data) {
+    // Try to get client name from supplier field (PTP case)
+    let clientName = data.supplier?.name || '';
+    
+    // Clean up common client names
+    if (clientName) {
+      // Handle PTP variations
+      if (clientName.toLowerCase().includes('tanjung pelepas')) {
+        return 'Pelabuhan Tanjung Pelepas (PTP)';
+      }
+      
+      // Handle Petronas variations
+      if (clientName.toLowerCase().includes('petronas')) {
+        return 'PETRONAS';
+      }
+      
+      // Handle Siemens variations
+      if (clientName.toLowerCase().includes('siemens')) {
+        return 'Siemens Malaysia';
+      }
+      
+      // Handle general address-like strings
+      if (clientName.includes('JALAN') || clientName.includes('Jalan')) {
+        // Extract company name from address
+        const parts = clientName.split(',');
+        if (parts.length > 0) {
+          const firstPart = parts[0].trim();
+          
+          // Check if first part contains identifiable company info
+          if (firstPart.toLowerCase().includes('tanjung pelepas')) {
+            return 'Pelabuhan Tanjung Pelepas (PTP)';
+          }
+          
+          // For other addresses, try to extract meaningful company name
+          if (firstPart.length > 10 && firstPart.includes(' ')) {
+            // Likely an address, extract the location
+            const locationMatch = firstPart.match(/PELABUHAN\s+([^,]+)/i);
+            if (locationMatch) {
+              return `Pelabuhan ${locationMatch[1].trim()}`;
+            }
+          }
+        }
+      }
+      
+      // If it's a clean company name already, return as is
+      if (clientName.length < 50 && !clientName.includes('JALAN') && !clientName.includes(',')) {
+        return clientName;
+      }
+    }
+    
+    // Fallback: try to extract from ship_to
+    const shipTo = data.ship_to?.name || '';
+    if (shipTo.toLowerCase().includes('ptp')) {
+      return 'Pelabuhan Tanjung Pelepas (PTP)';
+    }
+    
+    // Final fallback
+    return clientName || 'Unknown Client';
+  }
+
+  /**
+   * Parse price from various formats
+   */
+  parsePrice(priceValue) {
+    if (!priceValue) return 0;
+    
+    // Handle string values like "1,400.00"
+    if (typeof priceValue === 'string') {
+      // Remove currency symbols, commas, and spaces
+      const cleaned = priceValue.replace(/[^0-9.-]/g, '');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    
+    // Handle numeric values
+    if (typeof priceValue === 'number') {
+      return priceValue;
+    }
+    
+    return 0;
+  }
+
+  /**
+   * Clean and shorten product names
+   */
+  cleanProductName(productName) {
+    if (!productName) return '';
+    
+    // Remove excessive capitalization and clean up
+    let cleaned = productName.trim();
+    
+    // Handle TELTONIKA products specifically
+    if (cleaned.toLowerCase().includes('teltonika')) {
+      // Extract key information
+      const model = cleaned.match(/RUT\d+/i);
+      const connectivity = cleaned.match(/(LTE|4G|3G|2G|WIFI|VPN)/gi);
+      
+      if (model) {
+        let shortName = `TELTONIKA ${model[0]}`;
+        if (connectivity && connectivity.length > 0) {
+          shortName += ` (${connectivity.slice(0, 3).join('/')})`;
+        }
+        return shortName;
+      }
+    }
+    
+    // General cleaning for other products
+    if (cleaned.length > 80) {
+      // Truncate very long names but keep important keywords
+      const keywords = ['ROUTER', 'MODEM', 'SWITCH', 'GATEWAY', 'CONTROLLER', 'SENSOR', 'PUMP', 'VALVE'];
+      const foundKeywords = keywords.filter(keyword => 
+        cleaned.toUpperCase().includes(keyword)
+      );
+      
+      if (foundKeywords.length > 0) {
+        const truncated = cleaned.substring(0, 60);
+        return `${truncated}... (${foundKeywords.join('/')})`;
+      } else {
+        return cleaned.substring(0, 80) + '...';
+      }
+    }
+    
+    return cleaned;
+  }
+
+  /**
+   * Categorize products based on description
+   */
+  categorizeProduct(description) {
+    if (!description) return 'General';
+    
+    const desc = description.toLowerCase();
+    
+    // Networking equipment
+    if (desc.includes('router') || desc.includes('modem') || desc.includes('wifi') || 
+        desc.includes('ethernet') || desc.includes('switch') || desc.includes('gateway')) {
+      return 'Networking Equipment';
+    }
+    
+    // Industrial automation
+    if (desc.includes('controller') || desc.includes('plc') || desc.includes('hmi') ||
+        desc.includes('automation') || desc.includes('industrial')) {
+      return 'Industrial Automation';
+    }
+    
+    // Power and electrical
+    if (desc.includes('power') || desc.includes('electrical') || desc.includes('transformer') ||
+        desc.includes('relay') || desc.includes('circuit')) {
+      return 'Electrical Components';
+    }
+    
+    // Mechanical
+    if (desc.includes('pump') || desc.includes('valve') || desc.includes('bearing') ||
+        desc.includes('motor') || desc.includes('gear')) {
+      return 'Mechanical Components';
+    }
+    
+    // Sensors and instruments
+    if (desc.includes('sensor') || desc.includes('transmitter') || desc.includes('gauge') ||
+        desc.includes('meter') || desc.includes('monitor')) {
+      return 'Sensors & Instrumentation';
+    }
+    
+    return 'General';
+  }
   /**
    * Process generic/unknown document type with enhanced fallback
    */
