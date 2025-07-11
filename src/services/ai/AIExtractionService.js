@@ -196,38 +196,86 @@ class ChineseSupplierPIExtractor {
    * Extract products with Chinese supplier naming
    */
   static extractChineseProducts(data) {
-    // Look for table-like structures
-    if (data.items && Array.isArray(data.items)) {
-      return data.items.map((item, index) => this.mapChineseProduct(item, index));
+    console.log('Extracting Chinese products from data:', data);
+    console.log('Available keys:', Object.keys(data));
+    
+    // Look for table-like structures in multiple locations
+    let itemsArray = null;
+    
+    // Check data.items first
+    if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+      console.log('Found items in data.items:', data.items.length);
+      itemsArray = data.items;
+    }
+    // Check data.products
+    else if (data.products && Array.isArray(data.products) && data.products.length > 0) {
+      console.log('Found items in data.products:', data.products.length);
+      itemsArray = data.products;
+    }
+    // Check nested invoice.items
+    else if (data.invoice && data.invoice.items && Array.isArray(data.invoice.items) && data.invoice.items.length > 0) {
+      console.log('Found items in data.invoice.items:', data.invoice.items.length);
+      itemsArray = data.invoice.items;
+    }
+    // Check nested invoice.products
+    else if (data.invoice && data.invoice.products && Array.isArray(data.invoice.products) && data.invoice.products.length > 0) {
+      console.log('Found items in data.invoice.products:', data.invoice.products.length);
+      itemsArray = data.invoice.products;
+    }
+    // Check if items are at root level with different key names
+    else {
+      const possibleKeys = ['line_items', 'product_list', 'item_list', 'goods', 'merchandise'];
+      for (const key of possibleKeys) {
+        if (data[key] && Array.isArray(data[key]) && data[key].length > 0) {
+          console.log(`Found items in data.${key}:`, data[key].length);
+          itemsArray = data[key];
+          break;
+        }
+      }
     }
     
-    if (data.products && Array.isArray(data.products)) {
-      return data.products.map((item, index) => this.mapChineseProduct(item, index));
+    if (!itemsArray || !Array.isArray(itemsArray) || itemsArray.length === 0) {
+      console.warn('No items found in any location. Available data:', JSON.stringify(data, null, 2));
+      return [];
     }
     
-    return [];
+    console.log('Processing items array:', itemsArray);
+    const mappedProducts = itemsArray.map((item, index) => this.mapChineseProduct(item, index));
+    console.log('Mapped products:', mappedProducts);
+    
+    return mappedProducts;
   }
   
   /**
    * Map Chinese product data
    */
   static mapChineseProduct(item, index) {
-    return {
+    console.log(`Mapping product ${index + 1}:`, item);
+    
+    const mappedItem = {
       id: `item_${index + 1}`,
-      productCode: item.model || item.part_number || item.product_code || item.code || '',
-      partNumber: item.model || item.part_number || item.product_code || '',
-      productName: item.description || item.product_name || item.name || item.specification || '',
-      brand: item.brand || '',
-      category: this.categorizeProduct(item.description || item.product_name || ''),
-      quantity: parseFloat(item.quantity || item.qty) || 0,
-      unit: item.unit || item.uom || 'pcs',
-      unitPrice: this.parseAmount(item.unit_price || item.price) || 0,
-      totalPrice: this.parseAmount(item.total_price || item.total || item.amount) || 0,
-      hsCode: item.hs_code || item.hscode || '',
-      leadTime: item.lead_time || item.delivery_time || '',
-      warranty: item.warranty || '',
-      specifications: item.specifications || item.spec || item.notes || ''
+      productCode: item.model || item.part_number || item.product_code || item.code || item.item_code || '',
+      partNumber: item.model || item.part_number || item.product_code || item.code || '',
+      productName: item.description || item.product_name || item.name || item.specification || item.item_name || item.title || '',
+      brand: item.brand || item.manufacturer || '',
+      category: this.categorizeProduct(item.description || item.product_name || item.name || ''),
+      quantity: parseFloat(item.quantity || item.qty || item.amount || item.pieces) || 0,
+      unit: item.unit || item.uom || item.measure || 'pcs',
+      unitPrice: this.parseAmount(item.unit_price || item.price || item.rate || item.cost) || 0,
+      totalPrice: this.parseAmount(item.total_price || item.total || item.amount || item.line_total) || 0,
+      hsCode: item.hs_code || item.hscode || item.harmonized_code || '',
+      leadTime: item.lead_time || item.delivery_time || item.shipping_time || '',
+      warranty: item.warranty || item.guarantee || '',
+      specifications: item.specifications || item.spec || item.notes || item.remarks || item.details || ''
     };
+    
+    // If total price is missing, calculate it
+    if (!mappedItem.totalPrice && mappedItem.quantity && mappedItem.unitPrice) {
+      mappedItem.totalPrice = mappedItem.quantity * mappedItem.unitPrice;
+    }
+    
+    console.log(`Mapped item ${index + 1}:`, mappedItem);
+    return mappedItem;
   }
   
   /**
