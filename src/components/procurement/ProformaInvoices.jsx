@@ -168,14 +168,14 @@ const ProformaInvoices = ({ showNotification }) => {
         
         if (piData) {
           console.log('Final PI data:', piData);
-          
-          // Validate and enhance the data
-          piData = await enhancePIData(piData, extractedData);
           console.log('ProformaInvoices - Final piData with items:', piData);
 console.log('ProformaInvoices - Items count:', piData.items?.length || 0);
 if (piData.items && piData.items.length > 0) {
   console.log('ProformaInvoices - Sample mapped item:', piData.items[0]);
 }
+          // Validate and enhance the data
+          piData = await enhancePIData(piData, extractedData);
+          
           setSelectedPI(piData);
           setShowModal(true);
           
