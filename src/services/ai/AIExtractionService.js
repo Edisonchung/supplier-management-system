@@ -1,5 +1,5 @@
 // src/services/ai/AIExtractionService.js
-// Main orchestrator for AI extraction - enhanced with Chinese supplier PI optimization
+// Main orchestrator for AI extraction - enhanced with Chinese supplier PI optimization and FIXED document detection
 
 import { ExtractionService } from './ExtractionService';
 import { DocumentDetector } from './DocumentDetector';
@@ -640,7 +640,7 @@ export class AIExtractionService {
   }
 
   /**
-   * Main extraction method with enhanced document type detection
+   * Main extraction method with ENHANCED document type detection
    */
   async extractFromFile(file) {
     try {
@@ -667,14 +667,98 @@ export class AIExtractionService {
       // Step 3: Extract raw data from file
       const rawData = await this.extractRawData(file);
       
-      // Step 3.5: Enhanced pre-processing with Chinese supplier detection
+      // DEBUGGING: Add debug information
+      console.log('=== DEBUGGING DOCUMENT CONTENT ===');
+      console.log('Raw data structure:', Object.keys(rawData));
+      if (rawData.data) {
+        console.log('rawData.data keys:', Object.keys(rawData.data));
+      }
+      console.log('Document text sample:', JSON.stringify(rawData).substring(0, 500));
+      
+      // Step 3.5: ENHANCED pre-processing with smart document type detection
       let preDetectedType = null;
       let confidence = 0.9;
       
       // Check for specific structures that indicate document type
       if (rawData.data?.purchase_order || rawData.purchase_order) {
-        preDetectedType = 'client_purchase_order';
-        console.log('Pre-detected as client purchase order based on structure');
+        // ENHANCED VALIDATION: Don't just trust the structure, validate the content
+        const textContent = JSON.stringify(rawData).toLowerCase();
+        
+        console.log('Found purchase_order structure, validating content...');
+        
+        // Check for supplier indicators (if these exist, it's likely a PI, not client PO)
+        const supplierIndicators = [
+          'proforma invoice',
+          'pi number',
+          'pi no',
+          'proforma',
+          'seller:',
+          'vendor:',
+          'supplier:',
+          'bank name:',
+          'swift code:',
+          'account number:',
+          'validity:',
+          'valid until',
+          'payment terms:',
+          'delivery terms:',
+          // Chinese supplier patterns
+          'co.,ltd',
+          'co ltd',
+          'technology',
+          'machinery',
+          'equipment',
+          'hydraulic',
+          'automation',
+          'environmental',
+          'electromechanical',
+          'jpmorgan chase',
+          'hong kong',
+          'manufacturing',
+          't/t',
+          'ddp',
+          'cfr',
+          'fob',
+          'beneficiary'
+        ];
+        
+        const hasSupplierIndicators = supplierIndicators.some(indicator => 
+          textContent.includes(indicator)
+        );
+        
+        // Check for client PO indicators
+        const clientPOIndicators = [
+          'bill to:',
+          'ship to:',
+          'buyer:',
+          'order date:',
+          'required by:',
+          'purchase order'
+        ];
+        
+        const hasClientPOIndicators = clientPOIndicators.some(indicator => 
+          textContent.includes(indicator)
+        );
+        
+        // Check specifically for Flow Solution as buyer (not seller)
+        const flowSolutionAsBuyer = textContent.includes('flow solution') && 
+          (textContent.includes('buyer') || textContent.includes('bill to'));
+        
+        console.log('Supplier indicators found:', hasSupplierIndicators);
+        console.log('Client PO indicators found:', hasClientPOIndicators);
+        console.log('Flow Solution as buyer:', flowSolutionAsBuyer);
+        
+        if (hasSupplierIndicators && !flowSolutionAsBuyer) {
+          preDetectedType = 'supplier_proforma';
+          console.log('✅ CORRECTED: Pre-detected as supplier proforma (was incorrectly marked as purchase_order)');
+        } else if (hasClientPOIndicators || flowSolutionAsBuyer) {
+          preDetectedType = 'client_purchase_order';
+          console.log('Pre-detected as client purchase order based on structure and content');
+        } else {
+          // Ambiguous - let document detector decide
+          preDetectedType = null;
+          console.log('Ambiguous purchase_order structure - will use document detector');
+        }
       } else if (rawData.data?.proforma_invoice || rawData.proforma_invoice) {
         preDetectedType = 'supplier_proforma';
         console.log('Pre-detected as supplier proforma based on structure');
@@ -682,34 +766,83 @@ export class AIExtractionService {
         preDetectedType = 'supplier_invoice';
         console.log('Pre-detected as supplier invoice based on structure');
       } else {
-        // Enhanced detection for Chinese supplier documents
+        // Enhanced detection for documents without clear structure
         const textContent = JSON.stringify(rawData).toLowerCase();
         
-        // Chinese supplier PI indicators
-        if (textContent.includes('proforma invoice') || 
-            textContent.includes('pi no') || 
-            textContent.includes('proforma') ||
-            this.hasChineseSupplierPatterns(textContent)) {
-          preDetectedType = 'supplier_proforma';
-          confidence = 0.9;
-          console.log('Pre-detected as Chinese supplier proforma invoice');
-        }
+        // Enhanced Chinese supplier PI indicators
+        const chineseSupplierPatterns = [
+          'proforma invoice',
+          'pi no',
+          'pi number',
+          'proforma',
+          'co.,ltd',
+          'co ltd',
+          'technology',
+          'machinery',
+          'equipment',
+          'hydraulic',
+          'automation',
+          'environmental',
+          'electromechanical',
+          'jpmorgan chase',
+          'hong kong',
+          'china',
+          'manufacturing',
+          't/t',
+          'ddp',
+          'cfr',
+          'fob',
+          'swift',
+          'beneficiary',
+          'bank name',
+          'account number',
+          'validity',
+          'payment terms',
+          'delivery terms'
+        ];
+        
+        const chineseSupplierScore = chineseSupplierPatterns.filter(pattern => 
+          textContent.includes(pattern)
+        ).length;
+        
         // Client PO indicators
-        else if (textContent.includes('purchase order') || 
-                 textContent.includes('po number') ||
-                 textContent.includes('flow solution')) {
+        const clientPOPatterns = [
+          'purchase order',
+          'bill to',
+          'ship to',
+          'buyer:',
+          'order date',
+          'required by'
+        ];
+        
+        const clientPOScore = clientPOPatterns.filter(pattern => 
+          textContent.includes(pattern)
+        ).length;
+        
+        console.log('Chinese supplier score:', chineseSupplierScore);
+        console.log('Client PO score:', clientPOScore);
+        
+        if (chineseSupplierScore >= 3) {
+          preDetectedType = 'supplier_proforma';
+          confidence = Math.min(0.6 + (chineseSupplierScore * 0.1), 0.95);
+          console.log(`Pre-detected as Chinese supplier proforma (score: ${chineseSupplierScore})`);
+        } else if (clientPOScore >= 2) {
           preDetectedType = 'client_purchase_order';
-          confidence = 0.9;
-          console.log('Pre-detected as client purchase order');
+          confidence = Math.min(0.6 + (clientPOScore * 0.1), 0.95);
+          console.log(`Pre-detected as client purchase order (score: ${clientPOScore})`);
+        } else {
+          console.log('No clear pre-detection - will use document detector');
         }
       }
+      
+      console.log('=== END DEBUG ===');
       
       // Step 4: Detect document type
       const docType = preDetectedType 
         ? { type: preDetectedType, confidence: confidence, preDetected: true }
         : DocumentDetector.detectDocumentType(rawData);
         
-      console.log('Detected document type:', docType.type, 'with confidence:', docType.confidence);
+      console.log('Final detected document type:', docType.type, 'with confidence:', docType.confidence);
       
       // Step 5: Enhanced processing based on document type
       let processedData;
@@ -985,28 +1118,23 @@ export class AIExtractionService {
     return results;
   }
 
-  // [Keep all existing supplier matching methods unchanged]
+  // Keep all existing supplier matching methods exactly the same...
   static async rerunSupplierMatching(data) {
     try {
       console.log('Re-running supplier matching for:', data.poNumber);
       
-      // Dynamically import SupplierMatcher to avoid circular dependencies
       const { SupplierMatcher } = await import('./SupplierMatcher');
       
-      // Ensure we have items to match
       if (!data.items || data.items.length === 0) {
         throw new Error('No items found in the purchase order');
       }
       
-      // Run the supplier matching algorithm
       const matchingResult = await SupplierMatcher.findMatches(data.items);
       
-      // Process the results to create a comprehensive sourcing plan
       const processedData = {
         ...data,
         items: matchingResult.itemMatches,
         sourcingPlan: {
-          // Transform recommended suppliers to the expected format
           recommendedSuppliers: matchingResult.recommendedSuppliers.map(supplier => ({
             supplierId: supplier.supplierId,
             supplierName: supplier.supplierName,
@@ -1017,19 +1145,13 @@ export class AIExtractionService {
             advantages: AIExtractionService.getSupplierAdvantages(supplier),
             matchedProducts: supplier.matchedProducts
           })),
-          
-          // Generate sourcing strategies
           sourcingStrategies: AIExtractionService.generateSourcingStrategies(data, matchingResult),
-          
-          // Cost analysis
           costAnalysis: {
             originalBudget: data.totalAmount || 0,
             bestCaseScenario: matchingResult.metrics.totalBestCost,
             potentialSavings: matchingResult.metrics.potentialSavings,
             savingsPercentage: `${matchingResult.metrics.potentialSavingsPercent.toFixed(1)}%`
           },
-          
-          // Timeline analysis
           timeline: {
             estimatedLeadTime: matchingResult.metrics.averageLeadTime,
             orderPlacementDeadline: AIExtractionService.calculateOrderDeadline(
@@ -1038,16 +1160,12 @@ export class AIExtractionService {
             ),
             criticalPath: AIExtractionService.identifyCriticalPath(matchingResult.itemMatches)
           },
-          
-          // Risk assessment
           riskAssessment: {
             supplierDiversity: matchingResult.metrics.supplierDiversity,
             itemsWithoutMatches: matchingResult.metrics.itemsWithoutMatches,
             singleSourceItems: AIExtractionService.identifySingleSourceItems(matchingResult.itemMatches),
             recommendations: AIExtractionService.generateRiskRecommendations(matchingResult.metrics)
           },
-          
-          // Overall quality metrics
           confidenceScore: AIExtractionService.calculateConfidenceScore(matchingResult.metrics),
           matchQuality: AIExtractionService.assessMatchQuality(matchingResult.metrics)
         },
@@ -1070,7 +1188,7 @@ export class AIExtractionService {
     }
   }
 
-  // [Keep all existing helper methods for supplier matching - unchanged]
+  // All existing helper methods remain exactly the same...
   static getSupplierAdvantages(supplier) {
     const advantages = [];
     
@@ -1096,7 +1214,6 @@ export class AIExtractionService {
   static generateSourcingStrategies(data, matchingResult) {
     const strategies = [];
     
-    // Single supplier consolidation strategy
     if (matchingResult.recommendedSuppliers.length > 0) {
       const topSupplier = matchingResult.recommendedSuppliers[0];
       if (topSupplier.itemCoveragePercent >= 70) {
@@ -1110,7 +1227,6 @@ export class AIExtractionService {
       }
     }
     
-    // Multi-supplier strategy
     if (matchingResult.recommendedSuppliers.length >= 3) {
       strategies.push({
         name: 'Multi-Supplier Distribution',
@@ -1121,7 +1237,6 @@ export class AIExtractionService {
       });
     }
     
-    // Hybrid strategy (always included)
     strategies.push({
       name: 'Hybrid Approach',
       description: 'Use primary supplier for 60-70% of items, secondary suppliers for specialized items',
@@ -1138,7 +1253,7 @@ export class AIExtractionService {
     
     const delivery = new Date(deliveryDate);
     const leadDays = AIExtractionService.parseLeadTimeToDays(leadTime);
-    const bufferDays = 3; // Safety buffer
+    const bufferDays = 3;
     
     const deadline = new Date(delivery);
     deadline.setDate(deadline.getDate() - leadDays - bufferDays);
@@ -1158,7 +1273,7 @@ export class AIExtractionService {
   }
 
   static parseLeadTimeToDays(leadTime) {
-    if (!leadTime) return 14; // Default 2 weeks
+    if (!leadTime) return 14;
     
     const match = leadTime.match(/(\d+)\s*(day|week|month)/i);
     if (!match) return 14;
@@ -1214,7 +1329,6 @@ export class AIExtractionService {
   static generateRiskRecommendations(metrics) {
     const recommendations = [];
     
-    // Check for items without matches
     if (metrics.itemsWithoutMatches > 0) {
       recommendations.push({
         type: 'warning',
@@ -1223,7 +1337,6 @@ export class AIExtractionService {
       });
     }
     
-    // Check for limited supplier diversity
     if (metrics.supplierDiversity < 3) {
       recommendations.push({
         type: 'caution',
@@ -1232,7 +1345,6 @@ export class AIExtractionService {
       });
     }
     
-    // Check for low match rate
     const matchRate = metrics.itemsWithMatches / (metrics.itemsWithMatches + metrics.itemsWithoutMatches);
     if (matchRate < 0.8) {
       recommendations.push({
@@ -1242,7 +1354,6 @@ export class AIExtractionService {
       });
     }
     
-    // Suggest optimization for high savings
     if (metrics.potentialSavingsPercent > 15) {
       recommendations.push({
         type: 'info',
@@ -1255,27 +1366,23 @@ export class AIExtractionService {
   }
 
   static calculateConfidenceScore(metrics) {
-    let score = 0.5; // Base score
+    let score = 0.5;
     
-    // Factor in match coverage (30% weight)
     const matchCoverage = metrics.itemsWithMatches / 
       (metrics.itemsWithMatches + metrics.itemsWithoutMatches);
     score += matchCoverage * 0.3;
     
-    // Factor in supplier diversity (20% weight)
     if (metrics.supplierDiversity >= 5) score += 0.2;
     else if (metrics.supplierDiversity >= 3) score += 0.15;
     else if (metrics.supplierDiversity >= 1) score += 0.1;
     
-    // Factor in average matches per item (10% weight)
     if (metrics.averageMatchesPerItem >= 3) score += 0.1;
     else if (metrics.averageMatchesPerItem >= 2) score += 0.07;
     else if (metrics.averageMatchesPerItem >= 1) score += 0.05;
     
-    // Factor in savings potential (5% weight)
     if (metrics.potentialSavingsPercent > 10) score += 0.05;
     
-    return Math.min(score, 0.95); // Cap at 0.95
+    return Math.min(score, 0.95);
   }
 
   static assessMatchQuality(metrics) {
@@ -1320,6 +1427,7 @@ export class AIExtractionService {
         'Multi-format extraction (PDF, Images, Excel, Email)',
         'Automatic document type detection',
         'Enhanced Chinese supplier PI optimization',
+        'Smart document type correction',
         'Pre-detection for common structures',
         'Duplicate detection',
         'Data validation',
