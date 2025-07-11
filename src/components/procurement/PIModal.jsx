@@ -42,7 +42,6 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   console.log('addSupplier:', typeof addSupplier, addSupplier ? 'Present' : 'Missing');
   console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
   console.log('=== End Props Debug ===');
-  const [formData, setFormData] = useState({...});
     const [formData, setFormData] = useState({
     piNumber: '',
     supplierId: '',
@@ -231,17 +230,19 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
         receivingNotes: item.receivingNotes || ''
       }));
 
-      // ✅ ADD THIS LINE - Auto-fix price calculations
+     // ✅ Auto-fix price calculations
       itemsWithIds = autoFixPriceCalculations(itemsWithIds);
       
       setSelectedProducts(itemsWithIds);
       console.log('Set selected products:', itemsWithIds);
+      
+      // ✅ Recalculate totals after fixing prices
       const itemsSubtotal = itemsWithIds.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0);
-setFormData(prev => ({
-  ...prev,
-  subtotal: itemsSubtotal,
-  totalAmount: itemsSubtotal + (parseFloat(prev.shipping) || 0) + (parseFloat(prev.tax) || 0) - (parseFloat(prev.discount) || 0)
-}));
+      setFormData(prev => ({
+        ...prev,
+        subtotal: itemsSubtotal,
+        totalAmount: itemsSubtotal + (parseFloat(prev.shipping) || 0) + (parseFloat(prev.tax) || 0) - (parseFloat(prev.discount) || 0)
+      }));
       // Pre-populate supplier creation form if supplier data is extracted but not matched
       if (proformaInvoice.supplier && !proformaInvoice.supplierId) {
         const supplierInfo = proformaInvoice.supplier;
