@@ -2,6 +2,8 @@
 // Updated with enhanced matching features while preserving existing functionality
 
 import React, { useState } from 'react';
+import { SupplierMatcher } from '../../services/ai/SupplierMatcher';
+import { toast } from 'react-hot-toast';
 import { 
   Building2, 
   TrendingDown, 
@@ -38,12 +40,28 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
     setExpandedItems(newExpanded);
   };
 
-  const selectSupplier = (itemNumber, supplierId) => {
-    setSelectedSuppliers(prev => ({
-      ...prev,
-      [itemNumber]: supplierId
-    }));
-  };
+  const selectSupplier = (itemNumber, supplierId, supplierMatch = null) => {
+  setSelectedSuppliers(prev => ({
+    ...prev,
+    [itemNumber]: supplierId
+  }));
+
+  // 🆕 NEW: Record selection for AI learning
+  if (supplierMatch) {
+    try {
+      const item = items.find(i => i.itemNumber === itemNumber);
+      if (item) {
+        SupplierMatcher.recordSelection(item, supplierMatch);
+        toast.success('Selection recorded! 🧠 AI will learn from this choice.', { 
+          duration: 3000,
+          icon: '🎯'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to record selection:', error);
+    }
+  }
+};
 
   if (!items || items.length === 0) {
     return (
@@ -356,7 +374,8 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                             ? 'border-blue-500 bg-blue-50'
                             : 'border-gray-200 hover:border-gray-300 bg-gray-50'
                         }`}
-                        onClick={() => selectSupplier(item.itemNumber, match.supplierId)}
+                        onClick={() => selectSupplier(item.itemNumber, match.supplierId, match)}
+                        
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
