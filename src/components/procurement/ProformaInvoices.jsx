@@ -538,7 +538,7 @@ items: (extractedData.products || extractedData.items || []).map((item, index) =
     
     // Ensure all items have valid data
     piData.items = piData.items.filter(item => 
-      item.productName && item.quantity > 0
+item.productCode && item.quantity > 0
     ).map(item => ({
       ...item,
       totalPrice: item.totalPrice || (item.quantity * item.unitPrice)
