@@ -1,7 +1,7 @@
 // src/components/supplier-matching/SupplierMatchingDisplay.jsx
-// Updated with enhanced matching features while preserving existing functionality
+// Updated with enhanced matching features and Save Selections functionality
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SupplierMatcher } from '../../services/ai/SupplierMatcher';
 import { toast } from 'react-hot-toast';
 import { 
@@ -19,16 +19,55 @@ import {
   Truck,
   Shield,
   Info,
-  Brain,     // 🆕 NEW IMPORT
-  Zap,       // 🆕 NEW IMPORT
-  Target,    // 🆕 NEW IMPORT
-  CreditCard // 🆕 NEW IMPORT (was missing from your imports)
+  Brain,     
+  Zap,       
+  Target,    
+  CreditCard,
+  Save,      // 🆕 NEW IMPORT
+  Download,  // 🆕 NEW IMPORT
+  History    // 🆕 NEW IMPORT
 } from 'lucide-react';
 
-const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
+const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, onPOUpdate }) => {
   const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedSuppliers, setSelectedSuppliers] = useState({});
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'items', 'suppliers'
+  const [activeTab, setActiveTab] = useState('overview');
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // 🆕 Load existing selections when component mounts
+  useEffect(() => {
+    if (purchaseOrder && items) {
+      loadExistingSelections();
+    }
+  }, [purchaseOrder, items]);
+
+  // 🆕 Track unsaved changes
+  useEffect(() => {
+    setHasUnsavedChanges(Object.keys(selectedSuppliers).length > 0);
+  }, [selectedSuppliers]);
+
+  // 🆕 Load previously saved supplier selections
+  const loadExistingSelections = () => {
+    const selections = {};
+    
+    items.forEach(item => {
+      // Check if item already has a selected supplier
+      if (item.selectedSupplier) {
+        selections[item.itemNumber] = item.selectedSupplier.supplierId || item.selectedSupplier.id;
+      }
+      // Also check in the supplierMatches for previously selected ones
+      else if (item.supplierMatches) {
+        const previouslySelected = item.supplierMatches.find(match => match.isSelected);
+        if (previouslySelected) {
+          selections[item.itemNumber] = previouslySelected.supplierId;
+        }
+      }
+    });
+    
+    setSelectedSuppliers(selections);
+    console.log('📋 Loaded existing selections:', Object.keys(selections).length, 'items');
+  };
 
   const toggleItemExpansion = (itemNumber) => {
     const newExpanded = new Set(expandedItems);
@@ -41,27 +80,256 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
   };
 
   const selectSupplier = (itemNumber, supplierId, supplierMatch = null) => {
-  setSelectedSuppliers(prev => ({
-    ...prev,
-    [itemNumber]: supplierId
-  }));
+    setSelectedSuppliers(prev => ({
+      ...prev,
+      [itemNumber]: supplierId
+    }));
 
-  // 🆕 NEW: Record selection for AI learning
-  if (supplierMatch) {
-    try {
-      const item = items.find(i => i.itemNumber === itemNumber);
-      if (item) {
-        SupplierMatcher.recordSelection(item, supplierMatch);
-        toast.success('Selection recorded! 🧠 AI will learn from this choice.', { 
-          duration: 3000,
-          icon: '🎯'
-        });
+    // Record selection for AI learning
+    if (supplierMatch) {
+      try {
+        const item = items.find(i => i.itemNumber === itemNumber);
+        if (item) {
+          SupplierMatcher.recordSelection(item, supplierMatch);
+          toast.success('Selection recorded! 🧠 AI will learn from this choice.', { 
+            duration: 3000,
+            icon: '🎯'
+          });
+        }
+      } catch (error) {
+        console.error('Failed to record selection:', error);
       }
-    } catch (error) {
-      console.error('Failed to record selection:', error);
     }
-  }
-};
+  };
+
+  // 🆕 Save all supplier selections to PO
+  const saveSupplierSelections = async () => {
+    if (Object.keys(selectedSuppliers).length === 0) {
+      toast.error('No supplier selections to save');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      console.log('💾 Saving supplier selections...');
+
+      // Create updated items with supplier selections
+      const updatedItems = items.map(item => {
+        const selectedSupplierId = selectedSuppliers[item.itemNumber];
+        
+        if (selectedSupplierId && item.supplierMatches) {
+          // Find the selected supplier match
+          const selectedMatch = item.supplierMatches.find(
+            match => match.supplierId === selectedSupplierId
+          );
+
+          if (selectedMatch) {
+            return {
+              ...item,
+              selectedSupplier: {
+                supplierId: selectedMatch.supplierId,
+                supplierName: selectedMatch.supplierName,
+                productId: selectedMatch.productId,
+                productName: selectedMatch.productName,
+                unitPrice: selectedMatch.pricing.unitPrice,
+                totalPrice: selectedMatch.pricing.unitPrice * item.quantity,
+                leadTime: selectedMatch.pricing.leadTime,
+                confidence: selectedMatch.confidence || Math.round(selectedMatch.matchScore * 100),
+                matchType: selectedMatch.matchType,
+                selectedAt: new Date().toISOString(),
+                savings: selectedMatch.savings || 0
+              },
+              // Mark this supplier as selected in the matches
+              supplierMatches: item.supplierMatches.map(match => ({
+                ...match,
+                isSelected: match.supplierId === selectedSupplierId
+              }))
+            };
+          }
+        }
+
+        return item;
+      });
+
+      // Calculate selection summary
+      const selectionSummary = {
+        totalItems: items.length,
+        selectedItems: Object.keys(selectedSuppliers).length,
+        unselectedItems: items.length - Object.keys(selectedSuppliers).length,
+        totalSavings: updatedItems.reduce((sum, item) => 
+          sum + (item.selectedSupplier?.savings || 0), 0
+        ),
+        averageConfidence: Math.round(
+          updatedItems.filter(item => item.selectedSupplier)
+            .reduce((sum, item) => sum + (item.selectedSupplier.confidence || 0), 0) /
+          Object.keys(selectedSuppliers).length
+        ),
+        lastUpdated: new Date().toISOString()
+      };
+
+      // Create updated PO object
+      const updatedPO = {
+        ...purchaseOrder,
+        items: updatedItems,
+        supplierSelections: {
+          ...selectionSummary,
+          selections: Object.keys(selectedSuppliers).map(itemNumber => ({
+            itemNumber,
+            supplierId: selectedSuppliers[itemNumber],
+            selectedAt: new Date().toISOString()
+          }))
+        },
+        status: 'suppliers_selected',
+        lastModified: new Date().toISOString()
+      };
+
+      // Save to localStorage (you can replace with Firestore later)
+      const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+      const updatedPOs = savedPOs.map(po => 
+        po.id === purchaseOrder.id ? updatedPO : po
+      );
+      localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
+
+      // Call parent update function if provided
+      if (onPOUpdate) {
+        onPOUpdate(updatedPO);
+      }
+
+      // Clear unsaved changes
+      setHasUnsavedChanges(false);
+
+      // Success notification
+      toast.success(
+        `Saved ${Object.keys(selectedSuppliers).length} supplier selections! 💾`,
+        { 
+          duration: 4000,
+          icon: '✅'
+        }
+      );
+
+      console.log('✅ Supplier selections saved successfully:', selectionSummary);
+
+    } catch (error) {
+      console.error('❌ Failed to save supplier selections:', error);
+      toast.error('Failed to save selections. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 🆕 Clear all selections
+  const clearAllSelections = () => {
+    setSelectedSuppliers({});
+    setHasUnsavedChanges(false);
+    toast.info('All selections cleared', { duration: 2000 });
+  };
+
+  // 🆕 Export selections as CSV
+  const exportSelections = () => {
+    if (Object.keys(selectedSuppliers).length === 0) {
+      toast.error('No selections to export');
+      return;
+    }
+
+    try {
+      const csvData = generateSelectionsCSV();
+      const blob = new Blob([csvData], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `supplier-selections-${purchaseOrder?.orderNumber || 'unknown'}-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.success('Selections exported to CSV!');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export selections');
+    }
+  };
+
+  // 🆕 Generate CSV data for selections
+  const generateSelectionsCSV = () => {
+    const headers = [
+      'Item Number',
+      'Product Code', 
+      'Description',
+      'Quantity',
+      'Original Price',
+      'Selected Supplier',
+      'Selected Price',
+      'Total Cost',
+      'Savings %',
+      'Lead Time',
+      'Confidence',
+      'Match Type',
+      'Selection Date'
+    ];
+
+    const rows = items
+      .filter(item => selectedSuppliers[item.itemNumber])
+      .map(item => {
+        const selectedMatch = item.supplierMatches?.find(
+          match => match.supplierId === selectedSuppliers[item.itemNumber]
+        );
+
+        return [
+          item.itemNumber,
+          item.productCode || '',
+          item.productName || item.description,
+          item.quantity,
+          `$${item.unitPrice?.toFixed(2) || '0.00'}`,
+          selectedMatch?.supplierName || '',
+          `$${selectedMatch?.pricing.unitPrice?.toFixed(2) || '0.00'}`,
+          `$${((selectedMatch?.pricing.unitPrice || 0) * item.quantity).toFixed(2)}`,
+          `${selectedMatch?.savings?.toFixed(1) || '0'}%`,
+          selectedMatch?.pricing.leadTime || '',
+          `${selectedMatch?.confidence || Math.round((selectedMatch?.matchScore || 0) * 100)}%`,
+          selectedMatch?.matchType || '',
+          new Date().toISOString().split('T')[0]
+        ];
+      });
+
+    return [headers, ...rows]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+  };
+
+  // 🆕 Get selection statistics
+  const getSelectionStats = () => {
+    const selectedCount = Object.keys(selectedSuppliers).length;
+    const totalCount = items.length;
+    const selectedItems = items.filter(item => selectedSuppliers[item.itemNumber]);
+    
+    const totalSavings = selectedItems.reduce((sum, item) => {
+      const selectedMatch = item.supplierMatches?.find(
+        match => match.supplierId === selectedSuppliers[item.itemNumber]
+      );
+      return sum + (selectedMatch?.savings || 0);
+    }, 0);
+
+    const averageConfidence = selectedItems.length > 0
+      ? selectedItems.reduce((sum, item) => {
+          const selectedMatch = item.supplierMatches?.find(
+            match => match.supplierId === selectedSuppliers[item.itemNumber]
+          );
+          return sum + (selectedMatch?.confidence || Math.round((selectedMatch?.matchScore || 0) * 100));
+        }, 0) / selectedItems.length
+      : 0;
+
+    return {
+      selectedCount,
+      totalCount,
+      percentage: Math.round((selectedCount / totalCount) * 100),
+      totalSavings,
+      averageConfidence: Math.round(averageConfidence)
+    };
+  };
+
+  const stats = getSelectionStats();
 
   if (!items || items.length === 0) {
     return (
@@ -111,20 +379,17 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
       {/* Overview Tab */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* 🆕 ENHANCED Metrics Summary */}
+          {/* Enhanced Metrics Summary */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6">
-            {/* 🆕 ENHANCED HEADER with AI indicators */}
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Supplier Matching Summary</h3>
               <div className="flex items-center gap-2">
-                {/* 🆕 Match rate indicator */}
                 {metrics?.matchRate && (
                   <span className="text-sm font-medium text-green-600">
                     {metrics.matchRate}% Match Rate (Enhanced)
                   </span>
                 )}
                 
-                {/* 🆕 AI improvements indicator */}
                 {metrics?.improvements?.synonymMatchCount > 0 && (
                   <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
                     🧠 {metrics.improvements.synonymMatchCount} AI matches
@@ -155,7 +420,6 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                 </p>
               </div>
               
-              {/* 🆕 ENHANCED: AI Synonym Matches */}
               <div className="bg-white rounded-lg p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <Brain className="text-purple-600 w-6 h-6" />
@@ -167,7 +431,6 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                 </p>
               </div>
               
-              {/* 🆕 ENHANCED: High Confidence */}
               <div className="bg-white rounded-lg p-4 shadow-sm">
                 <Zap className="text-orange-600 w-6 h-6 mb-2" />
                 <p className="text-sm text-gray-600">High Confidence</p>
@@ -177,7 +440,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
               </div>
             </div>
 
-            {/* 🆕 AI Enhancement Summary */}
+            {/* AI Enhancement Summary */}
             {metrics?.improvements && (
               <div className="mt-6 p-4 bg-white rounded-lg border border-purple-100">
                 <h4 className="text-sm font-semibold text-purple-900 mb-2 flex items-center gap-2">
@@ -308,9 +571,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                   <div className="flex items-center gap-2">
                     {item.supplierMatches && item.supplierMatches.length > 0 ? (
                       <>
-                        {/* 🆕 ENHANCED: Show match type and confidence */}
                         <div className="flex items-center gap-2">
-                          {/* Match type indicator */}
                           {item.supplierMatches[0].matchType === 'synonym_match' && (
                             <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
                               🧠 AI
@@ -322,7 +583,6 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                             </span>
                           )}
                           
-                          {/* Confidence score */}
                           {item.supplierMatches[0].confidence && (
                             <span className={`text-xs px-2 py-1 rounded ${
                               item.supplierMatches[0].confidence >= 90 ? 'bg-green-100 text-green-700' :
@@ -333,7 +593,6 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                             </span>
                           )}
                           
-                          {/* Learning indicator */}
                           {item.supplierMatches[0].isLearned && (
                             <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
                               📚
@@ -375,7 +634,6 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                             : 'border-gray-200 hover:border-gray-300 bg-gray-50'
                         }`}
                         onClick={() => selectSupplier(item.itemNumber, match.supplierId, match)}
-                        
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -387,9 +645,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                                 </span>
                               )}
                               
-                              {/* 🆕 ENHANCED: Match details */}
                               <div className="flex items-center gap-2">
-                                {/* Match type badge */}
                                 {match.matchType === 'synonym_match' && (
                                   <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
                                     🧠 AI Synonym
@@ -406,7 +662,6 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                                   </span>
                                 )}
                                 
-                                {/* Confidence or match score */}
                                 <span className="text-sm text-gray-500">
                                   {match.confidence ? `${match.confidence}%` : `Match: ${(match.matchScore * 100).toFixed(0)}%`}
                                 </span>
@@ -456,7 +711,6 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
                               </span>
                             </div>
 
-                            {/* 🆕 ENHANCED: Learning note */}
                             {match.learningNote && (
                               <div className="mt-2 text-xs text-indigo-600 italic">
                                 💡 {match.learningNote}
@@ -600,6 +854,121 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics }) => {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 🆕 Enhanced Action Buttons Section */}
+      {purchaseOrder && (
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Supplier Selection Actions</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {stats.selectedCount} of {stats.totalCount} items have supplier selections
+                {stats.selectedCount > 0 && (
+                  <span className="ml-2 text-green-600 font-medium">
+                    ({stats.percentage}% complete)
+                  </span>
+                )}
+              </p>
+            </div>
+            
+            {/* Selection Status Indicator */}
+            {hasUnsavedChanges && (
+              <div className="flex items-center gap-2 text-orange-600">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-sm font-medium">Unsaved changes</span>
+              </div>
+            )}
+          </div>
+
+          {/* Selection Statistics */}
+          {stats.selectedCount > 0 && (
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="text-center">
+                  <div className="text-lg font-bold text-green-600">{stats.selectedCount}</div>
+                  <div className="text-gray-600">Selected</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-bold text-blue-600">{stats.totalSavings.toFixed(1)}%</div>
+                  <div className="text-gray-600">Avg Savings</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-bold text-purple-600">{stats.averageConfidence}%</div>
+                  <div className="text-gray-600">Avg Confidence</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-bold text-orange-600">{stats.totalCount - stats.selectedCount}</div>
+                  <div className="text-gray-600">Remaining</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Save Selections Button */}
+            <button
+              onClick={saveSupplierSelections}
+              disabled={isSaving || Object.keys(selectedSuppliers).length === 0}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
+                Object.keys(selectedSuppliers).length > 0
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Save className="w-4 h-4" />
+              {isSaving ? 'Saving...' : `Save ${stats.selectedCount} Selections`}
+            </button>
+
+            {/* Export CSV Button */}
+            <button
+              onClick={exportSelections}
+              disabled={Object.keys(selectedSuppliers).length === 0}
+              className={`flex items-center gap-2 px-4 py-3 border rounded-lg transition-colors ${
+                Object.keys(selectedSuppliers).length > 0
+                  ? 'border-blue-300 text-blue-700 hover:bg-blue-50'
+                  : 'border-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
+
+            {/* Clear All Button */}
+            <button
+              onClick={clearAllSelections}
+              disabled={Object.keys(selectedSuppliers).length === 0}
+              className={`flex items-center gap-2 px-4 py-3 border rounded-lg transition-colors ${
+                Object.keys(selectedSuppliers).length > 0
+                  ? 'border-red-300 text-red-700 hover:bg-red-50'
+                  : 'border-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <X className="w-4 h-4" />
+              Clear All
+            </button>
+
+            {/* Selection History Button */}
+            <button
+              onClick={() => {
+                const history = JSON.parse(localStorage.getItem('supplierSelectionHistory') || '[]');
+                console.log('📚 Selection History:', history);
+                toast.info(`Found ${history.length} historical selections in console`);
+              }}
+              className="flex items-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <History className="w-4 h-4" />
+              View History ({JSON.parse(localStorage.getItem('supplierSelectionHistory') || '[]').length})
+            </button>
+          </div>
+
+          {/* Help Text */}
+          <div className="mt-4 text-xs text-gray-500">
+            💡 <strong>Tip:</strong> Selections are automatically recorded for AI learning. 
+            Save your selections to update the purchase order and track progress.
+          </div>
         </div>
       )}
 
