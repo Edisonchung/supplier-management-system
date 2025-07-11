@@ -171,7 +171,11 @@ const ProformaInvoices = ({ showNotification }) => {
           
           // Validate and enhance the data
           piData = await enhancePIData(piData, extractedData);
-          
+          console.log('ProformaInvoices - Final piData with items:', piData);
+console.log('ProformaInvoices - Items count:', piData.items?.length || 0);
+if (piData.items && piData.items.length > 0) {
+  console.log('ProformaInvoices - Sample mapped item:', piData.items[0]);
+}
           setSelectedPI(piData);
           setShowModal(true);
           
@@ -405,27 +409,32 @@ const ProformaInvoices = ({ showNotification }) => {
       
       // Items from PO (as requirements)
       items: (extractedData.products || extractedData.items || []).map((item, index) => ({
-        id: `item-${Date.now()}-${index}`,
-        productCode: item.productCode || item.partNumber || '',
-        partNumber: item.partNumber || item.productCode || '',
-        productName: item.productName || item.description || '',
-        brand: item.brand || '',
-        category: item.category || 'General',
-        quantity: parseFloat(item.quantity) || 0,
-        unit: item.unit || 'pcs',
-        unitPrice: 0, // To be filled by supplier
-        totalPrice: 0, // To be calculated
-        leadTime: item.leadTime || '',
-        warranty: item.warranty || '',
-        specifications: item.specifications || item.notes || '',
-        notes: item.specifications || item.notes || '',
-        // Receiving tracking fields
-        received: false,
-        receivedQty: 0,
-        receivedDate: '',
-        hasDiscrepancy: false,
-        discrepancyReason: ''
-      })),
+  id: `item-${Date.now()}-${index}`,
+  productCode: item
+
+// Products/Items - ensure proper mapping with COMPLETE fields
+items: (extractedData.products || extractedData.items || []).map((item, index) => {
+  console.log(`Mapping ProformaInvoices item ${index + 1}:`, item);
+  return {
+    id: `item-${Date.now()}-${index}`,
+    productCode: item.productCode || item.partNumber || item.part_number || '',
+    productName: item.productName || item.description || item.product_description || item.name || '',
+    quantity: parseInt(item.quantity) || 1,
+    unitPrice: parseFloat(item.unitPrice || item.unit_price || item.price) || 0,
+    totalPrice: parseFloat(item.totalPrice || item.total_price || item.total) || 0,
+    unit: item.unit || item.uom || 'pcs',
+    leadTime: item.leadTime || item.lead_time || '',
+    warranty: item.warranty || '',
+    notes: item.notes || item.specifications || '',
+    // Additional fields for receiving tracking
+    received: false,
+    receivedQty: 0,
+    receivedDate: '',
+    hasDiscrepancy: false,
+    discrepancyReason: '',
+    receivingNotes: ''
+  };
+}),
       
       // Default values for new PI
       currency: extractedData.currency || 'USD',
