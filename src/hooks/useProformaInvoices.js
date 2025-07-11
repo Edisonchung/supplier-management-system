@@ -1,6 +1,12 @@
 // src/hooks/useProformaInvoices.js
 import { useState, useEffect } from 'react';
-import { mockFirebase } from '../services/firebase';
+import { 
+  getProformaInvoices, 
+  addProformaInvoice as addPI, 
+  updateProformaInvoice as updatePI,
+  deleteProformaInvoice as deletePI,
+  updateDeliveryStatus as updateStatus
+} from '../services/firebase';
 
 export const useProformaInvoices = () => {
   const [proformaInvoices, setProformaInvoices] = useState([]);
@@ -11,12 +17,17 @@ export const useProformaInvoices = () => {
     setLoading(true);
     setError(null);
     try {
-      const snapshot = await mockFirebase.firestore.collection('proformaInvoices').get();
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setProformaInvoices(data);
+      const result = await getProformaInvoices();
+      if (result.success) {
+        setProformaInvoices(result.data);
+      } else {
+        setError(result.error || 'Failed to load proforma invoices');
+        setProformaInvoices([]); // Fallback to empty array
+      }
     } catch (error) {
       console.error('Error loading proforma invoices:', error);
       setError('Failed to load proforma invoices');
+      setProformaInvoices([]); // Fallback to empty array
     } finally {
       setLoading(false);
     }
@@ -24,18 +35,19 @@ export const useProformaInvoices = () => {
 
   const addProformaInvoice = async (piData) => {
     try {
-      const newPI = {
-        ...piData,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      console.log('Hook: Adding PI with data:', piData);
       
-      const docRef = await mockFirebase.firestore.collection('proformaInvoices').add(newPI);
+      const result = await addPI(piData);
       
-      // Refresh the list
-      await loadProformaInvoices();
+      console.log('Hook: Add PI result:', result);
       
-      return { success: true, id: docRef.id };
+      if (result.success) {
+        // Immediately refresh the list to show the new PI
+        await loadProformaInvoices();
+        return { success: true, data: result.data };
+      } else {
+        return { success: false, error: result.error || 'Failed to add PI' };
+      }
     } catch (error) {
       console.error('Error adding proforma invoice:', error);
       return { success: false, error: error.message };
@@ -44,6 +56,8 @@ export const useProformaInvoices = () => {
 
   const updateProformaInvoice = async (id, piData) => {
     try {
+      console.log('Hook: Updating PI:', id, piData);
+      
       // Check if this is a stock receiving update
       if (piData.items && piData.items.some(item => item.receivedQty !== undefined)) {
         // Calculate if all items are fully received
@@ -63,13 +77,17 @@ export const useProformaInvoices = () => {
         piData.hasDiscrepancy = hasDiscrepancy;
       }
       
-      await mockFirebase.firestore.collection('proformaInvoices').doc(id).update({
-        ...piData,
-        updatedAt: new Date().toISOString()
-      });
+      const result = await updatePI(id, piData);
       
-      await loadProformaInvoices();
-      return { success: true };
+      console.log('Hook: Update PI result:', result);
+      
+      if (result.success) {
+        // Immediately refresh the list to show the updated PI
+        await loadProformaInvoices();
+        return { success: true };
+      } else {
+        return { success: false, error: result.error || 'Failed to update PI' };
+      }
     } catch (error) {
       console.error('Error updating proforma invoice:', error);
       return { success: false, error: error.message };
@@ -78,9 +96,19 @@ export const useProformaInvoices = () => {
 
   const deleteProformaInvoice = async (id) => {
     try {
-      await mockFirebase.firestore.collection('proformaInvoices').doc(id).delete();
-      await loadProformaInvoices();
-      return { success: true };
+      console.log('Hook: Deleting PI:', id);
+      
+      const result = await deletePI(id);
+      
+      console.log('Hook: Delete PI result:', result);
+      
+      if (result.success) {
+        // Immediately refresh the list to remove the deleted PI
+        await loadProformaInvoices();
+        return { success: true };
+      } else {
+        return { success: false, error: result.error || 'Failed to delete PI' };
+      }
     } catch (error) {
       console.error('Error deleting proforma invoice:', error);
       return { success: false, error: error.message };
@@ -89,13 +117,19 @@ export const useProformaInvoices = () => {
 
   const updateDeliveryStatus = async (id, status) => {
     try {
-      await mockFirebase.firestore.collection('proformaInvoices').doc(id).update({
-        deliveryStatus: status,
-        updatedAt: new Date().toISOString()
-      });
+      console.log('Hook: Updating delivery status:', id, status);
       
-      await loadProformaInvoices();
-      return { success: true };
+      const result = await updateStatus(id, status);
+      
+      console.log('Hook: Update delivery status result:', result);
+      
+      if (result.success) {
+        // Immediately refresh the list to show the status update
+        await loadProformaInvoices();
+        return { success: true };
+      } else {
+        return { success: false, error: result.error || 'Failed to update delivery status' };
+      }
     } catch (error) {
       console.error('Error updating delivery status:', error);
       return { success: false, error: error.message };
@@ -114,10 +148,12 @@ export const useProformaInvoices = () => {
     return proformaInvoices.filter(pi => pi.deliveryStatus === 'pending');
   };
 
+  // Load PIs when hook is first used
   useEffect(() => {
     loadProformaInvoices();
   }, []);
 
+  // Return all functions and state
   return {
     proformaInvoices,
     loading,
