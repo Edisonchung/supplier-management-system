@@ -213,23 +213,6 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
       console.log('Processing items:', items);
 
       
-         // ✅ ADD THIS LINE - Auto-fix price calculations
-        processedItems = autoFixPriceCalculations(processedItems);
-        
-        console.log('Set selected products:', processedItems.length);
-        setSelectedProducts(processedItems);
-        
-        // ✅ ADD THESE LINES - Recalculate totals after fixing prices
-        const itemsSubtotal = processedItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
-        setFormData(prev => ({
-          ...prev,
-          subtotal: itemsSubtotal,
-          totalAmount: itemsSubtotal + (prev.shipping || 0) + (prev.tax || 0) - (prev.discount || 0)
-        }));
-      } else {
-        setSelectedProducts([]);
-      }
-      
       const itemsWithIds = items.map((item, index) => ({
         id: item.id || `item-${Date.now()}-${index}`,
         productCode: item.productCode || item.partNumber || '',
