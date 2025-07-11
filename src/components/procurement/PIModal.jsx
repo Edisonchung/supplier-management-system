@@ -10,6 +10,28 @@ import {
   ChevronDown, Check
 } from 'lucide-react';
 
+/ ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
+const autoFixPriceCalculations = (items) => {
+  return items.map((item, index) => {
+    const quantity = parseFloat(item.quantity) || 0;
+    const unitPrice = parseFloat(item.unitPrice) || 0;
+    const calculatedTotal = quantity * unitPrice;
+    const currentTotal = parseFloat(item.totalPrice) || 0;
+    
+    // If there's a significant difference (more than 0.01), use calculated value
+    const difference = Math.abs(calculatedTotal - currentTotal);
+    if (difference > 0.01) {
+      console.log(`Item ${index + 1}: Fixing price calculation ${currentTotal} → ${calculatedTotal}`);
+      return {
+        ...item,
+        totalPrice: calculatedTotal
+      };
+    }
+    
+    return item;
+  });
+};
+
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
   console.log('=== PIModal Props Debug ===');
   console.log('proformaInvoice:', proformaInvoice ? 'Present' : 'Missing');
@@ -20,6 +42,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   console.log('addSupplier:', typeof addSupplier, addSupplier ? 'Present' : 'Missing');
   console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
   console.log('=== End Props Debug ===');
+  const [formData, setFormData] = useState({...});
+  const [selectedProducts, setSelectedProducts] = useState([]);
   const [formData, setFormData] = useState({
     piNumber: '',
     supplierId: '',
@@ -64,6 +88,23 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     deliveryTerms: '',
     validity: ''
   });
+
+  // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
+  const handleFixAllPrices = () => {
+    const fixedProducts = autoFixPriceCalculations(selectedProducts);
+    setSelectedProducts(fixedProducts);
+    
+    // Recalculate totals
+    const itemsSubtotal = fixedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+    setFormData(prev => ({
+      ...prev,
+      subtotal: itemsSubtotal,
+      totalAmount: itemsSubtotal + (prev.shipping || 0) + (prev.tax || 0) - (prev.discount || 0)
+    }));
+    
+    showNotification?.('Price calculations fixed!', 'success');
+  };
+
 
   const [searchProduct, setSearchProduct] = useState('');
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -170,6 +211,41 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
       // Handle items/products array separately to ensure proper structure
       const items = proformaInvoice.items || proformaInvoice.products || [];
       console.log('Processing items:', items);
+
+      if (items.length > 0) {
+        let processedItems = items.map((item, index) => ({
+          id: item.id || `item-${Date.now()}-${index}`,
+          productId: item.productId || `products-${Date.now()}-${index}`,
+          productCode: item.productCode || item.partNumber || '',
+          productName: item.productName || item.description || '',
+          quantity: parseInt(item.quantity) || 1,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          totalPrice: parseFloat(item.totalPrice) || (parseInt(item.quantity) * parseFloat(item.unitPrice)),
+          unit: item.unit || 'pcs',
+          notes: item.notes || '',
+          // Receiving fields
+          receivedQty: item.receivedQty || 0,
+          isReceived: item.isReceived || false,
+          receivingNotes: item.receivingNotes || '',
+          allocations: item.allocations || []
+        }));
+
+         // ✅ ADD THIS LINE - Auto-fix price calculations
+        processedItems = autoFixPriceCalculations(processedItems);
+        
+        console.log('Set selected products:', processedItems.length);
+        setSelectedProducts(processedItems);
+        
+        // ✅ ADD THESE LINES - Recalculate totals after fixing prices
+        const itemsSubtotal = processedItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+        setFormData(prev => ({
+          ...prev,
+          subtotal: itemsSubtotal,
+          totalAmount: itemsSubtotal + (prev.shipping || 0) + (prev.tax || 0) - (prev.discount || 0)
+        }));
+      } else {
+        setSelectedProducts([]);
+      }
       
       const itemsWithIds = items.map((item, index) => ({
         id: item.id || `item-${Date.now()}-${index}`,
