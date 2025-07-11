@@ -1,5 +1,5 @@
 // src/components/supplier-matching/SupplierMatchingPage.jsx
-// Latest version with Enhanced AI Matching, Save Selections, and Full Feature Integration
+// Enhanced Final Version - Combines working service layer with all AI features
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -12,96 +12,97 @@ import {
   ChevronRight,
   AlertCircle,
   Package,
-  Brain,
-  Zap,
-  Target,
-  TrendingUp,
-  Clock,
-  FileText
+  Brain,        // 🆕 Enhanced AI features
+  Zap,          // 🆕 Enhanced AI features
+  Target,       // 🆕 Enhanced AI features
+  TrendingUp,   // 🆕 Enhanced AI features
+  Clock,        // 🆕 Enhanced AI features
+  FileText      // 🆕 Enhanced AI features
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import SupplierMatchingDisplay from './SupplierMatchingDisplay';
-import { AIExtractionService } from '../../services/ai/AIExtractionService';
+import { purchaseOrderService } from '../../services/purchaseOrderService';
+import { AIExtractionService } from '../../services/ai';
 
 const SupplierMatchingPage = () => {
   const { poId } = useParams();
   const navigate = useNavigate();
   
   // Main state
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [purchaseOrder, setPurchaseOrder] = useState(null);
-  const [matchingResult, setMatchingResult] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRerunning, setIsRerunning] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedSuppliers, setSelectedSuppliers] = useState({});
+  const [hasChanges, setHasChanges] = useState(false);
   
-  // Enhanced tracking state
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // 🆕 Enhanced tracking state
   const [lastSaveTime, setLastSaveTime] = useState(null);
+  const [matchingResult, setMatchingResult] = useState(null);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(false);
 
-  // Load purchase order and initialize matching
-  useEffect(() => {
-    loadPurchaseOrder();
-  }, [poId]);
-
-  const loadPurchaseOrder = async () => {
+  // Load purchase order data with enhanced features
+  const loadPurchaseOrder = useCallback(async () => {
     try {
-      setIsLoading(true);
+      setLoading(true);
       setError(null);
       
-      // Load PO from localStorage with proper key and debugging
-      console.log('🔍 Looking for PO ID/Number:', poId);
-      const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-      console.log('📋 Found POs in localStorage:', savedPOs.length, 'total');
-      console.log('📋 Available PO IDs:', savedPOs.map(p => ({ id: p.id, poNumber: p.poNumber || p.orderNumber })));
+      console.log('🔍 Loading PO with enhanced AI features:', poId);
       
-      // Try to find PO by ID first, then by PO number
-      let po = savedPOs.find(p => p.id === poId);
+      const po = await purchaseOrderService.getById(poId);
       
       if (!po) {
-        console.log('🔄 PO not found by ID, trying by PO number...');
-        po = savedPOs.find(p => 
-          (p.poNumber === poId) || 
-          (p.orderNumber === poId) ||
-          (p.poNumber === `PO-${poId}`) ||
-          (p.orderNumber === `PO-${poId}`)
-        );
-      }
-      
-      if (!po) {
-        const availableIds = savedPOs.map(p => p.id);
-        const availableNumbers = savedPOs.map(p => p.poNumber || p.orderNumber).filter(Boolean);
-        console.error('❌ PO not found. Available IDs:', availableIds);
-        console.error('❌ Available PO Numbers:', availableNumbers);
-        throw new Error(`Purchase order not found. Looking for: ${poId}\nAvailable IDs: ${availableIds.join(', ')}\nAvailable Numbers: ${availableNumbers.join(', ')}`);
+        throw new Error('Purchase order not found');
       }
 
-      console.log('✅ Found PO:', po.poNumber || po.orderNumber);
+      console.log('✅ Found PO:', po.orderNumber || po.poNumber);
       setPurchaseOrder(po);
 
-      // Check if we have existing matching results
-      if (po.supplierMatching || po.matchingResult) {
-        console.log('✅ Found existing matching results');
-        const existingResult = po.supplierMatching || po.matchingResult;
+      // 🆕 Load existing matching results with enhanced data
+      if (po.sourcingPlan || po.matchingMetrics || po.supplierMatching) {
+        console.log('📊 Found existing enhanced matching data');
+        const existingResult = po.supplierMatching || {
+          itemMatches: po.items,
+          sourcingPlan: po.sourcingPlan,
+          metrics: po.matchingMetrics
+        };
         setMatchingResult(existingResult);
         
-        // Check if we have unsaved changes
+        // Check for unsaved changes
         checkForUnsavedChanges(po);
       } else {
-        console.log('🔄 No matching results found, running initial matching...');
-        await runSupplierMatching(po);
+        console.log('🚀 No matching data found, running enhanced AI matching...');
+        await handleRefreshMatching(po, false);
       }
-    } catch (error) {
-      console.error('❌ Error loading purchase order:', error);
-      setError(error.message);
-      toast.error('Failed to load purchase order: ' + error.message);
+      
+      // Load any previously selected suppliers
+      const selections = {};
+      po.items?.forEach(item => {
+        if (item.selectedSupplierId || item.selectedSupplier) {
+          selections[item.itemNumber] = item.selectedSupplierId || item.selectedSupplier?.supplierId;
+        }
+      });
+      setSelectedSuppliers(selections);
+      
+      if (Object.keys(selections).length > 0) {
+        console.log('📋 Loaded existing supplier selections:', Object.keys(selections).length);
+      }
+      
+    } catch (err) {
+      setError('Failed to load purchase order: ' + err.message);
+      console.error('❌ Error loading PO:', err);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, [poId]);
 
+  useEffect(() => {
+    loadPurchaseOrder();
+  }, [loadPurchaseOrder]);
+
+  // 🆕 Enhanced unsaved changes detection
   const checkForUnsavedChanges = (po) => {
-    // Check if there are any supplier selections that haven't been saved to the main PO
     if (po.supplierSelections && po.supplierSelections.selectedItems > 0) {
       const lastSaved = po.supplierSelections.lastUpdated;
       if (lastSaved) {
@@ -110,118 +111,194 @@ const SupplierMatchingPage = () => {
     }
   };
 
-  const runSupplierMatching = async (po = purchaseOrder) => {
-    if (!po || !po.items || po.items.length === 0) {
-      toast.error('No items to match');
-      return;
-    }
-
-    setIsRerunning(true);
-    
+  // 🆕 Enhanced supplier matching with AI improvements
+  const handleRefreshMatching = async (existingPO = null, showToast = true) => {
     try {
-      console.log('🚀 Starting enhanced AI supplier matching...');
-      toast.loading('Running enhanced AI matching...', { id: 'matching' });
-
-      // Call the enhanced matching service
-      const result = await AIExtractionService.rerunSupplierMatching({
-        items: po.items,
-        poNumber: po.orderNumber || po.poNumber,
-        documentType: 'client_purchase_order'
-      });
-
-      if (result.success && result.data) {
-        console.log('✅ Matching completed successfully');
-        setMatchingResult(result.data);
-
-        // Save enhanced matching results back to PO
-        const updatedPO = {
-          ...po,
-          supplierMatching: result.data,
-          matchingResult: result.data,
-          lastMatchingRun: new Date().toISOString(),
-          // Preserve any existing selections
-          supplierSelections: po.supplierSelections || null
-        };
-
-        // Update localStorage with correct key
-        const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-        const updatedPOs = savedPOs.map(savedPO => 
-          savedPO.id === po.id ? updatedPO : savedPO
-        );
-        localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
-        setPurchaseOrder(updatedPO);
-        
-        console.log('💾 Saved matching results to localStorage');
-
-        // Show success with enhanced metrics
-        const metrics = result.data.metrics || {};
-        toast.success(
-          `🎯 Enhanced matching complete! ${metrics.matchRate || 0}% match rate with AI learning`, 
-          { id: 'matching', duration: 4000 }
-        );
-
-        // Show AI enhancement summary
-        if (metrics.aiEnhancements > 0) {
-          setTimeout(() => {
-            toast.success(
-              `🧠 AI enhanced ${metrics.aiEnhancements} matches using machine learning!`,
-              { duration: 3000 }
-            );
-          }, 1000);
-        }
-
-      } else {
-        throw new Error(result.error || 'Matching failed');
+      setRefreshing(true);
+      
+      const po = existingPO || purchaseOrder;
+      
+      if (!po || !po.items || po.items.length === 0) {
+        toast.error('No items to match');
+        return;
       }
 
+      console.log('🧠 Starting enhanced AI supplier matching...');
+      if (showToast) {
+        toast.loading('Running enhanced AI matching with machine learning...', { id: 'matching' });
+      }
+
+      // 🆕 Call enhanced AI extraction service
+      const result = await AIExtractionService.rerunSupplierMatching({
+        items: po.items,
+        documentType: 'client_purchase_order',
+        poNumber: po.orderNumber || po.poNumber
+      });
+      
+      if (result.success && result.data) {
+        console.log('✅ Enhanced AI matching completed successfully');
+        
+        // 🆕 Set enhanced matching result
+        setMatchingResult(result.data);
+        
+        // 🆕 Create enhanced PO object
+        const updatedPO = {
+          ...po,
+          items: result.data.itemMatches || result.data.items || po.items,
+          sourcingPlan: result.data.sourcingPlan,
+          matchingMetrics: result.data.metrics || result.data.matchingMetrics,
+          supplierMatching: result.data,
+          lastMatchingUpdate: new Date().toISOString(),
+          // Preserve existing selections
+          supplierSelections: po.supplierSelections || null
+        };
+        
+        setPurchaseOrder(updatedPO);
+        
+        // Save the enhanced matching data
+        await purchaseOrderService.update(poId, {
+          items: updatedPO.items,
+          sourcingPlan: result.data.sourcingPlan,
+          matchingMetrics: result.data.metrics || result.data.matchingMetrics,
+          supplierMatching: result.data,
+          lastMatchingUpdate: new Date().toISOString()
+        });
+        
+        console.log('💾 Saved enhanced matching results');
+        
+        if (showToast) {
+          // 🆕 Enhanced success message with metrics
+          const metrics = result.data.metrics || result.data.matchingMetrics || {};
+          toast.success(
+            `🎯 Enhanced AI matching complete! ${metrics.matchRate || 0}% match rate with machine learning`, 
+            { id: 'matching', duration: 4000 }
+          );
+
+          // 🆕 Show AI enhancement summary
+          if (metrics.aiEnhancements > 0) {
+            setTimeout(() => {
+              toast.success(
+                `🧠 AI enhanced ${metrics.aiEnhancements} matches using advanced algorithms!`,
+                { duration: 3000 }
+              );
+            }, 1000);
+          }
+        }
+      } else {
+        throw new Error(result.error || 'Enhanced matching failed');
+      }
     } catch (error) {
-      console.error('❌ Supplier matching error:', error);
-      toast.error('Enhanced matching failed: ' + error.message, { id: 'matching' });
+      console.error('❌ Enhanced matching error:', error);
+      toast.error('Enhanced AI matching failed: ' + error.message, { id: 'matching' });
     } finally {
-      setIsRerunning(false);
+      setRefreshing(false);
     }
   };
 
-  // 🆕 Handle PO updates from the display component (enhanced)
-  const handlePOUpdate = (updatedPO) => {
-    console.log('📝 Updating PO with supplier selections');
-    setPurchaseOrder(updatedPO);
-    
-    // Update localStorage immediately
-    const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-    const updatedPOs = savedPOs.map(savedPO => 
-      savedPO.id === updatedPO.id ? updatedPO : savedPO
-    );
-    localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
-    console.log('💾 Updated PO saved to localStorage');
-    
-    // Update the matching result items to reflect selections
-    if (matchingResult) {
-      setMatchingResult({
-        ...matchingResult,
-        itemMatches: updatedPO.items
-      });
+  // Handle supplier selection with enhanced tracking
+  const handleSupplierSelection = async (itemNumber, supplierId) => {
+    try {
+      const newSelections = {
+        ...selectedSuppliers,
+        [itemNumber]: supplierId
+      };
+      setSelectedSuppliers(newSelections);
+      setHasChanges(true);
+      
+      // Update local state immediately for better UX
+      setPurchaseOrder(prev => ({
+        ...prev,
+        items: prev.items.map(item => 
+          item.itemNumber === itemNumber 
+            ? { ...item, selectedSupplierId: supplierId }
+            : item
+        )
+      }));
+      
+      // 🆕 Enhanced feedback with AI learning
+      toast.success('Supplier selected! 🧠 AI will learn from this choice.');
+    } catch (error) {
+      toast.error('Failed to select supplier');
+      console.error('Selection error:', error);
     }
+  };
 
-    // Update saved state and track changes
-    setHasUnsavedChanges(false);
-    setLastSaveTime(new Date());
-
-    // Enhanced success feedback with metrics
-    const selectionCount = updatedPO.items?.filter(item => item.selectedSupplier)?.length || 0;
-    const totalItems = updatedPO.items?.length || 0;
-    
-    toast.success(
-      `✅ Supplier selections saved! ${selectionCount}/${totalItems} items selected`, 
-      { duration: 3000, icon: '💾' }
-    );
-
-    // Show AI learning feedback
-    setTimeout(() => {
-      toast.success('🧠 AI learned from your selections and will improve future matches!', {
-        duration: 2000
+  // 🆕 Enhanced save with detailed feedback
+  const saveSupplierSelections = async () => {
+    try {
+      setSaving(true);
+      
+      console.log('💾 Saving enhanced supplier selections...');
+      
+      // Update items with selected suppliers
+      const updatedItems = purchaseOrder.items.map(item => ({
+        ...item,
+        selectedSupplierId: selectedSuppliers[item.itemNumber] || item.selectedSupplierId
+      }));
+      
+      // 🆕 Calculate enhanced selection summary
+      const selectionSummary = calculateSelectionSummary(updatedItems);
+      
+      await purchaseOrderService.update(poId, {
+        items: updatedItems,
+        supplierSelections: selectionSummary,
+        supplierSelectionsUpdated: new Date().toISOString(),
+        lastModified: new Date().toISOString()
       });
-    }, 1500);
+      
+      setHasChanges(false);
+      setLastSaveTime(new Date());
+      
+      // 🆕 Enhanced success feedback
+      const selectionCount = Object.keys(selectedSuppliers).length;
+      const totalItems = purchaseOrder.items?.length || 0;
+      
+      toast.success(
+        `✅ Enhanced selections saved! ${selectionCount}/${totalItems} items with AI optimization`, 
+        { duration: 3000 }
+      );
+      
+      // Show AI learning feedback
+      setTimeout(() => {
+        toast.success('🧠 AI learned from your selections and will improve future matches!', {
+          duration: 2000
+        });
+      }, 1500);
+      
+      // Reload to ensure data consistency
+      await loadPurchaseOrder();
+    } catch (error) {
+      toast.error('Failed to save enhanced selections');
+      console.error('Enhanced save error:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 🆕 Calculate enhanced selection summary
+  const calculateSelectionSummary = (items) => {
+    const selectedItems = items.filter(item => item.selectedSupplierId);
+    const totalSavings = selectedItems.reduce((sum, item) => {
+      // Calculate savings if we have pricing data
+      const originalPrice = item.unitPrice || 0;
+      const selectedPrice = item.selectedSupplier?.unitPrice || originalPrice;
+      return sum + ((originalPrice - selectedPrice) * item.quantity);
+    }, 0);
+    
+    const averageConfidence = selectedItems.length > 0 
+      ? Math.round(selectedItems.reduce((sum, item) => 
+          sum + (item.selectedSupplier?.confidence || 0), 0
+        ) / selectedItems.length)
+      : 0;
+
+    return {
+      totalItems: items.length,
+      selectedItems: selectedItems.length,
+      unselectedItems: items.length - selectedItems.length,
+      totalSavings: Math.max(0, totalSavings),
+      averageConfidence: averageConfidence,
+      lastUpdated: new Date().toISOString()
+    };
   };
 
   // 🆕 Enhanced selection status calculation
@@ -236,10 +313,15 @@ const SupplierMatchingPage = () => {
       };
     }
     
-    const itemsWithSelections = purchaseOrder.items.filter(item => item.selectedSupplier);
-    const totalSavings = itemsWithSelections.reduce((sum, item) => 
-      sum + (item.selectedSupplier?.savings || 0), 0
+    const itemsWithSelections = purchaseOrder.items.filter(item => 
+      item.selectedSupplierId || selectedSuppliers[item.itemNumber]
     );
+    
+    const totalSavings = itemsWithSelections.reduce((sum, item) => {
+      const savings = item.selectedSupplier?.savings || 0;
+      return sum + savings;
+    }, 0);
+    
     const averageConfidence = itemsWithSelections.length > 0 
       ? Math.round(itemsWithSelections.reduce((sum, item) => 
           sum + (item.selectedSupplier?.confidence || 0), 0
@@ -255,14 +337,13 @@ const SupplierMatchingPage = () => {
     };
   };
 
-  // 🆕 Export enhanced report
-  const exportEnhancedReport = () => {
+  // 🆕 Enhanced export with AI metrics
+  const exportEnhancedReport = async () => {
     try {
-      if (!purchaseOrder || !matchingResult) {
-        toast.error('No data to export');
-        return;
-      }
-
+      if (!purchaseOrder) return;
+      
+      console.log('📊 Generating enhanced AI report...');
+      
       // Generate enhanced CSV with AI metrics
       const csvData = generateEnhancedCSV();
       
@@ -272,31 +353,42 @@ const SupplierMatchingPage = () => {
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
       link.setAttribute('download', 
-        `supplier-analysis-${purchaseOrder.orderNumber}-${new Date().toISOString().split('T')[0]}.csv`
+        `enhanced-supplier-analysis-${purchaseOrder.orderNumber || purchaseOrder.poNumber}-${new Date().toISOString().split('T')[0]}.csv`
       );
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
-      toast.success('Enhanced report exported successfully! 📊');
+      toast.success('Enhanced AI report exported successfully! 📊');
     } catch (error) {
-      console.error('Export error:', error);
-      toast.error('Failed to export report');
+      console.error('Enhanced export error:', error);
+      toast.error('Failed to export enhanced report');
     }
   };
 
+  // 🆕 Generate enhanced CSV with AI metrics
   const generateEnhancedCSV = () => {
     const headers = [
       'Item #', 'Product Name', 'Product Code', 'Quantity', 'Target Price',
       'Selected Supplier', 'Selected Price', 'Savings Amount', 'Savings %',
-      'Lead Time', 'In Stock', 'Match Type', 'Confidence Score', 'AI Enhanced'
+      'Lead Time', 'In Stock', 'Match Type', 'Confidence Score', 'AI Enhanced',
+      'Match Quality', 'Supplier Rating'
     ];
     
     const rows = [headers];
     
     purchaseOrder.items?.forEach(item => {
       const selected = item.selectedSupplier;
+      const selectedId = selectedSuppliers[item.itemNumber];
+      const bestMatch = item.supplierMatches?.find(match => 
+        match.supplierId === selectedId
+      ) || item.supplierMatches?.[0];
+      
+      const savingsAmount = item.unitPrice && selected?.unitPrice 
+        ? ((item.unitPrice - selected.unitPrice) * item.quantity)
+        : 0;
       const savingsPercent = item.unitPrice && selected?.unitPrice 
         ? (((item.unitPrice - selected.unitPrice) / item.unitPrice) * 100).toFixed(1)
         : '0.0';
@@ -307,38 +399,45 @@ const SupplierMatchingPage = () => {
         item.productCode || '',
         item.quantity || 0,
         item.unitPrice?.toFixed(2) || '0.00',
-        selected?.supplierName || 'No selection',
-        selected?.unitPrice?.toFixed(2) || 'N/A',
-        selected?.savings?.toFixed(2) || '0.00',
+        selected?.supplierName || bestMatch?.supplierName || 'No selection',
+        selected?.unitPrice?.toFixed(2) || bestMatch?.pricing?.unitPrice?.toFixed(2) || 'N/A',
+        savingsAmount.toFixed(2),
         savingsPercent + '%',
-        selected?.leadTime || 'N/A',
+        selected?.leadTime || bestMatch?.pricing?.leadTime || 'N/A',
         'Yes', // Assume in stock for selected suppliers
-        selected?.matchType || 'N/A',
-        selected?.confidence || 0,
-        selected?.matchType?.includes('enhanced') ? 'Yes' : 'No'
+        selected?.matchType || bestMatch?.matchType || 'N/A',
+        selected?.confidence || bestMatch?.confidence || 0,
+        (selected?.matchType || bestMatch?.matchType)?.includes('enhanced') ? 'Yes' : 'No',
+        bestMatch?.matchScore ? Math.round(bestMatch.matchScore * 100) + '%' : 'N/A',
+        bestMatch?.supplierRating || 'N/A'
       ];
       rows.push(row);
     });
     
-    // Add enhanced summary
+    // 🆕 Add comprehensive enhanced summary
     const status = getEnhancedSelectionStatus();
+    const metrics = matchingResult?.metrics || purchaseOrder.matchingMetrics || {};
+    
     rows.push([]);
-    rows.push(['=== ENHANCED SUMMARY ===']);
+    rows.push(['=== ENHANCED AI SUMMARY ===']);
     rows.push(['Total Items', purchaseOrder.items?.length || 0]);
     rows.push(['Items Selected', status.count]);
     rows.push(['Selection Progress', status.percentage + '%']);
     rows.push(['Total Potential Savings', '$' + status.totalSavings.toFixed(2)]);
     rows.push(['Average Confidence', status.averageConfidence + '%']);
-    rows.push(['Overall Match Rate', (matchingResult.metrics?.matchRate || 0) + '%']);
-    rows.push(['AI Enhancements', matchingResult.metrics?.aiEnhancements || 0]);
+    rows.push(['Overall Match Rate', (metrics.matchRate || 0) + '%']);
+    rows.push(['AI Enhancements', metrics.aiEnhancements || 0]);
+    rows.push(['Supplier Diversity', metrics.supplierDiversity || 0]);
+    rows.push(['Average Lead Time', metrics.averageLeadTime || 'Unknown']);
+    rows.push(['Last AI Update', new Date(purchaseOrder.lastMatchingUpdate || Date.now()).toLocaleString()]);
     
     return rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
   };
 
   const selectionStatus = getEnhancedSelectionStatus();
 
-  // Loading state
-  if (isLoading) {
+  // Loading state with enhanced AI theming
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -378,7 +477,7 @@ const SupplierMatchingPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Enhanced Header with AI Indicators */}
+      {/* 🆕 Enhanced Header with AI Indicators */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -396,10 +495,10 @@ const SupplierMatchingPage = () => {
                 </h1>
                 <div className="flex items-center gap-4 mt-1">
                   <p className="text-sm text-gray-600">
-                    PO {purchaseOrder.orderNumber}
+                    PO {purchaseOrder.poNumber || purchaseOrder.orderNumber}
                   </p>
                   
-                  {/* Enhanced Selection Status */}
+                  {/* 🆕 Enhanced Selection Status */}
                   {selectionStatus.count > 0 && (
                     <div className="flex items-center gap-3 text-sm">
                       <div className="flex items-center gap-1">
@@ -429,21 +528,21 @@ const SupplierMatchingPage = () => {
                     </div>
                   )}
                   
-                  {/* AI Enhancement Indicators */}
-                  {matchingResult?.metrics && (
+                  {/* 🆕 AI Enhancement Indicators */}
+                  {(matchingResult?.metrics || purchaseOrder.matchingMetrics) && (
                     <div className="flex items-center gap-3 text-sm">
                       <div className="flex items-center gap-1">
                         <Zap className="w-4 h-4 text-yellow-600" />
                         <span className="text-yellow-600 font-medium">
-                          {matchingResult.metrics.matchRate}% match rate
+                          {(matchingResult?.metrics || purchaseOrder.matchingMetrics).matchRate || 0}% match rate
                         </span>
                       </div>
                       
-                      {matchingResult.metrics.aiEnhancements > 0 && (
+                      {((matchingResult?.metrics || purchaseOrder.matchingMetrics).aiEnhancements > 0) && (
                         <div className="flex items-center gap-1">
                           <Brain className="w-4 h-4 text-blue-600" />
                           <span className="text-blue-600 font-medium">
-                            {matchingResult.metrics.aiEnhancements} AI enhanced
+                            {(matchingResult?.metrics || purchaseOrder.matchingMetrics).aiEnhancements} AI enhanced
                           </span>
                         </div>
                       )}
@@ -454,22 +553,43 @@ const SupplierMatchingPage = () => {
             </div>
             
             <div className="flex items-center gap-3">
-              {/* Enhanced Export Button */}
+              {/* 🆕 Enhanced Export Button */}
               <button
                 onClick={exportEnhancedReport}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                Export Analysis
+                Export AI Analysis
               </button>
+              
+              {/* Enhanced Save Button */}
+              {hasChanges && (
+                <button
+                  onClick={saveSupplierSelections}
+                  disabled={saving}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {saving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save Enhanced
+                    </>
+                  )}
+                </button>
+              )}
               
               {/* Re-run Enhanced Matching */}
               <button
-                onClick={() => runSupplierMatching()}
-                disabled={isRerunning}
+                onClick={() => handleRefreshMatching()}
+                disabled={refreshing}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                {isRerunning ? (
+                {refreshing ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
                     AI Matching...
@@ -482,7 +602,7 @@ const SupplierMatchingPage = () => {
                 )}
               </button>
               
-              {/* Last Save Status */}
+              {/* 🆕 Last Save Status */}
               {lastSaveTime && (
                 <div className="text-sm text-gray-600 flex items-center gap-1">
                   <Clock className="w-4 h-4" />
@@ -516,15 +636,37 @@ const SupplierMatchingPage = () => {
         </nav>
       </div>
 
+      {/* 🆕 Enhanced Success Banner for Unsaved Changes */}
+      {hasChanges && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
+          <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-yellow-600" />
+              <p className="text-yellow-800 font-medium">
+                You have {Object.keys(selectedSuppliers).length} enhanced AI selections ready to save.
+              </p>
+            </div>
+            <button
+              onClick={saveSupplierSelections}
+              disabled={saving}
+              className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Enhanced Selections'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
-        {matchingResult ? (
+        {(matchingResult || purchaseOrder.items) ? (
           <SupplierMatchingDisplay
-            items={matchingResult.itemMatches || purchaseOrder.items}
-            sourcingPlan={matchingResult.sourcingPlan}
-            metrics={matchingResult.metrics}
+            items={matchingResult?.itemMatches || purchaseOrder.items}
+            sourcingPlan={matchingResult?.sourcingPlan || purchaseOrder.sourcingPlan}
+            metrics={matchingResult?.metrics || purchaseOrder.matchingMetrics}
             purchaseOrder={purchaseOrder}
-            onPOUpdate={handlePOUpdate}
+            onSupplierSelect={handleSupplierSelection}
+            selectedSuppliers={selectedSuppliers}
           />
         ) : (
           <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
@@ -533,17 +675,17 @@ const SupplierMatchingPage = () => {
               <Brain className="w-12 h-12 text-blue-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              No Enhanced Matching Results
+              No Enhanced AI Matching Results
             </h3>
             <p className="text-gray-600 mb-4">
               Run the enhanced AI supplier matching to see intelligent recommendations with machine learning.
             </p>
             <button
-              onClick={() => runSupplierMatching()}
-              disabled={isRerunning}
+              onClick={() => handleRefreshMatching()}
+              disabled={refreshing}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 mx-auto disabled:opacity-50"
             >
-              {isRerunning ? (
+              {refreshing ? (
                 <>
                   <RefreshCw className="w-5 h-5 animate-spin" />
                   Running Enhanced AI Matching...
