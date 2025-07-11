@@ -5,10 +5,12 @@ import {
   FileText, Calculator, Calendar, Tag,
   Truck, AlertCircle, CheckSquare, Square,
   DollarSign, Upload, Link, Eye, Download,
-  CreditCard, MessageSquare, Briefcase, AlertTriangle
+  CreditCard, MessageSquare, Briefcase, AlertTriangle,
+  Building2, Mail, Phone, MapPin, User, Loader2,
+  ChevronDown, Check
 } from 'lucide-react';
 
-const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
+const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
   const [formData, setFormData] = useState({
     piNumber: '',
     supplierId: '',
@@ -69,6 +71,30 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     remark: '',
     attachments: []
   });
+
+  // Supplier creation states
+  const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [showCreateSupplier, setShowCreateSupplier] = useState(false);
+  const [newSupplierData, setNewSupplierData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    contactPerson: '',
+    status: 'active'
+  });
+  const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
+  const [supplierErrors, setSupplierErrors] = useState({});
+
+  // Filter suppliers based on search term
+  const filteredSuppliers = suppliers.filter(supplier =>
+    supplier.name.toLowerCase().includes(supplierSearchTerm.toLowerCase()) ||
+    supplier.email?.toLowerCase().includes(supplierSearchTerm.toLowerCase())
+  );
+
+  // Get selected supplier details
+  const selectedSupplier = suppliers.find(s => s.id === formData.supplierId);
 
   useEffect(() => {
     if (proformaInvoice) {
@@ -154,11 +180,38 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
       setSelectedProducts(itemsWithIds);
       console.log('Set selected products:', itemsWithIds);
       
-      // Show supplier suggestion if extracted but not matched
-      if (proformaInvoice.supplierName && !proformaInvoice.supplierId) {
+      // Pre-populate supplier creation form if supplier data is extracted but not matched
+      if (proformaInvoice.supplier && !proformaInvoice.supplierId) {
+        const supplierInfo = proformaInvoice.supplier;
+        setNewSupplierData({
+          name: supplierInfo.name || proformaInvoice.supplierName || '',
+          email: supplierInfo.email || '',
+          phone: supplierInfo.phone || supplierInfo.mobile || '',
+          address: supplierInfo.address || '',
+          contactPerson: supplierInfo.contact || '',
+          status: 'active'
+        });
+        
+        // Set search term to the extracted supplier name
+        setSupplierSearchTerm(supplierInfo.name || proformaInvoice.supplierName || '');
+        
+        // Show error message suggesting to create supplier
+        if (supplierInfo.name || proformaInvoice.supplierName) {
+          setErrors(prev => ({
+            ...prev,
+            supplier: `Supplier "${supplierInfo.name || proformaInvoice.supplierName}" not found. Please select an existing supplier or create a new one.`
+          }));
+        }
+      } else if (proformaInvoice.supplierName && !proformaInvoice.supplierId) {
+        // Handle case where only supplier name is extracted
+        setNewSupplierData(prev => ({
+          ...prev,
+          name: proformaInvoice.supplierName
+        }));
+        setSupplierSearchTerm(proformaInvoice.supplierName);
         setErrors(prev => ({
           ...prev,
-          supplier: `Supplier "${proformaInvoice.supplierName}" not found. Please select from the list or create a new supplier.`
+          supplier: `Supplier "${proformaInvoice.supplierName}" not found. Please select an existing supplier or create a new one.`
         }));
       }
       
@@ -215,6 +268,136 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     alert('Link copied to clipboard!');
   };
 
+  // Supplier creation functions
+  const validateSupplierForm = () => {
+    const newErrors = {};
+    
+    if (!newSupplierData.name.trim()) {
+      newErrors.name = 'Supplier name is required';
+    }
+    
+    if (!newSupplierData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(newSupplierData.email)) {
+      newErrors.email = 'Email is invalid';
+    }
+    
+    if (newSupplierData.phone && !/^[\d\s\-\+\(\)]+$/.test(newSupplierData.phone)) {
+      newErrors.phone = 'Phone number is invalid';
+    }
+
+    // Check for duplicate supplier name
+    if (suppliers.some(s => s.name.toLowerCase() === newSupplierData.name.toLowerCase().trim())) {
+      newErrors.name = 'A supplier with this name already exists';
+    }
+
+    // Check for duplicate email
+    if (suppliers.some(s => s.email.toLowerCase() === newSupplierData.email.toLowerCase().trim())) {
+      newErrors.email = 'A supplier with this email already exists';
+    }
+    
+    setSupplierErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleCreateSupplier = async () => {
+    if (!validateSupplierForm()) return;
+    
+    setIsCreatingSupplier(true);
+    
+    try {
+      const supplierToCreate = {
+        name: newSupplierData.name.trim(),
+        email: newSupplierData.email.trim(),
+        phone: newSupplierData.phone.trim(),
+        contactPerson: newSupplierData.contactPerson.trim(),
+        address: newSupplierData.address.trim(),
+        status: newSupplierData.status,
+        dateAdded: new Date().toISOString()
+      };
+
+      // Call the addSupplier function
+      const createdSupplier = await addSupplier(supplierToCreate);
+      
+      // Select the newly created supplier
+      setFormData(prev => ({
+        ...prev,
+        supplierId: createdSupplier.id,
+        supplierName: createdSupplier.name
+      }));
+
+      // Clear search term and close create form
+      setSupplierSearchTerm(createdSupplier.name);
+      setShowCreateSupplier(false);
+      setShowSupplierDropdown(false);
+      
+      // Clear supplier error
+      setErrors(prev => {
+        const { supplier, ...rest } = prev;
+        return rest;
+      });
+
+      // Reset supplier form
+      setNewSupplierData({
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        contactPerson: '',
+        status: 'active'
+      });
+      setSupplierErrors({});
+
+      showNotification?.(`Supplier "${createdSupplier.name}" created successfully`, 'success');
+      
+    } catch (error) {
+      console.error('Failed to create supplier:', error);
+      showNotification?.('Failed to create supplier. Please try again.', 'error');
+    } finally {
+      setIsCreatingSupplier(false);
+    }
+  };
+
+  const handleSupplierSelect = (supplier) => {
+    setFormData(prev => ({
+      ...prev,
+      supplierId: supplier.id,
+      supplierName: supplier.name
+    }));
+    setSupplierSearchTerm(supplier.name);
+    setShowSupplierDropdown(false);
+    setShowCreateSupplier(false);
+    
+    // Clear supplier error
+    setErrors(prev => {
+      const { supplier: supplierError, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const handleSupplierSearchChange = (value) => {
+    setSupplierSearchTerm(value);
+    setShowSupplierDropdown(true);
+    
+    // Clear selection if search term doesn't match selected supplier
+    if (selectedSupplier && !selectedSupplier.name.toLowerCase().includes(value.toLowerCase())) {
+      setFormData(prev => ({
+        ...prev,
+        supplierId: '',
+        supplierName: ''
+      }));
+    }
+  };
+
+  const handleNewSupplierDataChange = (field, value) => {
+    setNewSupplierData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear error when user starts typing
+    if (supplierErrors[field]) {
+      setSupplierErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
   const validateForm = () => {
     const newErrors = {};
     
@@ -267,7 +450,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
       totalAmount,
       hasDiscrepancy,
       totalPaid,
-      paymentStatus
+      paymentStatus,
+      supplierName: selectedSupplier?.name || formData.supplierName
     });
   };
 
@@ -398,7 +582,6 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
     return matchesSupplier && matchesSearch;
   });
 
-  const selectedSupplier = suppliers.find(s => s.id === formData.supplierId);
   const totalAmount = formData.totalAmount || selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
   const totalReceived = selectedProducts.reduce((sum, item) => sum + (item.receivedQty || 0), 0);
   const totalOrdered = selectedProducts.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -503,24 +686,82 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   {errors.piNumber && <p className="text-red-500 text-xs mt-1">{errors.piNumber}</p>}
                 </div>
 
+                {/* Enhanced Supplier Selection with Create New Option */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Supplier <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={formData.supplierId}
-                    onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.supplierId ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">Select Supplier</option>
-                    {suppliers.map(supplier => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={supplierSearchTerm}
+                        onChange={(e) => handleSupplierSearchChange(e.target.value)}
+                        onFocus={() => setShowSupplierDropdown(true)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          errors.supplierId ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="Search suppliers or type new supplier name..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSupplierDropdown(!showSupplierDropdown)}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                      >
+                        <ChevronDown size={18} className="text-gray-400" />
+                      </button>
+                    </div>
+
+                    {/* Supplier Dropdown */}
+                    {showSupplierDropdown && (
+                      <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
+                        
+                        {/* Create New Supplier Option */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCreateSupplier(true);
+                            setShowSupplierDropdown(false);
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 flex items-center gap-2 text-blue-600 font-medium"
+                        >
+                          <Plus size={16} />
+                          Create New Supplier
+                        </button>
+
+                        {/* Existing Suppliers */}
+                        {filteredSuppliers.length > 0 ? (
+                          filteredSuppliers.map(supplier => (
+                            <button
+                              key={supplier.id}
+                              type="button"
+                              onClick={() => handleSupplierSelect(supplier)}
+                              className={`w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between ${
+                                formData.supplierId === supplier.id ? 'bg-blue-50 text-blue-700' : ''
+                              }`}
+                            >
+                              <div>
+                                <div className="font-medium">{supplier.name}</div>
+                                <div className="text-sm text-gray-500">{supplier.email}</div>
+                              </div>
+                              {formData.supplierId === supplier.id && (
+                                <Check size={16} className="text-blue-600" />
+                              )}
+                            </button>
+                          ))
+                        ) : supplierSearchTerm.length > 0 ? (
+                          <div className="px-4 py-3 text-gray-500 text-center">
+                            No suppliers found matching "{supplierSearchTerm}"
+                          </div>
+                        ) : (
+                          <div className="px-4 py-3 text-gray-500 text-center">
+                            Type to search suppliers
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
                   {errors.supplierId && <p className="text-red-500 text-xs mt-1">{errors.supplierId}</p>}
                   
                   {formData.supplierName && !formData.supplierId && (
@@ -535,12 +776,13 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   )}
                   
                   {errors.supplier && (
-                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm flex items-center gap-2">
+                      <AlertTriangle size={14} className="text-yellow-600" />
                       <p className="text-yellow-800">{errors.supplier}</p>
                     </div>
                   )}
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Project Code
@@ -697,6 +939,117 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
                   </div>
                 )}
               </div>
+
+              {/* Create New Supplier Form */}
+              {showCreateSupplier && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium text-blue-900">Create New Supplier</h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateSupplier(false)}
+                      className="text-blue-500 hover:text-blue-700"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Supplier Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newSupplierData.name}
+                        onChange={(e) => handleNewSupplierDataChange('name', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          supplierErrors.name ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="Enter supplier name"
+                      />
+                      {supplierErrors.name && <p className="text-red-500 text-xs mt-1">{supplierErrors.name}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={newSupplierData.email}
+                        onChange={(e) => handleNewSupplierDataChange('email', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          supplierErrors.email ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="supplier@example.com"
+                      />
+                      {supplierErrors.email && <p className="text-red-500 text-xs mt-1">{supplierErrors.email}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone
+                      </label>
+                      <input
+                        type="text"
+                        value={newSupplierData.phone}
+                        onChange={(e) => handleNewSupplierDataChange('phone', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          supplierErrors.phone ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="+1234567890"
+                      />
+                      {supplierErrors.phone && <p className="text-red-500 text-xs mt-1">{supplierErrors.phone}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Contact Person
+                      </label>
+                      <input
+                        type="text"
+                        value={newSupplierData.contactPerson}
+                        onChange={(e) => handleNewSupplierDataChange('contactPerson', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="John Doe"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Address
+                      </label>
+                      <textarea
+                        value={newSupplierData.address}
+                        onChange={(e) => handleNewSupplierDataChange('address', e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Full business address"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateSupplier(false)}
+                      className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateSupplier}
+                      disabled={isCreatingSupplier}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isCreatingSupplier && <Loader2 size={16} className="animate-spin" />}
+                      Create Supplier
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Currency and Exchange Rate for extracted data */}
               {formData.currency && formData.currency !== 'MYR' && (
@@ -1276,7 +1629,6 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose }) => {
         </div>
       </div>
 
-      {/* Payment Modal */}
       {/* Payment Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
