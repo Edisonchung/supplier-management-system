@@ -788,6 +788,123 @@ console.log('=== END PRODUCT DEBUG ===');
   }
 }
 
+
+class PTPClientPODetector {
+  /**
+   * Detect if this is a PTP Client Purchase Order
+   */
+  static detectPTPClientPO(rawData) {
+    const data = rawData.data?.purchase_order || rawData.purchase_order || rawData.data || rawData;
+    const textContent = JSON.stringify(rawData).toLowerCase();
+    
+    console.log('🔍 PTP Client PO Detection Starting...');
+    console.log('Data structure:', {
+      hasPurchaseOrder: !!data,
+      billTo: data.bill_to?.name,
+      supplier: data.supplier?.name,
+      shipTo: data.ship_to?.name,
+      orderNumber: data.order_number
+    });
+    
+    // Key indicators for PTP Client PO
+    const indicators = [
+      // 1. Flow Solution is the bill_to (WE are receiving the order)
+      {
+        test: data.bill_to?.name?.toLowerCase().includes('flow solution'),
+        name: 'Flow Solution as bill_to',
+        weight: 10
+      },
+      
+      // 2. PTP is in supplier field (THEY are sending us the order)
+      {
+        test: data.supplier?.name?.toLowerCase().includes('tanjung pelepas') ||
+              data.supplier?.name?.toLowerCase().includes('ptp'),
+        name: 'PTP as supplier/sender',
+        weight: 10
+      },
+      
+      // 3. Ship_to contains PTP address (delivery to PTP)
+      {
+        test: data.ship_to?.name?.toLowerCase().includes('ptp') ||
+              data.ship_to?.name?.toLowerCase().includes('tanjung pelepas'),
+        name: 'Shipping to PTP',
+        weight: 8
+      },
+      
+      // 4. PO number structure
+      {
+        test: data.order_number?.startsWith('PO-'),
+        name: 'PO number format',
+        weight: 5
+      },
+      
+      // 5. Has PR number (internal requisition)
+      {
+        test: !!data.pr_number,
+        name: 'Has PR number',
+        weight: 5
+      },
+      
+      // 6. Contains PTP domain/references
+      {
+        test: textContent.includes('ptp.com.my') ||
+              textContent.includes('pelabuhan tanjung pelepas'),
+        name: 'PTP domain/reference',
+        weight: 8
+      },
+      
+      // 7. Order structure (not invoice/proforma structure)
+      {
+        test: textContent.includes('purchase order') &&
+              !textContent.includes('proforma') &&
+              !textContent.includes('invoice'),
+        name: 'Purchase order structure',
+        weight: 7
+      },
+      
+      // 8. Has items array
+      {
+        test: data.items && Array.isArray(data.items) && data.items.length > 0,
+        name: 'Has items array',
+        weight: 5
+      }
+    ];
+    
+    let totalScore = 0;
+    let matchedIndicators = [];
+    
+    indicators.forEach(indicator => {
+      if (indicator.test) {
+        totalScore += indicator.weight;
+        matchedIndicators.push(`✅ ${indicator.name} (${indicator.weight})`);
+      } else {
+        console.log(`❌ ${indicator.name}`);
+      }
+    });
+    
+    console.log('PTP Client PO Detection Results:');
+    console.log('Matched indicators:', matchedIndicators);
+    console.log('Total score:', totalScore, '/ 58 possible');
+    
+    const isClientPO = totalScore >= 25; // Need at least 25 points
+    const confidence = Math.min(totalScore / 58, 0.95);
+    
+    if (isClientPO) {
+      console.log('🎯 DETECTED: PTP Client Purchase Order');
+      console.log('Confidence:', confidence);
+    }
+    
+    return {
+      isClientPO,
+      confidence,
+      score: totalScore,
+      maxScore: 58,
+      matchedIndicators
+    };
+  }
+}
+
+
 export class AIExtractionService {
   constructor() {
     this.processors = {
@@ -841,188 +958,191 @@ export class AIExtractionService {
       // Step 3.5: ENHANCED pre-processing with smart document type detection
      // Step 3.5: ENHANCED pre-processing with smart document type detection
       let preDetectedType = null;
-      let confidence = 0.9;
-      
-      // Check for specific structures that indicate document type
-      if (rawData.data?.purchase_order || rawData.purchase_order) {
-        // ENHANCED VALIDATION: Don't just trust the structure, validate the content
-        const textContent = JSON.stringify(rawData).toLowerCase();
-        
-        console.log('Found purchase_order structure, validating content...');
-        
-        // ✅ FIXED: Enhanced supplier indicators (Chinese suppliers sending PI)
-        const supplierIndicators = [
-          'proforma invoice',
-          'pi number',
-          'pi no',
-          'proforma',
-          'seller:',
-          'vendor:',
-          'supplier:',
-          'bank name:',
-          'swift code:',
-          'account number:',
-          'validity:',
-          'valid until',
-          'payment terms:',
-          'delivery terms:',
-          // Chinese supplier patterns
-          'co.,ltd',
-          'co., ltd',
-          'co ltd',
-          'technology co',
-          'machinery',
-          'equipment',
-          'hydraulic',
-          'automation',
-          'environmental',
-          'electromechanical',
-          'jpmorgan chase',
-          'hong kong',
-          'manufacturing',
-          't/t',
-          'ddp',
-          'cfr',
-          'fob',
-          'beneficiary',
-          'hengshui', // Specific to your current document
-          'anzhishun', // Specific to your current document
-          'wang wenpan' // Specific to your current document
-        ];
-        
-        // ✅ FIXED: More specific client PO indicators
-        const clientPOIndicators = [
-          'purchase order no',
-          'po number',
-          'purchase requisition',
-          'requisition number',
-          'buyer: flow solution', // Very specific
-          'bill to: flow solution', // Very specific
-          'order from client',
-          'client order'
-        ];
-        
-        const hasSupplierIndicators = supplierIndicators.some(indicator => 
-          textContent.includes(indicator.toLowerCase())
-        );
-        
-        const hasClientPOIndicators = clientPOIndicators.some(indicator => 
-          textContent.includes(indicator.toLowerCase())
-        );
-        
-        // ✅ CRITICAL FIX: Check if Flow Solution is mentioned as CONSIGNEE/BUYER
-        // This indicates it's a PI FROM a supplier TO us, not a PO from a client
-        const flowSolutionAsConsignee = textContent.includes('flow solution') && 
-          (textContent.includes('consignee') || textContent.includes('buyer:'));
-        
-        // ✅ CRITICAL FIX: Check if we see Chinese company names as SELLER
-        const chineseCompanyAsSeller = textContent.includes('hengshui') || 
-          textContent.includes('anzhishun') || 
-          textContent.includes('technology co., ltd');
-        
-        console.log('Supplier indicators found:', hasSupplierIndicators);
-        console.log('Client PO indicators found:', hasClientPOIndicators);
-        console.log('Flow Solution as consignee/buyer:', flowSolutionAsConsignee);
-        console.log('Chinese company as seller:', chineseCompanyAsSeller);
-        
-        // ✅ FIXED DECISION LOGIC: 
-        // Priority 1: If Chinese company is seller AND Flow Solution is buyer = PI from supplier
-        // Priority 2: If strong supplier indicators + no specific client PO indicators = PI
-        // Priority 3: Only then consider it a client PO
-        
-        if (chineseCompanyAsSeller && flowSolutionAsConsignee) {
-          preDetectedType = 'supplier_proforma';
-          confidence = 0.95;
-          console.log('✅ CORRECTED: Chinese supplier PI detected (Chinese company as seller, Flow Solution as buyer)');
-        } else if (hasSupplierIndicators && !hasClientPOIndicators) {
-          preDetectedType = 'supplier_proforma';
-          confidence = 0.9;
-          console.log('✅ CORRECTED: Supplier proforma detected based on strong supplier indicators');
-        } else if (hasClientPOIndicators || (!hasSupplierIndicators && flowSolutionAsConsignee)) {
-          preDetectedType = 'client_purchase_order';
-          console.log('Pre-detected as client purchase order based on structure and content');
-        } else {
-          // Ambiguous - let document detector decide
-          preDetectedType = null;
-          console.log('Ambiguous purchase_order structure - will use document detector');
-        }
-        
-      } else if (rawData.data?.proforma_invoice || rawData.proforma_invoice) {
-        preDetectedType = 'supplier_proforma';
-        console.log('Pre-detected as supplier proforma based on structure');
-      } else if (rawData.data?.invoice || rawData.invoice) {
-        preDetectedType = 'supplier_invoice';
-        console.log('Pre-detected as supplier invoice based on structure');
-      } else {
-        // Enhanced detection for documents without clear structure
-        const textContent = JSON.stringify(rawData).toLowerCase();
-        
-        // Enhanced Chinese supplier PI indicators
-        const chineseSupplierPatterns = [
-          'proforma invoice',
-          'pi no',
-          'pi number',
-          'proforma',
-          'co.,ltd',
-          'co ltd',
-          'technology',
-          'machinery',
-          'equipment',
-          'hydraulic',
-          'automation',
-          'environmental',
-          'electromechanical',
-          'jpmorgan chase',
-          'hong kong',
-          'china',
-          'manufacturing',
-          't/t',
-          'ddp',
-          'cfr',
-          'fob',
-          'swift',
-          'beneficiary',
-          'bank name',
-          'account number',
-          'validity',
-          'payment terms',
-          'delivery terms'
-        ];
-        
-        const chineseSupplierScore = chineseSupplierPatterns.filter(pattern => 
-          textContent.includes(pattern)
-        ).length;
-        
-        // Client PO indicators
-        const clientPOPatterns = [
-          'purchase order',
-          'bill to',
-          'ship to',
-          'buyer:',
-          'order date',
-          'required by'
-        ];
-        
-        const clientPOScore = clientPOPatterns.filter(pattern => 
-          textContent.includes(pattern)
-        ).length;
-        
-        console.log('Chinese supplier score:', chineseSupplierScore);
-        console.log('Client PO score:', clientPOScore);
-        
-        if (chineseSupplierScore >= 3) {
-          preDetectedType = 'supplier_proforma';
-          confidence = Math.min(0.6 + (chineseSupplierScore * 0.1), 0.95);
-          console.log(`Pre-detected as Chinese supplier proforma (score: ${chineseSupplierScore})`);
-        } else if (clientPOScore >= 2) {
-          preDetectedType = 'client_purchase_order';
-          confidence = Math.min(0.6 + (clientPOScore * 0.1), 0.95);
-          console.log(`Pre-detected as client purchase order (score: ${clientPOScore})`);
-        } else {
-          console.log('No clear pre-detection - will use document detector');
-        }
-      }
-      
+let confidence = 0.9;
+
+// PRIORITY CHECK: PTP Client Purchase Order Detection
+const ptpDetection = PTPClientPODetector.detectPTPClientPO(rawData);
+if (ptpDetection.isClientPO) {
+  preDetectedType = 'client_purchase_order';
+  confidence = ptpDetection.confidence;
+  console.log('✅ PRE-DETECTED: PTP Client Purchase Order');
+  console.log('Detection score:', ptpDetection.score, '/', ptpDetection.maxScore);
+  console.log('Matched indicators:', ptpDetection.matchedIndicators);
+} else if (rawData.data?.purchase_order || rawData.purchase_order) {
+  // ENHANCED VALIDATION: Don't just trust the structure, validate the content
+  const textContent = JSON.stringify(rawData).toLowerCase();
+  
+  console.log('Found purchase_order structure, validating content...');
+  
+  // ✅ FIXED: Enhanced supplier indicators (Chinese suppliers sending PI)
+  const supplierIndicators = [
+    'proforma invoice',
+    'pi number',
+    'pi no',
+    'proforma',
+    'seller:',
+    'vendor:',
+    'supplier:',
+    'bank name:',
+    'swift code:',
+    'account number:',
+    'validity:',
+    'valid until',
+    'payment terms:',
+    'delivery terms:',
+    // Chinese supplier patterns
+    'co.,ltd',
+    'co., ltd',
+    'co ltd',
+    'technology co',
+    'machinery',
+    'equipment',
+    'hydraulic',
+    'automation',
+    'environmental',
+    'electromechanical',
+    'jpmorgan chase',
+    'hong kong',
+    'manufacturing',
+    't/t',
+    'ddp',
+    'cfr',
+    'fob',
+    'beneficiary'
+  ];
+  
+  // ✅ FIXED: More specific client PO indicators
+  const clientPOIndicators = [
+    'purchase order no',
+    'po number',
+    'purchase requisition',
+    'requisition number',
+    'buyer: flow solution', // Very specific
+    'bill to: flow solution', // Very specific
+    'order from client',
+    'client order'
+  ];
+  
+  const hasSupplierIndicators = supplierIndicators.some(indicator => 
+    textContent.includes(indicator.toLowerCase())
+  );
+  
+  const hasClientPOIndicators = clientPOIndicators.some(indicator => 
+    textContent.includes(indicator.toLowerCase())
+  );
+  
+  // ✅ CRITICAL FIX: Check if Flow Solution is mentioned as CONSIGNEE/BUYER
+  // This indicates it's a PI FROM a supplier TO us, not a PO from a client
+  const flowSolutionAsConsignee = textContent.includes('flow solution') && 
+    (textContent.includes('consignee') || textContent.includes('buyer:'));
+  
+  // ✅ CRITICAL FIX: Check if we see Chinese company names as SELLER
+  const chineseCompanyAsSeller = textContent.includes('hengshui') || 
+    textContent.includes('anzhishun') || 
+    textContent.includes('technology co., ltd');
+  
+  console.log('Supplier indicators found:', hasSupplierIndicators);
+  console.log('Client PO indicators found:', hasClientPOIndicators);
+  console.log('Flow Solution as consignee/buyer:', flowSolutionAsConsignee);
+  console.log('Chinese company as seller:', chineseCompanyAsSeller);
+  
+  // ✅ FIXED DECISION LOGIC: 
+  // Priority 1: If Chinese company is seller AND Flow Solution is buyer = PI from supplier
+  // Priority 2: If strong supplier indicators + no specific client PO indicators = PI
+  // Priority 3: Only then consider it a client PO
+  
+  if (chineseCompanyAsSeller && flowSolutionAsConsignee) {
+    preDetectedType = 'supplier_proforma';
+    confidence = 0.95;
+    console.log('✅ CORRECTED: Chinese supplier PI detected (Chinese company as seller, Flow Solution as buyer)');
+  } else if (hasSupplierIndicators && !hasClientPOIndicators) {
+    preDetectedType = 'supplier_proforma';
+    confidence = 0.9;
+    console.log('✅ CORRECTED: Supplier proforma detected based on strong supplier indicators');
+  } else if (hasClientPOIndicators) {
+    preDetectedType = 'client_purchase_order';
+    console.log('Pre-detected as client purchase order based on structure and content');
+  } else {
+    // Ambiguous - let document detector decide
+    preDetectedType = null;
+    console.log('Ambiguous purchase_order structure - will use document detector');
+  }
+  
+} else if (rawData.data?.proforma_invoice || rawData.proforma_invoice) {
+  preDetectedType = 'supplier_proforma';
+  console.log('Pre-detected as supplier proforma based on structure');
+} else if (rawData.data?.invoice || rawData.invoice) {
+  preDetectedType = 'supplier_invoice';
+  console.log('Pre-detected as supplier invoice based on structure');
+} else {
+  // Enhanced detection for documents without clear structure
+  const textContent = JSON.stringify(rawData).toLowerCase();
+  
+  // Enhanced Chinese supplier PI indicators
+  const chineseSupplierPatterns = [
+    'proforma invoice',
+    'pi no',
+    'pi number',
+    'proforma',
+    'co.,ltd',
+    'co ltd',
+    'technology',
+    'machinery',
+    'equipment',
+    'hydraulic',
+    'automation',
+    'environmental',
+    'electromechanical',
+    'jpmorgan chase',
+    'hong kong',
+    'china',
+    'manufacturing',
+    't/t',
+    'ddp',
+    'cfr',
+    'fob',
+    'swift',
+    'beneficiary',
+    'bank name',
+    'account number',
+    'validity',
+    'payment terms',
+    'delivery terms'
+  ];
+  
+  const chineseSupplierScore = chineseSupplierPatterns.filter(pattern => 
+    textContent.includes(pattern)
+  ).length;
+  
+  // Client PO indicators
+  const clientPOPatterns = [
+    'purchase order',
+    'bill to',
+    'ship to',
+    'buyer:',
+    'order date',
+    'required by'
+  ];
+  
+  const clientPOScore = clientPOPatterns.filter(pattern => 
+    textContent.includes(pattern)
+  ).length;
+  
+  console.log('Chinese supplier score:', chineseSupplierScore);
+  console.log('Client PO score:', clientPOScore);
+  
+  if (chineseSupplierScore >= 3) {
+    preDetectedType = 'supplier_proforma';
+    confidence = Math.min(0.6 + (chineseSupplierScore * 0.1), 0.95);
+    console.log(`Pre-detected as Chinese supplier proforma (score: ${chineseSupplierScore})`);
+  } else if (clientPOScore >= 2) {
+    preDetectedType = 'client_purchase_order';
+    confidence = Math.min(0.6 + (clientPOScore * 0.1), 0.95);
+    console.log(`Pre-detected as client purchase order (score: ${clientPOScore})`);
+  } else {
+    console.log('No clear pre-detection - will use document detector');
+  }
+}
       console.log('=== END DEBUG ===');
       
       // Step 4: Detect document type
@@ -1034,8 +1154,55 @@ export class AIExtractionService {
       
       // Step 5: Enhanced processing based on document type
       let processedData;
-      
-      if (docType.type === 'supplier_proforma' || docType.type === 'supplier_invoice') {
+
+if (docType.type === 'client_purchase_order') {
+  // NEW: Process Client Purchase Order (like PTP)
+  console.log('Processing Client Purchase Order from:', 
+    rawData.data?.purchase_order?.supplier?.name || 'Unknown Client');
+  
+  const data = rawData.data?.purchase_order || rawData.purchase_order || rawData.data || rawData;
+  
+  processedData = {
+    documentType: 'client_purchase_order',
+    confidence: docType.confidence,
+    
+    // Client info (the one sending us the PO)
+    clientName: data.supplier?.name || 'Unknown Client',
+    clientPONumber: data.order_number || data.po_number || '',
+    clientAddress: data.supplier?.address || data.ship_to?.name || '',
+    prNumber: data.pr_number || '',
+    
+    // Our info (Flow Solution as recipient)
+    recipientName: data.bill_to?.name || 'Flow Solution Sdn. Bhd.',
+    recipientAddress: data.bill_to?.address || '',
+    
+    // Order details
+    orderDate: data.order_date || new Date().toISOString().split('T')[0],
+    requiredDate: '', // Not specified in PTP POs
+    
+    // Items to source
+    items: this.mapClientPOItems(data.items || []),
+    totalAmount: parseFloat(data.grand_total || data.subtotal || 0),
+    subtotal: parseFloat(data.subtotal || 0),
+    tax: parseFloat(data.tax || 0),
+    
+    // Status
+    status: 'sourcing_required',
+    sourcingStatus: 'pending',
+    priority: 'normal',
+    
+    // Notes
+    notes: data.notes || '',
+    termsAndConditions: data.terms_and_conditions || '',
+    
+    // Metadata
+    extractedAt: new Date().toISOString(),
+    sourceFile: file?.name || 'unknown'
+  };
+  
+  console.log('✅ Successfully processed Client PO:', processedData.clientPONumber);
+  
+} else if (docType.type === 'supplier_proforma' || docType.type === 'supplier_invoice') {
   // Use enhanced Chinese supplier extraction for both proforma and invoice
   processedData = ChineseSupplierPIExtractor.extractChineseSupplierPI(rawData, file);
   console.log('Using enhanced Chinese supplier PI extraction');
@@ -1205,6 +1372,35 @@ export class AIExtractionService {
     return { isValid: true };
   }
 
+  
+  /**
+   * Map items from client PO format
+   */
+  mapClientPOItems(items) {
+    if (!items || !Array.isArray(items)) return [];
+    
+    return items.map((item, index) => ({
+      id: `item_${index + 1}`,
+      productCode: item.part_number || item.product_code || '',
+      productName: item.description || item.product_name || item.name || '',
+      quantity: parseFloat(item.quantity || 0),
+      unit: item.uom || item.unit || 'PCS',
+      unitPrice: parseFloat(item.unit_price?.replace(/[^0-9.]/g, '') || 0),
+      totalPrice: parseFloat(item.amount?.replace(/[^0-9.]/g, '') || 0),
+      
+      // Sourcing status
+      sourcingStatus: 'pending',
+      supplierMatches: [],
+      recommendedSupplier: null,
+      
+      // Additional fields
+      category: 'General',
+      specifications: item.description || '',
+      urgency: 'normal'
+    }));
+  }
+
+  
   /**
    * Process generic/unknown document type with enhanced fallback
    */
