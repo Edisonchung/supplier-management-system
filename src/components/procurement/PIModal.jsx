@@ -97,10 +97,14 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   const [supplierErrors, setSupplierErrors] = useState({});
 
   // Filter suppliers based on search term
-  const filteredSuppliers = suppliers.filter(supplier =>
-    supplier.name.toLowerCase().includes(supplierSearchTerm.toLowerCase()) ||
-    supplier.email?.toLowerCase().includes(supplierSearchTerm.toLowerCase())
-  );
+  const filteredSuppliers = suppliers.filter(supplier => {
+  const supplierName = supplier.name || '';
+  const supplierEmail = supplier.email || '';
+  const searchTerm = supplierSearchTerm || '';
+  
+  return supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         supplierEmail.toLowerCase().includes(searchTerm.toLowerCase());
+});
 
   // Get selected supplier details
   const selectedSupplier = suppliers.find(s => s.id === formData.supplierId);
@@ -310,62 +314,84 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   };
 
   const handleCreateSupplier = async () => {
-    if (!validateSupplierForm()) return;
+  if (!validateSupplierForm()) return;
+  
+  setIsCreatingSupplier(true);
+  
+  try {
+    const supplierToCreate = {
+      name: newSupplierData.name.trim(),
+      email: newSupplierData.email.trim(),
+      phone: newSupplierData.phone.trim(),
+      contactPerson: newSupplierData.contactPerson.trim(),
+      address: newSupplierData.address.trim(),
+      status: newSupplierData.status,
+    };
+
+    console.log('📞 Calling addSupplier with:', supplierToCreate);
     
-    setIsCreatingSupplier(true);
+    // Call the addSupplier function
+    const createdSupplier = await addSupplier(supplierToCreate);
     
-    try {
-      const supplierToCreate = {
-        name: newSupplierData.name.trim(),
-        email: newSupplierData.email.trim(),
-        phone: newSupplierData.phone.trim(),
-        contactPerson: newSupplierData.contactPerson.trim(),
-        address: newSupplierData.address.trim(),
-        status: newSupplierData.status,
-        dateAdded: new Date().toISOString()
-      };
-
-      // Call the addSupplier function
-      const createdSupplier = await addSupplier(supplierToCreate);
-      
-      // Select the newly created supplier
-      setFormData(prev => ({
-        ...prev,
-        supplierId: createdSupplier.id,
-        supplierName: createdSupplier.name
-      }));
-
-      // Clear search term and close create form
-      setSupplierSearchTerm(createdSupplier.name);
-      setShowCreateSupplier(false);
-      setShowSupplierDropdown(false);
-      
-      // Clear supplier error
-      setErrors(prev => {
-        const { supplier, ...rest } = prev;
-        return rest;
-      });
-
-      // Reset supplier form
-      setNewSupplierData({
-        name: '',
-        email: '',
-        phone: '',
-        address: '',
-        contactPerson: '',
-        status: 'active'
-      });
-      setSupplierErrors({});
-
-      showNotification?.(`Supplier "${createdSupplier.name}" created successfully`, 'success');
-      
-    } catch (error) {
-      console.error('Failed to create supplier:', error);
-      showNotification?.('Failed to create supplier. Please try again.', 'error');
-    } finally {
-      setIsCreatingSupplier(false);
+    console.log('✅ Supplier created successfully:', createdSupplier);
+    
+    // FIXED: Ensure we handle the response correctly
+    let supplierId, supplierName;
+    
+    if (typeof createdSupplier === 'string') {
+      // If the response is just an ID
+      supplierId = createdSupplier;
+      supplierName = newSupplierData.name.trim();
+    } else if (createdSupplier && typeof createdSupplier === 'object') {
+      // If the response is an object
+      supplierId = createdSupplier.id || createdSupplier._id || createdSupplier.key;
+      supplierName = createdSupplier.name || newSupplierData.name.trim();
+    } else {
+      // Fallback
+      supplierId = `temp-${Date.now()}`;
+      supplierName = newSupplierData.name.trim();
     }
-  };
+
+    console.log('🔧 Using supplier ID:', supplierId, 'Name:', supplierName);
+
+    // FIXED: Ensure all values are strings and not null/undefined
+    setFormData(prev => ({
+      ...prev,
+      supplierId: supplierId || '',
+      supplierName: supplierName || ''
+    }));
+
+    // FIXED: Ensure search term is a string
+    setSupplierSearchTerm(supplierName || '');
+    setShowCreateSupplier(false);
+    setShowSupplierDropdown(false);
+    
+    // Clear supplier error
+    setErrors(prev => {
+      const { supplier, ...rest } = prev;
+      return rest;
+    });
+
+    // Reset supplier form
+    setNewSupplierData({
+      name: '',
+      email: '',
+      phone: '',
+      address: '',
+      contactPerson: '',
+      status: 'active'
+    });
+    setSupplierErrors({});
+
+    showNotification?.(`Supplier "${supplierName}" created successfully`, 'success');
+    
+  } catch (error) {
+    console.error('Failed to create supplier:', error);
+    showNotification?.('Failed to create supplier. Please try again.', 'error');
+  } finally {
+    setIsCreatingSupplier(false);
+  }
+};
 
   const handleSupplierSelect = (supplier) => {
     setFormData(prev => ({
@@ -385,17 +411,22 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   };
 
   const handleSupplierSearchChange = (value) => {
-    setSupplierSearchTerm(value);
-    setShowSupplierDropdown(true);
+      const searchValue = value || '';
+  setSupplierSearchTerm(searchValue);
+  setShowSupplierDropdown(true);
+
     
-    // Clear selection if search term doesn't match selected supplier
-    if (selectedSupplier && !selectedSupplier.name.toLowerCase().includes(value.toLowerCase())) {
+   // Clear selection if search term doesn't match selected supplier
+  if (selectedSupplier && selectedSupplier.name) {
+    const supplierName = selectedSupplier.name || '';
+    if (!supplierName.toLowerCase().includes(searchValue.toLowerCase())) {
       setFormData(prev => ({
         ...prev,
         supplierId: '',
         supplierName: ''
       }));
     }
+  }
   };
 
   const handleNewSupplierDataChange = (field, value) => {
