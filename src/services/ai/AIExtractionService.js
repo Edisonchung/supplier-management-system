@@ -838,9 +838,9 @@ class PTPClientPODetector {
         weight: 5
       },
       
-      // 5. Has PR number (internal requisition)
+      / 5. Has PR number (internal requisition) - handles both single and array
       {
-        test: !!data.pr_number,
+        test: !!data.pr_number || (data.pr_numbers && Array.isArray(data.pr_numbers) && data.pr_numbers.length > 0),
         name: 'Has PR number',
         weight: 5
       },
@@ -853,9 +853,9 @@ class PTPClientPODetector {
         weight: 8
       },
       
-      // 7. Order structure (not invoice/proforma structure)
+      / 7. Order structure (not invoice/proforma structure)
       {
-        test: textContent.includes('purchase order') &&
+        test: (textContent.includes('purchase order') || textContent.includes('purchase_order')) &&
               !textContent.includes('proforma') &&
               !textContent.includes('invoice'),
         name: 'Purchase order structure',
@@ -1170,7 +1170,7 @@ if (docType.type === 'client_purchase_order') {
     clientName: this.extractClientName(data),
     clientPONumber: data.order_number || data.po_number || '',
     clientAddress: data.supplier?.address || data.ship_to?.name || '',
-    prNumber: data.pr_number || '',
+    prNumber: data.pr_number || (data.pr_numbers && data.pr_numbers.length > 0 ? data.pr_numbers.join(', ') : ''),
     
     // Our info (Flow Solution as recipient)
     recipientName: data.bill_to?.name || 'Flow Solution Sdn. Bhd.',
