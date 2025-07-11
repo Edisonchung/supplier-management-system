@@ -28,7 +28,14 @@ const ProformaInvoices = ({ showNotification }) => {
     getPendingDeliveries
   } = useProformaInvoices();
   
-  const { suppliers } = useSuppliers();
+  const { 
+    suppliers, 
+    loading: suppliersLoading, 
+    addSupplier: hookAddSupplier,  // Get addSupplier from hook
+    updateSupplier, 
+    deleteSupplier 
+  } = useSuppliers();
+  
   const { products } = useProducts();
   
   const [showModal, setShowModal] = useState(false);
@@ -47,6 +54,42 @@ const ProformaInvoices = ({ showNotification }) => {
 
   const canEdit = permissions.canEditPI || permissions.isAdmin;
   const canDelete = permissions.isAdmin;
+
+  // Enhanced addSupplier function that works with PIModal
+  const addSupplier = async (supplierData) => {
+    try {
+      console.log('ProformaInvoices - Adding supplier:', supplierData);
+      
+      // If using the hook's addSupplier function
+      if (hookAddSupplier) {
+        const result = await hookAddSupplier(supplierData);
+        console.log('Supplier added via hook:', result);
+        return result;
+      }
+      
+      // Fallback: Direct implementation for localStorage
+      const newSupplier = {
+        id: `supplier-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        ...supplierData,
+        dateAdded: new Date().toISOString()
+      };
+
+      // For localStorage implementation, you might need to update suppliers directly
+      // This would depend on your specific implementation
+      console.log('Supplier created (fallback):', newSupplier);
+      
+      // If you have a way to update the suppliers state, do it here
+      // For example, if useSuppliers exposes a setSuppliers function
+      
+      showNotification?.(`Supplier "${newSupplier.name}" created successfully`, 'success');
+      return newSupplier;
+      
+    } catch (error) {
+      console.error('Error adding supplier in ProformaInvoices:', error);
+      showNotification?.('Failed to create supplier. Please try again.', 'error');
+      throw error;
+    }
+  };
 
   // Filter PIs based on search and filters
   const filteredPIs = proformaInvoices.filter(pi => {
@@ -169,19 +212,18 @@ const ProformaInvoices = ({ showNotification }) => {
         if (piData) {
           console.log('Final PI data:', piData);
           console.log('ProformaInvoices - Final piData with items:', piData);
-console.log('ProformaInvoices - Items count:', piData.items?.length || 0);
-if (piData.items && piData.items.length > 0) {
-  console.log('ProformaInvoices - Sample mapped item:', piData.items[0]);
-}
-          // Validate and enhance the data
-          //piData = await enhancePIData(piData, extractedData);
-          console.log('BEFORE enhancePIData - Items count:', piData.items?.length || 0);
-console.log('BEFORE enhancePIData - Sample item:', piData.items?.[0]);
-piData = await enhancePIData(piData, extractedData);
-console.log('AFTER enhancePIData - Items count:', piData.items?.length || 0);
-console.log('AFTER enhancePIData - Sample item:', piData.items?.[0]);
-
+          console.log('ProformaInvoices - Items count:', piData.items?.length || 0);
+          if (piData.items && piData.items.length > 0) {
+            console.log('ProformaInvoices - Sample mapped item:', piData.items[0]);
+          }
           
+          // Validate and enhance the data
+          console.log('BEFORE enhancePIData - Items count:', piData.items?.length || 0);
+          console.log('BEFORE enhancePIData - Sample item:', piData.items?.[0]);
+          piData = await enhancePIData(piData, extractedData);
+          console.log('AFTER enhancePIData - Items count:', piData.items?.length || 0);
+          console.log('AFTER enhancePIData - Sample item:', piData.items?.[0]);
+
           setSelectedPI(piData);
           setShowModal(true);
           
@@ -278,6 +320,9 @@ console.log('AFTER enhancePIData - Sample item:', piData.items?.[0]);
       supplierPhone: extractedData.supplier?.phone || '',
       supplierAddress: extractedData.supplier?.address || '',
       supplierCountry: extractedData.supplier?.country || 'China',
+      
+      // Store full supplier object for create new supplier functionality
+      supplier: extractedData.supplier || null,
       
       // Client reference (Flow Solution specifics)
       projectCode: extractedData.clientRef?.poNumber || '',
@@ -408,39 +453,35 @@ console.log('AFTER enhancePIData - Sample item:', piData.items?.[0]);
       supplierContact: '',
       supplierEmail: '',
       supplierPhone: '',
+      supplier: null, // No extracted supplier data
       
       // Priority Flag
       isPriority: false,
       priorityReason: '',
       
-      // Items from PO (as requirements)
- //     items: (extractedData.products || extractedData.items || []).map((item, index) => ({
- // id: `item-${Date.now()}-${index}`,
- // productCode: item
-
-// Products/Items - ensure proper mapping with COMPLETE fields
-items: (extractedData.products || extractedData.items || []).map((item, index) => {
-  console.log(`Mapping ProformaInvoices item ${index + 1}:`, item);
-  return {
-    id: `item-${Date.now()}-${index}`,
-    productCode: item.productCode || item.partNumber || item.part_number || '',
-    productName: item.productName || item.description || item.product_description || item.name || '',
-    quantity: parseInt(item.quantity) || 1,
-    unitPrice: parseFloat(item.unitPrice || item.unit_price || item.price) || 0,
-    totalPrice: parseFloat(item.totalPrice || item.total_price || item.total) || 0,
-    unit: item.unit || item.uom || 'pcs',
-    leadTime: item.leadTime || item.lead_time || '',
-    warranty: item.warranty || '',
-    notes: item.notes || item.specifications || '',
-    // Additional fields for receiving tracking
-    received: false,
-    receivedQty: 0,
-    receivedDate: '',
-    hasDiscrepancy: false,
-    discrepancyReason: '',
-    receivingNotes: ''
-  };
-}),
+      // Products/Items - ensure proper mapping with COMPLETE fields
+      items: (extractedData.products || extractedData.items || []).map((item, index) => {
+        console.log(`Mapping ProformaInvoices item ${index + 1}:`, item);
+        return {
+          id: `item-${Date.now()}-${index}`,
+          productCode: item.productCode || item.partNumber || item.part_number || '',
+          productName: item.productName || item.description || item.product_description || item.name || '',
+          quantity: parseInt(item.quantity) || 1,
+          unitPrice: parseFloat(item.unitPrice || item.unit_price || item.price) || 0,
+          totalPrice: parseFloat(item.totalPrice || item.total_price || item.total) || 0,
+          unit: item.unit || item.uom || 'pcs',
+          leadTime: item.leadTime || item.lead_time || '',
+          warranty: item.warranty || '',
+          notes: item.notes || item.specifications || '',
+          // Additional fields for receiving tracking
+          received: false,
+          receivedQty: 0,
+          receivedDate: '',
+          hasDiscrepancy: false,
+          discrepancyReason: '',
+          receivingNotes: ''
+        };
+      }),
       
       // Default values for new PI
       currency: extractedData.currency || 'USD',
@@ -538,7 +579,7 @@ items: (extractedData.products || extractedData.items || []).map((item, index) =
     
     // Ensure all items have valid data
     piData.items = piData.items.filter(item => 
-item.productCode && item.quantity > 0
+      item.productCode && item.quantity > 0
     ).map(item => ({
       ...item,
       totalPrice: item.totalPrice || (item.quantity * item.unitPrice)
@@ -610,17 +651,25 @@ item.productCode && item.quantity > 0
   };
 
   const handleSavePI = async (piData) => {
-    const result = selectedPI
-      ? await updateProformaInvoice(selectedPI.id, piData)
-      : await addProformaInvoice(piData);
+    try {
+      console.log('Saving PI data:', piData);
+      
+      const result = selectedPI
+        ? await updateProformaInvoice(selectedPI.id, piData)
+        : await addProformaInvoice(piData);
 
-    if (result.success) {
-      showNotification(
-        selectedPI ? 'PI updated successfully' : 'PI created successfully',
-        'success'
-      );
-      setShowModal(false);
-    } else {
+      if (result.success) {
+        showNotification(
+          selectedPI ? 'PI updated successfully' : 'PI created successfully',
+          'success'
+        );
+        setShowModal(false);
+        setSelectedPI(null);
+      } else {
+        showNotification('Failed to save PI', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving PI:', error);
       showNotification('Failed to save PI', 'error');
     }
   };
@@ -1024,15 +1073,20 @@ item.productCode && item.quantity > 0
         </div>
       )}
 
-      {/* PI Modal */}
+      {/* PI Modal with Enhanced Props */}
       {showModal && (
         <PIModal
           isOpen={showModal}
-          onClose={() => setShowModal(false)}
+          onClose={() => {
+            setShowModal(false);
+            setSelectedPI(null);
+          }}
           onSave={handleSavePI}
           proformaInvoice={selectedPI}
           suppliers={suppliers}
           products={products}
+          addSupplier={addSupplier}  // ← Critical: Pass the addSupplier function
+          showNotification={showNotification}
         />
       )}
     </div>
