@@ -261,6 +261,8 @@ const PurchaseOrders = () => {
     const matchesSearch = 
       po.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       po.poNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      po.projectCode?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      po.clientPoNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       po.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       po.clientName?.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -450,7 +452,7 @@ const PurchaseOrders = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                 <input
                   type="text"
-                  placeholder="Search PO number or client..."
+                  placeholder="Search PO number, project code, or client..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 pr-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -482,6 +484,9 @@ const PurchaseOrders = () => {
                   PO Number
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Project Code
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Client
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -507,7 +512,7 @@ const PurchaseOrders = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredPOs.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-6 py-12 text-center text-sm text-gray-500">
+                  <td colSpan="9" className="px-6 py-12 text-center text-sm text-gray-500">
                     <div className="flex flex-col items-center">
                       <FileText className="h-12 w-12 text-gray-300 mb-3" />
                       <p className="text-gray-500">No purchase orders found</p>
@@ -522,6 +527,15 @@ const PurchaseOrders = () => {
                   <tr key={po.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {po.orderNumber || po.poNumber}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {po.projectCode ? (
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+                          {po.projectCode}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {po.client || po.clientName || '-'}
