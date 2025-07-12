@@ -23,6 +23,7 @@ export const usePurchaseOrders = () => {
           
           // Client information
           clientPoNumber: order.clientPoNumber || '',
+          projectCode: order.projectCode || '',
           clientName: order.clientName || '',
           clientContact: order.clientContact || '',
           clientEmail: order.clientEmail || '',
