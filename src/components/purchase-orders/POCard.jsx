@@ -51,6 +51,14 @@ const POCard = ({ purchaseOrder, onEdit, onDelete, canEdit, canDelete }) => {
         <p className="text-sm text-gray-600">
           <span className="font-medium">Client:</span> {purchaseOrder.clientName || 'No client specified'}
         </p>
+        {purchaseOrder.projectCode && (
+    <p className="text-sm text-gray-600">
+      <span className="font-medium">Project:</span> 
+      <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+        {purchaseOrder.projectCode}
+      </span>
+    </p>
+  )}
         <p className="text-sm text-gray-600">
           <span className="font-medium">Amount:</span> ${subtotal.toFixed(2)}
         </p>
