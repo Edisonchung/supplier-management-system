@@ -1,27 +1,35 @@
-// src/App.jsx
+// src/App.jsx - OPTIMIZED VERSION
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
-import Dashboard from './components/dashboard/Dashboard';
-import Suppliers from './components/suppliers/Suppliers';
-import Products from './components/products/Products';
-import ProformaInvoices from './components/procurement/ProformaInvoices';
 import PublicPIView from './components/procurement/PublicPIView';
-import PurchaseOrders from './components/purchase-orders';
-import ClientInvoices from './components/invoices/ClientInvoices';
-import QuickImport from './components/import/QuickImport';
-import UserManagement from './components/users/UserManagement';
-import TeamManagement from './components/team/TeamManagement';
 import Notification from './components/common/Notification';
-import SourcingDashboard from './components/sourcing/SourcingDashboard';
 import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users, Shield, Settings, Activity, Brain } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
-import SupplierMatchingPage from './components/supplier-matching/SupplierMatchingPage';
+
+// Import lazy components
+import { 
+  LazyDashboard, 
+  LazySuppliers, 
+  LazyProducts, 
+  LazyProformaInvoices,
+  LazyPurchaseOrders,
+  LazyClientInvoices,
+  LazyQuickImport,
+  LazyUserManagement,
+  LazyWrapper 
+} from './components/LazyComponents';
+
+// Lazy load additional components that exist
+import { lazy } from 'react';
+const LazySourcingDashboard = lazy(() => import('./components/sourcing/SourcingDashboard'));
+const LazySupplierMatchingPage = lazy(() => import('./components/supplier-matching/SupplierMatchingPage'));
+const LazyTeamManagement = lazy(() => import('./components/team/TeamManagement'));
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -110,7 +118,7 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
 );
 
 function AppContent() {
-  const { user, loading } = useAuth(); // Get loading state
+  const { user, loading } = useAuth();
   const [notification, setNotification] = useState(null);
   const [showFirestoreTest, setShowFirestoreTest] = useState(true);
 
@@ -141,7 +149,6 @@ function AppContent() {
         containerClassName=""
         containerStyle={{}}
         toastOptions={{
-          // Define default options
           className: '',
           duration: 4000,
           style: {
@@ -151,7 +158,6 @@ function AppContent() {
             borderRadius: '8px',
             fontSize: '14px',
           },
-          // Default options for specific types
           success: {
             duration: 3000,
             iconTheme: {
@@ -194,22 +200,26 @@ function AppContent() {
           
           {/* Protected Routes with Layout */}
           <Route element={user ? <Layout /> : <Navigate to="/login" />}>
-            {/* Dashboard */}
+            {/* Dashboard - LAZY LOADED */}
             <Route 
               path="/" 
               element={
                 <ProtectedRoute permission="canViewDashboard">
-                  <Dashboard />
+                  <LazyWrapper>
+                    <LazyDashboard />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Core Management Routes */}
+            {/* Core Management Routes - LAZY LOADED */}
             <Route 
               path="/suppliers" 
               element={
                 <ProtectedRoute permission="canViewSuppliers">
-                  <Suppliers showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazySuppliers showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
@@ -218,17 +228,21 @@ function AppContent() {
               path="/products" 
               element={
                 <ProtectedRoute permission="canViewProducts">
-                  <Products showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazyProducts showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Operations Routes */}
+            {/* Operations Routes - LAZY LOADED */}
             <Route 
               path="/sourcing" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <SourcingDashboard showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazySourcingDashboard showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
@@ -246,12 +260,14 @@ function AppContent() {
               } 
             />
             
-            {/* Procurement Routes */}
+            {/* Procurement Routes - LAZY LOADED */}
             <Route 
               path="/proforma-invoices" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <ProformaInvoices showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazyProformaInvoices showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
@@ -260,27 +276,33 @@ function AppContent() {
               path="/purchase-orders" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <PurchaseOrders showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazyPurchaseOrders showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
 
-            {/* Supplier Matching Page */}
+            {/* Supplier Matching Page - LAZY LOADED */}
             <Route 
               path="/purchase-orders/:poId/supplier-matching" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <SupplierMatchingPage />
+                  <LazyWrapper>
+                    <LazySupplierMatchingPage />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Business Routes */}
+            {/* Business Routes - LAZY LOADED */}
             <Route 
               path="/client-invoices" 
               element={
                 <ProtectedRoute permission="canViewInvoices">
-                  <ClientInvoices showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazyClientInvoices showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
@@ -298,22 +320,26 @@ function AppContent() {
               } 
             />
             
-            {/* Tools Routes */}
+            {/* Tools Routes - LAZY LOADED */}
             <Route 
               path="/quick-import" 
               element={
                 <ProtectedRoute permission="canImportData">
-                  <QuickImport showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazyQuickImport showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Administration Routes */}
+            {/* Administration Routes - LAZY LOADED */}
             <Route 
               path="/team-management" 
               element={
                 <ProtectedRoute permission="canManageUsers">
-                  <TeamManagement showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazyTeamManagement showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
@@ -344,12 +370,14 @@ function AppContent() {
               } 
             />
             
-            {/* Legacy Routes (keeping for compatibility) */}
+            {/* Legacy Routes (keeping for compatibility) - LAZY LOADED */}
             <Route 
               path="/users" 
               element={
                 <ProtectedRoute permission="canManageUsers">
-                  <UserManagement showNotification={showNotification} />
+                  <LazyWrapper>
+                    <LazyUserManagement showNotification={showNotification} />
+                  </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
