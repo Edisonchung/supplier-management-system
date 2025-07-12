@@ -26,18 +26,37 @@ import SupplierMatchingDisplay from './SupplierMatchingDisplay';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { AIExtractionService } from '../../services/ai';
 
-// Import tracking services and hooks (with error handling)
+// 🔧 FIXED: Use ES6 imports with fallbacks
+import { AIExtractionService } from '../../services/ai';
+
+// Safe tracking service imports with fallbacks
 let ConsolidatedTrackingService, useDeliveryTracking, usePaymentTracking;
 try {
-  ({ ConsolidatedTrackingService } = require('../../services/tracking/TrackingServices'));
-  ({ useDeliveryTracking, usePaymentTracking } = require('../../context/UnifiedDataContext'));
+  // Try to import tracking services
+  const trackingModule = await import('../../services/tracking/TrackingServices').catch(() => null);
+  const contextModule = await import('../../context/UnifiedDataContext').catch(() => null);
+  
+  if (trackingModule) {
+    ConsolidatedTrackingService = trackingModule.ConsolidatedTrackingService;
+  }
+  if (contextModule) {
+    useDeliveryTracking = contextModule.useDeliveryTracking;
+    usePaymentTracking = contextModule.usePaymentTracking;
+  }
 } catch (error) {
   console.warn('⚠️ Tracking services not available:', error.message);
-  // Provide fallback functions
+}
+
+// Provide fallback functions if imports failed
+if (!ConsolidatedTrackingService) {
   ConsolidatedTrackingService = {
     initializeCompleteTracking: async () => ({ success: false, error: 'Tracking service unavailable' })
   };
+}
+if (!useDeliveryTracking) {
   useDeliveryTracking = () => ({ updateDeliveryStatus: () => {} });
+}
+if (!usePaymentTracking) {
   usePaymentTracking = () => ({ updatePaymentStatus: () => {} });
 }
 
@@ -46,14 +65,16 @@ const SupplierMatchingPage = () => {
   const navigate = useNavigate();
   
   // 🔧 FIXED: Safe tracking hooks with fallbacks
-  let updateDeliveryStatus, updatePaymentStatus;
-  try {
-    ({ updateDeliveryStatus } = useDeliveryTracking());
-    ({ updatePaymentStatus } = usePaymentTracking());
-  } catch (error) {
-    console.warn('⚠️ Tracking hooks not available:', error.message);
-    updateDeliveryStatus = () => {};
-    updatePaymentStatus = () => {};
+  let updateDeliveryStatus = () => {}, updatePaymentStatus = () => {};
+  
+  // Only use hooks if they're available
+  if (typeof useDeliveryTracking === 'function' && typeof usePaymentTracking === 'function') {
+    try {
+      ({ updateDeliveryStatus } = useDeliveryTracking());
+      ({ updatePaymentStatus } = usePaymentTracking());
+    } catch (error) {
+      console.warn('⚠️ Tracking hooks not available:', error.message);
+    }
   }
   
   // Main state
@@ -457,10 +478,17 @@ const SupplierMatchingPage = () => {
       const selectionSummary = calculateSelectionSummary(updatedItems);
       console.log('📊 Selection summary:', selectionSummary);
       
-      // 🔧 FIXED: Better error handling for save operation
+      // 🔧 FIXED: Better error handling for save operation with detailed logging
       let updateResult;
       try {
-        updateResult = await purchaseOrderService.update(poId, {
+        console.log('🔧 Attempting to save with data:', {
+          poId,
+          itemsCount: updatedItems.length,
+          selectionsCount: Object.keys(selectedSuppliers).length,
+          hasSelectionSummary: !!selectionSummary
+        });
+        
+        const saveData = {
           items: updatedItems,
           supplierSelections: {
             ...selectedSuppliers,
@@ -469,15 +497,31 @@ const SupplierMatchingPage = () => {
           status: 'suppliers_selected',
           supplierSelectionsUpdated: new Date().toISOString(),
           lastModified: new Date().toISOString()
-        });
+        };
+        
+        console.log('🔧 Save data prepared:', saveData);
+        
+        updateResult = await purchaseOrderService.update(poId, saveData);
         
         console.log('💾 Save result:', updateResult);
       } catch (saveError) {
         console.error('❌ Save operation failed:', saveError);
+        console.error('❌ Save error details:', {
+          name: saveError.name,
+          message: saveError.message,
+          stack: saveError.stack
+        });
         throw new Error(`Save operation failed: ${saveError.message}`);
       }
       
-      if (updateResult && updateResult.success) {
+      if (!updateResult) {
+        throw new Error('Save operation returned null/undefined result');
+      }
+      
+      if (!updateResult.success) {
+        console.error('❌ Save operation unsuccessful:', updateResult);
+        throw new Error(updateResult.error || 'Save operation was not successful');
+      }
         // Initialize tracking systems
         const updatedPO = {
           ...purchaseOrder,
@@ -492,16 +536,17 @@ const SupplierMatchingPage = () => {
         console.log('🚀 Initializing delivery and payment tracking...');
         
         // 🔧 FIXED: Handle tracking initialization errors gracefully
-        let trackingResult;
+        let trackingResult = { success: false, error: 'Tracking service not available' };
         try {
-          if (ConsolidatedTrackingService) {
+          if (ConsolidatedTrackingService && typeof ConsolidatedTrackingService.initializeCompleteTracking === 'function') {
+            console.log('🚀 Initializing tracking with service...');
             trackingResult = await ConsolidatedTrackingService.initializeCompleteTracking(
               updatedPO,
               updateDeliveryStatus,
               updatePaymentStatus
             );
           } else {
-            throw new Error('Tracking service not available');
+            console.log('⚠️ Tracking service not available, skipping tracking initialization');
           }
         } catch (trackingError) {
           console.warn('⚠️ Tracking initialization failed:', trackingError);
