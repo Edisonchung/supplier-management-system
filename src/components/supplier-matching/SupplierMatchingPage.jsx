@@ -380,7 +380,7 @@ const SupplierMatchingPage = () => {
     }
   };
 
-  // 🔧 FIXED: Save with better error handling
+  // 🔧 FIXED: Save with better error handling - SYNTAX ERROR FIXED
   const saveSupplierSelections = async () => {
     if (!selectedSuppliers || Object.keys(selectedSuppliers).length === 0) {
       toast.error('Please select suppliers before saving');
@@ -490,6 +490,7 @@ const SupplierMatchingPage = () => {
         throw new Error(`Save operation failed: ${saveError.message}`);
       }
       
+      // 🔧 FIXED: Validate save result before proceeding - NO ELSE AFTER CATCH!
       if (!updateResult) {
         throw new Error('Save operation returned null/undefined result');
       }
@@ -498,113 +499,110 @@ const SupplierMatchingPage = () => {
         console.error('❌ Save operation unsuccessful:', updateResult);
         throw new Error(updateResult.error || 'Save operation was not successful');
       }
-        // Initialize tracking systems
-        const updatedPO = {
-          ...purchaseOrder,
-          items: updatedItems,
-          supplierSelections: {
-            ...selectedSuppliers,
-            ...selectionSummary
-          },
-          status: 'suppliers_selected'
-        };
-        
-        console.log('🚀 Initializing delivery and payment tracking...');
-        
-        // 🔧 FIXED: Handle tracking initialization errors gracefully
-        let trackingResult = { success: false, error: 'Tracking service not available' };
-        try {
-          if (ConsolidatedTrackingService && typeof ConsolidatedTrackingService.initializeCompleteTracking === 'function') {
-            console.log('🚀 Initializing tracking with service...');
-            trackingResult = await ConsolidatedTrackingService.initializeCompleteTracking(
-              updatedPO,
-              updateDeliveryStatus,
-              updatePaymentStatus
-            );
-          } else {
-            console.log('⚠️ Tracking service not available, skipping tracking initialization');
-          }
-        } catch (trackingError) {
-          console.warn('⚠️ Tracking initialization failed:', trackingError);
-          trackingResult = { success: false, error: trackingError.message };
-        }
-        
-        setHasChanges(false);
-        setLastSaveTime(new Date());
-        
-        if (trackingResult && trackingResult.success) {
-          // Enhanced success feedback with tracking
-          const selectionCount = Object.keys(selectedSuppliers).length;
-          const totalItems = purchaseOrder.items?.length || 0;
-          
-          toast.success(
-            `✅ Suppliers saved & tracking initialized! ${selectionCount}/${totalItems} items with AI optimization`, 
-            { duration: 4000 }
+      
+      // 🔧 FIXED: Success path continues here in the try block
+      // Initialize tracking systems
+      const updatedPO = {
+        ...purchaseOrder,
+        items: updatedItems,
+        supplierSelections: {
+          ...selectedSuppliers,
+          ...selectionSummary
+        },
+        status: 'suppliers_selected'
+      };
+      
+      console.log('🚀 Initializing delivery and payment tracking...');
+      
+      // 🔧 FIXED: Handle tracking initialization errors gracefully
+      let trackingResult = { success: false, error: 'Tracking service not available' };
+      try {
+        if (ConsolidatedTrackingService && typeof ConsolidatedTrackingService.initializeCompleteTracking === 'function') {
+          console.log('🚀 Initializing tracking with service...');
+          trackingResult = await ConsolidatedTrackingService.initializeCompleteTracking(
+            updatedPO,
+            updateDeliveryStatus,
+            updatePaymentStatus
           );
-          
-          // Show tracking initialization feedback
-          setTimeout(() => {
-            toast.success('📊 Delivery and payment tracking is now active!', {
-              duration: 3000
-            });
-          }, 1500);
-          
-          // Enhanced navigation options
-          setTimeout(() => {
-            const result = window.confirm(
-              `🚀 Tracking system initialized successfully!\n\n` +
-              `✅ ${selectionCount} suppliers selected\n` +
-              `📊 Delivery tracking active\n` +
-              `💰 Payment tracking active\n\n` +
-              `Would you like to view the tracking dashboard?`
-            );
-            
-            if (result) {
-              navigate(`/tracking?po=${poId}`);
-            }
-          }, 3000);
-          
         } else {
-          // Even if tracking initialization fails, selections are saved
-          const selectionCount = Object.keys(selectedSuppliers).length;
-          const totalItems = purchaseOrder.items?.length || 0;
-          
-          toast.success(
-            `✅ Enhanced selections saved! ${selectionCount}/${totalItems} items with AI optimization`, 
-            { duration: 3000 }
+          console.log('⚠️ Tracking service not available, skipping tracking initialization');
+        }
+      } catch (trackingError) {
+        console.warn('⚠️ Tracking initialization failed:', trackingError);
+        trackingResult = { success: false, error: trackingError.message };
+      }
+      
+      // Update state and show success messages
+      setHasChanges(false);
+      setLastSaveTime(new Date());
+      
+      // Update local state
+      setPurchaseOrder(prev => ({
+        ...prev,
+        items: updatedItems,
+        supplierSelections: {
+          ...selectedSuppliers,
+          ...selectionSummary
+        },
+        status: 'suppliers_selected'
+      }));
+      
+      // Show appropriate success messages based on tracking result
+      const selectionCount = Object.keys(selectedSuppliers).length;
+      const totalItems = purchaseOrder.items?.length || 0;
+      
+      if (trackingResult && trackingResult.success) {
+        // Enhanced success feedback with tracking
+        toast.success(
+          `✅ Suppliers saved & tracking initialized! ${selectionCount}/${totalItems} items with AI optimization`, 
+          { duration: 4000 }
+        );
+        
+        // Show tracking initialization feedback
+        setTimeout(() => {
+          toast.success('📊 Delivery and payment tracking is now active!', {
+            duration: 3000
+          });
+        }, 1500);
+        
+        // Enhanced navigation options
+        setTimeout(() => {
+          const result = window.confirm(
+            `🚀 Tracking system initialized successfully!\n\n` +
+            `✅ ${selectionCount} suppliers selected\n` +
+            `📊 Delivery tracking active\n` +
+            `💰 Payment tracking active\n\n` +
+            `Would you like to view the tracking dashboard?`
           );
           
-          if (trackingResult && trackingResult.error) {
-            toast.warning(
-              `⚠️ Selections saved, but tracking initialization failed: ${trackingResult.error}`,
-              { duration: 2000 }
-            );
+          if (result) {
+            navigate(`/tracking?po=${poId}`);
           }
-          
-          console.warn('Tracking initialization failed:', trackingResult?.error);
+        }, 3000);
+      } else {
+        // Even if tracking initialization fails, selections are saved
+        toast.success(
+          `✅ Enhanced selections saved! ${selectionCount}/${totalItems} items with AI optimization`, 
+          { duration: 3000 }
+        );
+        
+        if (trackingResult && trackingResult.error) {
+          toast.warning(
+            `⚠️ Selections saved, but tracking initialization failed: ${trackingResult.error}`,
+            { duration: 2000 }
+          );
         }
         
-        // Update local state
-        setPurchaseOrder(prev => ({
-          ...prev,
-          items: updatedItems,
-          supplierSelections: {
-            ...selectedSuppliers,
-            ...selectionSummary
-          },
-          status: 'suppliers_selected'
-        }));
-        
-        // Show AI learning feedback
-        setTimeout(() => {
-          toast.success('🧠 AI learned from your selections and will improve future matches!', {
-            duration: 2000
-          });
-        }, 2000);
-        
-      } else {
-        throw new Error(updateResult?.error || 'Failed to save selections - unknown error');
+        console.warn('Tracking initialization failed:', trackingResult?.error);
       }
+      
+      // Show AI learning feedback
+      setTimeout(() => {
+        toast.success('🧠 AI learned from your selections and will improve future matches!', {
+          duration: 2000
+        });
+      }, 2000);
+      
     } catch (error) {
       console.error('❌ Enhanced save error:', error);
       toast.error('Failed to save enhanced selections: ' + error.message);
