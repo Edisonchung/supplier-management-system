@@ -32,6 +32,8 @@ const LazySourcingDashboard = lazy(() => import('./components/sourcing/SourcingD
 const LazySupplierMatchingPage = lazy(() => import('./components/supplier-matching/SupplierMatchingPage'));
 const LazyTeamManagement = lazy(() => import('./components/team/TeamManagement'));
 const LazyUnifiedTrackingDashboard = lazy(() => import('./components/tracking/UnifiedTrackingDashboard'));
+// 🔥 NEW: Migration page
+const LazyMigrationPage = lazy(() => import('./components/migration/MigrationPage'));
 
 
 // Error Boundary Component
@@ -309,6 +311,19 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+
+            {/* 🔥 NEW: Migration Route - LAZY LOADED */}
+<Route 
+  path="/migration" 
+  element={
+    <ProtectedRoute permission="canViewDeliveries">
+      <LazyWrapper>
+        <LazyMigrationPage />
+      </LazyWrapper>
+    </ProtectedRoute>
+  } 
+/>
             
             {/* Business Routes - LAZY LOADED */}
             <Route 
