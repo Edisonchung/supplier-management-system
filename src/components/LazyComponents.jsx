@@ -1,15 +1,19 @@
-// src/components/LazyComponents.jsx - ENHANCED VERSION
-import { lazy, Suspense } from 'react'
+/ src/components/LazyComponents.jsx - FIXED VERSION
+import React, { lazy, Suspense } from 'react' // ← ADD React import
 
-// Enhanced loading component with analytics
+// Loading component
 const LoadingSpinner = ({ componentName = 'Component' }) => {
   React.useEffect(() => {
     const start = performance.now()
-    console.log(`⏳ Loading ${componentName}...`)
+    if (import.meta.env.DEV) {
+      console.log(`⏳ Loading ${componentName}...`)
+    }
     
     return () => {
       const end = performance.now()
-      console.log(`✅ ${componentName} loaded in ${(end - start).toFixed(2)}ms`)
+      if (import.meta.env.DEV) {
+        console.log(`✅ ${componentName} loaded in ${(end - start).toFixed(2)}ms`)
+      }
     }
   }, [componentName])
 
@@ -90,3 +94,30 @@ export const LazyWrapper = ({ children, componentName, fallback }) => {
     </Suspense>
   )
 }
+
+// =============================================================================
+// 2. UPDATE App.jsx - ADD COMPONENT NAMES TO WRAPPER
+// =============================================================================
+
+// In your App.jsx, update the LazyWrapper usage to include component names:
+
+/*
+REPLACE THIS:
+<LazyWrapper>
+  <LazyDashboard />
+</LazyWrapper>
+
+WITH THIS:
+<LazyWrapper componentName="Dashboard">
+  <LazyDashboard />
+</LazyWrapper>
+
+Do this for all components:
+- Dashboard
+- Suppliers  
+- Products
+- ProformaInvoices
+- PurchaseOrders
+- ClientInvoices
+- etc.
+*/
