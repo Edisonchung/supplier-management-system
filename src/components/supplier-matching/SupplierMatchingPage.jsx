@@ -1,5 +1,5 @@
 // src/components/supplier-matching/SupplierMatchingPage.jsx
-// 🔧 UPDATED VERSION with Proper Tracking Service Integration
+// 🔧 FINAL VERSION with Proper Tracking Service Integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -26,41 +26,27 @@ import SupplierMatchingDisplay from './SupplierMatchingDisplay';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { AIExtractionService } from '../../services/ai';
 
-// 🔧 FIXED: Proper tracking service imports
+// 🔧 CRITICAL FIX: Import tracking services properly
 import { ConsolidatedTrackingService } from '../../services/tracking/TrackingServices';
-
-// 🔧 FIXED: Import tracking hooks with error handling
-let useDeliveryTracking, usePaymentTracking;
-try {
-  const trackingHooks = require('../../context/UnifiedDataContext');
-  useDeliveryTracking = trackingHooks.useDeliveryTracking;
-  usePaymentTracking = trackingHooks.usePaymentTracking;
-} catch (error) {
-  console.warn('⚠️ Tracking context not available:', error.message);
-  // Provide fallback functions
-  useDeliveryTracking = () => ({ updateDeliveryStatus: () => {} });
-  usePaymentTracking = () => ({ updatePaymentStatus: () => {} });
-}
+import { useDeliveryTracking, usePaymentTracking } from '../../context/UnifiedDataContext';
 
 const SupplierMatchingPage = () => {
   const { poId } = useParams();
   const navigate = useNavigate();
   
-  // 🔧 FIXED: Use tracking hooks with proper error handling
-  let updateDeliveryStatus = () => {}, updatePaymentStatus = () => {};
+  // 🔧 CRITICAL FIX: Use tracking hooks directly
+  const { updateDeliveryStatus } = useDeliveryTracking();
+  const { updatePaymentStatus } = usePaymentTracking();
   
-  try {
-    if (useDeliveryTracking && usePaymentTracking) {
-      const { updateDeliveryStatus: deliveryUpdate } = useDeliveryTracking();
-      const { updatePaymentStatus: paymentUpdate } = usePaymentTracking();
-      updateDeliveryStatus = deliveryUpdate;
-      updatePaymentStatus = paymentUpdate;
-      console.log('✅ Tracking hooks initialized successfully');
-    }
-  } catch (error) {
-    console.warn('⚠️ Tracking hooks not available:', error.message);
-    // Fallback functions remain as default
-  }
+  // Log tracking availability
+  useEffect(() => {
+    console.log('🔧 Tracking System Status:', {
+      hasConsolidatedService: typeof ConsolidatedTrackingService === 'object',
+      hasInitFunction: typeof ConsolidatedTrackingService?.initializeCompleteTracking === 'function',
+      updateDeliveryAvailable: typeof updateDeliveryStatus === 'function',
+      updatePaymentAvailable: typeof updatePaymentStatus === 'function'
+    });
+  }, [updateDeliveryStatus, updatePaymentStatus]);
   
   // Main state
   const [loading, setLoading] = useState(true);
@@ -389,7 +375,7 @@ const SupplierMatchingPage = () => {
     }
   };
 
-  // 🔧 FIXED: Save with proper tracking integration
+  // 🔧 CRITICAL FIX: Save with proper tracking integration
   const saveSupplierSelections = async () => {
     if (!selectedSuppliers || Object.keys(selectedSuppliers).length === 0) {
       toast.error('Please select suppliers before saving');
@@ -460,6 +446,17 @@ const SupplierMatchingPage = () => {
       const selectionSummary = calculateSelectionSummary(updatedItems);
       console.log('📊 Selection summary:', selectionSummary);
       
+      // Prepare updated PO data
+      const updatedPO = {
+        ...purchaseOrder,
+        items: updatedItems,
+        supplierSelections: {
+          ...selectedSuppliers,
+          ...selectionSummary
+        },
+        status: 'suppliers_selected'
+      };
+      
       // Save operation with detailed logging
       let updateResult;
       try {
@@ -507,17 +504,7 @@ const SupplierMatchingPage = () => {
       
       console.log('✅ Save operation validated successfully');
       
-      // 🔧 FIXED: Initialize tracking with proper service
-      const updatedPO = {
-        ...purchaseOrder,
-        items: updatedItems,
-        supplierSelections: {
-          ...selectedSuppliers,
-          ...selectionSummary
-        },
-        status: 'suppliers_selected'
-      };
-      
+      // 🔧 CRITICAL FIX: Initialize tracking with proper service
       console.log('🚀 Initializing delivery and payment tracking...');
       console.log('🔧 Available tracking functions:', {
         hasConsolidatedService: typeof ConsolidatedTrackingService === 'object',
@@ -526,8 +513,8 @@ const SupplierMatchingPage = () => {
         hasPaymentUpdate: typeof updatePaymentStatus === 'function'
       });
       
-      // Use actual tracking service with enhanced error handling
       let trackingResult = { success: false, error: 'Tracking service not available' };
+      
       try {
         if (ConsolidatedTrackingService && typeof ConsolidatedTrackingService.initializeCompleteTracking === 'function') {
           console.log('🚀 Attempting to initialize tracking with ConsolidatedTrackingService...');
@@ -537,24 +524,33 @@ const SupplierMatchingPage = () => {
             updatePaymentStatus
           );
           console.log('📊 Tracking initialization result:', trackingResult);
-        } else {
-          console.log('⚠️ ConsolidatedTrackingService not available, using fallback');
-          // Try to create a mock successful tracking result if service is available but not properly imported
-          if (updateDeliveryStatus && updatePaymentStatus && typeof updateDeliveryStatus === 'function') {
-            console.log('🔧 Creating mock tracking initialization...');
-            // Initialize basic tracking data
-            await updateDeliveryStatus(updatedPO.id, {
-              status: 'preparing',
-              poNumber: updatedPO.poNumber,
-              clientName: updatedPO.clientName,
-              createdAt: new Date().toISOString()
+        } else if (updateDeliveryStatus && updatePaymentStatus) {
+          console.log('🔧 Using direct tracking hooks initialization...');
+          // Create a basic successful initialization using the hooks
+          await updateDeliveryStatus(poId, { 
+            status: 'preparing', 
+            poNumber: updatedPO.poNumber,
+            clientName: updatedPO.clientName,
+            initializedAt: new Date().toISOString() 
+          });
+          
+          // Initialize payment tracking for each supplier
+          const suppliers = Object.keys(selectionSummary.selectedSuppliers);
+          for (const supplierId of suppliers) {
+            await updatePaymentStatus(supplierId, { 
+              status: 'pending', 
+              poId,
+              supplierName: selectionSummary.selectedSuppliers[supplierId].name,
+              initializedAt: new Date().toISOString() 
             });
-            
-            trackingResult = { 
-              success: true, 
-              message: 'Basic tracking initialized successfully' 
-            };
           }
+          
+          trackingResult = {
+            success: true,
+            delivery: { status: 'initialized', poId },
+            payment: { status: 'initialized', suppliers },
+            message: 'Tracking initialized successfully using direct hooks'
+          };
         }
       } catch (trackingError) {
         console.warn('⚠️ Tracking initialization failed:', trackingError);
