@@ -1253,36 +1253,7 @@ if (docType.type === 'client_purchase_order') {
   processedData = this.processGenericDocument(rawData, file);
 }
 
-    totalAmount: parseFloat(data.grand_total || data.subtotal || 0),
-    subtotal: parseFloat(data.subtotal || 0),
-    tax: parseFloat(data.tax || 0),
-    
-    // Status
-    status: 'sourcing_required',
-    sourcingStatus: 'pending',
-    priority: 'normal',
-    
-    // Notes
-    notes: data.notes || '',
-    termsAndConditions: data.terms_and_conditions || '',
-    
-    // Metadata
-    extractedAt: new Date().toISOString(),
-    sourceFile: file?.name || 'unknown'
-  };
-  
-  console.log('✅ Successfully processed Client PO:', processedData.clientPONumber);
-  
-} else if (docType.type === 'supplier_proforma' || docType.type === 'supplier_invoice') {
-  // Use enhanced Chinese supplier extraction for both proforma and invoice
-  processedData = ChineseSupplierPIExtractor.extractChineseSupplierPI(rawData, file);
-  console.log('Using enhanced Chinese supplier PI extraction');
-} else if (this.processors[docType.type]) {
-  processedData = await this.processors[docType.type].process(rawData, file);
-} else {
-  processedData = this.processGenericDocument(rawData, file);
-}
-      
+   
       // Step 6: Validate extracted data
       let validationResult = { 
         isValid: true, 
