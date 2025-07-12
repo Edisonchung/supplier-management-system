@@ -1203,43 +1203,44 @@ if (docType.type === 'client_purchase_order') {
   console.log(`📦 Final items array found: ${itemsArray.length} items`);
 
   processedData = {
-    documentType: 'client_purchase_order',
-    confidence: docType.confidence,
-    
-    // Client info (the one sending us the PO)
-    clientName: this.extractClientName(data),
-    clientPONumber: data.order_number || data.po_number || '',
-    clientAddress: data.supplier?.address || data.ship_to?.name || '',
-    prNumber: data.pr_number || (data.pr_numbers && data.pr_numbers.length > 0 ? data.pr_numbers.join(', ') : ''),
-    
-    // Our info (Flow Solution as recipient)
-    recipientName: data.bill_to?.name || 'Flow Solution Sdn. Bhd.',
-    recipientAddress: data.bill_to?.address || '',
-    
-    // Order details
-    orderDate: data.order_date || new Date().toISOString().split('T')[0],
-    requiredDate: '', // Not specified in PTP POs
-    
-    // FIXED: Items to source using the found items array
-    items: this.mapClientPOItems(itemsArray),
+  documentType: 'client_purchase_order',
+  confidence: docType.confidence,
+  
+  // FIXED: Client info (the one sending us the PO)
+  clientName: this.extractClientName(data),
+  clientPONumber: data.order_number || data.po_number || '',
+  clientAddress: data.supplier?.address || data.ship_to?.address || '',
+  prNumber: data.pr_number || (data.pr_numbers && data.pr_numbers.length > 0 ? data.pr_numbers.join(', ') : ''),
+  
+  // FIXED: Our info (Flow Solution as recipient)  
+  recipientName: data.bill_to?.name || 'Flow Solution Sdn. Bhd.',
+  recipientAddress: data.bill_to?.address || '',
+  
+  // FIXED: Order details
+  orderDate: data.order_date ? data.order_date.split(' ')[0] : new Date().toISOString().split('T')[0], // Remove time part
+  requiredDate: data.required_date || data.delivery_date || '', // Not specified in PTP POs
+  
+  // ✅ Items to source using the found items array (this is working)
+  items: this.mapClientPOItems(itemsArray),
 
-    totalAmount: parseFloat(data.grand_total || data.subtotal || 0),
-    subtotal: parseFloat(data.subtotal || 0),
-    tax: parseFloat(data.tax || 0),
-    
-    // Status
-    status: 'sourcing_required',
-    sourcingStatus: 'pending',
-    priority: 'normal',
-    
-    // Notes
-    notes: data.notes || '',
-    termsAndConditions: data.terms_and_conditions || '',
-    
-    // Metadata
-    extractedAt: new Date().toISOString(),
-    sourceFile: file?.name || 'unknown'
-  };
+  // FIXED: Financial totals
+  totalAmount: parseFloat(data.grand_total || data.total_amount || data.subtotal || 0),
+  subtotal: parseFloat(data.subtotal || data.sub_total || 0),
+  tax: parseFloat(data.tax || data.gst || 0),
+  
+  // Status
+  status: 'sourcing_required',
+  sourcingStatus: 'pending',
+  priority: 'normal',
+  
+  // Notes
+  notes: data.notes || data.remarks || '',
+  termsAndConditions: data.terms_and_conditions || data.terms || '',
+  
+  // Metadata
+  extractedAt: new Date().toISOString(),
+  sourceFile: file?.name || 'unknown'
+};
   
   console.log('✅ Successfully processed Client PO:', processedData.clientPONumber);
   
@@ -1493,86 +1494,93 @@ parseQuantity(quantityValue) {
    * Extract and clean client name from various sources
    */
   extractClientName(data) {
-    // Try to get client name from supplier field (PTP case)
-    let clientName = data.supplier?.name || '';
+  console.log('🏢 Extracting client name from data:', {
+    supplier: data.supplier,
+    ship_to: data.ship_to,
+    bill_to: data.bill_to
+  });
+
+  // For PTP client POs, the client info is in the supplier field (they're sending us the PO)
+  let clientName = '';
+  
+  // First try: supplier.name (most common)
+  if (data.supplier?.name) {
+    clientName = data.supplier.name;
+  }
+  // Second try: extract from supplier address
+  else if (data.supplier?.address) {
+    clientName = data.supplier.address;
+  }
+  // Third try: extract from ship_to address
+  else if (data.ship_to?.address) {
+    clientName = data.ship_to.address;
+  }
+  // Fallback: check ship_to name
+  else if (data.ship_to?.name) {
+    clientName = data.ship_to.name;
+  }
+
+  console.log('🏢 Raw client name extracted:', clientName);
+
+  // Clean up the client name
+  if (clientName) {
+    // Handle PTP variations - check if address contains PTP identifiers
+    if (clientName.toLowerCase().includes('tanjung pelepas') || 
+        clientName.toLowerCase().includes('pelabuhan tanjung pelepas')) {
+      return 'Pelabuhan Tanjung Pelepas (PTP)';
+    }
     
-    // Clean up common client names
-    if (clientName) {
-      // Handle PTP variations
-      if (clientName.toLowerCase().includes('tanjung pelepas')) {
-        return 'Pelabuhan Tanjung Pelepas (PTP)';
-      }
-      
-      // Handle Petronas variations
-      if (clientName.toLowerCase().includes('petronas')) {
-        return 'PETRONAS';
-      }
-      
-      // Handle Siemens variations
-      if (clientName.toLowerCase().includes('siemens')) {
-        return 'Siemens Malaysia';
-      }
-      
-      // Handle general address-like strings
-      if (clientName.includes('JALAN') || clientName.includes('Jalan')) {
-        // Extract company name from address
-        const parts = clientName.split(',');
-        if (parts.length > 0) {
-          const firstPart = parts[0].trim();
+    // Handle Petronas variations
+    if (clientName.toLowerCase().includes('petronas')) {
+      return 'PETRONAS';
+    }
+    
+    // Handle Siemens variations
+    if (clientName.toLowerCase().includes('siemens')) {
+      return 'Siemens Malaysia';
+    }
+    
+    // Handle general address-like strings
+    if (clientName.includes('JALAN') || clientName.includes('Jalan')) {
+      // Extract company name from address
+      const parts = clientName.split(',');
+      if (parts.length > 0) {
+        const firstPart = parts[0].trim();
+        
+        // Check if first part contains identifiable company info
+        if (firstPart.toLowerCase().includes('tanjung pelepas') || 
+            firstPart.toLowerCase().includes('pelabuhan')) {
+          return 'Pelabuhan Tanjung Pelepas (PTP)';
+        }
+        
+        // For other addresses, try to extract meaningful company name
+        if (firstPart.length > 10 && firstPart.includes(' ')) {
+          // Look for company patterns in address
+          const companyPatterns = [
+            /PELABUHAN\s+([^,]+)/i,
+            /PT\.\s*([^,]+)/i,
+            /([A-Z][a-z]+\s+[A-Z][a-z]+)/
+          ];
           
-          // Check if first part contains identifiable company info
-          if (firstPart.toLowerCase().includes('tanjung pelepas')) {
-            return 'Pelabuhan Tanjung Pelepas (PTP)';
-          }
-          
-          // For other addresses, try to extract meaningful company name
-          if (firstPart.length > 10 && firstPart.includes(' ')) {
-            // Likely an address, extract the location
-            const locationMatch = firstPart.match(/PELABUHAN\s+([^,]+)/i);
-            if (locationMatch) {
-              return `Pelabuhan ${locationMatch[1].trim()}`;
+          for (const pattern of companyPatterns) {
+            const match = firstPart.match(pattern);
+            if (match && match[1]) {
+              return match[1].trim();
             }
           }
         }
       }
-      
-      // If it's a clean company name already, return as is
-      if (clientName.length < 50 && !clientName.includes('JALAN') && !clientName.includes(',')) {
-        return clientName;
-      }
     }
     
-    // Fallback: try to extract from ship_to
-    const shipTo = data.ship_to?.name || '';
-    if (shipTo.toLowerCase().includes('ptp')) {
-      return 'Pelabuhan Tanjung Pelepas (PTP)';
+    // If it's a clean company name already, return as is
+    if (clientName.length < 100 && !clientName.includes('JALAN') && clientName.split(',').length <= 2) {
+      return clientName.trim();
     }
-    
-    // Final fallback
-    return clientName || 'Unknown Client';
   }
 
-  /**
-   * Parse price from various formats
-   */
-  parsePrice(priceValue) {
-    if (!priceValue) return 0;
-    
-    // Handle string values like "1,400.00"
-    if (typeof priceValue === 'string') {
-      // Remove currency symbols, commas, and spaces
-      const cleaned = priceValue.replace(/[^0-9.-]/g, '');
-      const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? 0 : parsed;
-    }
-    
-    // Handle numeric values
-    if (typeof priceValue === 'number') {
-      return priceValue;
-    }
-    
-    return 0;
-  }
+  console.log('🏢 Final client name:', clientName || 'Unknown Client');
+  return clientName || 'Unknown Client';
+}
 
   /**
    * Clean and shorten product names
