@@ -1,157 +1,167 @@
 // src/context/UnifiedDataContext.jsx
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+// 🔥 ENHANCED VERSION: Real-time Firestore + localStorage fallback
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
+import { 
+  collection, 
+  doc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  query, 
+  where, 
+  orderBy,
+  serverTimestamp,
+  writeBatch
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
 
-// Action Types
+// Enhanced Storage Service with Firestore + localStorage
+const StorageService = {
+  // Data source preference
+  getDataSource: () => localStorage.getItem('dataSource') || 'localStorage',
+  setDataSource: (source) => localStorage.setItem('dataSource', source),
+  
+  // Firestore operations
+  async saveToFirestore(collectionName, data) {
+    try {
+      const docRef = await addDoc(collection(db, collectionName), {
+        ...data,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return { success: true, id: docRef.id };
+    } catch (error) {
+      console.error(`Firestore save error (${collectionName}):`, error);
+      return { success: false, error: error.message };
+    }
+  },
+  
+  async updateInFirestore(collectionName, id, updates) {
+    try {
+      await updateDoc(doc(db, collectionName, id), {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      return { success: true };
+    } catch (error) {
+      console.error(`Firestore update error (${collectionName}):`, error);
+      return { success: false, error: error.message };
+    }
+  },
+  
+  async deleteFromFirestore(collectionName, id) {
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+      return { success: true };
+    } catch (error) {
+      console.error(`Firestore delete error (${collectionName}):`, error);
+      return { success: false, error: error.message };
+    }
+  },
+  
+  // localStorage operations (fallback)
+  async saveToLocalStorage(key, data) {
+    try {
+      const existing = JSON.parse(localStorage.getItem(key) || '{}');
+      const updated = { ...existing, ...data };
+      localStorage.setItem(key, JSON.stringify(updated));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+  
+  async getFromLocalStorage(key) {
+    try {
+      return JSON.parse(localStorage.getItem(key) || '{}');
+    } catch (error) {
+      return {};
+    }
+  }
+};
+
+// Enhanced Action Types
 const ACTION_TYPES = {
-  // Loading States
+  // Data source management
+  SET_DATA_SOURCE: 'SET_DATA_SOURCE',
+  SET_MIGRATION_STATUS: 'SET_MIGRATION_STATUS',
+  
+  // Real-time data updates
+  SET_DELIVERY_TRACKING: 'SET_DELIVERY_TRACKING',
+  UPDATE_DELIVERY_STATUS: 'UPDATE_DELIVERY_STATUS',
+  SET_PAYMENT_TRACKING: 'SET_PAYMENT_TRACKING',
+  UPDATE_PAYMENT_STATUS: 'UPDATE_PAYMENT_STATUS',
+  
+  // Purchase Orders
+  SET_PURCHASE_ORDERS: 'SET_PURCHASE_ORDERS',
+  ADD_PURCHASE_ORDER: 'ADD_PURCHASE_ORDER',
+  UPDATE_PURCHASE_ORDER: 'UPDATE_PURCHASE_ORDER',
+  DELETE_PURCHASE_ORDER: 'DELETE_PURCHASE_ORDER',
+  
+  // Loading and error states
   SET_LOADING: 'SET_LOADING',
   SET_ERROR: 'SET_ERROR',
   CLEAR_ERROR: 'CLEAR_ERROR',
   
-  // Data Operations
-  LOAD_DATA: 'LOAD_DATA',
-  UPDATE_ENTITY: 'UPDATE_ENTITY',
-  CREATE_ENTITY: 'CREATE_ENTITY',
-  DELETE_ENTITY: 'DELETE_ENTITY',
-  
-  // Optimistic Updates
-  OPTIMISTIC_UPDATE: 'OPTIMISTIC_UPDATE',
-  REVERT_OPTIMISTIC: 'REVERT_OPTIMISTIC',
-  
-  // Cache Management
+  // Cache management
   SET_CACHE: 'SET_CACHE',
-  INVALIDATE_CACHE: 'INVALIDATE_CACHE',
-  
-  // Tracking Specific
-  UPDATE_DELIVERY_STATUS: 'UPDATE_DELIVERY_STATUS',
-  UPDATE_PAYMENT_STATUS: 'UPDATE_PAYMENT_STATUS',
-  SYNC_TRACKING_DATA: 'SYNC_TRACKING_DATA'
+  CLEAR_CACHE: 'CLEAR_CACHE'
 };
 
-// Initial State
+// Enhanced Initial State
 const initialState = {
-  // Core Data
-  purchaseOrders: [],
-  proformaInvoices: [],
-  suppliers: [],
-  products: [],
+  // Data source configuration
+  dataSource: StorageService.getDataSource(),
+  migrationStatus: {
+    inProgress: false,
+    completed: false,
+    errors: []
+  },
   
-  // Tracking Data
+  // Real-time tracking data
   deliveryTracking: {},
   paymentTracking: {},
   
-  // UI State
-  loading: {
-    global: false,
-    purchaseOrders: false,
-    deliveryTracking: false,
-    paymentTracking: false
-  },
+  // Core entities
+  purchaseOrders: [],
   
-  // Error State
+  // State management
+  loading: {},
   errors: {},
+  lastSync: null,
   
-  // Cache
+  // Cache with TTL
   cache: {
-    lastSync: null,
-    staleDuration: 5 * 60 * 1000, // 5 minutes
-    data: {}
-  },
-  
-  // Optimistic Updates
-  optimisticUpdates: {},
-  
-  // Metadata
-  metadata: {
-    totalRecords: 0,
-    lastModified: null,
-    version: '1.0.0'
+    data: {},
+    timestamps: {},
+    staleDuration: 5 * 60 * 1000 // 5 minutes
   }
 };
 
-// Reducer
+// Enhanced Reducer
 function unifiedDataReducer(state, action) {
   switch (action.type) {
-    case ACTION_TYPES.SET_LOADING:
+    case ACTION_TYPES.SET_DATA_SOURCE:
       return {
         ...state,
-        loading: {
-          ...state.loading,
-          [action.payload.key]: action.payload.value
-        }
+        dataSource: action.payload,
+        lastSync: new Date().toISOString()
       };
       
-    case ACTION_TYPES.SET_ERROR:
+    case ACTION_TYPES.SET_MIGRATION_STATUS:
       return {
         ...state,
-        errors: {
-          ...state.errors,
-          [action.payload.key]: action.payload.error
-        }
+        migrationStatus: { ...state.migrationStatus, ...action.payload }
       };
       
-    case ACTION_TYPES.CLEAR_ERROR:
-      const newErrors = { ...state.errors };
-      delete newErrors[action.payload.key];
+    case ACTION_TYPES.SET_DELIVERY_TRACKING:
       return {
         ...state,
-        errors: newErrors
-      };
-      
-    case ACTION_TYPES.LOAD_DATA:
-      return {
-        ...state,
-        [action.payload.entityType]: action.payload.data,
-        loading: {
-          ...state.loading,
-          [action.payload.entityType]: false
-        },
-        metadata: {
-          ...state.metadata,
-          lastModified: new Date().toISOString()
-        }
-      };
-      
-    case ACTION_TYPES.CREATE_ENTITY:
-      return {
-        ...state,
-        [action.payload.entityType]: [
-          ...state[action.payload.entityType],
-          action.payload.data
-        ],
-        metadata: {
-          ...state.metadata,
-          totalRecords: state.metadata.totalRecords + 1,
-          lastModified: new Date().toISOString()
-        }
-      };
-      
-    case ACTION_TYPES.UPDATE_ENTITY:
-      return {
-        ...state,
-        [action.payload.entityType]: state[action.payload.entityType].map(item =>
-          item.id === action.payload.id
-            ? { ...item, ...action.payload.updates }
-            : item
-        ),
-        metadata: {
-          ...state.metadata,
-          lastModified: new Date().toISOString()
-        }
-      };
-      
-    case ACTION_TYPES.DELETE_ENTITY:
-      return {
-        ...state,
-        [action.payload.entityType]: state[action.payload.entityType].filter(
-          item => item.id !== action.payload.id
-        ),
-        metadata: {
-          ...state.metadata,
-          totalRecords: state.metadata.totalRecords - 1,
-          lastModified: new Date().toISOString()
-        }
+        deliveryTracking: action.payload,
+        lastSync: new Date().toISOString()
       };
       
     case ACTION_TYPES.UPDATE_DELIVERY_STATUS:
@@ -167,6 +177,13 @@ function unifiedDataReducer(state, action) {
         }
       };
       
+    case ACTION_TYPES.SET_PAYMENT_TRACKING:
+      return {
+        ...state,
+        paymentTracking: action.payload,
+        lastSync: new Date().toISOString()
+      };
+      
     case ACTION_TYPES.UPDATE_PAYMENT_STATUS:
       return {
         ...state,
@@ -180,40 +197,49 @@ function unifiedDataReducer(state, action) {
         }
       };
       
-    case ACTION_TYPES.OPTIMISTIC_UPDATE:
+    case ACTION_TYPES.SET_PURCHASE_ORDERS:
       return {
         ...state,
-        optimisticUpdates: {
-          ...state.optimisticUpdates,
-          [action.payload.id]: {
-            type: action.payload.type,
-            originalData: action.payload.originalData,
-            timestamp: Date.now()
-          }
-        },
-        // Apply optimistic update immediately
-        [action.payload.entityType]: state[action.payload.entityType].map(item =>
-          item.id === action.payload.id
-            ? { ...item, ...action.payload.updates }
-            : item
+        purchaseOrders: action.payload
+      };
+      
+    case ACTION_TYPES.ADD_PURCHASE_ORDER:
+      return {
+        ...state,
+        purchaseOrders: [...state.purchaseOrders, action.payload]
+      };
+      
+    case ACTION_TYPES.UPDATE_PURCHASE_ORDER:
+      return {
+        ...state,
+        purchaseOrders: state.purchaseOrders.map(po =>
+          po.id === action.payload.id ? { ...po, ...action.payload.updates } : po
         )
       };
       
-    case ACTION_TYPES.REVERT_OPTIMISTIC:
-      const optimistic = state.optimisticUpdates[action.payload.id];
-      if (!optimistic) return state;
-      
-      const newOptimisticUpdates = { ...state.optimisticUpdates };
-      delete newOptimisticUpdates[action.payload.id];
-      
+    case ACTION_TYPES.DELETE_PURCHASE_ORDER:
       return {
         ...state,
-        optimisticUpdates: newOptimisticUpdates,
-        [action.payload.entityType]: state[action.payload.entityType].map(item =>
-          item.id === action.payload.id
-            ? optimistic.originalData
-            : item
-        )
+        purchaseOrders: state.purchaseOrders.filter(po => po.id !== action.payload.id)
+      };
+      
+    case ACTION_TYPES.SET_LOADING:
+      return {
+        ...state,
+        loading: { ...state.loading, [action.payload.key]: action.payload.value }
+      };
+      
+    case ACTION_TYPES.SET_ERROR:
+      return {
+        ...state,
+        errors: { ...state.errors, [action.payload.key]: action.payload.error }
+      };
+      
+    case ACTION_TYPES.CLEAR_ERROR:
+      const { [action.payload.key]: removed, ...restErrors } = state.errors;
+      return {
+        ...state,
+        errors: restErrors
       };
       
     case ACTION_TYPES.SET_CACHE:
@@ -221,31 +247,15 @@ function unifiedDataReducer(state, action) {
         ...state,
         cache: {
           ...state.cache,
-          data: {
-            ...state.cache.data,
-            [action.payload.key]: {
-              data: action.payload.data,
-              timestamp: Date.now()
-            }
-          }
+          data: { ...state.cache.data, [action.payload.key]: action.payload.data },
+          timestamps: { ...state.cache.timestamps, [action.payload.key]: Date.now() }
         }
       };
       
-    case ACTION_TYPES.INVALIDATE_CACHE:
-      const newCacheData = { ...state.cache.data };
-      if (action.payload.key) {
-        delete newCacheData[action.payload.key];
-      } else {
-        // Clear all cache
-        Object.keys(newCacheData).forEach(key => delete newCacheData[key]);
-      }
-      
+    case ACTION_TYPES.CLEAR_CACHE:
       return {
         ...state,
-        cache: {
-          ...state.cache,
-          data: newCacheData
-        }
+        cache: initialState.cache
       };
       
     default:
@@ -253,293 +263,378 @@ function unifiedDataReducer(state, action) {
   }
 }
 
-// Context
+// Create Context
 const UnifiedDataContext = createContext();
 
-// Storage Service
-class StorageService {
-  static getStorageKey(entityType) {
-    return `higgsflow_${entityType}`;
-  }
-  
-  static async loadData(entityType) {
-    try {
-      const stored = localStorage.getItem(this.getStorageKey(entityType));
-      return stored ? JSON.parse(stored) : [];
-    } catch (error) {
-      console.error(`Error loading ${entityType}:`, error);
-      return [];
-    }
-  }
-  
-  static async saveData(entityType, data) {
-    try {
-      localStorage.setItem(this.getStorageKey(entityType), JSON.stringify(data));
-      return true;
-    } catch (error) {
-      console.error(`Error saving ${entityType}:`, error);
-      return false;
-    }
-  }
-  
-  static async batchSave(updates) {
-    const results = {};
-    for (const [entityType, data] of Object.entries(updates)) {
-      results[entityType] = await this.saveData(entityType, data);
-    }
-    return results;
-  }
-}
-
-// Provider Component
+// Enhanced Provider Component
 export function UnifiedDataProvider({ children }) {
   const [state, dispatch] = useReducer(unifiedDataReducer, initialState);
-  
-  // Initialize data on mount
+  const { user } = useAuth();
+  const [realtimeSubscriptions, setRealtimeSubscriptions] = useState({});
+
+  // Set up real-time subscriptions when data source changes to Firestore
   useEffect(() => {
-    async function initializeData() {
-      dispatch({ type: ACTION_TYPES.SET_LOADING, payload: { key: 'global', value: true } });
-      
-      try {
-        const entityTypes = ['purchaseOrders', 'proformaInvoices', 'suppliers', 'products'];
-        const loadPromises = entityTypes.map(async (entityType) => {
-          const data = await StorageService.loadData(entityType);
-          dispatch({
-            type: ACTION_TYPES.LOAD_DATA,
-            payload: { entityType, data }
-          });
-        });
-        
-        // Load tracking data
-        const deliveryTracking = await StorageService.loadData('deliveryTracking') || {};
-        const paymentTracking = await StorageService.loadData('paymentTracking') || {};
-        
-        dispatch({
-          type: ACTION_TYPES.LOAD_DATA,
-          payload: { entityType: 'deliveryTracking', data: deliveryTracking }
-        });
-        
-        dispatch({
-          type: ACTION_TYPES.LOAD_DATA,
-          payload: { entityType: 'paymentTracking', data: paymentTracking }
-        });
-        
-        await Promise.all(loadPromises);
-        
-      } catch (error) {
-        console.error('Error initializing data:', error);
-        dispatch({
-          type: ACTION_TYPES.SET_ERROR,
-          payload: { key: 'global', error: 'Failed to load data' }
-        });
-      } finally {
-        dispatch({ type: ACTION_TYPES.SET_LOADING, payload: { key: 'global', value: false } });
-      }
-    }
-    
-    initializeData();
-  }, []);
-  
-  // Generic CRUD Operations
-  const createEntity = useCallback(async (entityType, data) => {
-    const id = data.id || `${entityType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const entity = {
-      ...data,
-      id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    dispatch({
-      type: ACTION_TYPES.CREATE_ENTITY,
-      payload: { entityType, data: entity }
-    });
-    
-    // Save to storage
-    const success = await StorageService.saveData(entityType, [...state[entityType], entity]);
-    
-    if (success) {
-      toast.success(`${entityType.slice(0, -1)} created successfully`);
-      return { success: true, data: entity };
+    if (state.dataSource === 'firestore' && user) {
+      setupRealtimeSubscriptions();
     } else {
-      toast.error(`Failed to create ${entityType.slice(0, -1)}`);
-      return { success: false, error: 'Storage failed' };
-    }
-  }, [state]);
-  
-  const updateEntity = useCallback(async (entityType, id, updates, useOptimistic = true) => {
-    const originalData = state[entityType].find(item => item.id === id);
-    if (!originalData) {
-      return { success: false, error: 'Entity not found' };
+      cleanupSubscriptions();
+      // Load from localStorage when not using Firestore
+      loadFromLocalStorage();
     }
     
-    const updatedData = {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    };
-    
-    if (useOptimistic) {
-      // Apply optimistic update
-      dispatch({
-        type: ACTION_TYPES.OPTIMISTIC_UPDATE,
-        payload: {
-          id,
-          entityType,
-          updates: updatedData,
-          originalData,
-          type: 'update'
-        }
-      });
-    }
+    return () => cleanupSubscriptions();
+  }, [state.dataSource, user]);
+
+  const setupRealtimeSubscriptions = useCallback(() => {
+    console.log('🔥 Setting up Firestore real-time subscriptions...');
     
     try {
-      // Update storage
-      const updatedArray = state[entityType].map(item =>
-        item.id === id ? { ...item, ...updatedData } : item
+      // Delivery Tracking Subscription
+      const deliveryQuery = query(
+        collection(db, 'deliveryTracking'),
+        orderBy('createdAt', 'desc')
       );
       
-      const success = await StorageService.saveData(entityType, updatedArray);
-      
-      if (success) {
-        if (!useOptimistic) {
-          dispatch({
-            type: ACTION_TYPES.UPDATE_ENTITY,
-            payload: { entityType, id, updates: updatedData }
-          });
-        }
-        return { success: true, data: { ...originalData, ...updatedData } };
-      } else {
-        throw new Error('Storage failed');
-      }
-    } catch (error) {
-      if (useOptimistic) {
-        // Revert optimistic update
-        dispatch({
-          type: ACTION_TYPES.REVERT_OPTIMISTIC,
-          payload: { id, entityType }
+      const unsubscribeDelivery = onSnapshot(deliveryQuery, (snapshot) => {
+        const deliveryData = {};
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          deliveryData[data.poId] = {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+          };
         });
-      }
+        
+        dispatch({
+          type: ACTION_TYPES.SET_DELIVERY_TRACKING,
+          payload: deliveryData
+        });
+        
+        console.log('📦 Delivery tracking updated:', Object.keys(deliveryData).length, 'items');
+      }, (error) => {
+        console.error('Delivery tracking subscription error:', error);
+        toast.error('Lost connection to delivery tracking');
+      });
       
-      toast.error(`Failed to update ${entityType.slice(0, -1)}`);
-      return { success: false, error: error.message };
+      // Payment Tracking Subscription
+      const paymentQuery = query(
+        collection(db, 'paymentTracking'),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const unsubscribePayment = onSnapshot(paymentQuery, (snapshot) => {
+        const paymentData = {};
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          paymentData[data.supplierId] = {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+          };
+        });
+        
+        dispatch({
+          type: ACTION_TYPES.SET_PAYMENT_TRACKING,
+          payload: paymentData
+        });
+        
+        console.log('💰 Payment tracking updated:', Object.keys(paymentData).length, 'items');
+      }, (error) => {
+        console.error('Payment tracking subscription error:', error);
+        toast.error('Lost connection to payment tracking');
+      });
+      
+      // Purchase Orders Subscription
+      const poQuery = query(
+        collection(db, 'purchaseOrders'),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const unsubscribePO = onSnapshot(poQuery, (snapshot) => {
+        const poData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+          updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
+        }));
+        
+        dispatch({
+          type: ACTION_TYPES.SET_PURCHASE_ORDERS,
+          payload: poData
+        });
+        
+        console.log('📋 Purchase orders updated:', poData.length, 'items');
+      }, (error) => {
+        console.error('Purchase orders subscription error:', error);
+        toast.error('Lost connection to purchase orders');
+      });
+      
+      // Store subscriptions for cleanup
+      setRealtimeSubscriptions({
+        delivery: unsubscribeDelivery,
+        payment: unsubscribePayment,
+        purchaseOrders: unsubscribePO
+      });
+      
+      toast.success('🔥 Real-time sync activated!', { duration: 2000 });
+      
+    } catch (error) {
+      console.error('Failed to setup real-time subscriptions:', error);
+      toast.error('Failed to connect to real-time updates');
     }
-  }, [state]);
-  
-  const deleteEntity = useCallback(async (entityType, id) => {
+  }, [user]);
+
+  const cleanupSubscriptions = useCallback(() => {
+    Object.values(realtimeSubscriptions).forEach(unsubscribe => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    });
+    setRealtimeSubscriptions({});
+  }, [realtimeSubscriptions]);
+
+  const loadFromLocalStorage = useCallback(async () => {
+    try {
+      const deliveryData = await StorageService.getFromLocalStorage('deliveryTracking');
+      const paymentData = await StorageService.getFromLocalStorage('paymentTracking');
+      
+      dispatch({
+        type: ACTION_TYPES.SET_DELIVERY_TRACKING,
+        payload: deliveryData
+      });
+      
+      dispatch({
+        type: ACTION_TYPES.SET_PAYMENT_TRACKING,
+        payload: paymentData
+      });
+      
+      console.log('💾 Loaded data from localStorage');
+    } catch (error) {
+      console.error('Failed to load from localStorage:', error);
+    }
+  }, []);
+
+  // Data Source Management
+  const switchDataSource = useCallback(async (newSource) => {
+    if (newSource === state.dataSource) return;
+    
+    console.log(`🔄 Switching data source: ${state.dataSource} → ${newSource}`);
+    
     dispatch({
-      type: ACTION_TYPES.DELETE_ENTITY,
-      payload: { entityType, id }
+      type: ACTION_TYPES.SET_DATA_SOURCE,
+      payload: newSource
     });
     
-    const filteredArray = state[entityType].filter(item => item.id !== id);
-    const success = await StorageService.saveData(entityType, filteredArray);
+    StorageService.setDataSource(newSource);
     
-    if (success) {
-      toast.success(`${entityType.slice(0, -1)} deleted successfully`);
-      return { success: true };
+    if (newSource === 'firestore') {
+      toast.success('Switched to real-time Firestore!');
     } else {
-      toast.error(`Failed to delete ${entityType.slice(0, -1)}`);
-      return { success: false, error: 'Storage failed' };
+      toast.success('Switched to local storage');
     }
-  }, [state]);
-  
-  // Tracking-Specific Operations
+  }, [state.dataSource]);
+
+  // Enhanced Delivery Tracking
   const updateDeliveryStatus = useCallback(async (poId, updates) => {
+    console.log('📦 Updating delivery status:', { poId, updates });
+    
+    // Optimistic update
     dispatch({
       type: ACTION_TYPES.UPDATE_DELIVERY_STATUS,
       payload: { poId, updates }
     });
     
-    const newDeliveryTracking = {
-      ...state.deliveryTracking,
-      [poId]: {
-        ...state.deliveryTracking[poId],
-        ...updates,
-        lastUpdated: new Date().toISOString()
+    try {
+      if (state.dataSource === 'firestore') {
+        // Find the document for this PO
+        const deliveryDoc = Object.values(state.deliveryTracking).find(d => d.poId === poId);
+        
+        if (deliveryDoc) {
+          const result = await StorageService.updateInFirestore('deliveryTracking', deliveryDoc.id, updates);
+          if (!result.success) throw new Error(result.error);
+        } else {
+          // Create new delivery tracking document
+          const result = await StorageService.saveToFirestore('deliveryTracking', {
+            poId,
+            ...updates,
+            createdBy: user?.uid
+          });
+          if (!result.success) throw new Error(result.error);
+        }
+      } else {
+        // Save to localStorage
+        const currentData = await StorageService.getFromLocalStorage('deliveryTracking');
+        const updated = {
+          ...currentData,
+          [poId]: {
+            ...currentData[poId],
+            ...updates,
+            lastUpdated: new Date().toISOString()
+          }
+        };
+        await StorageService.saveToLocalStorage('deliveryTracking', updated);
       }
-    };
-    
-    await StorageService.saveData('deliveryTracking', newDeliveryTracking);
-    return { success: true };
-  }, [state.deliveryTracking]);
-  
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to update delivery status:', error);
+      toast.error(`Failed to update delivery status: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }, [state.dataSource, state.deliveryTracking, user]);
+
+  // Enhanced Payment Tracking
   const updatePaymentStatus = useCallback(async (supplierId, updates) => {
+    console.log('💰 Updating payment status:', { supplierId, updates });
+    
+    // Optimistic update
     dispatch({
       type: ACTION_TYPES.UPDATE_PAYMENT_STATUS,
       payload: { supplierId, updates }
     });
     
-    const newPaymentTracking = {
-      ...state.paymentTracking,
-      [supplierId]: {
-        ...state.paymentTracking[supplierId],
-        ...updates,
-        lastUpdated: new Date().toISOString()
+    try {
+      if (state.dataSource === 'firestore') {
+        // Find the document for this supplier
+        const paymentDoc = Object.values(state.paymentTracking).find(p => p.supplierId === supplierId);
+        
+        if (paymentDoc) {
+          const result = await StorageService.updateInFirestore('paymentTracking', paymentDoc.id, updates);
+          if (!result.success) throw new Error(result.error);
+        } else {
+          // Create new payment tracking document
+          const result = await StorageService.saveToFirestore('paymentTracking', {
+            supplierId,
+            ...updates,
+            createdBy: user?.uid
+          });
+          if (!result.success) throw new Error(result.error);
+        }
+      } else {
+        // Save to localStorage
+        const currentData = await StorageService.getFromLocalStorage('paymentTracking');
+        const updated = {
+          ...currentData,
+          [supplierId]: {
+            ...currentData[supplierId],
+            ...updates,
+            lastUpdated: new Date().toISOString()
+          }
+        };
+        await StorageService.saveToLocalStorage('paymentTracking', updated);
       }
-    };
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to update payment status:', error);
+      toast.error(`Failed to update payment status: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }, [state.dataSource, state.paymentTracking, user]);
+
+  // Firestore Migration Function
+  const migrateToFirestore = useCallback(async () => {
+    if (state.dataSource === 'firestore') {
+      toast.error('Already using Firestore');
+      return { success: false, error: 'Already using Firestore' };
+    }
     
-    await StorageService.saveData('paymentTracking', newPaymentTracking);
-    return { success: true };
-  }, [state.paymentTracking]);
-  
-  // Advanced Query Operations
-  const findEntity = useCallback((entityType, predicate) => {
-    return state[entityType].find(predicate);
-  }, [state]);
-  
-  const filterEntities = useCallback((entityType, predicate) => {
-    return state[entityType].filter(predicate);
-  }, [state]);
-  
-  const getEntityById = useCallback((entityType, id) => {
-    return state[entityType].find(item => item.id === id);
-  }, [state]);
-  
-  // Cache Operations
-  const getCachedData = useCallback((key) => {
-    const cached = state.cache.data[key];
-    if (!cached) return null;
-    
-    const isStale = (Date.now() - cached.timestamp) > state.cache.staleDuration;
-    return isStale ? null : cached.data;
-  }, [state.cache]);
-  
-  const setCachedData = useCallback((key, data) => {
     dispatch({
-      type: ACTION_TYPES.SET_CACHE,
-      payload: { key, data }
+      type: ACTION_TYPES.SET_MIGRATION_STATUS,
+      payload: { inProgress: true, completed: false, errors: [] }
     });
-  }, []);
-  
+    
+    try {
+      console.log('🚀 Starting Firestore migration...');
+      toast.loading('Migrating to Firestore...', { id: 'migration' });
+      
+      const batch = writeBatch(db);
+      let migrationCount = 0;
+      
+      // Migrate delivery tracking
+      const deliveryData = await StorageService.getFromLocalStorage('deliveryTracking');
+      Object.entries(deliveryData).forEach(([poId, data]) => {
+        const docRef = doc(collection(db, 'deliveryTracking'));
+        batch.set(docRef, {
+          poId,
+          ...data,
+          migratedAt: serverTimestamp(),
+          createdBy: user?.uid
+        });
+        migrationCount++;
+      });
+      
+      // Migrate payment tracking
+      const paymentData = await StorageService.getFromLocalStorage('paymentTracking');
+      Object.entries(paymentData).forEach(([supplierId, data]) => {
+        const docRef = doc(collection(db, 'paymentTracking'));
+        batch.set(docRef, {
+          supplierId,
+          ...data,
+          migratedAt: serverTimestamp(),
+          createdBy: user?.uid
+        });
+        migrationCount++;
+      });
+      
+      // Execute batch
+      await batch.commit();
+      
+      dispatch({
+        type: ACTION_TYPES.SET_MIGRATION_STATUS,
+        payload: { inProgress: false, completed: true, errors: [] }
+      });
+      
+      // Switch to Firestore
+      await switchDataSource('firestore');
+      
+      toast.success(`✅ Migrated ${migrationCount} items to Firestore!`, { id: 'migration' });
+      
+      return { success: true, migrated: migrationCount };
+    } catch (error) {
+      console.error('Migration failed:', error);
+      
+      dispatch({
+        type: ACTION_TYPES.SET_MIGRATION_STATUS,
+        payload: { 
+          inProgress: false, 
+          completed: false, 
+          errors: [error.message] 
+        }
+      });
+      
+      toast.error(`Migration failed: ${error.message}`, { id: 'migration' });
+      
+      return { success: false, error: error.message };
+    }
+  }, [state.dataSource, user, switchDataSource]);
+
   // Context Value
   const value = {
     // State
-    state,
+    ...state,
     
-    // CRUD Operations
-    createEntity,
-    updateEntity,
-    deleteEntity,
-    
-    // Query Operations
-    findEntity,
-    filterEntities,
-    getEntityById,
+    // Data Source Management
+    switchDataSource,
+    migrateToFirestore,
     
     // Tracking Operations
     updateDeliveryStatus,
     updatePaymentStatus,
     
-    // Cache Operations
-    getCachedData,
-    setCachedData,
-    
     // Utility
     isLoading: (key) => state.loading[key] || false,
     getError: (key) => state.errors[key] || null,
-    clearError: (key) => dispatch({ type: ACTION_TYPES.CLEAR_ERROR, payload: { key } })
+    clearError: (key) => dispatch({ type: ACTION_TYPES.CLEAR_ERROR, payload: { key } }),
+    
+    // Real-time status
+    isRealTimeActive: state.dataSource === 'firestore' && Object.keys(realtimeSubscriptions).length > 0,
+    lastSync: state.lastSync
   };
-  
+
   return (
     <UnifiedDataContext.Provider value={value}>
       {children}
@@ -547,7 +642,7 @@ export function UnifiedDataProvider({ children }) {
   );
 }
 
-// Hook
+// Enhanced Hooks
 export function useUnifiedData() {
   const context = useContext(UnifiedDataContext);
   if (!context) {
@@ -556,39 +651,24 @@ export function useUnifiedData() {
   return context;
 }
 
-// Specific hooks for common operations
-export function usePurchaseOrders() {
-  const { state, createEntity, updateEntity, deleteEntity, getEntityById, filterEntities } = useUnifiedData();
-  
-  return {
-    purchaseOrders: state.purchaseOrders,
-    createPurchaseOrder: (data) => createEntity('purchaseOrders', data),
-    updatePurchaseOrder: (id, updates) => updateEntity('purchaseOrders', id, updates),
-    deletePurchaseOrder: (id) => deleteEntity('purchaseOrders', id),
-    getPurchaseOrderById: (id) => getEntityById('purchaseOrders', id),
-    getPurchaseOrdersByStatus: (status) => filterEntities('purchaseOrders', po => po.status === status),
-    getPurchaseOrdersByClient: (clientName) => filterEntities('purchaseOrders', po => 
-      po.clientName?.toLowerCase().includes(clientName.toLowerCase())
-    )
-  };
-}
-
 export function useDeliveryTracking() {
-  const { state, updateDeliveryStatus } = useUnifiedData();
+  const { deliveryTracking, updateDeliveryStatus, isRealTimeActive } = useUnifiedData();
   
   return {
-    deliveryTracking: state.deliveryTracking,
+    deliveryTracking,
     updateDeliveryStatus,
-    getDeliveryStatus: (poId) => state.deliveryTracking[poId] || null
+    isRealTimeActive,
+    getDeliveryStatus: (poId) => deliveryTracking[poId] || null
   };
 }
 
 export function usePaymentTracking() {
-  const { state, updatePaymentStatus } = useUnifiedData();
+  const { paymentTracking, updatePaymentStatus, isRealTimeActive } = useUnifiedData();
   
   return {
-    paymentTracking: state.paymentTracking,
+    paymentTracking,
     updatePaymentStatus,
-    getPaymentStatus: (supplierId) => state.paymentTracking[supplierId] || null
+    isRealTimeActive,
+    getPaymentStatus: (supplierId) => paymentTracking[supplierId] || null
   };
 }
