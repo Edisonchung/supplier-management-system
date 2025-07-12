@@ -1,4 +1,4 @@
-// src/components/common/Navigation.jsx - Enhanced with Team Management
+// src/components/common/Navigation.jsx - Enhanced with Tracking Integration
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -20,7 +20,10 @@ import {
   UserCheck,
   Activity,
   Brain,
-  Zap
+  Zap,
+  BarChart3,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -36,6 +39,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   const [sourcingCount, setSourcingCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [teamOnline, setTeamOnline] = useState(0);
+  // 🆕 ADD: Tracking counters
+  const [trackingCounts, setTrackingCounts] = useState({
+    activeDeliveries: 0,
+    overdueItems: 0,
+    pendingPayments: 0
+  });
   
   useEffect(() => {
     // Check localStorage for various counts
@@ -49,51 +58,67 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         setSourcingCount(needsSourcing);
 
         // Pending items count (draft POs, pending PIs, etc.)
-        const purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
         const proformaInvoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-        
-        const draftPOs = purchaseOrders.filter(po => po.status === 'draft').length;
+        const purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
         const pendingPIs = proformaInvoices.filter(pi => pi.status === 'pending').length;
-        setPendingCount(draftPOs + pendingPIs);
+        const draftPOs = purchaseOrders.filter(po => po.status === 'draft').length;
+        setPendingCount(pendingPIs + draftPOs);
 
-        // Simulate team online count (in real system, this would come from Firestore)
-        setTeamOnline(Math.floor(Math.random() * 5) + 1);
+        // 🆕 ADD: Tracking counts
+        const deliveryTracking = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
+        const paymentTracking = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
+        
+        // Count active deliveries (not completed)
+        const activeDeliveries = Object.values(deliveryTracking).filter(delivery => 
+          delivery.status !== 'completed'
+        ).length;
+        
+        // Count overdue deliveries
+        const now = new Date();
+        const overdueDeliveries = Object.values(deliveryTracking).filter(delivery => 
+          delivery.estimatedDelivery && 
+          new Date(delivery.estimatedDelivery) < now && 
+          delivery.status !== 'completed'
+        ).length;
+        
+        // Count overdue payments
+        const overduePayments = Object.values(paymentTracking).filter(payment => 
+          payment.dueDate && 
+          new Date(payment.dueDate) < now && 
+          payment.status !== 'paid'
+        ).length;
+        
+        setTrackingCounts({
+          activeDeliveries,
+          overdueItems: overdueDeliveries + overduePayments,
+          pendingPayments: Object.values(paymentTracking).filter(payment => 
+            payment.status === 'pending' || payment.status === 'processing'
+          ).length
+        });
+
+        // Simulate team online count (placeholder)
+        setTeamOnline(Math.floor(Math.random() * 3) + 1);
       } catch (error) {
-        console.error('Error getting navigation counts:', error);
+        console.error('Error updating navigation counts:', error);
       }
     };
-    
+
     updateCounts();
-    // Update periodically
-    const interval = setInterval(updateCounts, 30000); // Every 30 seconds
-    
+    const interval = setInterval(updateCounts, 30000); // Update every 30 seconds
     return () => clearInterval(interval);
-  }, [location]);
+  }, [location.pathname]); // Update when navigation changes
 
-  // Load collapsed state from localStorage
-  useEffect(() => {
-    const savedState = localStorage.getItem('navCollapsed') === 'true';
-    setIsCollapsed(savedState);
-  }, []);
-
-  const handleToggleCollapse = () => {
-    const newState = !isCollapsed;
-    setIsCollapsed(newState);
-    localStorage.setItem('navCollapsed', newState.toString());
-    // Dispatch custom event for Layout to listen to
-    window.dispatchEvent(new Event('navToggled'));
-  };
-
-  // Enhanced navigation structure with better organization
+  // Enhanced navigation structure with tracking
   const navigationItems = [
+    // Dashboard (no section)
     {
       name: 'Dashboard',
       href: '/',
       icon: LayoutDashboard,
-      permission: 'canViewDashboard',
-      description: 'Overview and analytics'
+      description: 'Overview and analytics',
+      permission: 'canViewDashboard'
     },
-    
+
     // Core Management Section
     {
       name: 'Core Management',
@@ -103,15 +128,15 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Suppliers',
           href: '/suppliers',
           icon: Building2,
-          permission: 'canViewSuppliers',
-          description: 'Manage supplier relationships'
+          description: 'Manage supplier relationships',
+          permission: 'canViewSuppliers'
         },
         {
           name: 'Products',
           href: '/products',
           icon: Package,
-          permission: 'canViewProducts',
-          description: 'Product catalog and inventory'
+          description: 'Product catalog and inventory',
+          permission: 'canViewProducts'
         }
       ]
     },
@@ -124,42 +149,51 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         {
           name: 'Sourcing',
           href: '/sourcing',
-          icon: ShoppingCart,
+          icon: Brain,
+          description: 'Client PO sourcing workflow',
           permission: 'canViewOrders',
           badge: sourcingCount > 0 ? sourcingCount : null,
-          badgeColor: 'bg-red-500',
-          description: 'Source items from suppliers'
+          badgeColor: 'bg-orange-500'
         },
         {
           name: 'AI Matching',
           href: '/ai-matching',
-          icon: Brain,
-          permission: 'canViewOrders',
-          badge: 'NEW',
-          badgeColor: 'bg-purple-500',
-          description: 'AI-powered supplier matching'
+          icon: Zap,
+          description: 'AI-powered supplier matching',
+          permission: 'canViewOrders'
+        }
+      ]
+    },
+
+    // Procurement Section
+    {
+      name: 'Procurement',
+      section: true,
+      children: [
+        {
+          name: 'Proforma Invoices',
+          href: '/proforma-invoices',
+          icon: FileText,
+          description: 'Supplier quotations and PIs',
+          permission: 'canViewOrders'
         },
         {
-          name: 'Procurement',
-          icon: FileText,
-          permission: 'canViewOrders',
-          description: 'Purchase orders and invoices',
-          children: [
-            {
-              name: 'Proforma Invoices',
-              href: '/proforma-invoices',
-              permission: 'canViewOrders',
-              description: 'Supplier quotations'
-            },
-            {
-              name: 'Purchase Orders',
-              href: '/purchase-orders',
-              permission: 'canViewOrders',
-              badge: pendingCount > 0 ? pendingCount : null,
-              badgeColor: 'bg-orange-500',
-              description: 'Client purchase orders'
-            }
-          ]
+          name: 'Purchase Orders',
+          href: '/purchase-orders',
+          icon: ShoppingCart,
+          description: 'Purchase order management',
+          permission: 'canViewOrders'
+        },
+        // 🆕 ADD: Tracking menu item
+        {
+          name: 'Tracking',
+          href: '/tracking',
+          icon: BarChart3,
+          description: 'Delivery and payment tracking',
+          permission: 'canViewDeliveries',
+          badge: trackingCounts.overdueItems > 0 ? trackingCounts.overdueItems : 
+                 trackingCounts.activeDeliveries > 0 ? trackingCounts.activeDeliveries : null,
+          badgeColor: trackingCounts.overdueItems > 0 ? 'bg-red-500' : 'bg-blue-500'
         }
       ]
     },
@@ -173,15 +207,18 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Client Invoices',
           href: '/client-invoices',
           icon: Receipt,
-          permission: 'canViewInvoices',
-          description: 'Client billing and payments'
+          description: 'Client billing and invoices',
+          permission: 'canViewInvoices'
         },
         {
           name: 'Delivery Tracking',
           href: '/delivery-tracking',
           icon: Truck,
+          description: 'Shipment tracking and delivery status',
           permission: 'canViewDeliveries',
-          description: 'Track shipments and deliveries'
+          // 🔄 UPDATE: Add redirect notice
+          badge: 'REDIRECTS',
+          badgeColor: 'bg-gray-400'
         }
       ]
     },
@@ -195,14 +232,14 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Quick Import',
           href: '/quick-import',
           icon: Upload,
-          permission: 'canImportData',
-          description: 'Bulk import data and documents'
+          description: 'Bulk data import utilities',
+          permission: 'canImportData'
         }
       ]
     },
 
-    // Administration Section (Admin/Manager only)
-    ...(canManageUsers || isAdmin ? [{
+    // Administration Section
+    {
       name: 'Administration',
       section: true,
       adminOnly: true,
@@ -210,29 +247,50 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         {
           name: 'Team Management',
           href: '/team-management',
-          icon: Users,
+          icon: UserCheck,
+          description: 'Team member management',
           permission: 'canManageUsers',
           badge: teamOnline > 0 ? `${teamOnline} online` : null,
-          badgeColor: 'bg-green-500',
-          description: 'Manage team members and roles'
+          badgeColor: 'bg-green-500'
         },
         {
-          name: 'System Settings',
+          name: 'Settings',
           href: '/settings',
           icon: Settings,
-          permission: 'canManageUsers',
-          description: 'Configure system preferences'
+          description: 'System configuration',
+          permission: 'canManageUsers'
         },
         {
           name: 'Activity Logs',
           href: '/activity-logs',
           icon: Activity,
-          permission: 'canManageUsers',
-          description: 'View team activity and audit logs'
+          description: 'System activity and audit logs',
+          permission: 'canManageUsers'
+        },
+        {
+          name: 'User Management',
+          href: '/users',
+          icon: Users,
+          description: 'Legacy user management',
+          permission: 'canManageUsers'
         }
       ]
-    }] : [])
+    }
   ];
+
+  const handleToggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+    // Save preference to localStorage
+    localStorage.setItem('navigationCollapsed', !isCollapsed);
+  };
+
+  // Load collapse preference on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('navigationCollapsed');
+    if (saved !== null) {
+      setIsCollapsed(JSON.parse(saved));
+    }
+  }, []);
 
   const toggleExpanded = (itemName) => {
     setExpandedItems(prev => ({
@@ -242,31 +300,36 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   };
 
   const isActive = (href) => {
-    return location.pathname === href;
+    if (href === '/') {
+      return location.pathname === '/';
+    }
+    return location.pathname.startsWith(href);
   };
 
-  const isParentActive = (children = []) => {
-    return children.some(child => child.href && isActive(child.href));
+  const hasPermission = (permission) => {
+    if (!permission) return true;
+    return permissions[permission] !== false;
   };
 
-  const renderNavItem = (item, isChild = false, parentSection = null) => {
-    if (!permissions[item.permission]) return null;
+  const renderNavItem = (item, isChild = false, parentName = '') => {
+    if (item.permission && !hasPermission(item.permission)) {
+      return null;
+    }
 
-    const hasChildren = item.children && item.children.length > 0;
-    const isExpanded = expandedItems[item.name] || isParentActive(item.children || []);
-    const active = item.href ? isActive(item.href) : isParentActive(item.children || []);
+    const active = isActive(item.href);
+    const itemKey = parentName ? `${parentName}-${item.name}` : item.name;
 
-    if (hasChildren) {
+    if (item.children) {
+      const isExpanded = expandedItems[itemKey];
       return (
-        <div key={item.name} className={isChild ? 'ml-2' : ''}>
+        <div key={itemKey}>
           <button
-            onClick={() => toggleExpanded(item.name)}
+            onClick={() => toggleExpanded(itemKey)}
             className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-colors ${
               active
                 ? 'bg-blue-50 text-blue-700'
                 : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
             }`}
-            title={isCollapsed ? item.name : item.description}
           >
             <div className="flex items-center">
               {item.icon && <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-5 w-5`} />}
@@ -408,7 +471,8 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                     </p>
                     <div className="flex items-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' :
+                        user.role === 'admin' ?
+                        'bg-purple-100 text-purple-800' :
                         user.role === 'manager' ? 'bg-blue-100 text-blue-800' :
                         user.role === 'employee' ? 'bg-green-100 text-green-800' :
                         'bg-gray-100 text-gray-800'
@@ -467,12 +531,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 )}
               </nav>
             </div>
-            
+
             {/* Mobile User Info */}
             {user && (
-              <div className="flex-shrink-0 flex border-t border-gray-200 p-4 bg-gray-50">
-                <div className="flex items-center w-full">
-                  <div className="relative">
+              <div className="flex-shrink-0 bg-gray-50 p-4">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
                     <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
                       {user.photoURL ? (
                         <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" />
@@ -480,15 +544,15 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                         user.email?.[0]?.toUpperCase() || 'U'
                       )}
                     </div>
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full"></div>
                   </div>
-                  <div className="ml-3 flex-1">
-                    <p className="text-sm font-medium text-gray-700">
+                  <div className="ml-3">
+                    <p className="text-base font-medium text-gray-700">
                       {user.displayName || user.email}
                     </p>
                     <div className="flex items-center mt-1">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' :
+                        user.role === 'admin' ?
+                        'bg-purple-100 text-purple-800' :
                         user.role === 'manager' ? 'bg-blue-100 text-blue-800' :
                         user.role === 'employee' ? 'bg-green-100 text-green-800' :
                         'bg-gray-100 text-gray-800'
@@ -496,11 +560,6 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                         {user.role === 'admin' && <Shield className="w-3 h-3 mr-1" />}
                         {user.role || 'User'}
                       </span>
-                      {teamOnline > 0 && (
-                        <span className="ml-2 text-xs text-gray-500">
-                          {teamOnline} team online
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
