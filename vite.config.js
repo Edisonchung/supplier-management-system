@@ -1,9 +1,15 @@
-// vite.config.js - FIXED VERSION (Remove terser for now)
+// vite.config.js - UPDATED WITH REACT JSX TRANSFORM
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      // Automatically inject React import
+      jsxImportSource: 'react',
+      jsxRuntime: 'automatic'
+    })
+  ],
   
   build: {
     // Enable code splitting and chunk optimization
@@ -24,16 +30,21 @@ export default defineConfig({
       }
     },
     
-    // Use default minification (esbuild) instead of terser
+    // Use default minification
     minify: 'esbuild',
     
     // Chunk size optimization
-    chunkSizeWarningLimit: 500 // Warn for chunks > 500KB
+    chunkSizeWarningLimit: 500
   },
   
   // Optimize dependencies
   optimizeDeps: {
     include: ['react', 'react-dom', 'lucide-react'],
-    exclude: [] // Let Vite handle automatically
+    exclude: []
+  },
+
+  // Define global React for compatibility
+  define: {
+    global: 'globalThis',
   }
 })
