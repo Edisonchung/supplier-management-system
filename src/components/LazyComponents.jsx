@@ -1,21 +1,47 @@
-// src/components/LazyComponents.jsx
+// src/components/LazyComponents.jsx - ENHANCED VERSION
 import { lazy, Suspense } from 'react'
 
-// Loading component
-const LoadingSpinner = () => (
-  <div className="flex items-center justify-center min-h-[200px]">
-    <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-600"></div>
-    <span className="ml-3 text-gray-600">Loading...</span>
-  </div>
-)
+// Enhanced loading component with analytics
+const LoadingSpinner = ({ componentName = 'Component' }) => {
+  React.useEffect(() => {
+    const start = performance.now()
+    console.log(`⏳ Loading ${componentName}...`)
+    
+    return () => {
+      const end = performance.now()
+      console.log(`✅ ${componentName} loaded in ${(end - start).toFixed(2)}ms`)
+    }
+  }, [componentName])
 
-// Lazy load ONLY existing components
-export const LazyDashboard = lazy(() => import('./dashboard/Dashboard'))
-export const LazySuppliers = lazy(() => import('./suppliers/Suppliers'))
-export const LazyProducts = lazy(() => import('./products/Products'))
-export const LazyProformaInvoices = lazy(() => import('./procurement/ProformaInvoices'))
-export const LazyPurchaseOrders = lazy(() => import('./purchase-orders/PurchaseOrders'))
-export const LazyClientInvoices = lazy(() => import('./invoices/ClientInvoices'))
+  return (
+    <div className="flex items-center justify-center min-h-[200px]">
+      <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-600"></div>
+      <span className="ml-3 text-gray-600">Loading {componentName}...</span>
+    </div>
+  )
+}
+
+// Lazy load with performance tracking
+const createLazyComponent = (importFn, componentName) => {
+  return lazy(() => {
+    const start = performance.now()
+    return importFn().then(module => {
+      const end = performance.now()
+      if (import.meta.env.DEV) {
+        console.log(`📦 ${componentName} chunk loaded: ${(end - start).toFixed(2)}ms`)
+      }
+      return module
+    })
+  })
+}
+
+// Enhanced lazy components with tracking
+export const LazyDashboard = createLazyComponent(() => import('./dashboard/Dashboard'), 'Dashboard')
+export const LazySuppliers = createLazyComponent(() => import('./suppliers/Suppliers'), 'Suppliers')
+export const LazyProducts = createLazyComponent(() => import('./products/Products'), 'Products')
+export const LazyProformaInvoices = createLazyComponent(() => import('./procurement/ProformaInvoices'), 'ProformaInvoices')
+export const LazyPurchaseOrders = createLazyComponent(() => import('./purchase-orders/PurchaseOrders'), 'PurchaseOrders')
+export const LazyClientInvoices = createLazyComponent(() => import('./invoices/ClientInvoices'), 'ClientInvoices')
 
 // For components that might exist (with error handling)
 export const LazyQuickImport = lazy(() => 
@@ -40,7 +66,7 @@ export const LazyUserManagement = lazy(() =>
   }))
 )
 
-// Placeholder for delivery tracking (since it doesn't exist yet)
+// Placeholder for delivery tracking
 export const LazyDeliveryTracking = lazy(() => Promise.resolve({
   default: () => (
     <div className="p-6 text-center text-gray-500">
@@ -54,9 +80,13 @@ export const LazyDeliveryTracking = lazy(() => Promise.resolve({
   )
 }))
 
-// Wrapper component with consistent loading
-export const LazyWrapper = ({ children, fallback = <LoadingSpinner /> }) => (
-  <Suspense fallback={fallback}>
-    {children}
-  </Suspense>
-)
+// Enhanced wrapper with component name tracking
+export const LazyWrapper = ({ children, componentName, fallback }) => {
+  const defaultFallback = <LoadingSpinner componentName={componentName} />
+  
+  return (
+    <Suspense fallback={fallback || defaultFallback}>
+      {children}
+    </Suspense>
+  )
+}
