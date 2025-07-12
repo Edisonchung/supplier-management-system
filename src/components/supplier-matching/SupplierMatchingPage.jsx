@@ -594,9 +594,17 @@ const SupplierMatchingPage = () => {
         );
         
         if (trackingResult && trackingResult.error) {
-          toast.warning(
+          toast(
             `⚠️ Selections saved, but tracking initialization failed: ${trackingResult.error}`,
-            { duration: 2000 }
+            { 
+              duration: 2000,
+              icon: '⚠️',
+              style: {
+                border: '1px solid #f59e0b',
+                background: '#fef3c7',
+                color: '#92400e'
+              }
+            }
           );
         }
         
