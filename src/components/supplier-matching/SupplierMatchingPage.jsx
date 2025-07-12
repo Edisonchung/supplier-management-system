@@ -1,5 +1,5 @@
 // src/components/supplier-matching/SupplierMatchingPage.jsx
-// Enhanced Final Version - Combines working service layer with all AI features
+// Enhanced Final Version - Combines working service layer with all AI features + Tracking Integration
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -17,16 +17,26 @@ import {
   Target,       // 🆕 Enhanced AI features
   TrendingUp,   // 🆕 Enhanced AI features
   Clock,        // 🆕 Enhanced AI features
-  FileText      // 🆕 Enhanced AI features
+  FileText,     // 🆕 Enhanced AI features
+  BarChart3,    // 🆕 Tracking integration
+  Truck         // 🆕 Tracking integration
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import SupplierMatchingDisplay from './SupplierMatchingDisplay';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { AIExtractionService } from '../../services/ai';
 
+// 🆕 ADD: Import tracking services and hooks
+import { ConsolidatedTrackingService } from '../../services/tracking/TrackingServices';
+import { useDeliveryTracking, usePaymentTracking } from '../../context/UnifiedDataContext';
+
 const SupplierMatchingPage = () => {
   const { poId } = useParams();
   const navigate = useNavigate();
+  
+  // 🆕 ADD: Tracking hooks
+  const { updateDeliveryStatus } = useDeliveryTracking();
+  const { updatePaymentStatus } = usePaymentTracking();
   
   // Main state
   const [loading, setLoading] = useState(true);
@@ -76,13 +86,24 @@ const SupplierMatchingPage = () => {
         await handleRefreshMatching(po, false);
       }
       
-      // Load any previously selected suppliers
+      // 🔄 UPDATE: Load supplier selections from enhanced format
       const selections = {};
-      po.items?.forEach(item => {
-        if (item.selectedSupplierId || item.selectedSupplier) {
-          selections[item.itemNumber] = item.selectedSupplierId || item.selectedSupplier?.supplierId;
-        }
-      });
+      if (po.supplierSelections && typeof po.supplierSelections === 'object') {
+        // Filter out metadata fields to get just the selections
+        Object.entries(po.supplierSelections).forEach(([key, value]) => {
+          if (!['totalItems', 'selectedItems', 'averageConfidence', 'totalSavings', 'lastUpdated'].includes(key)) {
+            selections[key] = value;
+          }
+        });
+      } else {
+        // Fallback to item-level selections
+        po.items?.forEach(item => {
+          if (item.selectedSupplierId || item.selectedSupplier) {
+            selections[item.itemNumber] = item.selectedSupplierId || item.selectedSupplier?.supplierId;
+          }
+        });
+      }
+      
       setSelectedSuppliers(selections);
       
       if (Object.keys(selections).length > 0) {
@@ -223,12 +244,17 @@ const SupplierMatchingPage = () => {
     }
   };
 
-  // 🆕 Enhanced save with detailed feedback
+  // 🔄 ENHANCED: Save with tracking initialization
   const saveSupplierSelections = async () => {
+    if (Object.keys(selectedSuppliers).length === 0) {
+      toast.error('Please select suppliers before saving');
+      return;
+    }
+
     try {
       setSaving(true);
       
-      console.log('💾 Saving enhanced supplier selections...');
+      console.log('💾 Saving enhanced supplier selections and initializing tracking...');
       
       // Update items with selected suppliers
       const updatedItems = purchaseOrder.items.map(item => ({
@@ -239,36 +265,114 @@ const SupplierMatchingPage = () => {
       // 🆕 Calculate enhanced selection summary
       const selectionSummary = calculateSelectionSummary(updatedItems);
       
-      await purchaseOrderService.update(poId, {
+      // 🔄 UPDATE: Save with tracking preparation
+      const updateResult = await purchaseOrderService.update(poId, {
         items: updatedItems,
-        supplierSelections: selectionSummary,
+        supplierSelections: {
+          ...selectedSuppliers,
+          ...selectionSummary
+        },
+        status: 'suppliers_selected',
         supplierSelectionsUpdated: new Date().toISOString(),
         lastModified: new Date().toISOString()
       });
       
-      setHasChanges(false);
-      setLastSaveTime(new Date());
-      
-      // 🆕 Enhanced success feedback
-      const selectionCount = Object.keys(selectedSuppliers).length;
-      const totalItems = purchaseOrder.items?.length || 0;
-      
-      toast.success(
-        `✅ Enhanced selections saved! ${selectionCount}/${totalItems} items with AI optimization`, 
-        { duration: 3000 }
-      );
-      
-      // Show AI learning feedback
-      setTimeout(() => {
-        toast.success('🧠 AI learned from your selections and will improve future matches!', {
-          duration: 2000
-        });
-      }, 1500);
-      
-      // Reload to ensure data consistency
-      await loadPurchaseOrder();
+      if (updateResult.success) {
+        // 🆕 Initialize tracking systems
+        const updatedPO = {
+          ...purchaseOrder,
+          items: updatedItems,
+          supplierSelections: {
+            ...selectedSuppliers,
+            ...selectionSummary
+          },
+          status: 'suppliers_selected'
+        };
+        
+        console.log('🚀 Initializing delivery and payment tracking...');
+        
+        const trackingResult = await ConsolidatedTrackingService.initializeCompleteTracking(
+          updatedPO,
+          updateDeliveryStatus,
+          updatePaymentStatus
+        );
+        
+        setHasChanges(false);
+        setLastSaveTime(new Date());
+        
+        if (trackingResult.success) {
+          // 🆕 Enhanced success feedback with tracking
+          const selectionCount = Object.keys(selectedSuppliers).length;
+          const totalItems = purchaseOrder.items?.length || 0;
+          
+          toast.success(
+            `✅ Suppliers saved & tracking initialized! ${selectionCount}/${totalItems} items with AI optimization`, 
+            { duration: 4000 }
+          );
+          
+          // Show tracking initialization feedback
+          setTimeout(() => {
+            toast.success('📊 Delivery and payment tracking is now active!', {
+              duration: 3000
+            });
+          }, 1500);
+          
+          // 🆕 Enhanced navigation options
+          setTimeout(() => {
+            const result = window.confirm(
+              `🚀 Tracking system initialized successfully!\n\n` +
+              `✅ ${selectionCount} suppliers selected\n` +
+              `📊 Delivery tracking active\n` +
+              `💰 Payment tracking active\n\n` +
+              `Would you like to view the tracking dashboard?`
+            );
+            
+            if (result) {
+              navigate(`/tracking?po=${poId}`);
+            }
+          }, 3000);
+          
+        } else {
+          // Even if tracking initialization fails, selections are saved
+          const selectionCount = Object.keys(selectedSuppliers).length;
+          const totalItems = purchaseOrder.items?.length || 0;
+          
+          toast.success(
+            `✅ Enhanced selections saved! ${selectionCount}/${totalItems} items with AI optimization`, 
+            { duration: 3000 }
+          );
+          
+          toast.warning(
+            '⚠️ Tracking initialization will be retried automatically.',
+            { duration: 2000 }
+          );
+          
+          console.warn('Tracking initialization failed:', trackingResult.error);
+        }
+        
+        // Update local state
+        setPurchaseOrder(prev => ({
+          ...prev,
+          items: updatedItems,
+          supplierSelections: {
+            ...selectedSuppliers,
+            ...selectionSummary
+          },
+          status: 'suppliers_selected'
+        }));
+        
+        // Show AI learning feedback
+        setTimeout(() => {
+          toast.success('🧠 AI learned from your selections and will improve future matches!', {
+            duration: 2000
+          });
+        }, 2000);
+        
+      } else {
+        throw new Error(updateResult.error || 'Failed to save selections');
+      }
     } catch (error) {
-      toast.error('Failed to save enhanced selections');
+      toast.error('Failed to save enhanced selections: ' + error.message);
       console.error('Enhanced save error:', error);
     } finally {
       setSaving(false);
@@ -498,6 +602,16 @@ const SupplierMatchingPage = () => {
                     PO {purchaseOrder.poNumber || purchaseOrder.orderNumber}
                   </p>
                   
+                  {/* 🔄 UPDATE: Show tracking status */}
+                  {purchaseOrder.status === 'suppliers_selected' && (
+                    <div className="flex items-center gap-1">
+                      <BarChart3 className="w-4 h-4 text-green-600" />
+                      <span className="text-green-600 font-medium text-sm">
+                        Tracking Active
+                      </span>
+                    </div>
+                  )}
+                  
                   {/* 🆕 Enhanced Selection Status */}
                   {selectionStatus.count > 0 && (
                     <div className="flex items-center gap-3 text-sm">
@@ -553,6 +667,17 @@ const SupplierMatchingPage = () => {
             </div>
             
             <div className="flex items-center gap-3">
+              {/* 🆕 Tracking Dashboard Link */}
+              {purchaseOrder.status === 'suppliers_selected' && (
+                <button
+                  onClick={() => navigate(`/tracking?po=${poId}`)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  View Tracking
+                </button>
+              )}
+              
               {/* 🆕 Enhanced Export Button */}
               <button
                 onClick={exportEnhancedReport}
@@ -572,12 +697,12 @@ const SupplierMatchingPage = () => {
                   {saving ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      Saving...
+                      Saving & Initializing...
                     </>
                   ) : (
                     <>
                       <Save className="w-4 h-4" />
-                      Save Enhanced
+                      Save & Initialize Tracking
                     </>
                   )}
                 </button>
@@ -636,22 +761,63 @@ const SupplierMatchingPage = () => {
         </nav>
       </div>
 
-      {/* 🆕 Enhanced Success Banner for Unsaved Changes */}
+      {/* 🔄 ENHANCED: Success Banner for Unsaved Changes with Tracking Info */}
       {hasChanges && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
           <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Brain className="w-5 h-5 text-yellow-600" />
-              <p className="text-yellow-800 font-medium">
-                You have {Object.keys(selectedSuppliers).length} enhanced AI selections ready to save.
-              </p>
+              <div>
+                <p className="text-yellow-800 font-medium">
+                  You have {Object.keys(selectedSuppliers).length} enhanced AI selections ready to save.
+                </p>
+                <p className="text-yellow-700 text-sm">
+                  Saving will initialize delivery and payment tracking systems.
+                </p>
+              </div>
             </div>
             <button
               onClick={saveSupplierSelections}
               disabled={saving}
-              className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
-              {saving ? 'Saving...' : 'Save Enhanced Selections'}
+              {saving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Saving & Initializing...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save & Initialize Tracking
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 ADD: Tracking Status Banner */}
+      {purchaseOrder.status === 'suppliers_selected' && !hasChanges && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
+          <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-green-600" />
+              <div>
+                <p className="text-green-800 font-medium">
+                  Tracking systems are active for this purchase order.
+                </p>
+                <p className="text-green-700 text-sm">
+                  Monitor delivery status and payment progress in the tracking dashboard.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate(`/tracking?po=${poId}`)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <Truck className="w-4 h-4" />
+              Open Tracking Dashboard
             </button>
           </div>
         </div>
