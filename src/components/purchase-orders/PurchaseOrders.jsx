@@ -105,7 +105,8 @@ const PurchaseOrders = () => {
     
     // Use client's original PO number
     clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
-    
+    projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
+
     // Extract client information
     clientName: result.data.clientName || result.data.client?.name || '',
     clientContact: result.data.clientContact || result.data.client?.contact || '',
