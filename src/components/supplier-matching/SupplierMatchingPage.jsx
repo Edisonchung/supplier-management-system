@@ -26,39 +26,15 @@ import SupplierMatchingDisplay from './SupplierMatchingDisplay';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { AIExtractionService } from '../../services/ai';
 
-// 🔧 FIXED: Use ES6 imports with fallbacks
-import { AIExtractionService } from '../../services/ai';
-
-// Safe tracking service imports with fallbacks
+// Safe tracking service imports with fallbacks  
 let ConsolidatedTrackingService, useDeliveryTracking, usePaymentTracking;
-try {
-  // Try to import tracking services
-  const trackingModule = await import('../../services/tracking/TrackingServices').catch(() => null);
-  const contextModule = await import('../../context/UnifiedDataContext').catch(() => null);
-  
-  if (trackingModule) {
-    ConsolidatedTrackingService = trackingModule.ConsolidatedTrackingService;
-  }
-  if (contextModule) {
-    useDeliveryTracking = contextModule.useDeliveryTracking;
-    usePaymentTracking = contextModule.usePaymentTracking;
-  }
-} catch (error) {
-  console.warn('⚠️ Tracking services not available:', error.message);
-}
 
-// Provide fallback functions if imports failed
-if (!ConsolidatedTrackingService) {
-  ConsolidatedTrackingService = {
-    initializeCompleteTracking: async () => ({ success: false, error: 'Tracking service unavailable' })
-  };
-}
-if (!useDeliveryTracking) {
-  useDeliveryTracking = () => ({ updateDeliveryStatus: () => {} });
-}
-if (!usePaymentTracking) {
-  usePaymentTracking = () => ({ updatePaymentStatus: () => {} });
-}
+// Provide fallback functions
+ConsolidatedTrackingService = {
+  initializeCompleteTracking: async () => ({ success: false, error: 'Tracking service unavailable' })
+};
+useDeliveryTracking = () => ({ updateDeliveryStatus: () => {} });
+usePaymentTracking = () => ({ updatePaymentStatus: () => {} });
 
 const SupplierMatchingPage = () => {
   const { poId } = useParams();
