@@ -1413,20 +1413,7 @@ if (docType.type === 'client_purchase_order') {
 
     return { isValid: true };
   }
-  mapClientPOItems(items) {
-    console.log('🔧 mapClientPOItems called with:', {
-      itemsType: typeof items,
-      itemsIsArray: Array.isArray(items),
-      itemsLength: items?.length,
-      itemsSample: items?.[0]
-    });
-    
-    if (!items || !Array.isArray(items)) {
-      console.warn('❌ No items array provided to mapClientPOItems');
-      console.warn('❌ Received items:', items);
-      return [];
-    }
-    
+  
   
   /**
    * Map items from client PO format
