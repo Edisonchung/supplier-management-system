@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { UnifiedDataProvider } from './context/UnifiedDataContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import PublicPIView from './components/procurement/PublicPIView';
@@ -30,6 +31,8 @@ import { lazy } from 'react';
 const LazySourcingDashboard = lazy(() => import('./components/sourcing/SourcingDashboard'));
 const LazySupplierMatchingPage = lazy(() => import('./components/supplier-matching/SupplierMatchingPage'));
 const LazyTeamManagement = lazy(() => import('./components/team/TeamManagement'));
+const LazyUnifiedTrackingDashboard = lazy(() => import('./components/tracking/UnifiedTrackingDashboard'));
+
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -294,6 +297,18 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+
+            <Route 
+              path="/tracking" 
+              element={
+                <ProtectedRoute permission="canViewDeliveries">
+                  <LazyWrapper>
+                    <LazyUnifiedTrackingDashboard />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
             
             {/* Business Routes - LAZY LOADED */}
             <Route 
@@ -309,16 +324,9 @@ function AppContent() {
             
             <Route 
               path="/delivery-tracking" 
-              element={
-                <ProtectedRoute permission="canViewDeliveries">
-                  <PlaceholderComponent 
-                    title="Delivery Tracking" 
-                    description="Real-time shipment tracking and delivery status monitoring" 
-                    icon={Truck}
-                  />
-                </ProtectedRoute>
-              } 
+              element={<Navigate to="/tracking" replace />}
             />
+
             
             {/* Tools Routes - LAZY LOADED */}
             <Route 
@@ -423,7 +431,9 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <UnifiedDataProvider>
+        <AppContent />
+      </UnifiedDataProvider>
     </AuthProvider>
   );
 }
