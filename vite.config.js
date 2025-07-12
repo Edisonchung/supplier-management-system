@@ -1,4 +1,4 @@
-// vite.config.js
+// vite.config.js - FIXED VERSION (Remove terser for now)
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -24,14 +24,8 @@ export default defineConfig({
       }
     },
     
-    // Optimize bundle size
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true, // Remove console.log in production
-        drop_debugger: true
-      }
-    },
+    // Use default minification (esbuild) instead of terser
+    minify: 'esbuild',
     
     // Chunk size optimization
     chunkSizeWarningLimit: 500 // Warn for chunks > 500KB
@@ -43,4 +37,3 @@ export default defineConfig({
     exclude: [] // Let Vite handle automatically
   }
 })
-
