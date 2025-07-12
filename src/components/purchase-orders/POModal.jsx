@@ -11,6 +11,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [formData, setFormData] = useState({
     poNumber: '',
     clientPoNumber: '',
+    projectCode: '',
     clientName: '',
     clientContact: '',
     clientEmail: '',
@@ -451,6 +452,22 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Project Code
+  </label>
+  <input
+    type="text"
+    value={formData.projectCode}
+    onChange={(e) => handleInputChange('projectCode', e.target.value)}
+    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+    placeholder="e.g., PROJ-2025-001"
+  />
+  <p className="text-xs text-gray-500 mt-1">
+    For linking with CRM quotations and contacts
+  </p>
+</div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
