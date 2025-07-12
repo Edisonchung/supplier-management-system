@@ -1489,6 +1489,28 @@ parseQuantity(quantityValue) {
   
   return 0;
 }
+
+/**
+ * Parse price from various formats
+ */
+parsePrice(priceValue) {
+  if (!priceValue) return 0;
+  
+  // Handle string values like "1,400.00"
+  if (typeof priceValue === 'string') {
+    // Remove currency symbols, commas, and spaces
+    const cleaned = priceValue.replace(/[^0-9.-]/g, '');
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  
+  // Handle numeric values
+  if (typeof priceValue === 'number') {
+    return priceValue;
+  }
+  
+  return 0;
+}
   
   /**
    * Extract and clean client name from various sources
