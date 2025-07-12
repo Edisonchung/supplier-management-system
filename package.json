@@ -10,13 +10,6 @@
     "preview": "vite preview"
   },
 
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:analyze": "vite build --mode analyze",
-    "preview": "vite preview",
-    "analyze": "npm run build && npx vite-bundle-analyzer dist"
-  }
 
   "dependencies": {
     "@radix-ui/react-avatar": "^1.0.4",
