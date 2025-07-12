@@ -525,39 +525,54 @@ const PurchaseOrders = () => {
               ) : (
                 filteredPOs.map((po) => (
                   <tr key={po.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {po.orderNumber || po.poNumber}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {po.projectCode ? (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
-                          {po.projectCode}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {po.client || po.clientName || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(po.orderDate)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(po.deliveryDate || po.requiredDate)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div className="flex items-center">
-                        <Package className="h-4 w-4 text-gray-400 mr-1" />
-                        {po.items?.length || 0}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      RM {(po.total || po.totalAmount || 0).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(po.status)}
-                    </td>
+                    {/* PO NUMBER */}
+<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+  {po.orderNumber || po.poNumber}
+</td>
+
+{/* PROJECT CODE */}
+<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  {po.projectCode ? (
+    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+      {po.projectCode}
+    </span>
+  ) : (
+    <span className="text-gray-400">-</span>
+  )}
+</td>
+
+{/* CLIENT */}
+<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  {po.client || po.clientName || '-'}
+</td>
+
+{/* ORDER DATE */}
+<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  {formatDate(po.orderDate)}
+</td>
+
+{/* DELIVERY DATE */}
+<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  {formatDate(po.deliveryDate || po.requiredDate)}
+</td>
+
+{/* ITEMS */}
+<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  <div className="flex items-center">
+    <Package className="h-4 w-4 text-gray-400 mr-1" />
+    {po.items?.length || 0}
+  </div>
+</td>
+
+{/* TOTAL */}
+<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+  RM {(po.total || po.totalAmount || 0).toLocaleString()}
+</td>
+
+{/* STATUS */}
+<td className="px-6 py-4 whitespace-nowrap">
+  {getStatusBadge(po.status)}
+</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
                         <button
