@@ -228,6 +228,21 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     const errors = [];
     if (!formData.clientName) errors.push({ field: 'clientName', message: 'Client name is required' });
     if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
+
+    // ADD PROJECT CODE VALIDATION
+  if (formData.projectCode && formData.projectCode.length < 3) {
+    errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
+  }
+  
+  // Optional: Check for duplicate project codes
+  if (formData.projectCode) {
+    // You can add duplicate checking logic here later when you connect to your data source
+    // const existingPOs = await getPurchaseOrdersByProjectCode(formData.projectCode);
+    // if (existingPOs.length > 0 && !editingPO) {
+    //   errors.push({ field: 'projectCode', message: 'Project code already exists' });
+    // }
+  }
+
     
     if (errors.length > 0) {
       setValidationErrors(errors);
