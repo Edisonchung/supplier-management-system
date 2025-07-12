@@ -148,14 +148,25 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 };
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  // Auto-format project codes
+  if (field === 'projectCode' && value) {
+    // Convert to uppercase and remove invalid characters
+    value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
     
-    // Clear validation error for this field
-    setValidationErrors(prev => prev.filter(e => e.field !== field));
-  };
+    // Optional: Auto-add dashes for common patterns
+    if (value.length > 4 && !value.includes('-') && /^[A-Z]+\d+$/.test(value)) {
+      value = value.replace(/(\D+)(\d+)/, '$1-$2');
+    }
+  }
+  
+  setFormData(prev => ({
+    ...prev,
+    [field]: value
+  }));
+  
+  // Clear validation error for this field
+  setValidationErrors(prev => prev.filter(e => e.field !== field));
+};
 
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
