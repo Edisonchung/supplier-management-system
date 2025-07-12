@@ -1162,8 +1162,46 @@ if (docType.type === 'client_purchase_order') {
   console.log('Processing Client Purchase Order from:', 
     rawData.data?.purchase_order?.supplier?.name || 'Unknown Client');
   
-  const data = rawData.data?.purchase_order || rawData.purchase_order || rawData.data || rawData;
+  // FIX: Access the correct data structure
+  const actualData = rawData.data || rawData;
+  const data = actualData.purchase_order || actualData;
   
+  // Enhanced multi-location item search with debugging
+  let itemsArray = [];
+  const possibleItemLocations = [
+    { path: 'actualData.items', value: actualData.items },
+    { path: 'actualData.purchase_order.items', value: actualData.purchase_order?.items },
+    { path: 'actualData.line_items', value: actualData.line_items },
+    { path: 'rawData.items', value: rawData.items },
+    { path: 'data.items', value: data.items },
+    { path: 'data.purchase_order.items', value: data.purchase_order?.items },
+    { path: 'data.line_items', value: data.line_items }
+  ];
+
+  console.log('🔍 Searching for items in multiple locations:');
+  for (const location of possibleItemLocations) {
+    console.log(`- ${location.path}:`, {
+      exists: !!location.value,
+      isArray: Array.isArray(location.value),
+      length: Array.isArray(location.value) ? location.value.length : 'N/A',
+      sample: Array.isArray(location.value) && location.value.length > 0 ? location.value[0] : location.value
+    });
+    
+    if (Array.isArray(location.value) && location.value.length > 0) {
+      console.log(`🎯 Found items at ${location.path} with ${location.value.length} items`);
+      itemsArray = location.value;
+      break;
+    }
+  }
+
+  // If still no items found, search recursively in the data structure
+  if (itemsArray.length === 0) {
+    console.log('🔍 No items found in standard locations, searching recursively...');
+    itemsArray = this.findItemsRecursively(actualData) || this.findItemsRecursively(rawData) || [];
+  }
+
+  console.log(`📦 Final items array found: ${itemsArray.length} items`);
+
   processedData = {
     documentType: 'client_purchase_order',
     confidence: docType.confidence,
@@ -1182,13 +1220,38 @@ if (docType.type === 'client_purchase_order') {
     orderDate: data.order_date || new Date().toISOString().split('T')[0],
     requiredDate: '', // Not specified in PTP POs
     
-    // Items to source
-    items: this.mapClientPOItems(
-      data.items || 
-      data.purchase_order?.items || 
-      data.line_items || 
-      []
-    ),
+    // FIXED: Items to source using the found items array
+    items: this.mapClientPOItems(itemsArray),
+
+    totalAmount: parseFloat(data.grand_total || data.subtotal || 0),
+    subtotal: parseFloat(data.subtotal || 0),
+    tax: parseFloat(data.tax || 0),
+    
+    // Status
+    status: 'sourcing_required',
+    sourcingStatus: 'pending',
+    priority: 'normal',
+    
+    // Notes
+    notes: data.notes || '',
+    termsAndConditions: data.terms_and_conditions || '',
+    
+    // Metadata
+    extractedAt: new Date().toISOString(),
+    sourceFile: file?.name || 'unknown'
+  };
+  
+  console.log('✅ Successfully processed Client PO:', processedData.clientPONumber);
+  
+} else if (docType.type === 'supplier_proforma' || docType.type === 'supplier_invoice') {
+  // Use enhanced Chinese supplier extraction for both proforma and invoice
+  processedData = ChineseSupplierPIExtractor.extractChineseSupplierPI(rawData, file);
+  console.log('Using enhanced Chinese supplier PI extraction');
+} else if (this.processors[docType.type]) {
+  processedData = await this.processors[docType.type].process(rawData, file);
+} else {
+  processedData = this.processGenericDocument(rawData, file);
+}
 
     totalAmount: parseFloat(data.grand_total || data.subtotal || 0),
     subtotal: parseFloat(data.subtotal || 0),
@@ -1636,6 +1699,48 @@ parseQuantity(quantityValue) {
     
     return 'General';
   }
+
+     /**
+   * Recursively search for items array in nested data structures
+   */
+  findItemsRecursively(obj, path = '') {
+    if (!obj || typeof obj !== 'object') return null;
+    
+    for (const [key, value] of Object.entries(obj)) {
+      const currentPath = path ? `${path}.${key}` : key;
+      
+      // Check if this is an items array
+      if (Array.isArray(value) && value.length > 0) {
+        // Check if this looks like a product/item array
+        const firstItem = value[0];
+        if (firstItem && typeof firstItem === 'object') {
+          const hasProductFields = firstItem.description || 
+                                  firstItem.product_name || 
+                                  firstItem.name || 
+                                  firstItem.part_number ||
+                                  firstItem.product_code ||
+                                  firstItem.quantity ||
+                                  firstItem.unit_price;
+          
+          if (hasProductFields) {
+            console.log(`🎯 Found potential items array at ${currentPath} with ${value.length} items`);
+            console.log('First item sample:', firstItem);
+            return value;
+          }
+        }
+      }
+      
+      // Recursively search nested objects
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const result = this.findItemsRecursively(value, currentPath);
+        if (result) return result;
+      }
+    }
+    
+    return null;
+  }
+
+    
   /**
    * Process generic/unknown document type with enhanced fallback
    */
