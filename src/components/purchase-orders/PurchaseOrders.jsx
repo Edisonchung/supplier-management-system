@@ -28,7 +28,7 @@ import {
   Building2
 } from 'lucide-react';
 import POModal from './POModal';
-import { generatePONumber } from '../utils/poHelpers';
+import { generatePONumber } from '../../utils/poHelpers';
 import { toast } from 'react-hot-toast';
 
 // Simple date formatter
