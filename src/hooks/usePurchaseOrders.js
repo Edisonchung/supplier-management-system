@@ -250,6 +250,7 @@ export const usePurchaseOrders = () => {
     return purchaseOrders.filter(po => 
       po.poNumber.toLowerCase().includes(term) ||
       po.clientPoNumber.toLowerCase().includes(term) ||
+      po.projectCode?.toLowerCase().includes(term) ||
       po.clientName.toLowerCase().includes(term) ||
       po.items.some(item => 
         item.productName.toLowerCase().includes(term) ||
