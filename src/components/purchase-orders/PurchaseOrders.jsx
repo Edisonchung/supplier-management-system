@@ -99,12 +99,17 @@ const PurchaseOrders = () => {
         if (result.data.documentType === 'client_purchase_order') {
           modalData = {
             // Map extracted fields to what POModal expects
-            poNumber: result.data.poNumber || '',
-            clientPoNumber: result.data.poNumber || '',
-            clientName: result.data.client?.name || '',
-            clientContact: result.data.client?.contact || '',
-            clientEmail: result.data.client?.email || '',
-            clientPhone: result.data.client?.phone || '',
+            // Generate new internal PO number
+    poNumber: generatePONumber(),
+    
+    // Use client's original PO number
+    clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
+    
+    // Extract client information
+    clientName: result.data.clientName || result.data.client?.name || '',
+    clientContact: result.data.clientContact || result.data.client?.contact || '',
+    clientEmail: result.data.clientEmail || result.data.client?.email || '',
+    clientPhone: result.data.clientPhone || result.data.client?.phone || '',
             
             // Handle dates
             orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
