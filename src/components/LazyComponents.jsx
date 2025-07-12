@@ -1,4 +1,4 @@
-/ src/components/LazyComponents.jsx - FIXED VERSION
+// src/components/LazyComponents.jsx - FIXED VERSION
 import React, { lazy, Suspense } from 'react' // ← ADD React import
 
 // Loading component
