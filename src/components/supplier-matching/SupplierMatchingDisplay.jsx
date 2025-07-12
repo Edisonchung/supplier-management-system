@@ -1,6 +1,5 @@
 // src/components/supplier-matching/SupplierMatchingDisplay.jsx
-// Updated with enhanced matching features and Save Selections functionality
-
+// 🔧 UPDATED VERSION - Fixed state management conflicts for independent supplier selection
 import React, { useState, useEffect } from 'react';
 import { SupplierMatcher } from '../../services/ai/SupplierMatcher';
 import { toast } from 'react-hot-toast';
@@ -23,51 +22,35 @@ import {
   Zap,       
   Target,    
   CreditCard,
-  Save,      // 🆕 NEW IMPORT
-  Download,  // 🆕 NEW IMPORT
-  History    // 🆕 NEW IMPORT
+  Save,      
+  Download,  
+  History    
 } from 'lucide-react';
 
-const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, onPOUpdate }) => {
+// 🔧 FIXED: Updated props to receive state management from parent
+const SupplierMatchingDisplay = ({ 
+  items, 
+  sourcingPlan, 
+  metrics, 
+  purchaseOrder, 
+  onSupplierSelect,     // 🔧 Parent's selection handler
+  selectedSuppliers,    // 🔧 Parent's state for selections
+  onPOUpdate 
+}) => {
   const [expandedItems, setExpandedItems] = useState(new Set());
-  const [selectedSuppliers, setSelectedSuppliers] = useState({});
   const [activeTab, setActiveTab] = useState('overview');
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // 🔧 REMOVED: Local state management that was causing conflicts
+  // const [selectedSuppliers, setSelectedSuppliers] = useState({});
+  // const [isSaving, setIsSaving] = useState(false);
+  // const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // 🆕 Load existing selections when component mounts
-  useEffect(() => {
-    if (purchaseOrder && items) {
-      loadExistingSelections();
-    }
-  }, [purchaseOrder, items]);
-
-  // 🆕 Track unsaved changes
-  useEffect(() => {
-    setHasUnsavedChanges(Object.keys(selectedSuppliers).length > 0);
-  }, [selectedSuppliers]);
-
-  // 🆕 Load previously saved supplier selections
-  const loadExistingSelections = () => {
-    const selections = {};
-    
-    items.forEach(item => {
-      // Check if item already has a selected supplier
-      if (item.selectedSupplier) {
-        selections[item.itemNumber] = item.selectedSupplier.supplierId || item.selectedSupplier.id;
-      }
-      // Also check in the supplierMatches for previously selected ones
-      else if (item.supplierMatches) {
-        const previouslySelected = item.supplierMatches.find(match => match.isSelected);
-        if (previouslySelected) {
-          selections[item.itemNumber] = previouslySelected.supplierId;
-        }
-      }
-    });
-    
-    setSelectedSuppliers(selections);
-    console.log('📋 Loaded existing selections:', Object.keys(selections).length, 'items');
-  };
+  // 🔧 REMOVED: Loading existing selections - parent handles this
+  // useEffect(() => {
+  //   if (purchaseOrder && items) {
+  //     loadExistingSelections();
+  //   }
+  // }, [purchaseOrder, items]);
 
   const toggleItemExpansion = (itemNumber) => {
     const newExpanded = new Set(expandedItems);
@@ -79,11 +62,12 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
     setExpandedItems(newExpanded);
   };
 
+  // 🔧 FIXED: Use parent's selection handler instead of local state
   const selectSupplier = (itemNumber, supplierId, supplierMatch = null) => {
-    setSelectedSuppliers(prev => ({
-      ...prev,
-      [itemNumber]: supplierId
-    }));
+    // Call parent's handler
+    if (onSupplierSelect) {
+      onSupplierSelect(itemNumber, supplierId);
+    }
 
     // Record selection for AI learning
     if (supplierMatch) {
@@ -102,132 +86,12 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
     }
   };
 
-  // 🆕 Save all supplier selections to PO
-  const saveSupplierSelections = async () => {
-    if (Object.keys(selectedSuppliers).length === 0) {
-      toast.error('No supplier selections to save');
-      return;
-    }
+  // 🔧 REMOVED: Local save function - parent handles saving now
+  // const saveSupplierSelections = async () => { ... }
 
-    setIsSaving(true);
-
-    try {
-      console.log('💾 Saving supplier selections...');
-
-      // Create updated items with supplier selections
-      const updatedItems = items.map(item => {
-        const selectedSupplierId = selectedSuppliers[item.itemNumber];
-        
-        if (selectedSupplierId && item.supplierMatches) {
-          // Find the selected supplier match
-          const selectedMatch = item.supplierMatches.find(
-            match => match.supplierId === selectedSupplierId
-          );
-
-          if (selectedMatch) {
-            return {
-              ...item,
-              selectedSupplier: {
-                supplierId: selectedMatch.supplierId,
-                supplierName: selectedMatch.supplierName,
-                productId: selectedMatch.productId,
-                productName: selectedMatch.productName,
-                unitPrice: selectedMatch.pricing.unitPrice,
-                totalPrice: selectedMatch.pricing.unitPrice * item.quantity,
-                leadTime: selectedMatch.pricing.leadTime,
-                confidence: selectedMatch.confidence || Math.round(selectedMatch.matchScore * 100),
-                matchType: selectedMatch.matchType,
-                selectedAt: new Date().toISOString(),
-                savings: selectedMatch.savings || 0
-              },
-              // Mark this supplier as selected in the matches
-              supplierMatches: item.supplierMatches.map(match => ({
-                ...match,
-                isSelected: match.supplierId === selectedSupplierId
-              }))
-            };
-          }
-        }
-
-        return item;
-      });
-
-      // Calculate selection summary
-      const selectionSummary = {
-        totalItems: items.length,
-        selectedItems: Object.keys(selectedSuppliers).length,
-        unselectedItems: items.length - Object.keys(selectedSuppliers).length,
-        totalSavings: updatedItems.reduce((sum, item) => 
-          sum + (item.selectedSupplier?.savings || 0), 0
-        ),
-        averageConfidence: Math.round(
-          updatedItems.filter(item => item.selectedSupplier)
-            .reduce((sum, item) => sum + (item.selectedSupplier.confidence || 0), 0) /
-          Object.keys(selectedSuppliers).length
-        ),
-        lastUpdated: new Date().toISOString()
-      };
-
-      // Create updated PO object
-      const updatedPO = {
-        ...purchaseOrder,
-        items: updatedItems,
-        supplierSelections: {
-          ...selectionSummary,
-          selections: Object.keys(selectedSuppliers).map(itemNumber => ({
-            itemNumber,
-            supplierId: selectedSuppliers[itemNumber],
-            selectedAt: new Date().toISOString()
-          }))
-        },
-        status: 'suppliers_selected',
-        lastModified: new Date().toISOString()
-      };
-
-      // Save to localStorage (you can replace with Firestore later)
-      const savedPOs = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-      const updatedPOs = savedPOs.map(po => 
-        po.id === purchaseOrder.id ? updatedPO : po
-      );
-      localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
-
-      // Call parent update function if provided
-      if (onPOUpdate) {
-        onPOUpdate(updatedPO);
-      }
-
-      // Clear unsaved changes
-      setHasUnsavedChanges(false);
-
-      // Success notification
-      toast.success(
-        `Saved ${Object.keys(selectedSuppliers).length} supplier selections! 💾`,
-        { 
-          duration: 4000,
-          icon: '✅'
-        }
-      );
-
-      console.log('✅ Supplier selections saved successfully:', selectionSummary);
-
-    } catch (error) {
-      console.error('❌ Failed to save supplier selections:', error);
-      toast.error('Failed to save selections. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // 🆕 Clear all selections
-  const clearAllSelections = () => {
-    setSelectedSuppliers({});
-    setHasUnsavedChanges(false);
-    toast.info('All selections cleared', { duration: 2000 });
-  };
-
-  // 🆕 Export selections as CSV
+  // 🔧 FIXED: Export using parent's state
   const exportSelections = () => {
-    if (Object.keys(selectedSuppliers).length === 0) {
+    if (!selectedSuppliers || Object.keys(selectedSuppliers).length === 0) {
       toast.error('No selections to export');
       return;
     }
@@ -251,7 +115,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
     }
   };
 
-  // 🆕 Generate CSV data for selections
+  // 🔧 FIXED: Generate CSV using parent's state
   const generateSelectionsCSV = () => {
     const headers = [
       'Item Number',
@@ -270,7 +134,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
     ];
 
     const rows = items
-      .filter(item => selectedSuppliers[item.itemNumber])
+      .filter(item => selectedSuppliers && selectedSuppliers[item.itemNumber])
       .map(item => {
         const selectedMatch = item.supplierMatches?.find(
           match => match.supplierId === selectedSuppliers[item.itemNumber]
@@ -298,11 +162,11 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
       .join('\n');
   };
 
-  // 🆕 Get selection statistics
+  // 🔧 FIXED: Get selection statistics using parent's state
   const getSelectionStats = () => {
-    const selectedCount = Object.keys(selectedSuppliers).length;
+    const selectedCount = selectedSuppliers ? Object.keys(selectedSuppliers).length : 0;
     const totalCount = items.length;
-    const selectedItems = items.filter(item => selectedSuppliers[item.itemNumber]);
+    const selectedItems = items.filter(item => selectedSuppliers && selectedSuppliers[item.itemNumber]);
     
     const totalSavings = selectedItems.reduce((sum, item) => {
       const selectedMatch = item.supplierMatches?.find(
@@ -481,7 +345,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
             )}
           </div>
 
-          {/* Your existing Sourcing Strategies section */}
+          {/* Sourcing Strategies section */}
           {sourcingPlan?.sourcingStrategies && sourcingPlan.sourcingStrategies.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-4">Recommended Sourcing Strategies</h3>
@@ -504,7 +368,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
             </div>
           )}
 
-          {/* Your existing Timeline & Critical Path section */}
+          {/* Timeline & Critical Path section */}
           {sourcingPlan?.timeline && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-4">Timeline & Critical Items</h3>
@@ -560,6 +424,18 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
                       <span className="font-medium">{item.productName}</span>
                       {item.productCode && (
                         <span className="text-sm text-gray-500">({item.productCode})</span>
+                      )}
+                      
+                      {/* 🔧 FIXED: Show current selection status using parent state */}
+                      {selectedSuppliers && selectedSuppliers[item.itemNumber] && (
+                        <div className="flex items-center gap-1 ml-2">
+                          <Check className="w-4 h-4 text-blue-600" />
+                          <span className="text-blue-600 font-medium text-sm">
+                            {item.supplierMatches?.find(
+                              match => match.supplierId === selectedSuppliers[item.itemNumber]
+                            )?.supplierName || 'Selected'}
+                          </span>
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
@@ -629,7 +505,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
                       <div 
                         key={`${item.itemNumber}-${match.supplierId}`}
                         className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                          selectedSuppliers[item.itemNumber] === match.supplierId
+                          selectedSuppliers && selectedSuppliers[item.itemNumber] === match.supplierId
                             ? 'border-blue-500 bg-blue-50'
                             : 'border-gray-200 hover:border-gray-300 bg-gray-50'
                         }`}
@@ -667,7 +543,8 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
                                 </span>
                               </div>
 
-                              {selectedSuppliers[item.itemNumber] === match.supplierId && (
+                              {/* 🔧 FIXED: Show selection indicator using parent state */}
+                              {selectedSuppliers && selectedSuppliers[item.itemNumber] === match.supplierId && (
                                 <Check className="w-5 h-5 text-blue-600" />
                               )}
                             </div>
@@ -745,7 +622,7 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
         </div>
       )}
 
-      {/* Suppliers Tab - Keep your existing implementation */}
+      {/* Suppliers Tab */}
       {activeTab === 'suppliers' && (
         <div className="space-y-4">
           {sourcingPlan?.recommendedSuppliers && sourcingPlan.recommendedSuppliers.length > 0 ? (
@@ -857,97 +734,57 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
         </div>
       )}
 
-      {/* 🆕 Enhanced Action Buttons Section */}
-      {purchaseOrder && (
+      {/* 🔧 UPDATED: Action Buttons Section - Removed save button, parent handles saving */}
+      {purchaseOrder && stats.selectedCount > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Supplier Selection Actions</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Selection Summary</h3>
               <p className="text-sm text-gray-600 mt-1">
                 {stats.selectedCount} of {stats.totalCount} items have supplier selections
-                {stats.selectedCount > 0 && (
-                  <span className="ml-2 text-green-600 font-medium">
-                    ({stats.percentage}% complete)
-                  </span>
-                )}
+                <span className="ml-2 text-green-600 font-medium">
+                  ({stats.percentage}% complete)
+                </span>
               </p>
             </div>
-            
-            {/* Selection Status Indicator */}
-            {hasUnsavedChanges && (
-              <div className="flex items-center gap-2 text-orange-600">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="text-sm font-medium">Unsaved changes</span>
-              </div>
-            )}
           </div>
 
           {/* Selection Statistics */}
-          {stats.selectedCount > 0 && (
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div className="text-center">
-                  <div className="text-lg font-bold text-green-600">{stats.selectedCount}</div>
-                  <div className="text-gray-600">Selected</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-blue-600">{stats.totalSavings.toFixed(1)}%</div>
-                  <div className="text-gray-600">Avg Savings</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-purple-600">{stats.averageConfidence}%</div>
-                  <div className="text-gray-600">Avg Confidence</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-orange-600">{stats.totalCount - stats.selectedCount}</div>
-                  <div className="text-gray-600">Remaining</div>
-                </div>
+          <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="text-center">
+                <div className="text-lg font-bold text-green-600">{stats.selectedCount}</div>
+                <div className="text-gray-600">Selected</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-blue-600">{stats.totalSavings.toFixed(1)}%</div>
+                <div className="text-gray-600">Avg Savings</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-purple-600">{stats.averageConfidence}%</div>
+                <div className="text-gray-600">Avg Confidence</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-orange-600">{stats.totalCount - stats.selectedCount}</div>
+                <div className="text-gray-600">Remaining</div>
               </div>
             </div>
-          )}
+          </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons - Only Export and View History */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Save Selections Button */}
-            <button
-              onClick={saveSupplierSelections}
-              disabled={isSaving || Object.keys(selectedSuppliers).length === 0}
-              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-                Object.keys(selectedSuppliers).length > 0
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Saving...' : `Save ${stats.selectedCount} Selections`}
-            </button>
-
             {/* Export CSV Button */}
             <button
               onClick={exportSelections}
-              disabled={Object.keys(selectedSuppliers).length === 0}
+              disabled={!selectedSuppliers || Object.keys(selectedSuppliers).length === 0}
               className={`flex items-center gap-2 px-4 py-3 border rounded-lg transition-colors ${
-                Object.keys(selectedSuppliers).length > 0
+                selectedSuppliers && Object.keys(selectedSuppliers).length > 0
                   ? 'border-blue-300 text-blue-700 hover:bg-blue-50'
                   : 'border-gray-200 text-gray-400 cursor-not-allowed'
               }`}
             >
               <Download className="w-4 h-4" />
               Export CSV
-            </button>
-
-            {/* Clear All Button */}
-            <button
-              onClick={clearAllSelections}
-              disabled={Object.keys(selectedSuppliers).length === 0}
-              className={`flex items-center gap-2 px-4 py-3 border rounded-lg transition-colors ${
-                Object.keys(selectedSuppliers).length > 0
-                  ? 'border-red-300 text-red-700 hover:bg-red-50'
-                  : 'border-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <X className="w-4 h-4" />
-              Clear All
             </button>
 
             {/* Selection History Button */}
@@ -967,12 +804,12 @@ const SupplierMatchingDisplay = ({ items, sourcingPlan, metrics, purchaseOrder, 
           {/* Help Text */}
           <div className="mt-4 text-xs text-gray-500">
             💡 <strong>Tip:</strong> Selections are automatically recorded for AI learning. 
-            Save your selections to update the purchase order and track progress.
+            Use the Save button in the header to save your selections to the purchase order.
           </div>
         </div>
       )}
 
-      {/* Risk Assessment (shown in all tabs) - Keep your existing implementation */}
+      {/* Risk Assessment (shown in all tabs) */}
       {sourcingPlan?.riskAssessment?.recommendations && sourcingPlan.riskAssessment.recommendations.length > 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start gap-2">
