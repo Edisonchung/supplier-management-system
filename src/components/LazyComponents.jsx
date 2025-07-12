@@ -94,30 +94,3 @@ export const LazyWrapper = ({ children, componentName, fallback }) => {
     </Suspense>
   )
 }
-
-// =============================================================================
-// 2. UPDATE App.jsx - ADD COMPONENT NAMES TO WRAPPER
-// =============================================================================
-
-// In your App.jsx, update the LazyWrapper usage to include component names:
-
-/*
-REPLACE THIS:
-<LazyWrapper>
-  <LazyDashboard />
-</LazyWrapper>
-
-WITH THIS:
-<LazyWrapper componentName="Dashboard">
-  <LazyDashboard />
-</LazyWrapper>
-
-Do this for all components:
-- Dashboard
-- Suppliers  
-- Products
-- ProformaInvoices
-- PurchaseOrders
-- ClientInvoices
-- etc.
-*/
