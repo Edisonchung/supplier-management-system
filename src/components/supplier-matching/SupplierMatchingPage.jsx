@@ -490,15 +490,22 @@ const SupplierMatchingPage = () => {
         throw new Error(`Save operation failed: ${saveError.message}`);
       }
       
-      // 🔧 FIXED: Validate save result before proceeding - NO ELSE AFTER CATCH!
+      // 🔧 FIXED: Validate save result - check for both success object and direct PO object
       if (!updateResult) {
         throw new Error('Save operation returned null/undefined result');
       }
       
-      if (!updateResult.success) {
+      // Handle different response formats from purchaseOrderService
+      const isSuccessful = updateResult.success === true || 
+                          (updateResult.id && updateResult.poNumber); // Direct PO object indicates success
+      
+      if (!isSuccessful) {
         console.error('❌ Save operation unsuccessful:', updateResult);
-        throw new Error(updateResult.error || 'Save operation was not successful');
+        const errorMsg = updateResult.error || updateResult.message || 'Save operation was not successful';
+        throw new Error(errorMsg);
       }
+      
+      console.log('✅ Save operation validated successfully');
       
       // 🔧 FIXED: Success path continues here in the try block
       // Initialize tracking systems
