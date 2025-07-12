@@ -20,9 +20,11 @@ import {
   ChevronRight,
   Eye,
   Edit3,
-  X
+  X,
+  BarChart3
 } from 'lucide-react';
 import { useUnifiedData, usePurchaseOrders, useDeliveryTracking, usePaymentTracking } from '../../context/UnifiedDataContext';
+import { ConsolidatedTrackingService } from '../../services/tracking/TrackingServices';
 import toast from 'react-hot-toast';
 
 const DELIVERY_STATUSES = {
@@ -99,13 +101,18 @@ function DeliveryTrackingCard({ poId, purchaseOrder, deliveryData, onUpdateStatu
     if (!purchaseOrder.supplierSelections) return [];
     
     return Object.entries(purchaseOrder.supplierSelections).map(([itemNumber, supplierId]) => {
+      // Skip metadata fields
+      if (['totalItems', 'selectedItems', 'averageConfidence', 'totalSavings', 'lastUpdated'].includes(itemNumber)) {
+        return null;
+      }
+      
       const item = purchaseOrder.items?.find(i => i.itemNumber === parseInt(itemNumber));
       return {
         itemNumber,
         supplierId,
         item
       };
-    }).filter(s => s.item);
+    }).filter(s => s && s.item);
   }, [purchaseOrder]);
   
   return (
@@ -362,6 +369,10 @@ export default function UnifiedTrackingDashboard() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   
+  // Get URL parameters for filtering
+  const urlParams = new URLSearchParams(window.location.search);
+  const poParam = urlParams.get('po');
+  
   // Calculate metrics
   const metrics = useMemo(() => {
     const poWithSuppliers = purchaseOrders.filter(po => po.supplierSelections);
@@ -413,28 +424,34 @@ export default function UnifiedTrackingDashboard() {
   
   // Filter data
   const filteredPOs = useMemo(() => {
-    return purchaseOrders
-      .filter(po => po.supplierSelections) // Only POs with selected suppliers
-      .filter(po => {
-        if (searchTerm) {
-          const term = searchTerm.toLowerCase();
-          return (
-            po.poNumber?.toLowerCase().includes(term) ||
-            po.clientName?.toLowerCase().includes(term) ||
-            po.projectCode?.toLowerCase().includes(term)
-          );
-        }
-        return true;
-      })
-      .filter(po => {
-        if (statusFilter !== 'all') {
-          const deliveryData = deliveryTracking[po.id];
-          const status = deliveryData?.status || 'preparing';
-          return status === statusFilter;
-        }
-        return true;
+    let filtered = purchaseOrders.filter(po => po.supplierSelections); // Only POs with selected suppliers
+    
+    // Filter by specific PO if specified in URL
+    if (poParam) {
+      filtered = filtered.filter(po => po.id === poParam);
+    }
+    
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(po => 
+        po.poNumber?.toLowerCase().includes(term) ||
+        po.clientName?.toLowerCase().includes(term) ||
+        po.projectCode?.toLowerCase().includes(term)
+      );
+    }
+    
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(po => {
+        const deliveryData = deliveryTracking[po.id];
+        const status = deliveryData?.status || 'preparing';
+        return status === statusFilter;
       });
-  }, [purchaseOrders, deliveryTracking, searchTerm, statusFilter]);
+    }
+    
+    return filtered;
+  }, [purchaseOrders, deliveryTracking, searchTerm, statusFilter, poParam]);
   
   const handleUpdateDeliveryStatus = async (poId, status, additionalData = {}) => {
     try {
@@ -469,8 +486,16 @@ export default function UnifiedTrackingDashboard() {
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Unified Tracking Dashboard</h1>
+            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+              <BarChart3 className="text-blue-600" />
+              Unified Tracking Dashboard
+            </h1>
             <p className="text-gray-600 mt-1">Monitor delivery and payment status across all purchase orders</p>
+            {poParam && (
+              <p className="text-sm text-blue-600 mt-1">
+                Filtering by Purchase Order: {poParam}
+              </p>
+            )}
           </div>
           
           <div className="flex items-center space-x-3">
@@ -554,35 +579,31 @@ export default function UnifiedTrackingDashboard() {
             />
           </div>
           
-          {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                onClick={() => setActiveTab('delivery')}
-                className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
-              >
-                <Truck className="text-blue-600 mb-2" size={24} />
-                <h4 className="font-medium">Update Deliveries</h4>
-                <p className="text-sm text-gray-600">Track shipment status</p>
-              </button>
-              <button
-                onClick={() => setActiveTab('payment')}
-                className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
-              >
-                <DollarSign className="text-green-600 mb-2" size={24} />
-                <h4 className="font-medium">Process Payments</h4>
-                <p className="text-sm text-gray-600">Record supplier payments</p>
-              </button>
-              <button
-                onClick={handleExportData}
-                className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
-              >
-                <Download className="text-purple-600 mb-2" size={24} />
-                <h4 className="font-medium">Generate Reports</h4>
-                <p className="text-sm text-gray-600">Export tracking data</p>
-              </button>
+          {/* Status Message */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <div className="flex items-center">
+              <BarChart3 className="h-5 w-5 text-blue-600 mr-2" />
+              <h3 className="text-lg font-medium text-blue-900">Tracking System Status</h3>
             </div>
+            <p className="text-blue-700 mt-2">
+              The unified tracking dashboard is active! {metrics.deliveryMetrics.total} purchase orders are being tracked.
+            </p>
+            
+            {metrics.deliveryMetrics.total > 0 && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-800 font-medium">
+                  ✅ {metrics.deliveryMetrics.total} purchase order(s) have active tracking!
+                </p>
+              </div>
+            )}
+            
+            {metrics.deliveryMetrics.total === 0 && (
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-yellow-800">
+                  💡 To see tracking data, go to a purchase order, run supplier matching, select suppliers, and save.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -670,6 +691,19 @@ export default function UnifiedTrackingDashboard() {
           </div>
         </div>
       )}
+      
+      {/* Debug Info */}
+      <div className="mt-8 bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Debug Information</h4>
+        <div className="text-xs text-gray-600 space-y-1">
+          <p>Purchase Orders in state: {state.purchaseOrders.length}</p>
+          <p>POs with supplier selections: {purchaseOrders.filter(po => po.supplierSelections).length}</p>
+          <p>Delivery tracking entries: {Object.keys(state.deliveryTracking).length}</p>
+          <p>Payment tracking entries: {Object.keys(state.paymentTracking).length}</p>
+          <p>URL filter PO: {poParam || 'None'}</p>
+          <p>Context loaded: ✅</p>
+        </div>
+      </div>
     </div>
   );
 }
