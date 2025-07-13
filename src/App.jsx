@@ -34,6 +34,8 @@ const LazyTeamManagement = lazy(() => import('./components/team/TeamManagement')
 const LazyUnifiedTrackingDashboard = lazy(() => import('./components/tracking/UnifiedTrackingDashboard'));
 // 🔥 NEW: Migration page
 const LazyMigrationPage = lazy(() => import('./components/migration/MigrationPage'));
+import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
+
 
 
 // Error Boundary Component
