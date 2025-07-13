@@ -1,4 +1,4 @@
-// src/components/common/Layout.jsx - FIXED VERSION
+// src/components/common/Layout.jsx - PRODUCTION VERSION
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
@@ -7,14 +7,17 @@ import Navigation from './Navigation';
 const Layout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
-  const location = useLocation(); // Add this to track route changes
+  const location = useLocation();
 
-  // Force re-render when location changes
+  // Force re-render when location changes (critical for navigation fix)
   const [renderKey, setRenderKey] = useState(0);
 
   // Track location changes and force re-render
   useEffect(() => {
-    console.log('🔄 Layout - Route changed to:', location.pathname);
+    // Only log in development mode
+    if (import.meta.env.DEV) {
+      console.log('🔄 Layout - Route changed to:', location.pathname);
+    }
     // Force a re-render of the outlet
     setRenderKey(prev => prev + 1);
   }, [location.pathname]);
@@ -63,7 +66,7 @@ const Layout = () => {
           ${isNavCollapsed ? 'lg:ml-16' : 'lg:ml-64'}
         `}>
           <div className="max-w-7xl mx-auto">
-            {/* Force Outlet to re-render with key prop */}
+            {/* Force Outlet to re-render with key prop - Critical for navigation */}
             <div key={renderKey}>
               <Outlet />
             </div>
