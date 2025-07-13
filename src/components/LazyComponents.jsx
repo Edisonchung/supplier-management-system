@@ -47,50 +47,121 @@ export const LazyProformaInvoices = createLazyComponent(() => import('./procurem
 export const LazyPurchaseOrders = createLazyComponent(() => import('./purchase-orders/PurchaseOrders'), 'PurchaseOrders')
 export const LazyClientInvoices = createLazyComponent(() => import('./invoices/ClientInvoices'), 'ClientInvoices')
 
-// For components that might exist (with error handling)
-export const LazyQuickImport = lazy(() => 
-  import('./import/QuickImport').catch(() => ({
+// 🔥 NEW: Smart Notifications Component with error handling
+export const LazySmartNotifications = lazy(() => 
+  import('./notifications/SmartNotifications').catch(() => ({
     default: () => (
       <div className="p-6 text-center text-gray-500">
-        <h2 className="text-xl font-semibold mb-2">Quick Import</h2>
-        <p>This feature is coming soon!</p>
+        <h2 className="text-xl font-semibold mb-2">Smart Notifications</h2>
+        <p>AI-powered procurement alerts and notifications</p>
+        <div className="mt-4 text-sm">
+          <p>🚀 Feature in development</p>
+          <p>Expected completion: Q1 2025</p>
+        </div>
       </div>
     )
   }))
 )
 
-export const LazyUserManagement = lazy(() => 
-  import('./users/UserManagement').catch(() => ({
-    default: () => (
-      <div className="p-6 text-center text-gray-500">
-        <h2 className="text-xl font-semibold mb-2">User Management</h2>
-        <p>This feature is coming soon!</p>
-      </div>
-    )
-  }))
-)
-
-// Placeholder for delivery tracking
-export const LazyDeliveryTracking = lazy(() => Promise.resolve({
-  default: () => (
-    <div className="p-6 text-center text-gray-500">
-      <h2 className="text-xl font-semibold mb-2">Delivery Tracking</h2>
-      <p>Real-time shipment tracking and delivery status monitoring</p>
-      <div className="mt-4 text-sm">
-        <p>🚀 Feature in development</p>
-        <p>Expected completion: Q1 2025</p>
-      </div>
+// Loading Component
+const LoadingSpinner = ({ message = "Loading..." }) => (
+  <div className="flex items-center justify-center h-64">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+      <p className="text-gray-600">{message}</p>
     </div>
-  )
-}))
+  </div>
+);
 
-// Enhanced wrapper with component name tracking
-export const LazyWrapper = ({ children, componentName, fallback }) => {
-  const defaultFallback = <LoadingSpinner componentName={componentName} />
+// Placeholder Component
+const PlaceholderComponent = ({ title, description, icon: Icon, message }) => (
+  <div className="flex items-center justify-center h-64">
+    <div className="text-center max-w-md">
+      <div className="mx-auto mb-6 w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+        <Icon className="h-8 w-8 text-gray-400" />
+      </div>
+      <h2 className="text-xl font-semibold text-gray-900 mb-2">{title}</h2>
+      <p className="text-gray-600 mb-4">{description}</p>
+      {message && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-700">{message}</p>
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+// Enhanced Lazy Wrapper with Error Boundaries
+const LazyWrapper = ({ children, fallback, componentName }) => {
+  const fallbackComponent = fallback || <LoadingSpinner message={`Loading ${componentName || 'component'}...`} />;
   
   return (
-    <Suspense fallback={fallback || defaultFallback}>
-      {children}
+    <Suspense fallback={fallbackComponent}>
+      <ErrorBoundary componentName={componentName}>
+        {children}
+      </ErrorBoundary>
     </Suspense>
-  )
+  );
+};
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('LazyComponent Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center max-w-md">
+            <div className="mx-auto mb-4 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <Package className="h-6 w-6 text-red-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Component Error
+            </h3>
+            <p className="text-gray-600 mb-4">
+              {this.props.componentName ? 
+                `There was an error loading ${this.props.componentName}` : 
+                'There was an error loading this component'
+              }
+            </p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
+
+export {
+  LazyDashboard,
+  LazySuppliers,
+  LazyProducts,
+  LazyProformaInvoices,
+  LazyPurchaseOrders,
+  LazyClientInvoices,
+  LazyQuickImport,
+  LazyUserManagement,
+  LazySmartNotifications, // 🔥 NEW: Export Smart Notifications
+  LazyWrapper,
+  LoadingSpinner,
+  PlaceholderComponent
+};
