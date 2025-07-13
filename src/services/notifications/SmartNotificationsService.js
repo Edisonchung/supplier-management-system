@@ -475,4 +475,90 @@ class SmartNotificationsService {
   }
 }
 
+// Add these methods to the END of your SmartNotificationsService.js file
+
+  /**
+   * Initialize the service (for compatibility with enhanced component)
+   */
+  static async initialize() {
+    console.log('🔔 SmartNotificationsService initializing...');
+    this.realisticData = SampleDataService.getRealisticData();
+    return true;
+  }
+
+  /**
+   * Get all current notifications (main method called by component)
+   */
+  static async getAllNotifications() {
+    if (!this.realisticData) {
+      await this.initialize();
+    }
+    
+    // Use the existing evaluateBusinessRules method
+    return this.evaluateBusinessRules();
+  }
+
+  /**
+   * Get notifications by severity level
+   */
+  static async getNotificationsBySeverity(severity) {
+    const notifications = await this.getAllNotifications();
+    return notifications.filter(n => n.severity === severity);
+  }
+
+  /**
+   * Get critical alerts that need immediate attention
+   */
+  static async getCriticalAlerts() {
+    return await this.getNotificationsBySeverity('critical');
+  }
+
+  /**
+   * Dismiss a notification
+   */
+  static dismissNotification(notificationId) {
+    const index = this.notifications.findIndex(n => n.id === notificationId);
+    if (index !== -1) {
+      const notification = this.notifications.splice(index, 1)[0];
+      console.log('✅ Dismissed notification:', notification.title);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Refresh notifications with latest data
+   */
+  static async refreshNotifications() {
+    console.log('🔄 Refreshing Smart Notifications...');
+    
+    // Regenerate realistic data
+    this.realisticData = SampleDataService.generateRealisticScenarios();
+    SampleDataService.saveToStorage(this.realisticData);
+    
+    // Regenerate notifications
+    this.notifications = [];
+    const newNotifications = this.evaluateBusinessRules();
+    
+    console.log(`✅ Refreshed ${newNotifications.length} notifications`);
+    return newNotifications;
+  }
+
+  /**
+   * Get notification summary for dashboard display
+   */
+  static async getNotificationSummary() {
+    const notifications = await this.getAllNotifications();
+    
+    return {
+      total: notifications.length,
+      critical: notifications.filter(n => n.severity === 'critical').length,
+      high: notifications.filter(n => n.severity === 'high').length,
+      medium: notifications.filter(n => n.severity === 'medium').length,
+      low: notifications.filter(n => n.severity === 'low').length,
+      totalAtRiskValue: this.calculateTotalAtRiskValue(),
+      lastUpdate: this.lastEvaluation
+    };
+  }
+
 export default SmartNotificationsService;
