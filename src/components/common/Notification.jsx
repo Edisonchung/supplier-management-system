@@ -1,4 +1,4 @@
-// src/components/common/Notification.jsx - Enhanced for team deployment
+// src/components/common/Notification.jsx - Enhanced with Smart Procurement Types
 import React, { useEffect, useState } from 'react';
 import { 
   CheckCircle, 
@@ -10,7 +10,12 @@ import {
   Bell,
   Zap,
   Users,
-  Brain
+  Brain,
+  DollarSign,
+  Package,
+  Clock,
+  TrendingUp,
+  AlertTriangle
 } from 'lucide-react';
 
 const Notification = ({ 
@@ -21,7 +26,7 @@ const Notification = ({
   title = null,
   action = null,
   persistent = false,
-  position = 'bottom-right' // 🆕 Configurable position
+  position = 'bottom-right'
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -41,7 +46,7 @@ const Notification = ({
     setTimeout(() => {
       setIsVisible(false);
       onClose();
-    }, 300); // Animation duration
+    }, 300);
   };
 
   const getIcon = () => {
@@ -64,6 +69,17 @@ const Notification = ({
         return <Bell className="w-5 h-5 text-gray-500" />;
       case 'feature':
         return <Zap className="w-5 h-5 text-indigo-500" />;
+      // 🆕 NEW: Smart Procurement Types
+      case 'delivery':
+        return <Package className="w-5 h-5 text-orange-500" />;
+      case 'payment':
+        return <DollarSign className="w-5 h-5 text-green-500" />;
+      case 'overdue':
+        return <AlertTriangle className="w-5 h-5 text-red-500 animate-pulse" />;
+      case 'urgent':
+        return <Clock className="w-5 h-5 text-red-600 animate-bounce" />;
+      case 'procurement':
+        return <TrendingUp className="w-5 h-5 text-blue-600" />;
       default:
         return <CheckCircle className="w-5 h-5 text-blue-500" />;
     }
@@ -91,6 +107,17 @@ const Notification = ({
         return `${baseStyles} bg-gray-50/95 border-gray-200/50 text-gray-800`;
       case 'feature':
         return `${baseStyles} bg-indigo-50/95 border-indigo-200/50 text-indigo-800`;
+      // 🆕 NEW: Smart Procurement Styles
+      case 'delivery':
+        return `${baseStyles} bg-orange-50/95 border-orange-200/50 text-orange-800`;
+      case 'payment':
+        return `${baseStyles} bg-emerald-50/95 border-emerald-200/50 text-emerald-800`;
+      case 'overdue':
+        return `${baseStyles} bg-gradient-to-r from-red-50/95 to-pink-50/95 border-red-300/50 text-red-900 shadow-red-100`;
+      case 'urgent':
+        return `${baseStyles} bg-gradient-to-r from-red-100/95 to-orange-100/95 border-red-400/50 text-red-900 shadow-red-200`;
+      case 'procurement':
+        return `${baseStyles} bg-gradient-to-r from-blue-50/95 to-cyan-50/95 border-blue-200/50 text-blue-800`;
       default:
         return `${baseStyles} bg-blue-50/95 border-blue-200/50 text-blue-800`;
     }
@@ -120,11 +147,17 @@ const Notification = ({
     return 'animate-slide-in';
   };
 
+  const isUrgentType = () => {
+    return ['overdue', 'urgent', 'error'].includes(type);
+  };
+
   if (!isVisible) return null;
 
   return (
     <div className={`fixed z-50 ${getPositionStyles()} ${getAnimationClass()}`}>
-      <div className={`flex flex-col gap-1 px-4 py-3 rounded-xl ${getStyles()} min-w-[320px] max-w-[480px] shadow-xl`}>
+      <div className={`flex flex-col gap-1 px-4 py-3 rounded-xl ${getStyles()} min-w-[320px] max-w-[480px] shadow-xl ${
+        isUrgentType() ? 'ring-2 ring-red-200 ring-opacity-50' : ''
+      }`}>
         {/* Header with icon and close button */}
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 mt-0.5">
@@ -133,7 +166,9 @@ const Notification = ({
           
           <div className="flex-1 min-w-0">
             {title && (
-              <h4 className="text-sm font-semibold mb-1 leading-tight">
+              <h4 className={`text-sm font-semibold mb-1 leading-tight ${
+                isUrgentType() ? 'text-red-900' : ''
+              }`}>
                 {title}
               </h4>
             )}
@@ -167,6 +202,11 @@ const Notification = ({
                 type === 'warning' ? 'bg-yellow-200/50 hover:bg-yellow-200/70 text-yellow-900' :
                 type === 'team' ? 'bg-purple-200/50 hover:bg-purple-200/70 text-purple-900' :
                 type === 'ai' ? 'bg-purple-200/50 hover:bg-purple-200/70 text-purple-900' :
+                type === 'delivery' ? 'bg-orange-200/50 hover:bg-orange-200/70 text-orange-900' :
+                type === 'payment' ? 'bg-emerald-200/50 hover:bg-emerald-200/70 text-emerald-900' :
+                type === 'overdue' ? 'bg-red-300/50 hover:bg-red-300/70 text-red-900 font-semibold' :
+                type === 'urgent' ? 'bg-red-300/50 hover:bg-red-300/70 text-red-900 font-semibold' :
+                type === 'procurement' ? 'bg-blue-200/50 hover:bg-blue-200/70 text-blue-900' :
                 'bg-blue-200/50 hover:bg-blue-200/70 text-blue-900'
               }`}
             >
@@ -179,7 +219,9 @@ const Notification = ({
         {!persistent && duration > 0 && (
           <div className="mt-2 h-1 bg-white/20 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-current rounded-full opacity-30 animate-shrink"
+              className={`h-full rounded-full opacity-30 animate-shrink ${
+                isUrgentType() ? 'bg-red-400' : 'bg-current'
+              }`}
               style={{ 
                 animationDuration: `${duration}ms`,
                 animationTimingFunction: 'linear'
@@ -187,12 +229,17 @@ const Notification = ({
             />
           </div>
         )}
+
+        {/* Urgent pulse indicator */}
+        {isUrgentType() && (
+          <div className="absolute -inset-1 bg-gradient-to-r from-red-400 to-pink-400 rounded-xl opacity-20 animate-pulse -z-10"></div>
+        )}
       </div>
     </div>
   );
 };
 
-// 🆕 Enhanced Notification Manager for team features
+// Enhanced Notification Manager with Smart Procurement Types
 export class NotificationManager {
   static notifications = [];
   static listeners = [];
@@ -238,7 +285,7 @@ export class NotificationManager {
     this.listeners.forEach(listener => listener(this.notifications));
   }
 
-  // 🆕 Team-specific notification methods
+  // Existing notification methods
   static success(message, options = {}) {
     return this.show(message, { ...options, type: 'success' });
   }
@@ -275,9 +322,99 @@ export class NotificationManager {
   static feature(message, options = {}) {
     return this.show(message, { ...options, type: 'feature' });
   }
+
+  // 🆕 NEW: Smart Procurement Notification Methods
+  static delivery(message, options = {}) {
+    return this.show(message, { 
+      ...options, 
+      type: 'delivery',
+      duration: options.duration || 6000
+    });
+  }
+
+  static payment(message, options = {}) {
+    return this.show(message, { 
+      ...options, 
+      type: 'payment',
+      duration: options.duration || 6000
+    });
+  }
+
+  static overdue(message, options = {}) {
+    return this.show(message, { 
+      ...options, 
+      type: 'overdue',
+      duration: options.duration || 8000,
+      position: options.position || 'top-right' // More prominent position for urgent items
+    });
+  }
+
+  static urgent(message, options = {}) {
+    return this.show(message, { 
+      ...options, 
+      type: 'urgent',
+      duration: options.duration || 10000,
+      position: options.position || 'top-right'
+    });
+  }
+
+  static procurement(message, options = {}) {
+    return this.show(message, { 
+      ...options, 
+      type: 'procurement',
+      duration: options.duration || 5000
+    });
+  }
+
+  // 🆕 NEW: Smart Procurement Helper Methods
+  static deliveryOverdue(poNumber, daysOverdue, options = {}) {
+    return this.overdue(
+      `PO ${poNumber} delivery is ${daysOverdue} days overdue`,
+      {
+        title: '🚨 Delivery Overdue',
+        action: {
+          label: 'Contact Supplier',
+          onClick: options.onContactSupplier || (() => {})
+        },
+        ...options
+      }
+    );
+  }
+
+  static paymentDue(amount, daysUntilDue, options = {}) {
+    const urgency = daysUntilDue <= 0 ? 'urgent' : 'payment';
+    const title = daysUntilDue <= 0 ? '🚨 Payment Overdue' : '💰 Payment Due Soon';
+    
+    return this[urgency](
+      `Payment of $${amount.toLocaleString()} ${daysUntilDue <= 0 ? 'is overdue' : `due in ${daysUntilDue} days`}`,
+      {
+        title,
+        action: {
+          label: daysUntilDue <= 0 ? 'Pay Now' : 'Schedule Payment',
+          onClick: options.onPaymentAction || (() => {})
+        },
+        ...options
+      }
+    );
+  }
+
+  static smartSummary(alertCount, options = {}) {
+    return this.ai(
+      `Found ${alertCount} urgent procurement alerts requiring immediate attention`,
+      {
+        title: '🧠 Smart Procurement Alert',
+        action: {
+          label: 'Review All Alerts',
+          onClick: options.onReviewAll || (() => {})
+        },
+        duration: 8000,
+        ...options
+      }
+    );
+  }
 }
 
-// 🆕 Hook for using notifications in components
+// Enhanced hook with new procurement methods
 export const useNotifications = () => {
   const [notifications, setNotifications] = useState(NotificationManager.notifications);
 
@@ -302,7 +439,16 @@ export const useNotifications = () => {
     team: NotificationManager.team.bind(NotificationManager),
     ai: NotificationManager.ai.bind(NotificationManager),
     loading: NotificationManager.loading.bind(NotificationManager),
-    feature: NotificationManager.feature.bind(NotificationManager)
+    feature: NotificationManager.feature.bind(NotificationManager),
+    // 🆕 NEW: Smart Procurement Methods
+    delivery: NotificationManager.delivery.bind(NotificationManager),
+    payment: NotificationManager.payment.bind(NotificationManager),
+    overdue: NotificationManager.overdue.bind(NotificationManager),
+    urgent: NotificationManager.urgent.bind(NotificationManager),
+    procurement: NotificationManager.procurement.bind(NotificationManager),
+    deliveryOverdue: NotificationManager.deliveryOverdue.bind(NotificationManager),
+    paymentDue: NotificationManager.paymentDue.bind(NotificationManager),
+    smartSummary: NotificationManager.smartSummary.bind(NotificationManager)
   };
 };
 
