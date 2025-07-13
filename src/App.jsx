@@ -413,15 +413,6 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
-
-          <Route 
-  path="/debug-nav" 
-  element={
-    <ProtectedRoute permission="canViewOrders">
-      <NavigationBlockerDebug />
-    </ProtectedRoute>
-  } 
-/>
           </Route>
           
           {/* Catch all */}
