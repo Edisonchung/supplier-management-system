@@ -35,6 +35,8 @@ const LazyUnifiedTrackingDashboard = lazy(() => import('./components/tracking/Un
 // 🔥 NEW: Migration page
 const LazyMigrationPage = lazy(() => import('./components/migration/MigrationPage'));
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
+const LazySmartNotifications = lazy(() => import('./components/notifications/SmartNotifications')); // ← ADD THIS LINE
+
 
 
 
