@@ -1,39 +1,46 @@
-// src/components/common/Layout.jsx - Fixed version
+// src/components/common/Layout.jsx - FIXED VERSION
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Navigation from './Navigation';
 
 const Layout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
+  const location = useLocation(); // Add this to track route changes
+
+  // Force re-render when location changes
+  const [renderKey, setRenderKey] = useState(0);
+
+  // Track location changes and force re-render
+  useEffect(() => {
+    console.log('🔄 Layout - Route changed to:', location.pathname);
+    // Force a re-render of the outlet
+    setRenderKey(prev => prev + 1);
+  }, [location.pathname]);
 
   // Check navigation collapsed state from localStorage
   useEffect(() => {
     const checkNavState = () => {
-      // ✅ Fixed: Use consistent localStorage key with Navigation.jsx
       const navCollapsed = localStorage.getItem('navigationCollapsed') === 'true';
       setIsNavCollapsed(navCollapsed);
     };
 
-    // Check initially
     checkNavState();
 
-    // Listen for storage changes (when nav is toggled)
-    window.addEventListener('storage', checkNavState);
-    
-    // Also listen for custom event for same-tab updates
+    // Listen for storage changes
+    const handleStorageChange = () => checkNavState();
     const handleNavToggle = () => checkNavState();
-    window.addEventListener('navToggled', handleNavToggle);
-
-    // ✅ Added: Listen for navigation collapse events
     const handleNavCollapse = (event) => {
       setIsNavCollapsed(event.detail.collapsed);
     };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('navToggled', handleNavToggle);
     window.addEventListener('navigationCollapsed', handleNavCollapse);
 
     return () => {
-      window.removeEventListener('storage', checkNavState);
+      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('navToggled', handleNavToggle);
       window.removeEventListener('navigationCollapsed', handleNavCollapse);
     };
@@ -56,7 +63,10 @@ const Layout = () => {
           ${isNavCollapsed ? 'lg:ml-16' : 'lg:ml-64'}
         `}>
           <div className="max-w-7xl mx-auto">
-            <Outlet />
+            {/* Force Outlet to re-render with key prop */}
+            <div key={renderKey}>
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>
