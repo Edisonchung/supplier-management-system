@@ -307,6 +307,24 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     }
   }, [proformaInvoice]);
 
+  // ADD THIS ENTIRE useEffect HERE
+  useEffect(() => {
+    const itemsTotal = (selectedProducts || []).reduce((sum, item) => {
+      return sum + (parseFloat(item.totalPrice) || 0);
+    }, 0);
+    
+    const subtotal = formData.subtotal || itemsTotal;
+    const discount = formData.discount || 0;
+    const shipping = formData.shipping || 0; // NEW: Include shipping in calculation
+    const tax = formData.tax || 0;
+    
+    // Updated calculation: subtotal - discount + shipping + tax
+    const total = subtotal - discount + shipping + tax;
+    
+    setTotalAmount(total);
+    setFormData(prev => ({ ...prev, totalAmount: total }));
+  }, [selectedProducts, formData.subtotal, formData.discount, formData.shipping, formData.tax]);
+
   const generatePINumber = () => {
     const date = new Date();
     const year = date.getFullYear();
@@ -672,7 +690,9 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     return matchesSupplier && matchesSearch;
   });
 
-  const totalAmount = formData.totalAmount || selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+  const totalAmount = formData.totalAmount || 
+    selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0) + 
+    (formData.shipping || 0) + (formData.tax || 0) - (formData.discount || 0);
   const totalReceived = selectedProducts.reduce((sum, item) => sum + (item.receivedQty || 0), 0);
   const totalOrdered = selectedProducts.reduce((sum, item) => sum + (item.quantity || 0), 0);
   const totalPaid = formData.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
@@ -1169,7 +1189,72 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                   </div>
                 </div>
               )}
+              
+              {/* Currency and exchange rate section ends */}
+              )}
 
+              {/* ADD THIS ENTIRE SECTION HERE */}
+              {/* Financial Details Input Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Subtotal ({formData.currency})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.subtotal}
+                    onChange={(e) => setFormData({ ...formData, subtotal: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Discount ({formData.currency})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.discount}
+                    onChange={(e) => setFormData({ ...formData, discount: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                {/* NEW: Shipping Cost Field */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Shipping Cost ({formData.currency})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.shipping || 0}
+                    onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tax ({formData.currency})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.tax}
+                    onChange={(e) => setFormData({ ...formData, tax: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              
               {/* Banking details section (if international supplier) */}
               {formData.currency !== 'MYR' && formData.bankDetails && (
                 <div className="mb-6 p-4 bg-gray-50 rounded-lg">
@@ -1790,6 +1875,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                   <option value="down-payment">Down Payment</option>
                   <option value="balance">Balance Payment</option>
                   <option value="partial">Partial Payment</option>
+                  <option value="full">Full Payment</option>
+
                 </select>
               </div>
 
