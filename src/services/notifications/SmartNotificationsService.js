@@ -473,10 +473,8 @@ class SmartNotificationsService {
       urgent: notifications.filter(n => n.type === 'urgent').length
     };
   }
-}
 
-// Add these methods to the END of your SmartNotificationsService.js file
-
+  // ADD THESE NEW METHODS HERE (INSIDE THE CLASS)
   /**
    * Initialize the service (for compatibility with enhanced component)
    */
@@ -496,21 +494,6 @@ class SmartNotificationsService {
     
     // Use the existing evaluateBusinessRules method
     return this.evaluateBusinessRules();
-  }
-
-  /**
-   * Get notifications by severity level
-   */
-  static async getNotificationsBySeverity(severity) {
-    const notifications = await this.getAllNotifications();
-    return notifications.filter(n => n.severity === severity);
-  }
-
-  /**
-   * Get critical alerts that need immediate attention
-   */
-  static async getCriticalAlerts() {
-    return await this.getNotificationsBySeverity('critical');
   }
 
   /**
@@ -560,5 +543,7 @@ class SmartNotificationsService {
       lastUpdate: this.lastEvaluation
     };
   }
+
+} // ← Keep this closing brace for the class
 
 export default SmartNotificationsService;
