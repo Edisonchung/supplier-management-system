@@ -378,7 +378,7 @@ const SmartNotifications = () => {
                             notification.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
                             'bg-blue-100 text-blue-700'
                           }`}>
-                            {notification.priority.toUpperCase()}
+                            {notification.severity.toUpperCase()}
                           </span>
                         </div>
                         
