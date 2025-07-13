@@ -97,5 +97,5 @@ export class SmartNotificationsService {
         });
     }
   }
-  }
+
 }
