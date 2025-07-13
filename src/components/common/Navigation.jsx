@@ -23,7 +23,8 @@ import {
   Zap,
   BarChart3,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
