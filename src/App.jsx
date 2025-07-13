@@ -322,7 +322,7 @@ function AppContent() {
   path="/notifications" 
   element={
     <ProtectedRoute permission="canViewOrders">
-      <LazyWrapper componentName="Smart Notifications">
+      <LazyWrapper>
         <LazySmartNotifications />
       </LazyWrapper>
     </ProtectedRoute>
