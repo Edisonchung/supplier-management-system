@@ -447,7 +447,9 @@ function App() {
   return (
     <AuthProvider>
       <UnifiedDataProvider>
-        <AppContent />
+        <LoadingFeedbackProvider>
+          <AppContent />
+        </LoadingFeedbackProvider>
       </UnifiedDataProvider>
     </AuthProvider>
   );
