@@ -11,7 +11,7 @@ import {
   DollarSign,
   Settings as SettingsIcon 
 } from 'lucide-react';
-import { SmartNotificationsService } from '../../services/notifications/SmartNotificationsService';
+import  SmartNotificationsService  from '../../services/notifications/SmartNotificationsService';
 import { NotificationManager } from '../common/Notification';
 
 const SmartNotifications = () => {
