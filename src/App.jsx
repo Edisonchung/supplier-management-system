@@ -317,6 +317,17 @@ function AppContent() {
             />
 
 
+            <Route   // 
+  path="/notifications" 
+  element={
+    <ProtectedRoute permission="canViewOrders">
+      <LazyWrapper>
+        <LazySmartNotifications />
+      </LazyWrapper>
+    </ProtectedRoute>
+  } 
+/>
+
             {/* 🔥 NEW: Migration Route - LAZY LOADED */}
 <Route 
   path="/migration" 
