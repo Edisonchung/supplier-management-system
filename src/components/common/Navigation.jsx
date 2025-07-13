@@ -289,19 +289,20 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   ];
 
   const handleToggleCollapse = () => {
-    const newCollapsedState = !isCollapsed;
-    setIsCollapsed(!isCollapsed);
-    // Save preference to localStorage
-    localStorage.setItem('navigationCollapsed', !isCollapsed);
-
-    / ✅ Dispatch custom event for Layout to listen to
+  const newCollapsedState = !isCollapsed;
+  setIsCollapsed(newCollapsedState);
+  
+  // Save preference to localStorage
+  localStorage.setItem('navigationCollapsed', newCollapsedState);
+  
+  // ✅ Dispatch custom event for Layout to listen to
   window.dispatchEvent(new CustomEvent('navigationCollapsed', {
     detail: { collapsed: newCollapsedState }
   }));
   
   // Also dispatch the navToggled event for compatibility
   window.dispatchEvent(new Event('navToggled'));
-  };
+};
 
   // Load collapse preference on mount
   useEffect(() => {
