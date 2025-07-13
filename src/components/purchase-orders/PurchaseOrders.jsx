@@ -379,22 +379,24 @@ const PurchaseOrders = () => {
 }
 
   return (
-    <div className="bg-white shadow-sm border-b">
-  <div className="px-6 py-4">
-    <div className="flex justify-between items-center">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Purchase Orders</h1>
-        <div className="mt-1 flex items-center space-x-4">
-          <p className="text-sm text-gray-500">
-            Manage your purchase orders and track their status
-          </p>
-          <RealtimeStatusIndicator 
-            status={syncStatus} 
-            lastUpdated={lastSyncTime}
-          />
-          <UserPresence users={activeUsers} />
-        </div>
-      </div>
+    <div className="space-y-6">
+      {/* Enhanced Header with Real-time Status */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="px-6 py-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">Purchase Orders</h1>
+              <div className="mt-1 flex items-center space-x-4">
+                <p className="text-sm text-gray-500">
+                  Manage your purchase orders and track their status
+                </p>
+                <RealtimeStatusIndicator 
+                  status={syncStatus} 
+                  lastUpdated={lastSyncTime}
+                />
+                <UserPresence users={activeUsers} />
+              </div>
+            </div>
             <div className="flex gap-3">
               <button
                 onClick={() => !extracting && fileInputRef.current?.click()}
@@ -546,25 +548,26 @@ const PurchaseOrders = () => {
           </div>
         </div>
 
-
+        {/* Quick Stats Bar */}
         <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
-  <div className="flex items-center justify-between text-sm">
-    <div className="flex space-x-6">
-      <span className="text-gray-500">
-        Total: <span className="font-medium text-gray-900">{stats.total}</span>
-      </span>
-      <span className="text-gray-500">
-        Draft: <span className="font-medium text-yellow-600">{stats.draft}</span>
-      </span>
-      <span className="text-gray-500">
-        Confirmed: <span className="font-medium text-green-600">{stats.confirmed}</span>
-      </span>
-    </div>
-    <div className="text-xs text-gray-400">
-      Last update: {lastSyncTime.toLocaleTimeString()}
-    </div>
-  </div>
-</div>
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex space-x-6">
+              <span className="text-gray-500">
+                Total: <span className="font-medium text-gray-900">{stats.total}</span>
+              </span>
+              <span className="text-gray-500">
+                Draft: <span className="font-medium text-yellow-600">{stats.draft}</span>
+              </span>
+              <span className="text-gray-500">
+                Confirmed: <span className="font-medium text-green-600">{stats.confirmed}</span>
+              </span>
+            </div>
+            <div className="text-xs text-gray-400">
+              Last update: {lastSyncTime.toLocaleTimeString()}
+            </div>
+          </div>
+        </div>
+
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -616,53 +619,54 @@ const PurchaseOrders = () => {
                 filteredPOs.map((po) => (
                   <tr key={po.id} className="hover:bg-gray-50">
                     {/* PO NUMBER */}
-<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-  {po.orderNumber || po.poNumber}
-</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {po.orderNumber || po.poNumber}
+                    </td>
 
-{/* PROJECT CODE */}
-<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-  {po.projectCode ? (
-    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
-      {po.projectCode}
-    </span>
-  ) : (
-    <span className="text-gray-400">-</span>
-  )}
-</td>
+                    {/* PROJECT CODE */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {po.projectCode ? (
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+                          {po.projectCode}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
 
-{/* CLIENT */}
-<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-  {po.client || po.clientName || '-'}
-</td>
+                    {/* CLIENT */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {po.client || po.clientName || '-'}
+                    </td>
 
-{/* ORDER DATE */}
-<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-  {formatDate(po.orderDate)}
-</td>
+                    {/* ORDER DATE */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(po.orderDate)}
+                    </td>
 
-{/* DELIVERY DATE */}
-<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-  {formatDate(po.deliveryDate || po.requiredDate)}
-</td>
+                    {/* DELIVERY DATE */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(po.deliveryDate || po.requiredDate)}
+                    </td>
 
-{/* ITEMS */}
-<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-  <div className="flex items-center">
-    <Package className="h-4 w-4 text-gray-400 mr-1" />
-    {po.items?.length || 0}
-  </div>
-</td>
+                    {/* ITEMS */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center">
+                        <Package className="h-4 w-4 text-gray-400 mr-1" />
+                        {po.items?.length || 0}
+                      </div>
+                    </td>
 
-{/* TOTAL */}
-<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-  RM {(po.total || po.totalAmount || 0).toLocaleString()}
-</td>
+                    {/* TOTAL */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      RM {(po.total || po.totalAmount || 0).toLocaleString()}
+                    </td>
 
-{/* STATUS */}
-<td className="px-6 py-4 whitespace-nowrap">
-  {getStatusBadge(po.status)}
-</td>
+                    {/* STATUS */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getStatusBadge(po.status)}
+                    </td>
+                    
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
                         <button
@@ -721,6 +725,5 @@ const PurchaseOrders = () => {
       />
     </div>
   );
-};
 
 export default PurchaseOrders;
