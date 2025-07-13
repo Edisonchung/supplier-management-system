@@ -1,4 +1,4 @@
-// src/components/common/Layout.jsx
+// src/components/common/Layout.jsx - Fixed version
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Header from './Header';
@@ -11,7 +11,8 @@ const Layout = () => {
   // Check navigation collapsed state from localStorage
   useEffect(() => {
     const checkNavState = () => {
-      const navCollapsed = localStorage.getItem('navCollapsed') === 'true';
+      // ✅ Fixed: Use consistent localStorage key with Navigation.jsx
+      const navCollapsed = localStorage.getItem('navigationCollapsed') === 'true';
       setIsNavCollapsed(navCollapsed);
     };
 
@@ -25,9 +26,16 @@ const Layout = () => {
     const handleNavToggle = () => checkNavState();
     window.addEventListener('navToggled', handleNavToggle);
 
+    // ✅ Added: Listen for navigation collapse events
+    const handleNavCollapse = (event) => {
+      setIsNavCollapsed(event.detail.collapsed);
+    };
+    window.addEventListener('navigationCollapsed', handleNavCollapse);
+
     return () => {
       window.removeEventListener('storage', checkNavState);
       window.removeEventListener('navToggled', handleNavToggle);
+      window.removeEventListener('navigationCollapsed', handleNavCollapse);
     };
   }, []);
 
