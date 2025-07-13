@@ -185,6 +185,15 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           description: 'Purchase order management',
           permission: 'canViewOrders'
         },
+        {
+  name: 'Smart Notifications',  // ← ADD THIS ENTIRE OBJECT
+  href: '/notifications',
+  icon: Bell,
+  description: 'AI-powered procurement alerts',
+  permission: 'canViewOrders',
+  badge: trackingCounts.overdueItems > 0 ? trackingCounts.overdueItems : null,
+  badgeColor: 'bg-red-500'
+},
         // 🆕 ADD: Tracking menu item
         {
           name: 'Tracking',
