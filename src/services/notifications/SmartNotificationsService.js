@@ -463,16 +463,6 @@ class SmartNotificationsService {
     return this.realisticData;
   }
 
-  // Get summary for badge counts
-  static getNotificationSummary() {
-    const notifications = this.notifications || [];
-    return {
-      total: notifications.length,
-      critical: notifications.filter(n => n.severity === 'critical').length,
-      high: notifications.filter(n => n.severity === 'high').length,
-      urgent: notifications.filter(n => n.type === 'urgent').length
-    };
-  }
 
   // ADD THESE NEW METHODS HERE (INSIDE THE CLASS)
   /**
