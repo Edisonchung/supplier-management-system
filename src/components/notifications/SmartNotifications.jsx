@@ -13,6 +13,10 @@ import {
 } from 'lucide-react';
 import { SmartNotificationsService } from '../../services/notifications/SmartNotificationsService';
 import { NotificationManager } from '../common/Notification';
+import SampleDataService from '../../services/data/SampleDataService.js';
+
+
+
 
 const SmartNotifications = () => {
   const location = useLocation();
