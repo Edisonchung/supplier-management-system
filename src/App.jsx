@@ -1,4 +1,4 @@
-// src/App.jsx - OPTIMIZED VERSION
+// src/App.jsx - FIXED VERSION - Clean imports and Smart Notifications
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -12,8 +12,9 @@ import { usePermissions } from './hooks/usePermissions';
 import { Truck, Upload, Users, Shield, Settings, Activity, Brain } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
+import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
 
-// Import lazy components
+// Import lazy components - FIXED IMPORTS
 import { 
   LazyDashboard, 
   LazySuppliers, 
@@ -23,7 +24,7 @@ import {
   LazyClientInvoices,
   LazyQuickImport,
   LazyUserManagement,
-  LazySmartNotifications,
+  LazySmartNotifications, // ✅ Single import for Smart Notifications
   LazyWrapper 
 } from './components/LazyComponents';
 
@@ -33,13 +34,7 @@ const LazySourcingDashboard = lazy(() => import('./components/sourcing/SourcingD
 const LazySupplierMatchingPage = lazy(() => import('./components/supplier-matching/SupplierMatchingPage'));
 const LazyTeamManagement = lazy(() => import('./components/team/TeamManagement'));
 const LazyUnifiedTrackingDashboard = lazy(() => import('./components/tracking/UnifiedTrackingDashboard'));
-// 🔥 NEW: Migration page
 const LazyMigrationPage = lazy(() => import('./components/migration/MigrationPage'));
-import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
-const LazySmartNotifications = lazy(() => import('./components/notifications/SmartNotifications')); // ← ADD THIS LINE
-
-
-
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -83,7 +78,6 @@ const ProtectedRoute = ({ children, permission }) => {
   const { user, loading } = useAuth();
   const permissions = usePermissions();
   
-  // Don't redirect while loading
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -136,7 +130,6 @@ function AppContent() {
     setNotification({ message, type });
   };
 
-  // Show loading screen while checking auth
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-purple-50">
@@ -151,7 +144,6 @@ function AppContent() {
 
   return (
     <ErrorBoundary>
-      {/* React Hot Toast Toaster */}
       <Toaster 
         position="top-right"
         reverseOrder={false}
@@ -202,7 +194,7 @@ function AppContent() {
       
       <Router>
         <Routes>
-          {/* Public PI View Route - No Authentication Required */}
+          {/* Public PI View Route */}
           <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
           
           {/* Login Route */}
@@ -210,24 +202,24 @@ function AppContent() {
           
           {/* Protected Routes with Layout */}
           <Route element={user ? <Layout /> : <Navigate to="/login" />}>
-            {/* Dashboard - LAZY LOADED */}
+            {/* Dashboard */}
             <Route 
               path="/" 
               element={
                 <ProtectedRoute permission="canViewDashboard">
-                 <LazyWrapper componentName="Smart Notifications">
+                  <LazyWrapper componentName="Dashboard">
                     <LazyDashboard />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Core Management Routes - LAZY LOADED */}
+            {/* Core Management Routes */}
             <Route 
               path="/suppliers" 
               element={
                 <ProtectedRoute permission="canViewSuppliers">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Suppliers">
                     <LazySuppliers showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
@@ -238,19 +230,19 @@ function AppContent() {
               path="/products" 
               element={
                 <ProtectedRoute permission="canViewProducts">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Products">
                     <LazyProducts showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Operations Routes - LAZY LOADED */}
+            {/* Operations Routes */}
             <Route 
               path="/sourcing" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Sourcing Dashboard">
                     <LazySourcingDashboard showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
@@ -270,12 +262,12 @@ function AppContent() {
               } 
             />
             
-            {/* Procurement Routes - LAZY LOADED */}
+            {/* Procurement Routes */}
             <Route 
               path="/proforma-invoices" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Proforma Invoices">
                     <LazyProformaInvoices showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
@@ -286,67 +278,67 @@ function AppContent() {
               path="/purchase-orders" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Purchase Orders">
                     <LazyPurchaseOrders showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
 
-            {/* Supplier Matching Page - LAZY LOADED */}
+            {/* Supplier Matching Page */}
             <Route 
               path="/purchase-orders/:poId/supplier-matching" 
               element={
                 <ProtectedRoute permission="canViewOrders">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Supplier Matching">
                     <LazySupplierMatchingPage />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
 
+            {/* 🔥 SMART NOTIFICATIONS ROUTE - FIXED */}
+            <Route 
+              path="/notifications" 
+              element={
+                <ProtectedRoute permission="canViewOrders">
+                  <LazyWrapper componentName="Smart Notifications">
+                    <LazySmartNotifications />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
 
+            {/* Tracking Routes */}
             <Route 
               path="/tracking" 
               element={
                 <ProtectedRoute permission="canViewDeliveries">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Tracking Dashboard">
                     <LazyUnifiedTrackingDashboard />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
 
-
-            <Route   // 
-  path="/notifications" 
-  element={
-    <ProtectedRoute permission="canViewOrders">
-      <LazyWrapper>
-        <LazySmartNotifications />
-      </LazyWrapper>
-    </ProtectedRoute>
-  } 
-/>
-
-            {/* 🔥 NEW: Migration Route - LAZY LOADED */}
-<Route 
-  path="/migration" 
-  element={
-    <ProtectedRoute permission="canViewDeliveries">
-      <LazyWrapper>
-        <LazyMigrationPage />
-      </LazyWrapper>
-    </ProtectedRoute>
-  } 
-/>
+            {/* Migration Route */}
+            <Route 
+              path="/migration" 
+              element={
+                <ProtectedRoute permission="canViewDeliveries">
+                  <LazyWrapper componentName="Migration">
+                    <LazyMigrationPage />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
             
-            {/* Business Routes - LAZY LOADED */}
+            {/* Business Routes */}
             <Route 
               path="/client-invoices" 
               element={
                 <ProtectedRoute permission="canViewInvoices">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Client Invoices">
                     <LazyClientInvoices showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
@@ -357,26 +349,25 @@ function AppContent() {
               path="/delivery-tracking" 
               element={<Navigate to="/tracking" replace />}
             />
-
             
-            {/* Tools Routes - LAZY LOADED */}
+            {/* Tools Routes */}
             <Route 
               path="/quick-import" 
               element={
                 <ProtectedRoute permission="canImportData">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Quick Import">
                     <LazyQuickImport showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* Administration Routes - LAZY LOADED */}
+            {/* Administration Routes */}
             <Route 
               path="/team-management" 
               element={
                 <ProtectedRoute permission="canManageUsers">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="Team Management">
                     <LazyTeamManagement showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
@@ -409,12 +400,12 @@ function AppContent() {
               } 
             />
             
-            {/* Legacy Routes (keeping for compatibility) - LAZY LOADED */}
+            {/* Legacy Routes */}
             <Route 
               path="/users" 
               element={
                 <ProtectedRoute permission="canManageUsers">
-                  <LazyWrapper>
+                  <LazyWrapper componentName="User Management">
                     <LazyUserManagement showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
@@ -422,7 +413,7 @@ function AppContent() {
             />
           </Route>
           
-          {/* Catch all - redirect to home or login */}
+          {/* Catch all */}
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>
         
@@ -435,13 +426,10 @@ function AppContent() {
           />
         )}
         
-        {/* Development Tools - Only show in development mode */}
+        {/* Development Tools */}
         {user && import.meta.env.DEV && (
           <>
-            {/* Firestore Test Component */}
             {showFirestoreTest && <FirestoreTest />}
-            
-            {/* Toggle button for Firestore Test */}
             <button
               onClick={() => setShowFirestoreTest(!showFirestoreTest)}
               className="fixed bottom-4 left-4 bg-gray-800 text-white text-xs px-3 py-1 rounded-full hover:bg-gray-700 z-50 shadow-lg transition-colors"
@@ -452,7 +440,7 @@ function AppContent() {
           </>
         )}
         
-        {/* Firestore Health Check - Always show when user is logged in */}
+        {/* Firestore Health Check */}
         {user && <FirestoreHealthCheck />}
       </Router>
     </ErrorBoundary>
