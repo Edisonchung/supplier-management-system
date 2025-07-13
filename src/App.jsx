@@ -215,7 +215,7 @@ function AppContent() {
               path="/" 
               element={
                 <ProtectedRoute permission="canViewDashboard">
-                  <LazyWrapper>
+                 <LazyWrapper componentName="Smart Notifications">
                     <LazyDashboard />
                   </LazyWrapper>
                 </ProtectedRoute>
