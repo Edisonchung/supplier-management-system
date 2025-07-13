@@ -23,6 +23,7 @@ import {
   LazyClientInvoices,
   LazyQuickImport,
   LazyUserManagement,
+  LazySmartNotifications,
   LazyWrapper 
 } from './components/LazyComponents';
 
@@ -321,7 +322,7 @@ function AppContent() {
   path="/notifications" 
   element={
     <ProtectedRoute permission="canViewOrders">
-      <LazyWrapper>
+      <LazyWrapper componentName="Smart Notifications">
         <LazySmartNotifications />
       </LazyWrapper>
     </ProtectedRoute>
