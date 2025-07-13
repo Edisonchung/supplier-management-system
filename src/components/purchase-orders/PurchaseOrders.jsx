@@ -30,6 +30,13 @@ import {
 import POModal from './POModal';
 import { generatePONumber } from '../../utils/poHelpers';
 import { toast } from 'react-hot-toast';
+import { 
+  useNotifications, 
+  useLoadingStates, 
+  SkeletonLoader, 
+  RealtimeStatusIndicator,
+  UserPresence 
+} from '../common/LoadingFeedbackSystem';
 
 // Simple date formatter
 const formatDate = (dateString) => {
@@ -51,6 +58,14 @@ const PurchaseOrders = () => {
   const [currentPO, setCurrentPO] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
+  const { showSuccess, showError, showWarning } = useNotifications();
+  const { withLoading } = useLoadingStates();
+  const [lastSyncTime, setLastSyncTime] = useState(new Date());
+  const [syncStatus, setSyncStatus] = useState('synced');
+  const [activeUsers] = useState([
+    { id: 1, name: 'John Doe' },
+    { id: 2, name: 'Sarah Chen' }
+  ]);
 
   // Load purchase orders
   useEffect(() => {
@@ -219,37 +234,81 @@ const PurchaseOrders = () => {
 
   // Handle PO save
   const handleSavePO = async (poData) => {
-    try {
+  try {
+    await withLoading(async () => {
       if (poData.id) {
         await purchaseOrderService.update(poData.id, poData);
-        toast.success('Purchase order updated successfully');
+        showSuccess(
+          'Purchase Order Updated',
+          `PO ${poData.poNumber} has been updated successfully.`
+        );
       } else {
         await purchaseOrderService.create(poData);
-        toast.success('Purchase order created successfully');
+        showSuccess(
+          'Purchase Order Created', 
+          `PO ${poData.poNumber} has been created successfully.`
+        );
       }
+      
+      setLastSyncTime(new Date());
       loadPurchaseOrders();
-      setModalOpen(false);
-    } catch (error) {
-      console.error('Error saving PO:', error);
-      toast.error('Failed to save purchase order');
-    }
-  };
-
+    }, {
+      title: poData.id ? 'Updating Purchase Order...' : 'Creating Purchase Order...',
+      message: 'Please wait while we save your changes.'
+    });
+    
+    setModalOpen(false);
+  } catch (error) {
+    console.error('Error saving PO:', error);
+    showError(
+      'Save Failed',
+      'Unable to save purchase order. Please check your connection and try again.',
+      {
+        actions: [
+          {
+            label: 'Retry',
+            onClick: () => handleSavePO(poData)
+          }
+        ]
+      }
+    );
+  }
+};
   // Handle PO deletion
   const handleDeletePO = async (poId) => {
-    if (!window.confirm('Are you sure you want to delete this purchase order?')) {
-      return;
+  const po = purchaseOrders.find(p => p.id === poId);
+  
+  showWarning(
+    'Delete Purchase Order',
+    `Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`,
+    {
+      persistent: true,
+      actions: [
+        {
+          label: 'Delete',
+          onClick: async () => {
+            try {
+              await withLoading(async () => {
+                await purchaseOrderService.delete(poId);
+                loadPurchaseOrders();
+                showSuccess('Deleted', `PO ${po?.poNumber || po?.orderNumber} has been deleted.`);
+              }, {
+                title: 'Deleting Purchase Order...'
+              });
+            } catch (error) {
+              console.error('Error deleting PO:', error);
+              showError('Delete Failed', 'Unable to delete purchase order.');
+            }
+          }
+        },
+        {
+          label: 'Cancel',
+          onClick: () => {} // Will auto-close notification
+        }
+      ]
     }
-
-    try {
-      await purchaseOrderService.delete(poId);
-      toast.success('Purchase order deleted successfully');
-      loadPurchaseOrders();
-    } catch (error) {
-      console.error('Error deleting PO:', error);
-      toast.error('Failed to delete purchase order');
-    }
-  };
+  );
+};
 
   // Navigate to supplier matching page
   const handleViewSupplierMatching = (po) => {
@@ -305,25 +364,37 @@ const PurchaseOrders = () => {
   }, [modalOpen, currentPO]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Purchase Orders</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Manage your purchase orders and track their status
-              </p>
-            </div>
+          <SkeletonLoader type="form" />
+        </div>
+      </div>
+      <div className="bg-white shadow overflow-hidden sm:rounded-md">
+        <SkeletonLoader type="table-row" count={5} />
+      </div>
+    </div>
+  );
+}
+
+  return (
+    <div className="bg-white shadow-sm border-b">
+  <div className="px-6 py-4">
+    <div className="flex justify-between items-center">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Purchase Orders</h1>
+        <div className="mt-1 flex items-center space-x-4">
+          <p className="text-sm text-gray-500">
+            Manage your purchase orders and track their status
+          </p>
+          <RealtimeStatusIndicator 
+            status={syncStatus} 
+            lastUpdated={lastSyncTime}
+          />
+          <UserPresence users={activeUsers} />
+        </div>
+      </div>
             <div className="flex gap-3">
               <button
                 onClick={() => !extracting && fileInputRef.current?.click()}
@@ -475,6 +546,25 @@ const PurchaseOrders = () => {
           </div>
         </div>
 
+
+        div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+  <div className="flex items-center justify-between text-sm">
+    <div className="flex space-x-6">
+      <span className="text-gray-500">
+        Total: <span className="font-medium text-gray-900">{stats.total}</span>
+      </span>
+      <span className="text-gray-500">
+        Draft: <span className="font-medium text-yellow-600">{stats.draft}</span>
+      </span>
+      <span className="text-gray-500">
+        Confirmed: <span className="font-medium text-green-600">{stats.confirmed}</span>
+      </span>
+    </div>
+    <div className="text-xs text-gray-400">
+      Last update: {lastSyncTime.toLocaleTimeString()}
+    </div>
+  </div>
+</div>
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
