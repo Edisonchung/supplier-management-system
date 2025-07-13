@@ -547,7 +547,7 @@ const PurchaseOrders = () => {
         </div>
 
 
-        div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
   <div className="flex items-center justify-between text-sm">
     <div className="flex space-x-6">
       <span className="text-gray-500">
