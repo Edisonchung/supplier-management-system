@@ -13,6 +13,8 @@ import { Truck, Upload, Users, Shield, Settings, Activity, Brain } from 'lucide-
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
+import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
+
 
 // Import lazy components - FIXED IMPORTS
 import { 
@@ -411,6 +413,15 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+          <Route 
+  path="/debug-nav" 
+  element={
+    <ProtectedRoute permission="canViewOrders">
+      <NavigationBlockerDebug />
+    </ProtectedRoute>
+  } 
+/>
           </Route>
           
           {/* Catch all */}
