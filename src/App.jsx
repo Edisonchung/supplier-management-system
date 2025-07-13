@@ -14,6 +14,7 @@ import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
 import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
+import SampleDataTest from './components/test/SampleDataTest';
 
 
 // Import lazy components - FIXED IMPORTS
@@ -196,6 +197,8 @@ function AppContent() {
       
       <Router>
         <Routes>
+          <Route path="/test-sample-data" element={<SampleDataTest />} />
+
           {/* Public PI View Route */}
           <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
           
