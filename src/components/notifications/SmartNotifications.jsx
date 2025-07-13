@@ -1,5 +1,5 @@
 // src/components/notifications/SmartNotifications.jsx
-// SAFE VERSION - All features but with proper cleanup to prevent navigation blocking
+// PRODUCTION VERSION - Minimal console logging
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
@@ -30,33 +30,31 @@ const SmartNotifications = () => {
   const mountedRef = useRef(true);
   const intervalRef = useRef(null);
 
-  // Component lifecycle logging
+  // Component lifecycle management
   useEffect(() => {
-    console.log('🔔 SmartNotifications mounted');
+    // Only log in development mode
+    if (import.meta.env.DEV) {
+      console.log('🔔 SmartNotifications mounted');
+    }
     mountedRef.current = true;
     
     return () => {
-      console.log('🧹 SmartNotifications unmounting - cleaning up...');
+      if (import.meta.env.DEV) {
+        console.log('🧹 SmartNotifications unmounting');
+      }
       mountedRef.current = false;
       
       // Critical: Clear any remaining intervals
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
-        console.log('🧹 Interval cleared on unmount');
       }
     };
   }, []);
 
-  // Track location changes
-  useEffect(() => {
-    console.log('🔔 SmartNotifications sees location:', location.pathname);
-  }, [location.pathname]);
-
   // Safe data loading with error handling
   const loadTrackingData = useCallback(() => {
     if (!mountedRef.current) {
-      console.log('⚠️ Component unmounted, skipping data load');
       return { deliveryTracking: {}, paymentTracking: {}, purchaseOrders: {} };
     }
     
@@ -67,16 +65,13 @@ const SmartNotifications = () => {
         purchaseOrders: JSON.parse(localStorage.getItem('higgsflow_purchaseOrders') || '[]')
       };
     } catch (error) {
-      console.error('❌ Error loading tracking data:', error);
+      console.error('Error loading tracking data:', error);
       return { deliveryTracking: {}, paymentTracking: {}, purchaseOrders: {} };
     }
   }, []);
 
   const updateDeliveryStatus = useCallback((poId, updates) => {
-    if (!mountedRef.current) {
-      console.log('⚠️ Component unmounted, skipping delivery update');
-      return;
-    }
+    if (!mountedRef.current) return;
     
     try {
       const current = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
@@ -90,15 +85,12 @@ const SmartNotifications = () => {
         NotificationManager.success('Delivery status updated');
       }
     } catch (error) {
-      console.error('❌ Error updating delivery status:', error);
+      console.error('Error updating delivery status:', error);
     }
   }, []);
 
   const updatePaymentStatus = useCallback((supplierId, updates) => {
-    if (!mountedRef.current) {
-      console.log('⚠️ Component unmounted, skipping payment update');
-      return;
-    }
+    if (!mountedRef.current) return;
     
     try {
       const current = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
@@ -112,24 +104,18 @@ const SmartNotifications = () => {
         NotificationManager.success('Payment status updated');
       }
     } catch (error) {
-      console.error('❌ Error updating payment status:', error);
+      console.error('Error updating payment status:', error);
     }
   }, []);
 
   const showNotification = useCallback((notification) => {
-    if (!mountedRef.current) {
-      console.log('⚠️ Component unmounted, skipping notification');
-      return;
-    }
+    if (!mountedRef.current) return;
     NotificationManager.show(notification);
   }, []);
 
   // Safe business rules evaluation
   const evaluateRules = useCallback(() => {
-    if (!mountedRef.current) {
-      console.log('⚠️ Component unmounted, skipping rules evaluation');
-      return;
-    }
+    if (!mountedRef.current) return;
     
     try {
       const data = loadTrackingData();
@@ -137,19 +123,19 @@ const SmartNotifications = () => {
       
       if (mountedRef.current) {
         setNotifications(newNotifications);
-        console.log('📊 Evaluated business rules, found', newNotifications.length, 'notifications');
+        // Only log in development
+        if (import.meta.env.DEV && newNotifications.length > 0) {
+          console.log('📊 Smart Notifications:', newNotifications.length, 'alerts found');
+        }
       }
     } catch (error) {
-      console.error('❌ Error evaluating business rules:', error);
+      console.error('Error evaluating business rules:', error);
     }
   }, [loadTrackingData]);
 
   // Handle notification actions safely
   const handleAction = useCallback((notification, action) => {
-    if (!mountedRef.current) {
-      console.log('⚠️ Component unmounted, skipping action');
-      return;
-    }
+    if (!mountedRef.current) return;
     
     try {
       SmartNotificationsService.handleNotificationAction(
@@ -168,7 +154,7 @@ const SmartNotifications = () => {
         );
       }
     } catch (error) {
-      console.error('❌ Error handling notification action:', error);
+      console.error('Error handling notification action:', error);
       if (mountedRef.current) {
         NotificationManager.error('Failed to execute action');
       }
@@ -190,7 +176,7 @@ const SmartNotifications = () => {
         setSettings(JSON.parse(savedSettings));
       }
     } catch (error) {
-      console.error('❌ Error loading settings:', error);
+      console.error('Error loading settings:', error);
     }
   }, []);
 
@@ -201,7 +187,7 @@ const SmartNotifications = () => {
     try {
       localStorage.setItem('higgsflow_notificationSettings', JSON.stringify(settings));
     } catch (error) {
-      console.error('❌ Error saving settings:', error);
+      console.error('Error saving settings:', error);
     }
   }, [settings]);
 
@@ -213,11 +199,9 @@ const SmartNotifications = () => {
     // Set up interval with safety checks
     intervalRef.current = setInterval(() => {
       if (mountedRef.current) {
-        console.log('⏰ Interval tick - evaluating rules...');
         evaluateRules();
       } else {
         // Component unmounted, clear interval
-        console.log('🧹 Component unmounted during interval, clearing...');
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
@@ -225,15 +209,11 @@ const SmartNotifications = () => {
       }
     }, 30000); // 30 seconds
 
-    console.log('⏰ Interval started for notifications refresh');
-
     // Cleanup function - CRITICAL for preventing navigation blocking
     return () => {
-      console.log('🧹 Cleaning up interval...');
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
-        console.log('✅ Interval cleared successfully');
       }
     };
   }, [evaluateRules]);
@@ -241,7 +221,6 @@ const SmartNotifications = () => {
   // Additional cleanup on location change (extra safety)
   useEffect(() => {
     if (location.pathname !== '/notifications' && intervalRef.current) {
-      console.log('🧹 Location changed away from notifications, clearing interval...');
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
@@ -279,13 +258,6 @@ const SmartNotifications = () => {
 
   return (
     <div className="space-y-6">
-      {/* Debug Info */}
-      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-        <p className="text-sm text-green-700">
-          ✅ Full Smart Notifications loaded (path: {location.pathname})
-        </p>
-      </div>
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
