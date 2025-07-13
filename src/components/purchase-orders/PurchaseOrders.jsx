@@ -725,5 +725,5 @@ const PurchaseOrders = () => {
       />
     </div>
   );
-
+};
 export default PurchaseOrders;
