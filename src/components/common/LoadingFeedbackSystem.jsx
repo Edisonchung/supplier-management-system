@@ -389,3 +389,67 @@ export const useLoadingStates = () => {
 
   return { withLoading, startLoading, stopLoading };
 };
+
+
+// Smart Notifications Badge Component
+export const SmartNotificationsBadge = ({ onNavigateToNotifications }) => {
+  const [urgentCount, setUrgentCount] = useState(0);
+
+  useEffect(() => {
+    const checkUrgentNotifications = () => {
+      try {
+        const deliveryTracking = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
+        const paymentTracking = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
+        
+        let urgent = 0;
+        const now = new Date();
+        
+        // Count overdue deliveries
+        Object.values(deliveryTracking).forEach(delivery => {
+          if (delivery.estimatedDelivery && 
+              new Date(delivery.estimatedDelivery) < now && 
+              delivery.status !== 'completed') {
+            urgent++;
+          }
+        });
+        
+        // Count urgent payments (due in 1 day)
+        Object.values(paymentTracking).forEach(payment => {
+          if (payment.dueDate) {
+            const daysUntilDue = Math.floor((new Date(payment.dueDate) - now) / (1000 * 60 * 60 * 24));
+            if (daysUntilDue <= 1 && daysUntilDue >= 0 && payment.status === 'pending') {
+              urgent++;
+            }
+          }
+        });
+        
+        setUrgentCount(urgent);
+      } catch (error) {
+        console.error('Error checking urgent notifications:', error);
+      }
+    };
+
+    checkUrgentNotifications();
+    const interval = setInterval(checkUrgentNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (urgentCount === 0) return null;
+
+  return (
+    <div className="fixed top-4 right-4 z-50">
+      <div className="bg-red-500 text-white px-3 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-pulse">
+        <AlertTriangle className="h-4 w-4" />
+        <span className="text-sm font-medium">
+          {urgentCount} urgent alert{urgentCount > 1 ? 's' : ''}
+        </span>
+        <button 
+          onClick={onNavigateToNotifications}
+          className="text-white hover:text-gray-200 underline text-sm ml-2"
+        >
+          View
+        </button>
+      </div>
+    </div>
+  );
+};
