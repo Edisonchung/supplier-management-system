@@ -480,25 +480,28 @@ export const getProformaInvoices = async () => {
 
 export const addProformaInvoice = async (invoice) => {
   console.log('💾 FIREBASE: Adding PI with data:', invoice);
+  console.log('💾 FIREBASE: DocumentId in input:', invoice.documentId);
   
   const invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
+  
+  // ✅ CRITICAL FIX: Don't use || null - use || undefined to preserve the field
   const newInvoice = {
-    ...invoice, // ✅ This should preserve ALL fields from the input
+    ...invoice, // This should preserve ALL fields from input
     id: invoice.id || `pi-${Date.now()}`,
     
-    // ✅ EXPLICIT: Ensure document storage fields are preserved
-    documentId: invoice.documentId || null,
-    documentNumber: invoice.documentNumber || null,
+    // ✅ PRESERVE document storage fields exactly as received
+    documentId: invoice.documentId, // Don't use || null
+    documentNumber: invoice.documentNumber,
     documentType: 'pi',
-    hasStoredDocuments: invoice.hasStoredDocuments || false,
+    hasStoredDocuments: !!invoice.hasStoredDocuments, // Convert to boolean
     
-    // ✅ OPTIONAL: Storage metadata
-    storageInfo: invoice.storageInfo || null,
-    originalFileName: invoice.originalFileName || null,
-    fileSize: invoice.fileSize || null,
-    contentType: invoice.contentType || null,
-    extractedAt: invoice.extractedAt || null,
-    storedAt: invoice.storedAt || null,
+    // ✅ Optional storage metadata
+    storageInfo: invoice.storageInfo,
+    originalFileName: invoice.originalFileName,
+    fileSize: invoice.fileSize,
+    contentType: invoice.contentType,
+    extractedAt: invoice.extractedAt,
+    storedAt: invoice.storedAt,
     
     // ✅ Timestamps
     createdAt: new Date().toISOString(),
@@ -508,15 +511,15 @@ export const addProformaInvoice = async (invoice) => {
   console.log('💾 FIREBASE: Complete PI object being saved:', {
     id: newInvoice.id,
     piNumber: newInvoice.piNumber,
-    documentId: newInvoice.documentId, // ✅ This should NOT be undefined
-    hasStoredDocuments: newInvoice.hasStoredDocuments
+    documentId: newInvoice.documentId, // ✅ This should NOT be null
+    hasStoredDocuments: newInvoice.hasStoredDocuments,
+    documentIdType: typeof newInvoice.documentId
   });
   
   invoices.push(newInvoice);
   localStorage.setItem('proformaInvoices', JSON.stringify(invoices));
   return { success: true, data: newInvoice };
 };
-
 export const updateProformaInvoice = async (id, updates) => {
   console.log('💾 FIREBASE: Updating PI with data:', { id, updates });
   
