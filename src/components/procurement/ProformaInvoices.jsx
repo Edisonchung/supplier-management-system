@@ -4,7 +4,7 @@ import {
   FileText, Plus, Search, Filter, Calendar, 
   Download, Eye, Edit, Trash2, Truck, Package,
   AlertCircle, Clock, CheckCircle, CreditCard,
-  Grid, List, Briefcase, AlertTriangle, Upload, Loader2
+  Grid, List, Briefcase, AlertTriangle, Upload, Loader2, X
 } from 'lucide-react';
 import { useProformaInvoices } from '../../hooks/useProformaInvoices';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -14,6 +14,8 @@ import { mockFirebase } from '../../services/firebase';
 import AIExtractionService from '../../services/ai/AIExtractionService';
 import PICard from './PICard';
 import PIModal from './PIModal';
+import DocumentViewer from '../common/DocumentViewer';
+
 
 const ProformaInvoices = ({ showNotification }) => {
   const permissions = usePermissions();
@@ -51,6 +53,7 @@ const ProformaInvoices = ({ showNotification }) => {
   const [filterDelivery, setFilterDelivery] = useState('all');
   const [filterPurpose, setFilterPurpose] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+  const [documentsModal, setDocumentsModal] = useState({ open: false, pi: null });
   const [viewMode, setViewMode] = useState('grid');
   const [groupByYear, setGroupByYear] = useState(true);
   
@@ -678,6 +681,9 @@ const ProformaInvoices = ({ showNotification }) => {
     };
 
     return piData;
+    const handleViewDocuments = (pi) => {
+  setDocumentsModal({ open: true, pi });
+};
   };
 
   // Process supplier invoice as PI
@@ -1063,16 +1069,17 @@ const ProformaInvoices = ({ showNotification }) => {
                   .sort((a, b) => new Date(b.date) - new Date(a.date))
                   .map(pi => (
                     <PICard
-                      key={pi.id}
-                      proformaInvoice={pi}
-                      supplier={suppliers.find(s => s.id === pi.supplierId)}
-                      onEdit={() => handleEditPI(pi)}
-                      onDelete={() => handleDeletePI(pi.id)}
-                      onUpdateDelivery={() => handleUpdateDeliveryStatus(pi)}
-                      onShare={() => handleSharePI(pi)}
-                      canEdit={canEdit}
-                      canDelete={canDelete}
-                    />
+  key={pi.id}
+  proformaInvoice={pi}
+  supplier={suppliers.find(s => s.id === pi.supplierId)}
+  onEdit={() => handleEditPI(pi)}
+  onDelete={() => handleDeletePI(pi.id)}
+  onUpdateDelivery={() => handleUpdateDeliveryStatus(pi)}
+  onShare={() => handleSharePI(pi)}
+  onViewDocuments={() => handleViewDocuments(pi)} // ADD THIS LINE
+  canEdit={canEdit}
+  canDelete={canDelete}
+/>
                   ))}
               </div>
             </div>
@@ -1173,34 +1180,44 @@ const ProformaInvoices = ({ showNotification }) => {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => handleSharePI(pi)}
-                                className="text-gray-600 hover:text-gray-900"
-                                title="Share"
-                              >
-                                <Eye size={16} />
-                              </button>
-                              {canEdit && (
-                                <button
-                                  onClick={() => handleEditPI(pi)}
-                                  className="text-blue-600 hover:text-blue-900"
-                                  title="Edit"
-                                >
-                                  <Edit size={16} />
-                                </button>
-                              )}
-                              {canDelete && (
-                                <button
-                                  onClick={() => handleDeletePI(pi.id)}
-                                  className="text-red-600 hover:text-red-900"
-                                  title="Delete"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
+  <div className="flex justify-end gap-2">
+    {/* ADD THIS NEW DOCUMENTS BUTTON */}
+    {pi.id && (
+      <button
+        onClick={() => handleViewDocuments(pi)}
+        className="text-purple-600 hover:text-purple-900"
+        title="View Documents"
+      >
+        <FileText size={16} />
+      </button>
+    )}
+    <button
+      onClick={() => handleSharePI(pi)}
+      className="text-gray-600 hover:text-gray-900"
+      title="Share"
+    >
+      <Eye size={16} />
+    </button>
+    {canEdit && (
+      <button
+        onClick={() => handleEditPI(pi)}
+        className="text-blue-600 hover:text-blue-900"
+        title="Edit"
+      >
+        <Edit size={16} />
+      </button>
+    )}
+    {canDelete && (
+      <button
+        onClick={() => handleDeletePI(pi.id)}
+        className="text-red-600 hover:text-red-900"
+        title="Delete"
+      >
+        <Trash2 size={16} />
+      </button>
+    )}
+  </div>
+</td>
                         </tr>
                       );
                     })}
@@ -1242,7 +1259,7 @@ const ProformaInvoices = ({ showNotification }) => {
         </div>
       )}
 
-      {/* PI Modal with Enhanced Props */}
+{/* PI Modal with Enhanced Props */}
       {showModal && (
         <PIModal
           isOpen={showModal}
@@ -1257,6 +1274,39 @@ const ProformaInvoices = ({ showNotification }) => {
           addSupplier={addSupplier}
           showNotification={showNotification}
         />
+      )}
+
+      {/* Documents Modal */}
+      {documentsModal.open && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-xl font-semibold">
+                Documents - PI {documentsModal.pi?.piNumber}
+              </h2>
+              <button
+                onClick={() => setDocumentsModal({ open: false, pi: null })}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
+              <DocumentViewer
+                documentId={documentsModal.pi?.id}
+                documentType="pi"
+                documentNumber={documentsModal.pi?.piNumber}
+                allowDelete={true}
+                showTitle={false}
+                onDocumentDeleted={(doc) => {
+                  console.log('Document deleted:', doc);
+                  showNotification?.('Document deleted successfully', 'success');
+                }}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
