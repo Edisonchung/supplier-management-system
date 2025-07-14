@@ -98,6 +98,66 @@ export class SupplierPIProcessor {
   }
 
   /**
+   * Enhanced shipping cost extraction
+   */
+  static extractShippingCost(data) {
+    console.log('🚢 Extracting shipping cost from:', data);
+    
+    // Check direct shipping fields first
+    const directShipping = parseAmount(
+      data.shipping || 
+      data.freight || 
+      data.delivery_charge || 
+      data.shipping_cost || 
+      data['shipping cost'] ||
+      data['shipping_cost(usd)'] ||
+      0
+    );
+    
+    if (directShipping > 0) {
+      console.log('✅ Found direct shipping:', directShipping);
+      return directShipping;
+    }
+    
+    // Check in purchase_order structure (common in your extractions)
+    if (data.purchase_order) {
+      const poShipping = parseAmount(
+        data.purchase_order.shipping ||
+        data.purchase_order.freight ||
+        data.purchase_order.shipping_cost ||
+        data.purchase_order['shipping_cost(usd)'] ||
+        0
+      );
+      if (poShipping > 0) {
+        console.log('✅ Found PO shipping:', poShipping);
+        return poShipping;
+      }
+    }
+    
+    // Calculate shipping from total vs items (fallback method)
+    if (data.purchase_order && data.purchase_order.total_amount && data.purchase_order.items) {
+      const itemsTotal = data.purchase_order.items.reduce((sum, item) => 
+        sum + (parseAmount(item.total_price) || 0), 0
+      );
+      
+      const totalAmount = parseAmount(data.purchase_order.total_amount);
+      const calculatedShipping = totalAmount - itemsTotal;
+      
+      // Only use if the difference makes sense (between 0 and reasonable shipping cost)
+      if (calculatedShipping > 0 && calculatedShipping < itemsTotal) {
+        console.log(`💡 Calculated shipping from difference: ${totalAmount} - ${itemsTotal} = ${calculatedShipping}`);
+        return calculatedShipping;
+      }
+    }
+    
+    console.log('❌ No shipping cost found');
+    return 0;
+  }
+
+
+
+  
+  /**
    * Extract validity date
    */
   static extractValidityDate(data) {
