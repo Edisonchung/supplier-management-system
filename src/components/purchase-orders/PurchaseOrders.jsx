@@ -144,13 +144,109 @@ const handleFileUpload = async (event) => {
       // ✅ FIXED: Check for BOTH 'client_purchase_order' AND 'po' document types
 if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
   modalData = {
-    // ✅ ADD DOCUMENT STORAGE FIELDS
+    // 🎯 EXACT LOCATION TO UPDATE in PurchaseOrders.jsx
+// Find this section in your handleFileUpload function (around line 140-160)
+
+// ❌ FIND THIS CURRENT CODE:
+if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
+  modalData = {
+    // ❌ THESE LINES ARE THE PROBLEM (around line 145-150):
     documentId: result.data.documentId,
     documentNumber: result.data.documentNumber,
     documentType: 'po',
     hasStoredDocuments: result.data.hasStoredDocuments || false,
     storageInfo: result.data.storageInfo,
     originalFileName: result.data.originalFileName,
+    
+    // ... rest of your existing modal data ...
+  };
+}
+
+// ✅ REPLACE ONLY THOSE 6 LINES WITH THESE:
+
+if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
+  modalData = {
+    // ✅ FIXED LINES - Replace the 6 lines above with these:
+    documentId: result.documentStorage?.documentId || 
+                result.data.documentId || 
+                result.data.extractionMetadata?.documentId || 
+                null,
+                
+    documentNumber: result.documentStorage?.documentNumber || 
+                    result.data.documentNumber || 
+                    result.data.extractionMetadata?.documentNumber || 
+                    result.data.clientPONumber || 
+                    null,
+                    
+    documentType: 'po',
+    
+    hasStoredDocuments: Boolean(
+      result.documentStorage?.success || 
+      result.documentStorage?.originalFile || 
+      result.data.hasStoredDocuments ||
+      result.data.storageInfo
+    ),
+    
+    storageInfo: result.documentStorage || 
+                 result.data.storageInfo || 
+                 null,
+                 
+    originalFileName: result.data.originalFileName || 
+                      result.data.extractionMetadata?.originalFileName || 
+                      file.name,
+    
+    // ✅ KEEP ALL YOUR EXISTING LINES BELOW THIS - DON'T CHANGE ANYTHING ELSE:
+    // Generate new internal PO number
+    poNumber: generatePONumber(),
+    
+    // Use client's original PO number  
+    clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
+    projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
+
+    // Extract client information
+    clientName: result.data.clientName || result.data.client?.name || '',
+    clientContact: result.data.clientContact || result.data.client?.contact || '',
+    clientEmail: result.data.clientEmail || result.data.client?.email || '',
+    clientPhone: result.data.clientPhone || result.data.client?.phone || '',
+    
+    // Handle dates
+    orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
+    requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
+    
+    // Terms
+    paymentTerms: result.data.paymentTerms || 'Net 30',
+    deliveryTerms: result.data.deliveryTerms || 'FOB',
+    
+    // Status and notes
+    status: 'draft',
+    notes: result.data.notes || '',
+    
+    // Items array - ensure it matches POModal's expected structure
+    items: (result.data.items || []).map(item => ({
+      productName: item.productName || item.description || '',
+      productCode: item.productCode || item.partNumber || '',
+      quantity: item.quantity || 0,
+      unitPrice: item.unitPrice || 0,
+      totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+      id: Date.now().toString() + Math.random()
+    })),
+    
+    // Additional extracted data
+    extractedData: result.data,
+    prNumbers: result.data.prNumbers || [],
+    
+    // Sourcing plan if available
+    sourcingPlan: result.data.sourcingPlan,
+    matchingMetrics: result.data.matchingMetrics,
+    
+    // Client details
+    clientDetails: {
+      name: result.data.client?.name || '',
+      registration: result.data.client?.registration || '',
+      address: result.data.client?.address || '',
+      shipTo: result.data.client?.shipTo || ''
+    }
+  };
     
     // Generate new internal PO number
     poNumber: generatePONumber(),
