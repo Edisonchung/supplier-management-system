@@ -150,7 +150,11 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
 
   useEffect(() => {
     if (proformaInvoice) {
-      console.log('PIModal received data:', proformaInvoice);
+      console.log('🚢 SHIPPING DEBUG:', {
+      originalShipping: proformaInvoice.shipping,
+      extractedData: proformaInvoice,
+      allFields: Object.keys(proformaInvoice)
+    });
       
       // Handle both manually created and AI-extracted PI data
       setFormData({
