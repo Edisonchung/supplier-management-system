@@ -483,24 +483,24 @@ export const addProformaInvoice = async (invoice) => {
   
   const invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
   const newInvoice = {
-    ...invoice,
+    ...invoice, // ✅ This should preserve ALL fields from the input
     id: invoice.id || `pi-${Date.now()}`,
     
-    // ✅ CRITICAL: Add document storage fields
-    documentId: invoice.documentId,
-    documentNumber: invoice.documentNumber,
+    // ✅ EXPLICIT: Ensure document storage fields are preserved
+    documentId: invoice.documentId || null,
+    documentNumber: invoice.documentNumber || null,
     documentType: 'pi',
     hasStoredDocuments: invoice.hasStoredDocuments || false,
     
-    // ✅ OPTIONAL: Add storage metadata
-    storageInfo: invoice.storageInfo,
-    originalFileName: invoice.originalFileName,
-    fileSize: invoice.fileSize,
-    contentType: invoice.contentType,
-    extractedAt: invoice.extractedAt,
-    storedAt: invoice.storedAt,
+    // ✅ OPTIONAL: Storage metadata
+    storageInfo: invoice.storageInfo || null,
+    originalFileName: invoice.originalFileName || null,
+    fileSize: invoice.fileSize || null,
+    contentType: invoice.contentType || null,
+    extractedAt: invoice.extractedAt || null,
+    storedAt: invoice.storedAt || null,
     
-    // ✅ Existing timestamps
+    // ✅ Timestamps
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -508,7 +508,7 @@ export const addProformaInvoice = async (invoice) => {
   console.log('💾 FIREBASE: Complete PI object being saved:', {
     id: newInvoice.id,
     piNumber: newInvoice.piNumber,
-    documentId: newInvoice.documentId,
+    documentId: newInvoice.documentId, // ✅ This should NOT be undefined
     hasStoredDocuments: newInvoice.hasStoredDocuments
   });
   
