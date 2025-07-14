@@ -102,7 +102,7 @@ const PurchaseOrders = () => {
     setUploadError(null);
 
     try {
-      const result = await AIExtractionService.extractFromFile(file);
+      const result = await AIExtractionService.extractPOWithStorage(file);
       console.log('Extraction result:', result);
 
       if (result.success && result.data) {
