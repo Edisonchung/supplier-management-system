@@ -1950,7 +1950,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                 )}
               </div>
             </div>
-          ) : activeTab === 'payment' ?  (
+          ) : activeTab === 'receiving' ?  (
             // Receiving Tab
             <div className="space-y-6">
               {/* Receiving Summary */}
