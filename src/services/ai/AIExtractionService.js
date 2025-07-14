@@ -1070,7 +1070,41 @@ export class AIExtractionService {
     }
   }
 
-  
+  /**
+   * Process PO with document storage
+   * @param {File} file - Uploaded PO file
+   * @returns {Promise<Object>} - PO extraction with storage
+   */
+  async extractPOWithStorage(file) {
+    console.log(`🏢 Extracting PO with storage: ${file.name}`);
+    
+    const result = await this.extractWithDocumentStorage(file, 'po');
+    
+    if (result.success) {
+      // Enhance PO-specific processing
+      result.data = this.enhancePOData(result.data);
+    }
+    
+    return result;
+  }
+
+  /**
+   * Process PI with document storage
+   * @param {File} file - Uploaded PI file
+   * @returns {Promise<Object>} - PI extraction with storage
+   */
+  async extractPIWithStorage(file) {
+    console.log(`📄 Extracting PI with storage: ${file.name}`);
+    
+    const result = await this.extractWithDocumentStorage(file, 'pi');
+    
+    if (result.success) {
+      // Enhance PI-specific processing
+      result.data = this.enhancePIData(result.data);
+    }
+    
+    return result;
+  }
 
   /**
    * Main extraction method with ENHANCED document type detection
