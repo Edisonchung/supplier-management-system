@@ -7,29 +7,110 @@ import {
   DollarSign, Upload, Link, Eye, Download,
   CreditCard, MessageSquare, Briefcase, AlertTriangle,
   Building2, Mail, Phone, MapPin, User, Loader2,
-  ChevronDown, Check
+  ChevronDown, Check, CheckCircle
 } from 'lucide-react';
 
 // ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
-const autoFixPriceCalculations = (items) => {
+const fixPIItemPrices = (items, debug = true) => {
+  if (!items || !Array.isArray(items)) {
+    console.warn('No valid items array provided to fixPIItemPrices');
+    return [];
+  }
+
+  if (debug) {
+    console.log('🔧 FIXING PI ITEM PRICES...');
+    console.log('Original items:', items);
+  }
+
   return items.map((item, index) => {
+    const originalItem = { ...item };
+    
     const quantity = parseFloat(item.quantity) || 0;
     const unitPrice = parseFloat(item.unitPrice) || 0;
-    const calculatedTotal = quantity * unitPrice;
-    const currentTotal = parseFloat(item.totalPrice) || 0;
+    const totalPrice = parseFloat(item.totalPrice) || 0;
     
-    // If there's a significant difference (more than 0.01), use calculated value
-    const difference = Math.abs(calculatedTotal - currentTotal);
-    if (difference > 0.01) {
-      console.log(`Item ${index + 1}: Fixing price calculation ${currentTotal} → ${calculatedTotal}`);
-      return {
-        ...item,
-        totalPrice: calculatedTotal
-      };
+    if (debug) {
+      console.log(`Item ${index + 1} (${item.productName || item.productCode || 'Unknown'}):`, {
+        quantity, unitPrice, totalPrice, calculation: quantity * unitPrice
+      });
     }
-    
-    return item;
+
+    let fixedItem = { ...originalItem };
+
+    // Strategy 1: Calculate total from quantity × unit price
+    if (quantity > 0 && unitPrice > 0) {
+      const calculatedTotal = quantity * unitPrice;
+      const variance = totalPrice > 0 ? Math.abs(calculatedTotal - totalPrice) / totalPrice : 1;
+      
+      if (variance > 0.1 || totalPrice === 0) {
+        if (debug) console.log(`  ✅ Fixed: Using calculated total ${calculatedTotal} (was ${totalPrice})`);
+        fixedItem.totalPrice = calculatedTotal;
+      }
+    } 
+    // Strategy 2: Calculate unit price from total ÷ quantity
+    else if (quantity > 0 && totalPrice > 0 && (unitPrice === 0 || !unitPrice)) {
+      const calculatedUnitPrice = totalPrice / quantity;
+      if (debug) console.log(`  ✅ Fixed: Calculated unit price ${calculatedUnitPrice}`);
+      fixedItem.unitPrice = calculatedUnitPrice;
+    } 
+    // Strategy 3: Calculate quantity from total ÷ unit price
+    else if (unitPrice > 0 && totalPrice > 0 && (quantity === 0 || !quantity)) {
+      const calculatedQuantity = Math.round(totalPrice / unitPrice);
+      if (debug) console.log(`  ✅ Fixed: Calculated quantity ${calculatedQuantity}`);
+      fixedItem.quantity = calculatedQuantity;
+    } 
+    // Strategy 4: Handle only total price existing
+    else if (totalPrice > 0 && quantity === 0 && unitPrice === 0) {
+      fixedItem.quantity = 1;
+      fixedItem.unitPrice = totalPrice;
+      if (debug) console.log(`  ✅ Fixed: Assumed quantity=1, unit price=${totalPrice}`);
+    }
+
+    // Ensure proper number formatting
+    fixedItem.quantity = Math.max(parseFloat(fixedItem.quantity) || 1, 1);
+    fixedItem.unitPrice = parseFloat(fixedItem.unitPrice) || 0;
+    fixedItem.totalPrice = parseFloat(fixedItem.totalPrice) || 0;
+
+    // Final validation
+    const finalCalculation = fixedItem.quantity * fixedItem.unitPrice;
+    if (Math.abs(finalCalculation - fixedItem.totalPrice) > 0.01) {
+      fixedItem.totalPrice = finalCalculation;
+    }
+
+    return fixedItem;
   });
+};
+
+const validatePITotals = (formData, selectedProducts, debug = false) => {
+  if (!selectedProducts || selectedProducts.length === 0) {
+    return { ...formData, subtotal: 0, totalAmount: 0 };
+  }
+
+  const calculatedSubtotal = selectedProducts.reduce((sum, item) => {
+    return sum + (parseFloat(item.totalPrice) || 0);
+  }, 0);
+
+  const discount = parseFloat(formData.discount) || 0;
+  const shipping = parseFloat(formData.shipping) || 0;
+  const tax = parseFloat(formData.tax) || 0;
+  const calculatedTotal = calculatedSubtotal - discount + shipping + tax;
+
+  if (debug) {
+    console.log('💰 PI TOTAL VALIDATION:', {
+      itemsCount: selectedProducts.length,
+      calculatedSubtotal,
+      discount,
+      shipping,
+      tax,
+      calculatedTotal
+    });
+  }
+
+  return {
+    ...formData,
+    subtotal: calculatedSubtotal,
+    totalAmount: calculatedTotal
+  };
 };
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
@@ -89,20 +170,32 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
-    const fixedProducts = autoFixPriceCalculations(selectedProducts);
+    console.log('🔧 Manual price fix triggered for PI');
+    
+    const fixedProducts = fixPIItemPrices(selectedProducts, true); // Enable debug for manual fix
     setSelectedProducts(fixedProducts);
     
-    // Recalculate totals
-    const itemsSubtotal = fixedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+    // ✅ Recalculate totals with validation
+    const validatedData = validatePITotals(formData, fixedProducts, true);
+    
     setFormData(prev => ({
       ...prev,
-      subtotal: itemsSubtotal,
-      totalAmount: itemsSubtotal + (prev.shipping || 0) + (prev.tax || 0) - (prev.discount || 0)
+      subtotal: validatedData.subtotal,
+      totalAmount: validatedData.totalAmount
     }));
     
-    showNotification?.('Price calculations fixed!', 'success');
+    // ✅ Enhanced user feedback
+    const corrections = fixedProducts.filter((item, index) => {
+      const original = selectedProducts[index];
+      return original && Math.abs(item.totalPrice - (original.totalPrice || 0)) > 0.01;
+    });
+    
+    if (corrections.length > 0) {
+      showNotification?.(`Fixed ${corrections.length} price calculation(s)`, 'success');
+    } else {
+      showNotification?.('All prices are already correct', 'info');
+    }
   };
-
 
   const [searchProduct, setSearchProduct] = useState('');
   const [showProductSearch, setShowProductSearch] = useState(false);
@@ -234,19 +327,20 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
         receivingNotes: item.receivingNotes || ''
       }));
 
-     // ✅ Auto-fix price calculations
-      itemsWithIds = autoFixPriceCalculations(itemsWithIds);
+     / ✅ Auto-fix price calculations with enhanced function
+      itemsWithIds = fixPIItemPrices(itemsWithIds);
       
       setSelectedProducts(itemsWithIds);
       console.log('Set selected products:', itemsWithIds);
       
-      // ✅ Recalculate totals after fixing prices
-      const itemsSubtotal = itemsWithIds.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0);
+      // ✅ Recalculate totals after fixing prices with validation
+      const validatedData = validatePITotals(formData, itemsWithIds, true);
       setFormData(prev => ({
         ...prev,
-        subtotal: itemsSubtotal,
-        totalAmount: itemsSubtotal + (parseFloat(prev.shipping) || 0) + (parseFloat(prev.tax) || 0) - (parseFloat(prev.discount) || 0)
+        subtotal: validatedData.subtotal,
+        totalAmount: validatedData.totalAmount
       }));
+      
       // Pre-populate supplier creation form if supplier data is extracted but not matched
       if (proformaInvoice.supplier && !proformaInvoice.supplierId) {
         const supplierInfo = proformaInvoice.supplier;
@@ -311,23 +405,21 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     }
   }, [proformaInvoice]);
 
-  // ADD THIS ENTIRE useEffect HERE
+  // ✅ ENHANCED useEffect for Real-time Total Calculation with Validation
   useEffect(() => {
-    const itemsTotal = (selectedProducts || []).reduce((sum, item) => {
-      return sum + (parseFloat(item.totalPrice) || 0);
-    }, 0);
-    
-    const subtotal = formData.subtotal || itemsTotal;
-    const discount = formData.discount || 0;
-    const shipping = formData.shipping || 0; // NEW: Include shipping in calculation
-    const tax = formData.tax || 0;
-    
-    // Updated calculation: subtotal - discount + shipping + tax
-    const total = subtotal - discount + shipping + tax;
-    
-   // setTotalAmount(total);
-    setFormData(prev => ({ ...prev, totalAmount: total }));
-   }, [selectedProducts, formData.subtotal, formData.discount, formData.shipping, formData.tax]);
+    if (selectedProducts && selectedProducts.length > 0) {
+      const validatedData = validatePITotals(formData, selectedProducts, false);
+      
+      // Only update if there's a meaningful change
+      if (Math.abs(validatedData.totalAmount - (formData.totalAmount || 0)) > 0.01) {
+        setFormData(prev => ({
+          ...prev,
+          subtotal: validatedData.subtotal,
+          totalAmount: validatedData.totalAmount
+        }));
+      }
+    }
+  }, [selectedProducts, formData.discount, formData.shipping, formData.tax]);
 
   const generatePINumber = () => {
     const date = new Date();
@@ -623,15 +715,15 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   const handleAddProduct = (product) => {
     const existingIndex = selectedProducts.findIndex(p => p.productId === product.id);
     
+    let newProducts;
     if (existingIndex >= 0) {
       // Update quantity if product already exists
-      const updated = [...selectedProducts];
-      updated[existingIndex].quantity += 1;
-      updated[existingIndex].totalPrice = updated[existingIndex].quantity * updated[existingIndex].unitPrice;
-      setSelectedProducts(updated);
+      newProducts = [...selectedProducts];
+      newProducts[existingIndex].quantity += 1;
+      newProducts[existingIndex].totalPrice = newProducts[existingIndex].quantity * newProducts[existingIndex].unitPrice;
     } else {
       // Add new product
-      setSelectedProducts([
+      newProducts = [
         ...selectedProducts,
         {
           id: `item-${Date.now()}-${selectedProducts.length}`,
@@ -647,28 +739,43 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
           receivingNotes: '',
           allocations: []
         }
-      ]);
+      ];
     }
+    
+    // ✅ Apply price fixing to ensure consistency
+    const fixedProducts = fixPIItemPrices(newProducts, false);
+    setSelectedProducts(fixedProducts);
     
     setSearchProduct('');
     setShowProductSearch(false);
   };
 
   const handleUpdateItem = (index, field, value) => {
-    const updated = [...selectedProducts];
-    updated[index][field] = value;
-    
-    // Recalculate total if quantity or price changed
-    if (field === 'quantity' || field === 'unitPrice') {
-      updated[index].totalPrice = (parseFloat(updated[index].quantity) || 0) * (parseFloat(updated[index].unitPrice) || 0);
-    }
-    
-    // Check if item is fully received
-    if (field === 'receivedQty') {
-      updated[index].isReceived = value >= updated[index].quantity;
-    }
-    
-    setSelectedProducts(updated);
+    setSelectedProducts(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        [field]: value
+      };
+      
+      // ✅ Apply price fixing immediately after any change
+      const fixedItems = fixPIItemPrices(updated, false); // Set debug=false for manual changes
+      
+      // Check if price was auto-corrected and notify user
+      const originalTotal = updated[index].totalPrice;
+      const fixedTotal = fixedItems[index].totalPrice;
+      
+      if (showNotification && Math.abs(originalTotal - fixedTotal) > 0.01) {
+        showNotification(`Price auto-corrected for ${fixedItems[index].productName}`, 'info');
+      }
+      
+      // Check if item is fully received (keep existing logic)
+      if (field === 'receivedQty') {
+        fixedItems[index].isReceived = value >= fixedItems[index].quantity;
+      }
+      
+      return fixedItems;
+    });
   };
 
   const handleToggleReceived = (index) => {
@@ -684,7 +791,9 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   };
 
   const handleRemoveItem = (index) => {
-    setSelectedProducts(selectedProducts.filter((_, i) => i !== index));
+    const newProducts = selectedProducts.filter((_, i) => i !== index);
+    const fixedProducts = fixPIItemPrices(newProducts, false);
+    setSelectedProducts(fixedProducts);
   };
 
   const filteredProducts = products.filter(product => {
@@ -1330,22 +1439,31 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     Items ({selectedProducts.length}) <span className="text-red-500">*</span>
   </label>
   <div className="flex items-center gap-2">
-    {/* ✅ ADD THIS BUTTON */}
+ {/* ✅ ENHANCED Fix Prices Button with Better Styling */}
     {selectedProducts.length > 0 && (
       <button
         type="button"
         onClick={handleFixAllPrices}
-        className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 flex items-center gap-1"
+        className="px-3 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 flex items-center gap-2 shadow-sm transition-all duration-200"
         title="Auto-fix all price calculations"
       >
         <Calculator size={14} />
-        Fix Prices
+        Fix All Prices
       </button>
     )}
     {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
   </div>
 </div>
-                
+                {/* ✅ ENHANCED Price Fix Status Indicator */}
+            {selectedProducts.length > 0 && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-blue-700">
+                  <Calculator size={16} />
+                  <span className="font-medium">Smart Price Correction:</span>
+                  <span>Automatically validates quantity × unit price = total price</span>
+                </div>
+              </div>
+            )}
                 {/* Product Search - Only show if supplier is selected and no extracted items */}
                 {formData.supplierId && selectedProducts.length === 0 && (
                   <div className="relative mb-4">
@@ -1435,7 +1553,13 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                               />
                             </td>
                             <td className="px-4 py-2 font-medium">
-                              {formData.currency} {item.totalPrice.toFixed(2)}
+                              <div className="flex items-center gap-2">
+                                <span>{formData.currency} {item.totalPrice.toFixed(2)}</span>
+                                {/* ✅ Visual indicator for auto-corrected prices */}
+                                {Math.abs(item.totalPrice - (item.quantity * item.unitPrice)) < 0.01 && (
+                                  <CheckCircle size={14} className="text-green-500" title="Price calculation verified" />
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-2">
                               <button
