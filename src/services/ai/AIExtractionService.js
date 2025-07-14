@@ -967,9 +967,9 @@ export class AIExtractionService {
   constructor() {
     this.processors = {
       client_purchase_order: ClientPOProcessor,
-      supplier_proforma: SupplierPIProcessor,
-      supplier_invoice: SupplierPIProcessor, // Using same processor for now
-      supplier_quotation: SupplierPIProcessor,
+      //supplier_proforma: SupplierPIProcessor,
+      //supplier_invoice: SupplierPIProcessor, // Using same processor for now
+      //supplier_quotation: SupplierPIProcessor,
       unknown: null
     };
     
