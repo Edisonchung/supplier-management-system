@@ -486,6 +486,33 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     }
   }, [proformaInvoice?.documentId, proformaInvoice?.hasStoredDocuments, formData.documentId]);
 
+  // ✅ ADD THIS NEW DEBUG useEffect RIGHT HERE (after the existing debug useEffects):
+  useEffect(() => {
+    console.log('🔍 RECEIVING TAB DEBUG:');
+    console.log('- activeTab:', activeTab);
+    console.log('- selectedProducts length:', selectedProducts?.length);
+    console.log('- totalOrdered:', totalOrdered);
+    console.log('- totalReceived:', totalReceived);
+    
+    if (selectedProducts?.length > 0) {
+      console.log('- First item receiving fields:', {
+        name: selectedProducts[0].productName,
+        quantity: selectedProducts[0].quantity,
+        receivedQty: selectedProducts[0].receivedQty,
+        isReceived: selectedProducts[0].isReceived,
+        hasReceivingFields: 'receivedQty' in selectedProducts[0]
+      });
+      
+      // Check if ALL items have receiving fields
+      const itemsWithReceivingFields = selectedProducts.filter(item => 
+        'receivedQty' in item && 'isReceived' in item
+      );
+      console.log(`- Items with receiving fields: ${itemsWithReceivingFields.length}/${selectedProducts.length}`);
+    } else {
+      console.log('- No selectedProducts found!');
+    }
+  }, [selectedProducts, activeTab, totalOrdered, totalReceived]);
+  
   const generatePINumber = () => {
     const date = new Date();
     const year = date.getFullYear();
