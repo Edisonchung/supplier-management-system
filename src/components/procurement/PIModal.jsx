@@ -2035,7 +2035,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
             <div className="space-y-4">
               {proformaInvoice?.id ? (
                 <DocumentViewer
-                  documentId={proformaInvoice.id}
+                  documentId={proformaInvoice?.documentId || formData.documentId}
                   documentType="pi"
                   documentNumber={proformaInvoice.piNumber || formData.piNumber}
                   allowDelete={true}
