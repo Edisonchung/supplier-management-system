@@ -327,7 +327,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
         receivingNotes: item.receivingNotes || ''
       }));
 
-     / ✅ Auto-fix price calculations with enhanced function
+     // ✅ Auto-fix price calculations with enhanced function
       itemsWithIds = fixPIItemPrices(itemsWithIds);
       
       setSelectedProducts(itemsWithIds);
