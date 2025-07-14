@@ -1941,6 +1941,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                     </div>
                   );
                 })}
+                </div>
+            </div>
               ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
             <div className="space-y-4">
