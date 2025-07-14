@@ -10,11 +10,14 @@ export class SupplierPIProcessor {
    */
   static async process(rawData, file) {
     console.log('Processing Supplier PI:', file.name);
+    console.log('🔍 Raw extracted data structure:', JSON.stringify(rawData, null, 2));
+
     
     // Handle nested data structure
     const extractedData = rawData.data || rawData;
     const pi = extractedData.proforma_invoice || extractedData;
-    
+   console.log('🎯 Processing PI data:', JSON.stringify(pi, null, 2));
+
     const processedData = {
       documentType: 'supplier_proforma',
       fileName: file.name,
@@ -38,7 +41,7 @@ export class SupplierPIProcessor {
       subtotal: parseAmount(pi.subtotal || pi.sub_total || 0),
       discount: parseAmount(pi.discount || 0),
       discountPercent: parseNumber(pi.discount_percent || 0),
-      shipping: parseAmount(pi.shipping || pi.freight || pi.delivery_charge || pi.shipping_cost || pi['shipping cost'] || pi['shipping_cost(usd)'] || 0),
+      shipping: this.extractShippingCost(pi),
       tax: parseAmount(pi.tax || pi.gst || pi.vat || 0),
       taxPercent: parseNumber(pi.tax_percent || pi.gst_percent || 0),
       grandTotal: parseAmount(pi.grand_total || pi.total || pi.total_amount || 0),
