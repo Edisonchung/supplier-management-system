@@ -1089,22 +1089,116 @@ export class AIExtractionService {
   }
 
   /**
-   * Process PI with document storage
-   * @param {File} file - Uploaded PI file
-   * @returns {Promise<Object>} - PI extraction with storage
-   */
-  async extractPIWithStorage(file) {
-    console.log(`📄 Extracting PI with storage: ${file.name}`);
+ * Process PI with document storage - COMPLETELY FIXED VERSION
+ * @param {File} file - Uploaded PI file
+ * @returns {Promise<Object>} - PI extraction with storage
+ */
+async extractPIWithStorage(file) {
+  console.log(`📄 FIXED: Extracting PI with storage: ${file.name}`);
+  
+  try {
+    // Step 1: Extract data using existing method
+    console.log('🔍 FIXED: Calling extractFromFile...');
+    const extractionResult = await this.extractFromFile(file);
     
-    const result = await this.extractWithDocumentStorage(file, 'pi');
-    
-    if (result.success) {
-      // Enhance PI-specific processing
-      result.data = this.enhancePIData(result.data);
+    if (!extractionResult.success) {
+      throw new Error(`AI extraction failed: ${extractionResult.error}`);
     }
+
+    console.log('✅ FIXED: AI extraction successful');
+
+    // Step 2: Generate document metadata
+    const extractedData = extractionResult.data;
+    const documentId = this.generateDocumentId();
+    const documentNumber = this.extractDocumentNumber(extractedData, 'pi');
     
+    console.log(`📋 FIXED: Generated document metadata:`, {
+      documentId,
+      documentNumber,
+      documentType: 'pi'
+    });
+    // Step 3: Store documents in Firebase Storage
+    console.log(`💾 FIXED: Storing documents in Firebase...`);
+    
+    // Import DocumentStorageService dynamically to avoid circular imports
+    const { default: DocumentStorageService } = await import('../DocumentStorageService.js');
+    
+    const storageResult = await DocumentStorageService.storeDocumentWithExtraction(
+      file,
+      extractedData,
+      'pi',
+      documentNumber,
+      documentId
+    );
+
+    console.log(`📁 FIXED: Storage operation completed:`, {
+      success: storageResult.success,
+      error: storageResult.error,
+      filesStored: storageResult.success ? 2 : 0
+    });
+
+    // Step 4: Enhance PI data with storage information
+    const enhancedData = {
+      ...extractedData,
+      // ✅ CRITICAL: Add document storage identifiers
+      documentId: documentId,
+      documentNumber: documentNumber,
+      documentType: 'pi',
+      
+      // ✅ CRITICAL: Add storage metadata
+      storageInfo: storageResult.success ? storageResult.data : null,
+      hasStoredDocuments: storageResult.success,
+      
+      // Add file metadata
+      originalFileName: file.name,
+      fileSize: file.size,
+      contentType: file.type,
+      
+      // Add timestamps
+      extractedAt: new Date().toISOString(),
+      storedAt: storageResult.success ? new Date().toISOString() : null
+    };
+
+    // Step 5: Return complete result
+    const result = {
+      success: true,
+      data: enhancedData,
+      confidence: extractionResult.confidence,
+      documentStorage: storageResult.success ? storageResult.data : null,
+      metadata: {
+        documentId,
+        documentNumber,
+        documentType: 'pi',
+        originalFileName: file.name,
+        extractionSuccess: true,
+        storageSuccess: storageResult.success
+      }
+    };
+
+    console.log(`✅ FIXED: Complete extraction result:`, {
+      success: result.success,
+      documentId: result.data.documentId,
+      hasStorageInfo: !!result.data.storageInfo,
+      documentsStored: result.data.hasStoredDocuments
+    });
+
     return result;
+
+  } catch (error) {
+    console.error('❌ FIXED: Enhanced extraction failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      data: null,
+      documentStorage: null,
+      metadata: {
+        originalFileName: file.name,
+        extractionSuccess: false,
+        storageSuccess: false
+      }
+    };
   }
+}
 
   /**
    * Main extraction method with ENHANCED document type detection
