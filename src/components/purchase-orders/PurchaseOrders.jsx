@@ -86,7 +86,7 @@ const PurchaseOrders = () => {
     }
   };
 
-  // Handle file upload with proper data mapping
+  // ✅ FIXED: Handle file upload with document storage
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -97,36 +97,46 @@ const PurchaseOrders = () => {
       return;
     }
 
-    console.log('Processing file:', file.name);
+    console.log('🔄 Processing PO file with document storage:', file.name);
     setExtracting(true);
     setUploadError(null);
 
     try {
+      // ✅ USE STORAGE-ENABLED EXTRACTION INSTEAD OF BASIC EXTRACTION
+      console.log('🎯 Calling extractPOWithStorage...');
       const result = await AIExtractionService.extractPOWithStorage(file);
-      console.log('Extraction result:', result);
+      console.log('🎯 PO extraction with storage result:', result);
 
       if (result.success && result.data) {
-        console.log('Extracted data structure:', result.data);
-        console.log('Document type:', result.data.documentType);
+        console.log('📄 PO data structure:', result.data);
+        console.log('🗂️ Document storage info:', result.data.storageInfo);
+        console.log('📁 Document ID:', result.data.documentId);
         
-        // Create POModal-compatible structure based on document type
+        // Create POModal-compatible structure
         let modalData;
         
         if (result.data.documentType === 'client_purchase_order') {
           modalData = {
-            // Map extracted fields to what POModal expects
+            // ✅ ADD DOCUMENT STORAGE FIELDS
+            documentId: result.data.documentId,
+            documentNumber: result.data.documentNumber,
+            documentType: 'po',
+            hasStoredDocuments: result.data.hasStoredDocuments || false,
+            storageInfo: result.data.storageInfo,
+            originalFileName: result.data.originalFileName,
+            
             // Generate new internal PO number
-    poNumber: generatePONumber(),
-    
-    // Use client's original PO number
-    clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
-    projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
+            poNumber: generatePONumber(),
+            
+            // Use client's original PO number
+            clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
+            projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
 
-    // Extract client information
-    clientName: result.data.clientName || result.data.client?.name || '',
-    clientContact: result.data.clientContact || result.data.client?.contact || '',
-    clientEmail: result.data.clientEmail || result.data.client?.email || '',
-    clientPhone: result.data.clientPhone || result.data.client?.phone || '',
+            // Extract client information
+            clientName: result.data.clientName || result.data.client?.name || '',
+            clientContact: result.data.clientContact || result.data.client?.contact || '',
+            clientEmail: result.data.clientEmail || result.data.client?.email || '',
+            clientPhone: result.data.clientPhone || result.data.client?.phone || '',
             
             // Handle dates
             orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
@@ -167,23 +177,27 @@ const PurchaseOrders = () => {
             }
           };
           
-          console.log('Modal data prepared for client PO:', modalData);
+          console.log('✅ Modal data prepared with document storage:', {
+            documentId: modalData.documentId,
+            hasStoredDocuments: modalData.hasStoredDocuments,
+            storageInfo: modalData.storageInfo
+          });
           
           // Set the modal data and open it
           setCurrentPO(modalData);
           setModalOpen(true);
           
-          // Show success message with sourcing plan summary
+          // Show success message with document storage confirmation
           if (result.data.sourcingPlan && result.data.matchingMetrics) {
             const metrics = result.data.matchingMetrics;
             toast.success(
               `Successfully extracted PO: ${modalData.poNumber}\n` +
-              `Found ${metrics.supplierDiversity} suppliers! ` +
+              `📁 Documents stored! Found ${metrics.supplierDiversity} suppliers! ` +
               `Potential savings: $${metrics.potentialSavings?.toFixed(2) || '0.00'}`,
               { duration: 5000 }
             );
           } else {
-            toast.success(`Successfully extracted PO: ${modalData.poNumber}`);
+            toast.success(`✅ Successfully extracted PO: ${modalData.poNumber} - Documents stored in Firebase!`);
           }
           
         } else if (result.data.documentType === 'supplier_proforma') {
@@ -200,7 +214,7 @@ const PurchaseOrders = () => {
         throw new Error(result.error || 'Extraction failed');
       }
     } catch (error) {
-      console.error('Extraction failed:', error);
+      console.error('❌ PO extraction with storage failed:', error);
       setUploadError(error.message);
       toast.error('Failed to extract PO: ' + error.message);
     } finally {
@@ -232,83 +246,91 @@ const PurchaseOrders = () => {
     setModalOpen(true);
   };
 
-  // Handle PO save
+  // ✅ ENHANCED: Handle PO save with document field preservation
   const handleSavePO = async (poData) => {
-  try {
-    await withLoading(async () => {
-      if (poData.id) {
-        await purchaseOrderService.update(poData.id, poData);
-        showSuccess(
-          'Purchase Order Updated',
-          `PO ${poData.poNumber} has been updated successfully.`
-        );
-      } else {
-        await purchaseOrderService.create(poData);
-        showSuccess(
-          'Purchase Order Created', 
-          `PO ${poData.poNumber} has been created successfully.`
-        );
-      }
+    try {
+      await withLoading(async () => {
+        // ✅ ENSURE DOCUMENT FIELDS ARE PRESERVED
+        console.log('💾 Saving PO with document fields:', {
+          documentId: poData.documentId,
+          hasStoredDocuments: poData.hasStoredDocuments,
+          originalFileName: poData.originalFileName
+        });
+        
+        if (poData.id) {
+          await purchaseOrderService.update(poData.id, poData);
+          showSuccess(
+            'Purchase Order Updated',
+            `PO ${poData.poNumber} has been updated successfully.`
+          );
+        } else {
+          await purchaseOrderService.create(poData);
+          showSuccess(
+            'Purchase Order Created', 
+            `PO ${poData.poNumber} has been created successfully with document storage.`
+          );
+        }
+        
+        setLastSyncTime(new Date());
+        loadPurchaseOrders();
+      }, {
+        title: poData.id ? 'Updating Purchase Order...' : 'Creating Purchase Order...',
+        message: 'Please wait while we save your changes.'
+      });
       
-      setLastSyncTime(new Date());
-      loadPurchaseOrders();
-    }, {
-      title: poData.id ? 'Updating Purchase Order...' : 'Creating Purchase Order...',
-      message: 'Please wait while we save your changes.'
-    });
+      setModalOpen(false);
+    } catch (error) {
+      console.error('Error saving PO:', error);
+      showError(
+        'Save Failed',
+        'Unable to save purchase order. Please check your connection and try again.',
+        {
+          actions: [
+            {
+              label: 'Retry',
+              onClick: () => handleSavePO(poData)
+            }
+          ]
+        }
+      );
+    }
+  };
+
+  // Handle PO deletion
+  const handleDeletePO = async (poId) => {
+    const po = purchaseOrders.find(p => p.id === poId);
     
-    setModalOpen(false);
-  } catch (error) {
-    console.error('Error saving PO:', error);
-    showError(
-      'Save Failed',
-      'Unable to save purchase order. Please check your connection and try again.',
+    showWarning(
+      'Delete Purchase Order',
+      `Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`,
       {
+        persistent: true,
         actions: [
           {
-            label: 'Retry',
-            onClick: () => handleSavePO(poData)
+            label: 'Delete',
+            onClick: async () => {
+              try {
+                await withLoading(async () => {
+                  await purchaseOrderService.delete(poId);
+                  loadPurchaseOrders();
+                  showSuccess('Deleted', `PO ${po?.poNumber || po?.orderNumber} has been deleted.`);
+                }, {
+                  title: 'Deleting Purchase Order...'
+                });
+              } catch (error) {
+                console.error('Error deleting PO:', error);
+                showError('Delete Failed', 'Unable to delete purchase order.');
+              }
+            }
+          },
+          {
+            label: 'Cancel',
+            onClick: () => {} // Will auto-close notification
           }
         ]
       }
     );
-  }
-};
-  // Handle PO deletion
-  const handleDeletePO = async (poId) => {
-  const po = purchaseOrders.find(p => p.id === poId);
-  
-  showWarning(
-    'Delete Purchase Order',
-    `Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`,
-    {
-      persistent: true,
-      actions: [
-        {
-          label: 'Delete',
-          onClick: async () => {
-            try {
-              await withLoading(async () => {
-                await purchaseOrderService.delete(poId);
-                loadPurchaseOrders();
-                showSuccess('Deleted', `PO ${po?.poNumber || po?.orderNumber} has been deleted.`);
-              }, {
-                title: 'Deleting Purchase Order...'
-              });
-            } catch (error) {
-              console.error('Error deleting PO:', error);
-              showError('Delete Failed', 'Unable to delete purchase order.');
-            }
-          }
-        },
-        {
-          label: 'Cancel',
-          onClick: () => {} // Will auto-close notification
-        }
-      ]
-    }
-  );
-};
+  };
 
   // Navigate to supplier matching page
   const handleViewSupplierMatching = (po) => {
@@ -364,19 +386,19 @@ const PurchaseOrders = () => {
   }, [modalOpen, currentPO]);
 
   if (loading) {
-  return (
-    <div className="space-y-6">
-      <div className="bg-white shadow-sm border-b">
-        <div className="px-6 py-4">
-          <SkeletonLoader type="form" />
+    return (
+      <div className="space-y-6">
+        <div className="bg-white shadow-sm border-b">
+          <div className="px-6 py-4">
+            <SkeletonLoader type="form" />
+          </div>
+        </div>
+        <div className="bg-white shadow overflow-hidden sm:rounded-md">
+          <SkeletonLoader type="table-row" count={5} />
         </div>
       </div>
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        <SkeletonLoader type="table-row" count={5} />
-      </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -388,7 +410,7 @@ const PurchaseOrders = () => {
               <h1 className="text-2xl font-semibold text-gray-900">Purchase Orders</h1>
               <div className="mt-1 flex items-center space-x-4">
                 <p className="text-sm text-gray-500">
-                  Manage your purchase orders and track their status
+                  Manage your purchase orders with AI extraction and document storage
                 </p>
                 <RealtimeStatusIndicator 
                   status={syncStatus} 
@@ -406,7 +428,7 @@ const PurchaseOrders = () => {
                 {extracting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
+                    Processing & Storing...
                   </>
                 ) : (
                   <>
@@ -620,7 +642,15 @@ const PurchaseOrders = () => {
                   <tr key={po.id} className="hover:bg-gray-50">
                     {/* PO NUMBER */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {po.orderNumber || po.poNumber}
+                      <div className="flex items-center gap-2">
+                        {po.orderNumber || po.poNumber}
+                        {/* ✅ NEW: Show document storage indicator */}
+                        {po.hasStoredDocuments && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800" title="Documents stored in Firebase">
+                            📁
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* PROJECT CODE */}
@@ -726,4 +756,5 @@ const PurchaseOrders = () => {
     </div>
   );
 };
+
 export default PurchaseOrders;
