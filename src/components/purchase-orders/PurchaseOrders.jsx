@@ -141,102 +141,118 @@ const handleFileUpload = async (event) => {
       // Create POModal-compatible structure
       let modalData;
       
-      if (result.data.documentType === 'client_purchase_order') {
-        modalData = {
-          // ✅ ADD DOCUMENT STORAGE FIELDS
-          documentId: result.data.documentId,
-          documentNumber: result.data.documentNumber,
-          documentType: 'po',
-          hasStoredDocuments: result.data.hasStoredDocuments || false,
-          storageInfo: result.data.storageInfo,
-          originalFileName: result.data.originalFileName,
-          
-          // Generate new internal PO number
-          poNumber: generatePONumber(),
-          
-          // Use client's original PO number
-          clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
-          projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
+      // ✅ FIXED: Check for BOTH 'client_purchase_order' AND 'po' document types
+if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
+  modalData = {
+    // ✅ ADD DOCUMENT STORAGE FIELDS
+    documentId: result.data.documentId,
+    documentNumber: result.data.documentNumber,
+    documentType: 'po',
+    hasStoredDocuments: result.data.hasStoredDocuments || false,
+    storageInfo: result.data.storageInfo,
+    originalFileName: result.data.originalFileName,
+    
+    // Generate new internal PO number
+    poNumber: generatePONumber(),
+    
+    // Use client's original PO number
+    clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
+    projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
 
-          // Extract client information
-          clientName: result.data.clientName || result.data.client?.name || '',
-          clientContact: result.data.clientContact || result.data.client?.contact || '',
-          clientEmail: result.data.clientEmail || result.data.client?.email || '',
-          clientPhone: result.data.clientPhone || result.data.client?.phone || '',
-          
-          // Handle dates
-          orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-          requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
-          
-          // Terms
-          paymentTerms: result.data.paymentTerms || 'Net 30',
-          deliveryTerms: result.data.deliveryTerms || 'FOB',
-          
-          // Status and notes
-          status: 'draft',
-          notes: result.data.notes || '',
-          
-          // Items array - ensure it matches POModal's expected structure
-          items: (result.data.items || []).map(item => ({
-            productName: item.productName || item.description || '',
-            productCode: item.productCode || item.partNumber || '',
-            quantity: item.quantity || 0,
-            unitPrice: item.unitPrice || 0,
-            totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-            id: Date.now().toString() + Math.random()
-          })),
-          
-          // Additional extracted data
-          extractedData: result.data,
-          prNumbers: result.data.prNumbers || [],
-          
-          // Sourcing plan if available
-          sourcingPlan: result.data.sourcingPlan,
-          matchingMetrics: result.data.matchingMetrics,
-          
-          // Client details
-          clientDetails: {
-            name: result.data.client?.name || '',
-            registration: result.data.client?.registration || '',
-            address: result.data.client?.address || '',
-            shipTo: result.data.client?.shipTo || ''
-          }
-        };
-        
-        console.log('✅ Modal data prepared with document storage:', {
-          documentId: modalData.documentId,
-          hasStoredDocuments: modalData.hasStoredDocuments,
-          storageInfo: modalData.storageInfo
-        });
-        
-        // Set the modal data and open it
-        setCurrentPO(modalData);
-        setModalOpen(true);
-        
-        // Show success message with document storage confirmation
-        if (result.data.sourcingPlan && result.data.matchingMetrics) {
-          const metrics = result.data.matchingMetrics;
-          toast.success(
-            `Successfully extracted PO: ${modalData.poNumber}\n` +
-            `📁 Documents stored! Found ${metrics.supplierDiversity} suppliers! ` +
-            `Potential savings: $${metrics.potentialSavings?.toFixed(2) || '0.00'}`,
-            { duration: 5000 }
-          );
-        } else {
-          toast.success(`✅ Successfully extracted PO: ${modalData.poNumber} - Documents stored in Firebase!`);
-        }
-        
-      } else if (result.data.documentType === 'supplier_proforma') {
-        // Handle supplier PI differently
-        toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
-        console.log('Supplier PI data:', result.data);
-        
-      } else {
-        // ✅ FIXED: Replace any potential S.warning calls with safe notifications
-        console.warn('Unknown document type. Please check the extraction results.');
-        toast.warning('Unknown document type. Please check the extraction results.');
-        console.log('Unknown document data:', result.data);
-      }
+    // Extract client information
+    clientName: result.data.clientName || result.data.client?.name || '',
+    clientContact: result.data.clientContact || result.data.client?.contact || '',
+    clientEmail: result.data.clientEmail || result.data.client?.email || '',
+    clientPhone: result.data.clientPhone || result.data.client?.phone || '',
+    
+    // Handle dates
+    orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
+    requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
+    
+    // Terms
+    paymentTerms: result.data.paymentTerms || 'Net 30',
+    deliveryTerms: result.data.deliveryTerms || 'FOB',
+    
+    // Status and notes
+    status: 'draft',
+    notes: result.data.notes || '',
+    
+    // Items array - ensure it matches POModal's expected structure
+    items: (result.data.items || []).map(item => ({
+      productName: item.productName || item.description || '',
+      productCode: item.productCode || item.partNumber || '',
+      quantity: item.quantity || 0,
+      unitPrice: item.unitPrice || 0,
+      totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+      id: Date.now().toString() + Math.random()
+    })),
+    
+    // Additional extracted data
+    extractedData: result.data,
+    prNumbers: result.data.prNumbers || [],
+    
+    // Sourcing plan if available
+    sourcingPlan: result.data.sourcingPlan,
+    matchingMetrics: result.data.matchingMetrics,
+    
+    // Client details
+    clientDetails: {
+      name: result.data.client?.name || '',
+      registration: result.data.client?.registration || '',
+      address: result.data.client?.address || '',
+      shipTo: result.data.client?.shipTo || ''
+    }
+  };
+  
+  console.log('✅ Modal data prepared with document storage:', {
+    documentId: modalData.documentId,
+    hasStoredDocuments: modalData.hasStoredDocuments,
+    storageInfo: modalData.storageInfo
+  });
+  
+  // Set the modal data and open it
+  setCurrentPO(modalData);
+  setModalOpen(true);
+  
+  // Show success message with document storage confirmation
+  if (result.data.sourcingPlan && result.data.matchingMetrics) {
+    const metrics = result.data.matchingMetrics;
+    toast.success(
+      `Successfully extracted PO: ${modalData.poNumber}\n` +
+      `📁 Documents stored! Found ${metrics.supplierDiversity} suppliers! ` +
+      `Potential savings: $${metrics.potentialSavings?.toFixed(2) || '0.00'}`,
+      { duration: 5000 }
+    );
+  } else {
+    toast.success(`✅ Successfully extracted PO: ${modalData.poNumber} - Documents stored in Firebase!`);
+  }
+  
+} else if (result.data.documentType === 'supplier_proforma') {
+  // Handle supplier PI differently
+  toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
+  console.log('Supplier PI data:', result.data);
+  
+} else {
+  // ✅ FIXED: Remove the C.warning call and use safe notifications
+  console.warn('Unknown document type:', result.data.documentType);
+  toast.warning(`Unknown document type: ${result.data.documentType}. Please check the extraction results.`);
+  console.log('Unknown document data:', result.data);
+  
+  // ✅ OPTIONAL: Still try to process unknown types
+  modalData = {
+    poNumber: generatePONumber(),
+    clientPoNumber: '',
+    clientName: `Unknown Type: ${result.data.documentType}`,
+    status: 'draft',
+    notes: `Unknown document type detected: ${result.data.documentType}. Please review extracted data.`,
+    items: result.data.items || [],
+    extractedData: result.data,
+    requiresReview: true
+  };
+  
+  setCurrentPO(modalData);
+  setModalOpen(true);
+}
       
     } else {
       throw new Error(result.error || 'Extraction failed');
