@@ -38,7 +38,7 @@ export class SupplierPIProcessor {
       subtotal: parseAmount(pi.subtotal || pi.sub_total || 0),
       discount: parseAmount(pi.discount || 0),
       discountPercent: parseNumber(pi.discount_percent || 0),
-      shipping: parseAmount(pi.shipping || pi.freight || pi.delivery_charge || 0),
+      shipping: parseAmount(pi.shipping || pi.freight || pi.delivery_charge || pi.shipping_cost || 0),
       tax: parseAmount(pi.tax || pi.gst || pi.vat || 0),
       taxPercent: parseNumber(pi.tax_percent || pi.gst_percent || 0),
       grandTotal: parseAmount(pi.grand_total || pi.total || pi.total_amount || 0),
