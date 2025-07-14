@@ -318,7 +318,7 @@ const ProformaInvoices = ({ showNotification }) => {
       // Show extraction progress with file info
       showNotification(`Analyzing ${file.name}...`, 'info');
       
-      const result = await AIExtractionService.extractFromFile(file);
+      const result = await AIExtractionService.extractPIWithStorage(file);
       console.log('Extraction result:', result);
       
       if (result.success && result.data) {
