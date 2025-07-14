@@ -322,8 +322,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     const total = subtotal - discount + shipping + tax;
     
    // setTotalAmount(total);
-   // setFormData(prev => ({ ...prev, totalAmount: total }));
-  // }, [selectedProducts, formData.subtotal, formData.discount, formData.shipping, formData.tax]);
+    setFormData(prev => ({ ...prev, totalAmount: total }));
+   }, [selectedProducts, formData.subtotal, formData.discount, formData.shipping, formData.tax]);
 
   const generatePINumber = () => {
     const date = new Date();
