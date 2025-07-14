@@ -1941,9 +1941,29 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                     </div>
                   );
                 })}
-              </div>
+              ) : activeTab === 'documents' ? (
+            // Documents Tab - NEW ADDITION
+            <div className="space-y-4">
+              {proformaInvoice?.id ? (
+                <DocumentViewer
+                  documentId={proformaInvoice.id}
+                  documentType="pi"
+                  documentNumber={proformaInvoice.piNumber || formData.piNumber}
+                  allowDelete={true}
+                  onDocumentDeleted={(doc) => {
+                    console.log('Document deleted:', doc);
+                    showNotification?.('Document deleted successfully', 'success');
+                  }}
+                />
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                  <p className="font-medium mb-1">Documents will be available after saving this PI</p>
+                  <p className="text-xs">Upload and AI extraction files will be stored here automatically</p>
+                </div>
+              )}
             </div>
-          )}
+          ) : null}
         </form>
 
         <div className="p-6 border-t flex justify-end gap-3">
