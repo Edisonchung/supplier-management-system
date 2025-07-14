@@ -973,8 +973,12 @@ export class AIExtractionService {
       //supplier_quotation: SupplierPIProcessor,
       unknown: null
     };
+    
+    // Initialize cache
+    CacheService.initialize();
+  } // ✅ Constructor ends here
 
-    /**
+  /**
    * Enhanced extraction with document storage
    * @param {File} file - Uploaded file
    * @param {string} documentType - 'po' or 'pi' 
@@ -1065,6 +1069,14 @@ export class AIExtractionService {
       };
     }
   }
+
+  // ✅ Continue with your other existing methods here...
+  async extractFromFile(file) {
+    // ... your existing extractFromFile method
+  }
+
+  // ... rest of your existing methods
+}
 
   /**
    * Process PO with document storage
