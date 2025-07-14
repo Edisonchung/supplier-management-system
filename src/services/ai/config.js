@@ -36,7 +36,7 @@ export const FIELD_MAPPINGS = {
   subtotal: ['subtotal', 'sub_total', 'net_amount', 'amount_before_tax'],
   tax: ['tax', 'gst', 'vat', 'tax_amount', 'total_tax'],
   discount: ['discount', 'discount_amount', 'less_discount'],
-  shipping: ['shipping', 'freight', 'delivery_charge', 'shipping_cost'],
+  shipping: ['shipping', 'freight', 'delivery_charge', 'shipping_cost', 'postage', 'courier', 'transport'],
   totalAmount: ['total_amount', 'grand_total', 'total', 'invoice_total', 'amount_due'],
   
   // Terms
