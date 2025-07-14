@@ -88,292 +88,208 @@ const PurchaseOrders = () => {
   };
 
   // ✅ FIXED: Handle file upload with document storage
-  // REPLACE LINES 75-200 in your PurchaseOrders.jsx file
-// Find this exact section and replace it completely:
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
 
-// ✅ FIND THIS LINE (around line 75):
-// const handleFileUpload = async (event) => {
+    // Prevent double processing
+    if (extracting) {
+      console.log('Already processing a file, ignoring...');
+      return;
+    }
 
-// ✅ REPLACE EVERYTHING FROM THAT LINE UNTIL THE CLOSING }; 
-// (around line 200) WITH THIS ENHANCED VERSION:
+    console.log('🔄 Processing PO file with document storage:', file.name);
+    setExtracting(true);
+    setUploadError(null);
 
-const handleFileUpload = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  // Prevent double processing
-  if (extracting) {
-    console.log('Already processing a file, ignoring...');
-    return;
-  }
-
-  console.log('🔄 Processing PO file with document storage:', file.name);
-  setExtracting(true);
-  setUploadError(null);
-
-  try {
-    // ✅ ENHANCED: Better error handling wrapper
-    console.log('🎯 Calling extractPOWithStorage...');
-    
-    let result;
     try {
-      result = await AIExtractionService.extractPOWithStorage(file);
-    } catch (extractionError) {
-      // ✅ CATCH: Handle extraction service errors specifically
-      console.error('❌ AI Extraction Service Error:', extractionError);
+      // ✅ ENHANCED: Better error handling wrapper
+      console.log('🎯 Calling extractPOWithStorage...');
       
-      // ✅ DETECT: Check for the S.warning error specifically
-      if (extractionError.message?.includes('S.warning is not a function')) {
-        console.error('🚨 CRITICAL: S.warning function not found in AIExtractionService');
-        throw new Error('Internal processing error detected. The AI extraction service needs to be updated.');
+      let result;
+      try {
+        result = await AIExtractionService.extractPOWithStorage(file);
+      } catch (extractionError) {
+        // ✅ CATCH: Handle extraction service errors specifically
+        console.error('❌ AI Extraction Service Error:', extractionError);
+        
+        // ✅ DETECT: Check for the S.warning error specifically
+        if (extractionError.message?.includes('S.warning is not a function')) {
+          console.error('🚨 CRITICAL: S.warning function not found in AIExtractionService');
+          throw new Error('Internal processing error detected. The AI extraction service needs to be updated.');
+        }
+        
+        throw new Error(`AI extraction failed: ${extractionError.message}`);
       }
       
-      throw new Error(`AI extraction failed: ${extractionError.message}`);
-    }
-    
-    console.log('🎯 PO extraction with storage result:', result);
+      console.log('🎯 PO extraction with storage result:', result);
 
-    if (result.success && result.data) {
-      console.log('📄 PO data structure:', result.data);
-      console.log('🗂️ Document storage info:', result.data.storageInfo);
-      console.log('📁 Document ID:', result.data.documentId);
+      if (result.success && result.data) {
+        console.log('📄 PO data structure:', result.data);
+        console.log('🗂️ Document storage info:', result.data.storageInfo);
+        console.log('📁 Document ID:', result.data.documentId);
+        
+        // Create POModal-compatible structure
+        let modalData;
+        
+        // ✅ FIXED: Check for BOTH 'client_purchase_order' AND 'po' document types
+        if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
+          modalData = {
+            // ✅ FIXED LINES - Get document storage fields from correct location:
+            documentId: result.documentStorage?.documentId || 
+                        result.data.documentId || 
+                        result.data.extractionMetadata?.documentId || 
+                        null,
+                        
+            documentNumber: result.documentStorage?.documentNumber || 
+                            result.data.documentNumber || 
+                            result.data.extractionMetadata?.documentNumber || 
+                            result.data.clientPONumber || 
+                            null,
+                            
+            documentType: 'po',
+            
+            hasStoredDocuments: Boolean(
+              result.documentStorage?.success || 
+              result.documentStorage?.originalFile || 
+              result.data.hasStoredDocuments ||
+              result.data.storageInfo
+            ),
+            
+            storageInfo: result.documentStorage || 
+                         result.data.storageInfo || 
+                         null,
+                         
+            originalFileName: result.data.originalFileName || 
+                              result.data.extractionMetadata?.originalFileName || 
+                              file.name,
+            
+            // Generate new internal PO number
+            poNumber: generatePONumber(),
+            
+            // Use client's original PO number  
+            clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
+            projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
+
+            // Extract client information
+            clientName: result.data.clientName || result.data.client?.name || '',
+            clientContact: result.data.clientContact || result.data.client?.contact || '',
+            clientEmail: result.data.clientEmail || result.data.client?.email || '',
+            clientPhone: result.data.clientPhone || result.data.client?.phone || '',
+            
+            // Handle dates
+            orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
+            requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
+            
+            // Terms
+            paymentTerms: result.data.paymentTerms || 'Net 30',
+            deliveryTerms: result.data.deliveryTerms || 'FOB',
+            
+            // Status and notes
+            status: 'draft',
+            notes: result.data.notes || '',
+            
+            // Items array - ensure it matches POModal's expected structure
+            items: (result.data.items || []).map(item => ({
+              productName: item.productName || item.description || '',
+              productCode: item.productCode || item.partNumber || '',
+              quantity: item.quantity || 0,
+              unitPrice: item.unitPrice || 0,
+              totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+              id: Date.now().toString() + Math.random()
+            })),
+            
+            // Additional extracted data
+            extractedData: result.data,
+            prNumbers: result.data.prNumbers || [],
+            
+            // Sourcing plan if available
+            sourcingPlan: result.data.sourcingPlan,
+            matchingMetrics: result.data.matchingMetrics,
+            
+            // Client details
+            clientDetails: {
+              name: result.data.client?.name || '',
+              registration: result.data.client?.registration || '',
+              address: result.data.client?.address || '',
+              shipTo: result.data.client?.shipTo || ''
+            }
+          };
+          
+          console.log('✅ Modal data prepared with document storage:', {
+            documentId: modalData.documentId,
+            hasStoredDocuments: modalData.hasStoredDocuments,
+            storageInfo: modalData.storageInfo
+          });
+          
+          // Set the modal data and open it
+          setCurrentPO(modalData);
+          setModalOpen(true);
+          
+          // Show success message with document storage confirmation
+          if (result.data.sourcingPlan && result.data.matchingMetrics) {
+            const metrics = result.data.matchingMetrics;
+            toast.success(
+              `Successfully extracted PO: ${modalData.poNumber}\n` +
+              `📁 Documents stored! Found ${metrics.supplierDiversity} suppliers! ` +
+              `Potential savings: $${metrics.potentialSavings?.toFixed(2) || '0.00'}`,
+              { duration: 5000 }
+            );
+          } else {
+            toast.success(`✅ Successfully extracted PO: ${modalData.poNumber} - Documents stored in Firebase!`);
+          }
+          
+        } else if (result.data.documentType === 'supplier_proforma') {
+          // Handle supplier PI differently
+          toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
+          console.log('Supplier PI data:', result.data);
+          
+        } else {
+          // ✅ FIXED: Remove the C.warning call and use safe notifications
+          console.warn('Unknown document type:', result.data.documentType);
+          toast.warning(`Unknown document type: ${result.data.documentType}. Please check the extraction results.`);
+          console.log('Unknown document data:', result.data);
+          
+          // ✅ OPTIONAL: Still try to process unknown types
+          modalData = {
+            poNumber: generatePONumber(),
+            clientPoNumber: '',
+            clientName: `Unknown Type: ${result.data.documentType}`,
+            status: 'draft',
+            notes: `Unknown document type detected: ${result.data.documentType}. Please review extracted data.`,
+            items: result.data.items || [],
+            extractedData: result.data,
+            requiresReview: true
+          };
+          
+          setCurrentPO(modalData);
+          setModalOpen(true);
+        }
+        
+      } else {
+        throw new Error(result.error || 'Extraction failed');
+      }
+    } catch (error) {
+      console.error('❌ PO extraction with storage failed:', error);
       
-      // Create POModal-compatible structure
-      let modalData;
+      // ✅ ENHANCED: Better error messaging for S.warning issue
+      let userMessage = 'Failed to extract PO: ' + error.message;
       
-      // ✅ FIXED: Check for BOTH 'client_purchase_order' AND 'po' document types
-if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
-  modalData = {
-    // 🎯 EXACT LOCATION TO UPDATE in PurchaseOrders.jsx
-// Find this section in your handleFileUpload function (around line 140-160)
-
-// ❌ FIND THIS CURRENT CODE:
-if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
-  modalData = {
-    // ❌ THESE LINES ARE THE PROBLEM (around line 145-150):
-    documentId: result.data.documentId,
-    documentNumber: result.data.documentNumber,
-    documentType: 'po',
-    hasStoredDocuments: result.data.hasStoredDocuments || false,
-    storageInfo: result.data.storageInfo,
-    originalFileName: result.data.originalFileName,
-    
-    // ... rest of your existing modal data ...
-  };
-}
-
-// ✅ REPLACE ONLY THOSE 6 LINES WITH THESE:
-
-if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
-  modalData = {
-    // ✅ FIXED LINES - Replace the 6 lines above with these:
-    documentId: result.documentStorage?.documentId || 
-                result.data.documentId || 
-                result.data.extractionMetadata?.documentId || 
-                null,
-                
-    documentNumber: result.documentStorage?.documentNumber || 
-                    result.data.documentNumber || 
-                    result.data.extractionMetadata?.documentNumber || 
-                    result.data.clientPONumber || 
-                    null,
-                    
-    documentType: 'po',
-    
-    hasStoredDocuments: Boolean(
-      result.documentStorage?.success || 
-      result.documentStorage?.originalFile || 
-      result.data.hasStoredDocuments ||
-      result.data.storageInfo
-    ),
-    
-    storageInfo: result.documentStorage || 
-                 result.data.storageInfo || 
-                 null,
-                 
-    originalFileName: result.data.originalFileName || 
-                      result.data.extractionMetadata?.originalFileName || 
-                      file.name,
-    
-    // ✅ KEEP ALL YOUR EXISTING LINES BELOW THIS - DON'T CHANGE ANYTHING ELSE:
-    // Generate new internal PO number
-    poNumber: generatePONumber(),
-    
-    // Use client's original PO number  
-    clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
-    projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
-
-    // Extract client information
-    clientName: result.data.clientName || result.data.client?.name || '',
-    clientContact: result.data.clientContact || result.data.client?.contact || '',
-    clientEmail: result.data.clientEmail || result.data.client?.email || '',
-    clientPhone: result.data.clientPhone || result.data.client?.phone || '',
-    
-    // Handle dates
-    orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-    requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
-    
-    // Terms
-    paymentTerms: result.data.paymentTerms || 'Net 30',
-    deliveryTerms: result.data.deliveryTerms || 'FOB',
-    
-    // Status and notes
-    status: 'draft',
-    notes: result.data.notes || '',
-    
-    // Items array - ensure it matches POModal's expected structure
-    items: (result.data.items || []).map(item => ({
-      productName: item.productName || item.description || '',
-      productCode: item.productCode || item.partNumber || '',
-      quantity: item.quantity || 0,
-      unitPrice: item.unitPrice || 0,
-      totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-      id: Date.now().toString() + Math.random()
-    })),
-    
-    // Additional extracted data
-    extractedData: result.data,
-    prNumbers: result.data.prNumbers || [],
-    
-    // Sourcing plan if available
-    sourcingPlan: result.data.sourcingPlan,
-    matchingMetrics: result.data.matchingMetrics,
-    
-    // Client details
-    clientDetails: {
-      name: result.data.client?.name || '',
-      registration: result.data.client?.registration || '',
-      address: result.data.client?.address || '',
-      shipTo: result.data.client?.shipTo || ''
-    }
-  };
-    
-    // Generate new internal PO number
-    poNumber: generatePONumber(),
-    
-    // Use client's original PO number
-    clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
-    projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
-
-    // Extract client information
-    clientName: result.data.clientName || result.data.client?.name || '',
-    clientContact: result.data.clientContact || result.data.client?.contact || '',
-    clientEmail: result.data.clientEmail || result.data.client?.email || '',
-    clientPhone: result.data.clientPhone || result.data.client?.phone || '',
-    
-    // Handle dates
-    orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-    requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
-    
-    // Terms
-    paymentTerms: result.data.paymentTerms || 'Net 30',
-    deliveryTerms: result.data.deliveryTerms || 'FOB',
-    
-    // Status and notes
-    status: 'draft',
-    notes: result.data.notes || '',
-    
-    // Items array - ensure it matches POModal's expected structure
-    items: (result.data.items || []).map(item => ({
-      productName: item.productName || item.description || '',
-      productCode: item.productCode || item.partNumber || '',
-      quantity: item.quantity || 0,
-      unitPrice: item.unitPrice || 0,
-      totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-      id: Date.now().toString() + Math.random()
-    })),
-    
-    // Additional extracted data
-    extractedData: result.data,
-    prNumbers: result.data.prNumbers || [],
-    
-    // Sourcing plan if available
-    sourcingPlan: result.data.sourcingPlan,
-    matchingMetrics: result.data.matchingMetrics,
-    
-    // Client details
-    clientDetails: {
-      name: result.data.client?.name || '',
-      registration: result.data.client?.registration || '',
-      address: result.data.client?.address || '',
-      shipTo: result.data.client?.shipTo || ''
-    }
-  };
-  
-  console.log('✅ Modal data prepared with document storage:', {
-    documentId: modalData.documentId,
-    hasStoredDocuments: modalData.hasStoredDocuments,
-    storageInfo: modalData.storageInfo
-  });
-  
-  // Set the modal data and open it
-  setCurrentPO(modalData);
-  setModalOpen(true);
-  
-  // Show success message with document storage confirmation
-  if (result.data.sourcingPlan && result.data.matchingMetrics) {
-    const metrics = result.data.matchingMetrics;
-    toast.success(
-      `Successfully extracted PO: ${modalData.poNumber}\n` +
-      `📁 Documents stored! Found ${metrics.supplierDiversity} suppliers! ` +
-      `Potential savings: $${metrics.potentialSavings?.toFixed(2) || '0.00'}`,
-      { duration: 5000 }
-    );
-  } else {
-    toast.success(`✅ Successfully extracted PO: ${modalData.poNumber} - Documents stored in Firebase!`);
-  }
-  
-} else if (result.data.documentType === 'supplier_proforma') {
-  // Handle supplier PI differently
-  toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
-  console.log('Supplier PI data:', result.data);
-  
-} else {
-  // ✅ FIXED: Remove the C.warning call and use safe notifications
-  console.warn('Unknown document type:', result.data.documentType);
-  toast.warning(`Unknown document type: ${result.data.documentType}. Please check the extraction results.`);
-  console.log('Unknown document data:', result.data);
-  
-  // ✅ OPTIONAL: Still try to process unknown types
-  modalData = {
-    poNumber: generatePONumber(),
-    clientPoNumber: '',
-    clientName: `Unknown Type: ${result.data.documentType}`,
-    status: 'draft',
-    notes: `Unknown document type detected: ${result.data.documentType}. Please review extracted data.`,
-    items: result.data.items || [],
-    extractedData: result.data,
-    requiresReview: true
-  };
-  
-  setCurrentPO(modalData);
-  setModalOpen(true);
-}
+      if (error.message?.includes('S.warning is not a function')) {
+        userMessage = 'Internal system error detected. Please contact support - the AI extraction service needs an update.';
+        console.error('🚨 URGENT: S.warning function missing in AIExtractionService - needs immediate fix');
+      }
       
-    } else {
-      throw new Error(result.error || 'Extraction failed');
+      setUploadError(userMessage);
+      toast.error(userMessage);
+    } finally {
+      setExtracting(false);
+      // Reset file input
+      if (event.target) {
+        event.target.value = '';
+      }
     }
-  } catch (error) {
-    console.error('❌ PO extraction with storage failed:', error);
-    
-    // ✅ ENHANCED: Better error messaging for S.warning issue
-    let userMessage = 'Failed to extract PO: ' + error.message;
-    
-    if (error.message?.includes('S.warning is not a function')) {
-      userMessage = 'Internal system error detected. Please contact support - the AI extraction service needs an update.';
-      console.error('🚨 URGENT: S.warning function missing in AIExtractionService - needs immediate fix');
-    }
-    
-    setUploadError(userMessage);
-    toast.error(userMessage);
-  } finally {
-    setExtracting(false);
-    // Reset file input
-    if (event.target) {
-      event.target.value = '';
-    }
-  }
-};
+  };
 
   // Handle manual PO creation
   const handleCreatePO = () => {
