@@ -167,7 +167,23 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     // Additional extracted fields
     deliveryTerms: '',
     validity: ''
-  });
+
+    // ✅ ADD THESE NEW FIELDS HERE:
+  ,
+  // Document storage fields
+  documentId: '',
+  documentNumber: '',
+  documentType: 'pi',
+  hasStoredDocuments: false,
+  storageInfo: null,
+  originalFileName: '',
+  fileSize: 0,
+  contentType: '',
+  extractedAt: '',
+  storedAt: ''
+});
+
+
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
@@ -302,7 +318,30 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
         validity: proformaInvoice.validity || '',
         
         shareableId: proformaInvoice.shareableId || generateShareableId()
-      });
+
+        // ✅ ADD THESE NEW LINES HERE (BEFORE THE CLOSING BRACE):
+      ,
+      // Document storage fields - CRITICAL FIX
+      documentId: proformaInvoice.documentId || '',
+      documentNumber: proformaInvoice.documentNumber || '',
+      documentType: proformaInvoice.documentType || 'pi',
+      hasStoredDocuments: proformaInvoice.hasStoredDocuments || false,
+      storageInfo: proformaInvoice.storageInfo || null,
+      originalFileName: proformaInvoice.originalFileName || '',
+      fileSize: proformaInvoice.fileSize || 0,
+      contentType: proformaInvoice.contentType || '',
+      extractedAt: proformaInvoice.extractedAt || '',
+      storedAt: proformaInvoice.storedAt || ''
+    });
+    
+    // ✅ ADD THIS DEBUG LOG RIGHT AFTER setFormData:
+    console.log('🎯 PIModal: Document storage fields set:', {
+      documentId: proformaInvoice.documentId,
+      hasStoredDocuments: proformaInvoice.hasStoredDocuments,
+      originalFileName: proformaInvoice.originalFileName
+    });
+        
+   
       
       // Handle items/products array separately to ensure proper structure
       const items = proformaInvoice.items || proformaInvoice.products || [];
@@ -649,15 +688,39 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
       paymentStatus = 'partial';
     }
     
-    onSave({
-      ...formData,
-      items: selectedProducts,
-      totalAmount,
-      hasDiscrepancy,
-      totalPaid,
-      paymentStatus,
-      supplierName: selectedSupplier?.name || formData.supplierName
-    });
+     // CRITICAL FIX: Preserve ALL document storage fields
+  const piDataToSave = {
+    ...formData,  // This now includes documentId and all storage fields
+    items: selectedProducts,
+    totalAmount,
+    hasDiscrepancy,
+    totalPaid,
+    paymentStatus,
+    supplierName: selectedSupplier?.name || formData.supplierName,
+    
+    // Explicit preservation of critical document storage fields
+    documentId: formData.documentId,
+    documentNumber: formData.documentNumber,
+    documentType: formData.documentType || 'pi',
+    hasStoredDocuments: formData.hasStoredDocuments,
+    storageInfo: formData.storageInfo,
+    originalFileName: formData.originalFileName,
+    fileSize: formData.fileSize,
+    contentType: formData.contentType,
+    extractedAt: formData.extractedAt,
+    storedAt: formData.storedAt
+  };
+
+  // ✅ ADD THIS DEBUG LOG:
+  console.log('🎯 PIModal: Saving PI with document storage fields:', {
+    documentId: piDataToSave.documentId,
+    hasStoredDocuments: piDataToSave.hasStoredDocuments,
+    originalFileName: piDataToSave.originalFileName,
+    allKeys: Object.keys(piDataToSave).filter(key => key.includes('document') || key.includes('storage') || key.includes('file'))
+  });
+  
+  onSave(piDataToSave);
+};
   };
 
   const handleAddPayment = () => {
