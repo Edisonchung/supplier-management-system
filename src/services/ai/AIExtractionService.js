@@ -414,20 +414,76 @@ console.log('=== END PRODUCT DEBUG ===');
   /**
    * Extract financial data (USD standard)
    */
-  static extractFinancials(data) {
-    const text = JSON.stringify(data);
+    static extractFinancials(data) {
+  console.log('🚢 Extracting financials with enhanced shipping calculation');
+  const text = JSON.stringify(data);
+  
+  // Extract basic amounts
+  let subtotal = this.extractAmount(text, ['subtotal', 'goods amount', 'total amount']);
+  let discount = this.extractAmount(text, ['discount']) || 0;
+  let tax = this.extractAmount(text, ['tax', 'gst', 'vat']) || 0;
+  let grandTotal = this.extractAmount(text, ['total cost', 'grand total', 'total amount', 'total']);
+  
+  // ENHANCED SHIPPING EXTRACTION
+  let shipping = this.extractAmount(text, ['shipping', 'freight', 'ship fee', 'courier fee']);
+  
+  // ✅ NEW: Smart shipping calculation from total vs items difference
+  if (shipping === 0 && data.purchase_order) {
+    console.log('🔍 No direct shipping found, calculating from purchase_order difference...');
     
-    return {
-      currency: 'USD', // All Chinese suppliers use USD
-      exchangeRate: 1,
-      subtotal: this.extractAmount(text, ['subtotal', 'goods amount', 'total amount']),
-      discount: this.extractAmount(text, ['discount']) || 0,
-      shipping: this.extractAmount(text, ['shipping', 'freight', 'ship fee', 'courier fee']),
-      tax: this.extractAmount(text, ['tax', 'gst', 'vat']) || 0,
-      grandTotal: this.extractAmount(text, ['total cost', 'grand total', 'total amount', 'total'])
-    };
+    const po = data.purchase_order;
+    const totalAmount = parseFloat(po.total_amount || 0);
+    
+    if (po.items && Array.isArray(po.items) && totalAmount > 0) {
+      const itemsTotal = po.items.reduce((sum, item) => {
+        const itemTotal = parseFloat(item.total_price || item.total || item.amount || 0);
+        console.log(`Item total: ${itemTotal}`);
+        return sum + itemTotal;
+      }, 0);
+      
+      console.log(`📊 Calculation: Total Amount: ${totalAmount}, Items Total: ${itemsTotal}`);
+      
+      const calculatedShipping = totalAmount - itemsTotal;
+      
+      // Only use if the difference makes sense (positive and reasonable)
+      if (calculatedShipping > 0 && calculatedShipping < totalAmount) {
+        shipping = calculatedShipping;
+        console.log(`✅ Calculated shipping cost: ${shipping}`);
+        
+        // Update grandTotal if it wasn't extracted properly
+        if (!grandTotal || grandTotal === 0) {
+          grandTotal = totalAmount;
+        }
+        
+        // Update subtotal if it wasn't extracted properly  
+        if (!subtotal || subtotal === 0) {
+          subtotal = itemsTotal;
+        }
+      } else {
+        console.log(`❌ Calculated shipping (${calculatedShipping}) seems unreasonable, keeping as 0`);
+      }
+    } else {
+      console.log('❌ No items array or total_amount found for shipping calculation');
+    }
+  } else if (shipping > 0) {
+    console.log(`✅ Direct shipping cost found: ${shipping}`);
+  } else {
+    console.log('❌ No shipping cost found and no purchase_order structure for calculation');
   }
   
+  const result = {
+    currency: 'USD', // All Chinese suppliers use USD
+    exchangeRate: 1,
+    subtotal: subtotal || 0,
+    discount: discount,
+    shipping: shipping,  // ✅ Now properly calculated
+    tax: tax,
+    grandTotal: grandTotal || 0
+  };
+  
+  console.log('💰 Final financial extraction result:', result);
+  return result;
+}
   /**
    * Extract terms with Chinese supplier standards
    */
