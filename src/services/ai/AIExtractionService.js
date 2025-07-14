@@ -14,6 +14,7 @@ import { SupplierPIProcessor } from './processors/SupplierPIProcessor';
 
 // Import utilities
 import { EXTRACTION_SETTINGS } from './config';
+import DocumentStorageService from '../DocumentStorageService'; 
 
 // Enhanced Chinese Supplier PI Extractor
 class ChineseSupplierPIExtractor {
@@ -972,7 +973,134 @@ export class AIExtractionService {
       //supplier_quotation: SupplierPIProcessor,
       unknown: null
     };
+
+    /**
+   * Enhanced extraction with document storage
+   * @param {File} file - Uploaded file
+   * @param {string} documentType - 'po' or 'pi' 
+   * @returns {Promise<Object>} - Extraction result with stored document info
+   */
+  async extractWithDocumentStorage(file, documentType = 'auto') {
+    console.log(`🚀 Starting enhanced extraction with storage for: ${file.name}`);
     
+    try {
+      // Step 1: Perform AI extraction
+      const extractionResult = await this.extractFromFile(file);
+      
+      if (!extractionResult.success) {
+        throw new Error(`AI extraction failed: ${extractionResult.error}`);
+      }
+
+      const extractedData = extractionResult.data;
+      const detectedType = documentType === 'auto' ? 
+        this.detectDocumentType(extractedData) : documentType;
+
+      // Step 2: Generate document ID and number
+      const documentId = this.generateDocumentId();
+      const documentNumber = this.extractDocumentNumber(extractedData, detectedType);
+
+      console.log(`📋 Detected document type: ${detectedType}, Number: ${documentNumber}`);
+
+      // Step 3: Store original document with extraction data
+      const storageResult = await DocumentStorageService.storeDocumentWithExtraction(
+        file,
+        {
+          ...extractedData,
+          extractionMetadata: {
+            documentType: detectedType,
+            documentNumber: documentNumber,
+            documentId: documentId,
+            aiProvider: 'deepseek',
+            extractedAt: new Date().toISOString(),
+            confidence: extractionResult.confidence || 0,
+            processingTime: extractionResult.processingTime || 0
+          }
+        },
+        detectedType,
+        documentNumber,
+        documentId
+      );
+
+      if (!storageResult.success) {
+        console.warn('⚠️ Document storage failed, but extraction succeeded:', storageResult.error);
+      }
+
+      // Step 4: Return enhanced result
+      return {
+        success: true,
+        data: {
+          ...extractedData,
+          // Add document storage info
+          documentStorage: storageResult.success ? {
+            documentId,
+            documentNumber,
+            documentType: detectedType,
+            originalFile: storageResult.data?.original,
+            extractionFile: storageResult.data?.extraction,
+            storedAt: new Date().toISOString()
+          } : null,
+          // Add extraction metadata
+          extractionMetadata: {
+            documentId,
+            documentNumber,
+            documentType: detectedType,
+            originalFileName: file.name,
+            fileSize: file.size,
+            contentType: file.type,
+            extractedAt: new Date().toISOString(),
+            confidence: extractionResult.confidence || 0,
+            aiProvider: 'deepseek'
+          }
+        },
+        confidence: extractionResult.confidence,
+        documentStorage: storageResult.success ? storageResult.data : null
+      };
+
+    } catch (error) {
+      console.error('❌ Enhanced extraction failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        documentStorage: null
+      };
+    }
+  }
+
+  /**
+   * Process PO with document storage
+   * @param {File} file - Uploaded PO file
+   * @returns {Promise<Object>} - PO extraction with storage
+   */
+  async extractPOWithStorage(file) {
+    console.log(`🏢 Extracting PO with storage: ${file.name}`);
+    
+    const result = await this.extractWithDocumentStorage(file, 'po');
+    
+    if (result.success) {
+      // Enhance PO-specific processing
+      result.data = this.enhancePOData(result.data);
+    }
+    
+    return result;
+  }
+
+  /**
+   * Process PI with document storage
+   * @param {File} file - Uploaded PI file
+   * @returns {Promise<Object>} - PI extraction with storage
+   */
+  async extractPIWithStorage(file) {
+    console.log(`📄 Extracting PI with storage: ${file.name}`);
+    
+    const result = await this.extractWithDocumentStorage(file, 'pi');
+    
+    if (result.success) {
+      // Enhance PI-specific processing
+      result.data = this.enhancePIData(result.data);
+    }
+    
+    return result;
+  }
     // Initialize cache
     CacheService.initialize();
   }
@@ -1886,6 +2014,91 @@ parsePrice(priceValue) {
     return results;
   }
 
+  /**
+   * Helper methods for document storage integration
+   */
+  detectDocumentType(extractedData) {
+    // Your existing document type detection logic
+    if (extractedData.documentType) {
+      return extractedData.documentType === 'supplier_proforma' ? 'pi' : 'po';
+    }
+    
+    // Fallback detection
+    if (extractedData.piNumber || extractedData.invoiceNumber) {
+      return 'pi';
+    } else if (extractedData.poNumber || extractedData.orderNumber) {
+      return 'po';
+    }
+    
+    return 'po'; // Default
+  }
+
+  extractDocumentNumber(extractedData, documentType) {
+    if (documentType === 'pi') {
+      return extractedData.piNumber || 
+             extractedData.invoiceNumber || 
+             `PI-${Date.now()}`;
+    } else {
+      return extractedData.poNumber || 
+             extractedData.orderNumber || 
+             extractedData.clientPONumber ||
+             `PO-${Date.now()}`;
+    }
+  }
+
+  generateDocumentId() {
+    return `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  enhancePOData(data) {
+    // Add PO-specific enhancements
+    return {
+      ...data,
+      documentType: 'po',
+      // Add any PO-specific fields
+    };
+  }
+
+  enhancePIData(data) {
+    // Add PI-specific enhancements
+    return {
+      ...data,
+      documentType: 'pi',
+      // Add any PI-specific fields
+    };
+  }
+
+  /**
+   * Retrieve stored documents for a PO/PI
+   * @param {string} documentId - Document ID
+   * @param {string} documentType - 'po' or 'pi'
+   * @returns {Promise<Array>} - List of stored documents
+   */
+  async getStoredDocuments(documentId, documentType) {
+    try {
+      const result = await DocumentStorageService.getDocumentFiles(documentId, documentType);
+      return result.success ? result.data : [];
+    } catch (error) {
+      console.error('Error retrieving stored documents:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete stored documents for a PO/PI
+   * @param {string} documentId - Document ID
+   * @param {string} documentType - 'po' or 'pi'
+   * @returns {Promise<Object>} - Deletion result
+   */
+  async deleteStoredDocuments(documentId, documentType) {
+    try {
+      return await DocumentStorageService.deleteDocumentFiles(documentId, documentType);
+    } catch (error) {
+      console.error('Error deleting stored documents:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   // Keep all existing supplier matching methods exactly the same...
   static async rerunSupplierMatching(data) {
     try {
@@ -2169,7 +2382,7 @@ parsePrice(priceValue) {
     }
   }
 
-  /**
+ /**
    * Static methods for backward compatibility
    */
   static async extractFromFile(file) {
@@ -2180,6 +2393,27 @@ parsePrice(priceValue) {
   static async extractPOFromPDF(file) {
     console.warn('extractPOFromPDF is deprecated. Use extractFromFile instead.');
     return AIExtractionService.extractFromFile(file);
+  }
+
+  // ✅ ADD NEW STATIC METHODS FOR DOCUMENT STORAGE
+  static async extractPOWithStorage(file) {
+    const instance = new AIExtractionService();
+    return instance.extractPOWithStorage(file);
+  }
+
+  static async extractPIWithStorage(file) {
+    const instance = new AIExtractionService();
+    return instance.extractPIWithStorage(file);
+  }
+
+  static async getStoredDocuments(documentId, documentType) {
+    const instance = new AIExtractionService();
+    return instance.getStoredDocuments(documentId, documentType);
+  }
+
+  static async deleteStoredDocuments(documentId, documentType) {
+    const instance = new AIExtractionService();
+    return instance.deleteStoredDocuments(documentId, documentType);
   }
 
   /**
