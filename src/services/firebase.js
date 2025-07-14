@@ -479,19 +479,47 @@ export const getProformaInvoices = async () => {
 };
 
 export const addProformaInvoice = async (invoice) => {
+  console.log('💾 FIREBASE: Adding PI with data:', invoice);
+  
   const invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
   const newInvoice = {
     ...invoice,
     id: invoice.id || `pi-${Date.now()}`,
+    
+    // ✅ CRITICAL: Add document storage fields
+    documentId: invoice.documentId,
+    documentNumber: invoice.documentNumber,
+    documentType: 'pi',
+    hasStoredDocuments: invoice.hasStoredDocuments || false,
+    
+    // ✅ OPTIONAL: Add storage metadata
+    storageInfo: invoice.storageInfo,
+    originalFileName: invoice.originalFileName,
+    fileSize: invoice.fileSize,
+    contentType: invoice.contentType,
+    extractedAt: invoice.extractedAt,
+    storedAt: invoice.storedAt,
+    
+    // ✅ Existing timestamps
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  
+  console.log('💾 FIREBASE: Complete PI object being saved:', {
+    id: newInvoice.id,
+    piNumber: newInvoice.piNumber,
+    documentId: newInvoice.documentId,
+    hasStoredDocuments: newInvoice.hasStoredDocuments
+  });
+  
   invoices.push(newInvoice);
   localStorage.setItem('proformaInvoices', JSON.stringify(invoices));
   return { success: true, data: newInvoice };
 };
 
 export const updateProformaInvoice = async (id, updates) => {
+  console.log('💾 FIREBASE: Updating PI with data:', { id, updates });
+  
   const invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
   const index = invoices.findIndex(inv => inv.id === id);
   
@@ -499,9 +527,38 @@ export const updateProformaInvoice = async (id, updates) => {
     return { success: false, error: 'Proforma invoice not found' };
   }
   
-  invoices[index] = { ...invoices[index], ...updates, updatedAt: new Date().toISOString() };
+  // ✅ ENHANCED: Preserve document storage fields during updates
+  const updatedInvoice = { 
+    ...invoices[index], 
+    ...updates, 
+    
+    // ✅ CRITICAL: Preserve or update document storage fields
+    documentId: updates.documentId || invoices[index].documentId,
+    documentNumber: updates.documentNumber || invoices[index].documentNumber,
+    documentType: updates.documentType || invoices[index].documentType || 'pi',
+    hasStoredDocuments: updates.hasStoredDocuments !== undefined ? updates.hasStoredDocuments : invoices[index].hasStoredDocuments,
+    
+    // ✅ OPTIONAL: Preserve storage metadata
+    storageInfo: updates.storageInfo || invoices[index].storageInfo,
+    originalFileName: updates.originalFileName || invoices[index].originalFileName,
+    fileSize: updates.fileSize || invoices[index].fileSize,
+    contentType: updates.contentType || invoices[index].contentType,
+    extractedAt: updates.extractedAt || invoices[index].extractedAt,
+    storedAt: updates.storedAt || invoices[index].storedAt,
+    
+    updatedAt: new Date().toISOString() 
+  };
+  
+  console.log('💾 FIREBASE: Complete updated PI object:', {
+    id: updatedInvoice.id,
+    piNumber: updatedInvoice.piNumber,
+    documentId: updatedInvoice.documentId,
+    hasStoredDocuments: updatedInvoice.hasStoredDocuments
+  });
+  
+  invoices[index] = updatedInvoice;
   localStorage.setItem('proformaInvoices', JSON.stringify(invoices));
-  return { success: true, data: invoices[index] };
+  return { success: true, data: updatedInvoice };
 };
 
 export const deleteProformaInvoice = async (id) => {
