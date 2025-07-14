@@ -745,7 +745,6 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   });
   
   onSave(piDataToSave);
-};
   };
 
   const handleAddPayment = () => {
