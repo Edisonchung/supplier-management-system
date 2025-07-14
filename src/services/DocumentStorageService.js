@@ -1,5 +1,5 @@
 // src/services/DocumentStorageService.js
-import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject, listAll, getMetadata } from 'firebase/storage';
 import { storage } from '../config/firebase';
 
 class DocumentStorageService {
@@ -223,16 +223,19 @@ class DocumentStorageService {
    * @returns {Promise<Array>} - List of stored documents
    */
   async getDocumentFiles(documentId, documentType) {
-    try {
-      const folderPath = `${this.bucketPaths[documentType]}/${documentId}`;
-      const folderRef = ref(storage, folderPath);
-      
-      const listResult = await listAll(folderRef);
-      
-      const files = await Promise.all(
-        listResult.items.map(async (itemRef) => {
+  try {
+    console.log(`📋 Getting documents for ${documentType} ${documentId}`);
+    const folderPath = `${this.bucketPaths[documentType]}/${documentId}`;
+    const folderRef = ref(storage, folderPath);
+    
+    const listResult = await listAll(folderRef);
+    console.log(`📁 Found ${listResult.items.length} files in ${folderPath}`);
+    
+    const files = await Promise.all(
+      listResult.items.map(async (itemRef) => {
+        try {
           const downloadURL = await getDownloadURL(itemRef);
-          const metadata = await itemRef.getMetadata();
+          const metadata = await getMetadata(itemRef);  // ✅ FIXED: Use imported getMetadata function
           
           return {
             name: itemRef.name,
@@ -244,23 +247,40 @@ class DocumentStorageService {
             updated: metadata.updated,
             customMetadata: metadata.customMetadata || {}
           };
-        })
-      );
+        } catch (fileError) {
+          console.error(`❌ Error processing file ${itemRef.name}:`, fileError);
+          // Return basic file info even if metadata fails
+          const downloadURL = await getDownloadURL(itemRef);
+          return {
+            name: itemRef.name,
+            path: itemRef.fullPath,
+            downloadURL: downloadURL,
+            size: 0,
+            contentType: 'application/octet-stream',
+            timeCreated: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            customMetadata: {}
+          };
+        }
+      })
+    );
 
-      return {
-        success: true,
-        data: files.sort((a, b) => new Date(b.timeCreated) - new Date(a.timeCreated))
-      };
+    console.log(`✅ Successfully processed ${files.length} documents`);
 
-    } catch (error) {
-      console.error('❌ Error retrieving documents:', error);
-      return {
-        success: false,
-        error: error.message,
-        data: []
-      };
-    }
+    return {
+      success: true,
+      data: files.sort((a, b) => new Date(b.timeCreated) - new Date(a.timeCreated))
+    };
+
+  } catch (error) {
+    console.error('❌ Error retrieving documents:', error);
+    return {
+      success: false,
+      error: error.message,
+      data: []
+    };
   }
+}
 
   /**
    * Delete document files
