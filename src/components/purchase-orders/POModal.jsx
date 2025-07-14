@@ -1,8 +1,131 @@
 // src/components/purchase-orders/POModal.jsx
 import React, { useState, useEffect } from 'react';
-import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, Building2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, Building2, ChevronDown, ChevronUp, Plus, Trash2, Calculator } from 'lucide-react';
 import { AIExtractionService, ValidationService } from "../../services/ai";
 import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDisplay';
+
+// ✅ NEW: Price Fixing Functions
+const fixPOItemPrices = (items, debug = true) => {
+  if (!items || !Array.isArray(items)) {
+    console.warn('No valid items array provided to fixPOItemPrices');
+    return [];
+  }
+
+  if (debug) {
+    console.log('🔧 FIXING PO ITEM PRICES...');
+    console.log('Original items:', items);
+  }
+
+  return items.map((item, index) => {
+    const originalItem = { ...item };
+    
+    const quantity = parseFloat(item.quantity) || 0;
+    const unitPrice = parseFloat(item.unitPrice) || 0;
+    const totalPrice = parseFloat(item.totalPrice) || 0;
+    
+    if (debug) {
+      console.log(`Item ${index + 1} (${item.productName || item.productCode || 'Unknown'}):`, {
+        quantity, unitPrice, totalPrice, calculation: quantity * unitPrice
+      });
+    }
+
+    let fixedItem = { ...originalItem };
+
+    // Strategy 1: Calculate total from quantity × unit price
+    if (quantity > 0 && unitPrice > 0) {
+      const calculatedTotal = quantity * unitPrice;
+      const variance = totalPrice > 0 ? Math.abs(calculatedTotal - totalPrice) / totalPrice : 1;
+      
+      if (variance > 0.1 || totalPrice === 0) {
+        if (debug) console.log(`  ✅ Fixed: Using calculated total ${calculatedTotal} (was ${totalPrice})`);
+        fixedItem.totalPrice = calculatedTotal;
+      }
+    } 
+    // Strategy 2: Calculate unit price from total ÷ quantity
+    else if (quantity > 0 && totalPrice > 0 && (unitPrice === 0 || !unitPrice)) {
+      const calculatedUnitPrice = totalPrice / quantity;
+      if (debug) console.log(`  ✅ Fixed: Calculated unit price ${calculatedUnitPrice}`);
+      fixedItem.unitPrice = calculatedUnitPrice;
+    } 
+    // Strategy 3: Calculate quantity from total ÷ unit price
+    else if (unitPrice > 0 && totalPrice > 0 && (quantity === 0 || !quantity)) {
+      const calculatedQuantity = Math.round(totalPrice / unitPrice);
+      if (debug) console.log(`  ✅ Fixed: Calculated quantity ${calculatedQuantity}`);
+      fixedItem.quantity = calculatedQuantity;
+    } 
+    // Strategy 4: Handle only total price existing
+    else if (totalPrice > 0 && quantity === 0 && unitPrice === 0) {
+      fixedItem.quantity = 1;
+      fixedItem.unitPrice = totalPrice;
+      if (debug) console.log(`  ✅ Fixed: Assumed quantity=1, unit price=${totalPrice}`);
+    }
+
+    // Ensure proper number formatting
+    fixedItem.quantity = Math.max(parseFloat(fixedItem.quantity) || 1, 1);
+    fixedItem.unitPrice = parseFloat(fixedItem.unitPrice) || 0;
+    fixedItem.totalPrice = parseFloat(fixedItem.totalPrice) || 0;
+
+    // Final validation
+    const finalCalculation = fixedItem.quantity * fixedItem.unitPrice;
+    if (Math.abs(finalCalculation - fixedItem.totalPrice) > 0.01) {
+      fixedItem.totalPrice = finalCalculation;
+    }
+
+    return fixedItem;
+  });
+};
+
+const validatePOTotals = (formData, debug = false) => {
+  if (!formData.items || formData.items.length === 0) {
+    return { ...formData, subtotal: 0, tax: 0, totalAmount: 0 };
+  }
+
+  const calculatedSubtotal = formData.items.reduce((sum, item) => {
+    return sum + (parseFloat(item.totalPrice) || 0);
+  }, 0);
+
+  const tax = parseFloat(formData.tax) || calculatedSubtotal * 0.1;
+  const shipping = parseFloat(formData.shipping) || 0;
+  const discount = parseFloat(formData.discount) || 0;
+  const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
+
+  if (debug) {
+    console.log('💰 PO TOTAL VALIDATION:', {
+      itemsCount: formData.items.length,
+      calculatedSubtotal,
+      tax,
+      shipping,
+      discount,
+      calculatedTotal
+    });
+  }
+
+  return {
+    ...formData,
+    subtotal: calculatedSubtotal,
+    tax,
+    shipping,
+    discount,
+    totalAmount: calculatedTotal
+  };
+};
+
+const processExtractedPOData = (extractedData, debug = true) => {
+  if (debug) {
+    console.log('🚀 PROCESSING EXTRACTED PO DATA');
+    console.log('Original extracted data:', extractedData);
+  }
+
+  let processedData = { ...extractedData };
+  
+  if (processedData.items && processedData.items.length > 0) {
+    processedData.items = fixPOItemPrices(processedData.items, debug);
+  }
+  
+  processedData = validatePOTotals(processedData, debug);
+  
+  return processedData;
+};
 
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
@@ -74,100 +197,99 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   }, [editingPO]);
 
- const handleFileUpload = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+  // ✅ ENHANCED: AI Extraction with Price Fixing
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
 
-  setExtracting(true);
-  setValidationErrors([]);
+    console.log('🔍 PRICE FIX DEBUG: Starting PO extraction for:', file.name);
+    setExtracting(true);
+    setValidationErrors([]);
 
-  try {
-    // Use the real AI extraction service
-    const extractedData = await AIExtractionService.extractFromFile(file);
-    console.log("Extracted data:", extractedData);
+    try {
+      // Use the real AI extraction service
+      const extractedData = await AIExtractionService.extractFromFile(file);
+      console.log("🔍 PRICE FIX DEBUG: Raw extracted data:", extractedData);
 
-    
-    
-    // Validate the extracted data
-    const validation = ValidationService.validateExtractedData(extractedData);
-    
-    if (!validation.isValid) {
-      setValidationErrors(validation.errors);
-      // Still populate form with partial data
-    }
-    
-    // Update form data with extracted information
-    setFormData(prev => ({
-      ...prev,
-      orderNumber: extractedData.data.orderNumber || prev.orderNumber,
-      clientName: extractedData.data.clientName || prev.clientName,
-      orderDate: extractedData.data.orderDate || prev.orderDate,
-      deliveryDate: extractedData.data.deliveryDate || prev.deliveryDate,
-      paymentTerms: extractedData.data.paymentTerms || prev.paymentTerms,
-      notes: extractedData.data.notes || prev.notes,
-    }));
-    
-    // Update items
-    if (extractedData.data.items && extractedData.data.items.length > 0) {
-      setFormData(prev => ({ ...prev, items: extractedData.data.items }));
-    }
+      // ✅ Apply price fixing to extracted data
+      const processedData = processExtractedPOData(extractedData.data || extractedData, true);
+      console.log("✅ PRICE FIX DEBUG: Processed data:", processedData);
+      
+      // Validate the extracted data
+      const validation = ValidationService.validateExtractedData(processedData);
+      
+      if (!validation.isValid) {
+        setValidationErrors(validation.errors);
+        // Still populate form with partial data
+      }
+      
+      // ✅ Update form data with processed (price-fixed) information
+      setFormData(prev => ({
+        ...prev,
+        orderNumber: processedData.orderNumber || prev.orderNumber,
+        clientName: processedData.clientName || prev.clientName,
+        orderDate: processedData.orderDate || prev.orderDate,
+        deliveryDate: processedData.deliveryDate || prev.deliveryDate,
+        paymentTerms: processedData.paymentTerms || prev.paymentTerms,
+        notes: processedData.notes || prev.notes,
+        items: processedData.items || prev.items // Price-fixed items
+      }));
 
-    // Check if supplier matching data is available
-    if (extractedData.data.sourcingPlan || extractedData.data.matchingMetrics) {
-      setSupplierMatchingData({
-        items: extractedData.data.items,
-        sourcingPlan: extractedData.data.sourcingPlan,
-        metrics: extractedData.data.matchingMetrics
-      });
-      setShowSupplierMatching(true);
-    }
-    
+      // Check if supplier matching data is available
+      if (processedData.sourcingPlan || processedData.matchingMetrics) {
+        setSupplierMatchingData({
+          items: processedData.items,
+          sourcingPlan: processedData.sourcingPlan,
+          metrics: processedData.matchingMetrics
+        });
+        setShowSupplierMatching(true);
+      }
 
-    
-    // Show recommendations if any
-    if (extractedData.recommendations && extractedData.recommendations.length > 0) {
-      const recommendationMessages = extractedData.recommendations
-        .map(rec => rec.message)
-        .join('\n');
-      alert(`AI Recommendations:\n${recommendationMessages}`);
+      // Show recommendations if any
+      if (extractedData.recommendations && extractedData.recommendations.length > 0) {
+        const recommendationMessages = extractedData.recommendations
+          .map(rec => rec.message)
+          .join('\n');
+        alert(`AI Recommendations:\n${recommendationMessages}`);
+      }
+      
+      // Show confidence score
+      if (extractedData.metadata?.confidence) {
+        console.log(`Extraction confidence: ${(extractedData.metadata.confidence * 100).toFixed(0)}%`);
+      }
+      
+    } catch (error) {
+      console.error('Extraction failed:', error);
+      setValidationErrors([{ field: 'file', message: error.message || 'Failed to extract data from file' }]);
+    } finally {
+      setExtracting(false);
+      // Reset file input
+      event.target.value = '';
     }
-    
-    // Show confidence score
-    if (extractedData.metadata.confidence) {
-      console.log(`Extraction confidence: ${(extractedData.metadata.confidence * 100).toFixed(0)}%`);
-    }
-    
-  } catch (error) {
-    console.error('Extraction failed:', error);
-    setValidationErrors([{ field: 'file', message: error.message || 'Failed to extract data from file' }]);
-  } finally {
-    setExtracting(false);
-    // Reset file input
-    event.target.value = '';
-  }
-};
+  };
 
   const handleInputChange = (field, value) => {
-  // Auto-format project codes
-  if (field === 'projectCode' && value) {
-    // Convert to uppercase and remove invalid characters
-    value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-    
-    // Optional: Auto-add dashes for common patterns
-    if (value.length > 4 && !value.includes('-') && /^[A-Z]+\d+$/.test(value)) {
-      value = value.replace(/(\D+)(\d+)/, '$1-$2');
+    // Auto-format project codes
+    if (field === 'projectCode' && value) {
+      // Convert to uppercase and remove invalid characters
+      value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      
+      // Optional: Auto-add dashes for common patterns
+      if (value.length > 4 && !value.includes('-') && /^[A-Z]+\d+$/.test(value)) {
+        value = value.replace(/(\D+)(\d+)/, '$1-$2');
+      }
     }
-  }
-  
-  setFormData(prev => ({
-    ...prev,
-    [field]: value
-  }));
-  
-  // Clear validation error for this field
-  setValidationErrors(prev => prev.filter(e => e.field !== field));
-};
+    
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Clear validation error for this field
+    setValidationErrors(prev => prev.filter(e => e.field !== field));
+  };
 
+  // ✅ ENHANCED: Item change handler with price fixing
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
     newItems[index] = {
@@ -175,29 +297,29 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       [field]: value
     };
     
-    // Recalculate total if quantity or unit price changed
-    if (field === 'quantity' || field === 'unitPrice') {
-      const quantity = field === 'quantity' ? Number(value) : Number(newItems[index].quantity);
-      const unitPrice = field === 'unitPrice' ? Number(value) : Number(newItems[index].unitPrice);
-      newItems[index].totalPrice = quantity * unitPrice;
-    }
+    // Apply price fixing immediately after any change
+    const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
     
     setFormData(prev => ({
       ...prev,
-      items: newItems
+      items: fixedItems
     }));
   };
 
+  // ✅ ENHANCED: Add item with price fixing
   const addItem = () => {
     if (currentItem.productName && currentItem.quantity > 0) {
-      const totalPrice = currentItem.quantity * currentItem.unitPrice;
+      const newItems = [...formData.items, { 
+        ...currentItem, 
+        id: Date.now().toString() 
+      }];
+      
+      // Apply price fixing to the new items list
+      const fixedItems = fixPOItemPrices(newItems, false);
+      
       setFormData(prev => ({
         ...prev,
-        items: [...prev.items, { 
-          ...currentItem, 
-          totalPrice, 
-          id: Date.now().toString() 
-        }]
+        items: fixedItems
       }));
       
       // Reset current item
@@ -211,6 +333,20 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       setSearchTerm('');
       setShowProductSearch(false);
     }
+  };
+
+  // ✅ NEW: Manual price fix button handler
+  const handleFixPrices = () => {
+    console.log('🔧 Manual price fix triggered');
+    const fixedItems = fixPOItemPrices(formData.items, true); // Enable debug for manual fix
+    
+    setFormData(prev => ({
+      ...prev,
+      items: fixedItems
+    }));
+    
+    // Show visual feedback
+    alert('Item prices have been recalculated and corrected!');
   };
 
   const removeItem = (index) => {
@@ -232,6 +368,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setShowProductSearch(false);
   };
 
+  // ✅ ENHANCED: Submit with final validation
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -241,19 +378,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
 
     // ADD PROJECT CODE VALIDATION
-  if (formData.projectCode && formData.projectCode.length < 3) {
-    errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
-  }
-  
-  // Optional: Check for duplicate project codes
-  if (formData.projectCode) {
-    // You can add duplicate checking logic here later when you connect to your data source
-    // const existingPOs = await getPurchaseOrdersByProjectCode(formData.projectCode);
-    // if (existingPOs.length > 0 && !editingPO) {
-    //   errors.push({ field: 'projectCode', message: 'Project code already exists' });
-    // }
-  }
-
+    if (formData.projectCode && formData.projectCode.length < 3) {
+      errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
+    }
     
     if (errors.length > 0) {
       setValidationErrors(errors);
@@ -262,18 +389,10 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     
     setLoading(true);
     try {
-      // Calculate totals
-      const subtotal = formData.items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
-      const tax = subtotal * 0.1; // 10% tax
-      const totalAmount = subtotal + tax;
+      // ✅ Final price validation before saving
+      const validatedData = validatePOTotals(formData, true);
       
-      await onSave({
-        ...formData,
-        subtotal,
-        tax,
-        totalAmount
-      });
-      
+      await onSave(validatedData);
       onClose();
     } catch (error) {
       console.error('Save failed:', error);
@@ -303,18 +422,32 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             <h2 className="text-2xl font-bold">
               {editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'}
             </h2>
-            <p className="text-blue-100 mt-1">AI-Enhanced Data Entry</p>
+            <p className="text-blue-100 mt-1">AI-Enhanced Data Entry with Price Fixing</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-3">
+            {/* ✅ NEW: Manual Price Fix Button */}
+            {formData.items.length > 0 && (
+              <button
+                type="button"
+                onClick={handleFixPrices}
+                className="flex items-center gap-2 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors text-sm"
+                title="Recalculate and fix all item prices"
+              >
+                <Calculator className="w-4 h-4" />
+                Fix Prices
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-          {/* AI Upload Section */}
+          {/* ✅ ENHANCED: AI Upload Section with Price Fix Info */}
           <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -323,7 +456,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-800">AI Document Extraction</h3>
-                  <p className="text-sm text-gray-600">Upload PDF to auto-fill form</p>
+                  <p className="text-sm text-gray-600">Upload PDF to auto-fill form with automatic price fixing</p>
                 </div>
               </div>
               
@@ -331,7 +464,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 <input
                   type="file"
                   className="hidden"
-                  accept=".pdf"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls"
                   onChange={handleFileUpload}
                   disabled={extracting}
                 />
@@ -339,17 +472,27 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   {extracting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Extracting...
+                      Extracting & Fixing...
                     </>
                   ) : (
                     <>
                       <Upload className="w-4 h-4" />
-                      Upload PDF
+                      Upload Document
                     </>
                   )}
                 </div>
               </label>
             </div>
+            
+            {/* ✅ Price Fix Status Info */}
+            <div className="text-sm text-purple-700 bg-purple-100 rounded-lg p-2">
+              <div className="flex items-center gap-2">
+                <Calculator className="w-4 h-4" />
+                <span className="font-medium">Smart Price Correction:</span>
+                <span>Automatically fixes inconsistent pricing data from extracted documents</span>
+              </div>
+            </div>
+
             {/* Extraction Error Display */}
             {extractionError && (
               <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
@@ -480,29 +623,30 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 </div>
 
                 <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">
-    Project Code
-  </label>
-  <input
-    type="text"
-    value={formData.projectCode}
-    onChange={(e) => handleInputChange('projectCode', e.target.value)}
-    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-      validationErrors && validationErrors.find(e => e.field === 'projectCode') 
-        ? 'border-red-500' 
-        : 'border-gray-300'
-    }`}
-    placeholder="e.g., PROJ-2025-001"
-  />
-  {validationErrors && validationErrors.find(e => e.field === 'projectCode') && (
-    <p className="text-red-500 text-xs mt-1">
-      {validationErrors.find(e => e.field === 'projectCode')?.message}
-    </p>
-  )}
-  <p className="text-xs text-gray-500 mt-1">
-    For linking with CRM quotations and contacts
-  </p>
-</div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Project Code
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.projectCode}
+                    onChange={(e) => handleInputChange('projectCode', e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                      validationErrors && validationErrors.find(e => e.field === 'projectCode') 
+                        ? 'border-red-500' 
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="e.g., PROJ-2025-001"
+                  />
+                  {validationErrors && validationErrors.find(e => e.field === 'projectCode') && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.find(e => e.field === 'projectCode')?.message}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    For linking with CRM quotations and contacts
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Client Name *
@@ -831,40 +975,39 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             </div>
 
             {/* Supplier Matching Tab */}
-{supplierMatchingData && (
-  <div className="mb-6">
-    <button
-      type="button"
-      onClick={() => setShowSupplierMatching(!showSupplierMatching)}
-      className="w-full flex justify-between items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-    >
-      <div className="flex items-center gap-2">
-        <Building2 className="w-5 h-5 text-blue-600" />
-        <span className="font-semibold text-blue-900">
-          Supplier Recommendations Available
-        </span>
-        {supplierMatchingData.metrics && (
-          <span className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
-            {supplierMatchingData.metrics.supplierDiversity} suppliers found
-          </span>
-        )}
-      </div>
-      {showSupplierMatching ? <ChevronUp /> : <ChevronDown />}
-    </button>
-    
-    {showSupplierMatching && (
-      <div className="mt-4">
-        <SupplierMatchingDisplay
-          items={supplierMatchingData.items}
-          sourcingPlan={supplierMatchingData.sourcingPlan}
-          metrics={supplierMatchingData.metrics}
-        />
-      </div>
-    )}
-  </div>
-)}
+            {supplierMatchingData && (
+              <div className="mb-6">
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierMatching(!showSupplierMatching)}
+                  className="w-full flex justify-between items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-blue-600" />
+                    <span className="font-semibold text-blue-900">
+                      Supplier Recommendations Available
+                    </span>
+                    {supplierMatchingData.metrics && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
+                        {supplierMatchingData.metrics.supplierDiversity} suppliers found
+                      </span>
+                    )}
+                  </div>
+                  {showSupplierMatching ? <ChevronUp /> : <ChevronDown />}
+                </button>
+                
+                {showSupplierMatching && (
+                  <div className="mt-4">
+                    <SupplierMatchingDisplay
+                      items={supplierMatchingData.items}
+                      sourcingPlan={supplierMatchingData.sourcingPlan}
+                      metrics={supplierMatchingData.metrics}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
-            
             {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
