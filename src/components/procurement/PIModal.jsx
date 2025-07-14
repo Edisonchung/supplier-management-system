@@ -1941,9 +1941,9 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                     </div>
                   );
                 })}
-                </div>
+                     </div>
             </div>
-              ) : activeTab === 'documents' ? (
+          ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
             <div className="space-y-4">
               {proformaInvoice?.id ? (
@@ -1967,6 +1967,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
             </div>
           ) : null}
         </form>
+
 
         <div className="p-6 border-t flex justify-end gap-3">
           <button
