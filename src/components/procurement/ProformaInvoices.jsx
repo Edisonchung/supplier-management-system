@@ -342,28 +342,49 @@ const ProformaInvoices = ({ showNotification }) => {
       let actionMessage = '';
       
       // Handle different document types with Chinese supplier optimization
-      switch (documentType) {
-        case 'supplier_proforma':
-        case 'proforma_invoice':
-          // Use optimized Chinese supplier processing
-          piData = await processChineseSupplierPI(extractedData);
-          actionMessage = 'Chinese Supplier PI extracted and stored!';
-          break;
-          
-        case 'client_purchase_order':
-          piData = await processClientPOForPI(extractedData);
-          actionMessage = 'Client PO converted to PI template. Please select supplier and add pricing.';
-          break;
-          
-        case 'supplier_invoice':
-          piData = await processSupplierInvoiceAsPI(extractedData);
-          actionMessage = 'Supplier Invoice converted to PI format.';
-          break;
-          
-        default:
-          piData = await processGenericDocumentAsPI(extractedData);
-          actionMessage = 'Document processed. Please verify the extracted data.';
-      }
+switch (documentType) {
+  case 'supplier_proforma':
+  case 'proforma_invoice':
+    // Use optimized Chinese supplier processing
+    piData = await processChineseSupplierPI(extractedData);
+    actionMessage = 'Chinese Supplier PI extracted and stored!';
+    break;
+    
+  case 'client_purchase_order':
+    piData = await processClientPOForPI(extractedData);
+    actionMessage = 'Client PO converted to PI template. Please select supplier and add pricing.';
+    break;
+    
+  case 'supplier_invoice':
+    piData = await processSupplierInvoiceAsPI(extractedData);
+    actionMessage = 'Supplier Invoice converted to PI format.';
+    break;
+    
+  default:
+    // ✅ FIXED: Use direct processing instead of non-existent function
+    piData = {
+      piNumber: extractedData.piNumber || `PI-${Date.now()}`,
+      date: extractedData.date || new Date().toISOString().split('T')[0],
+      expiryDate: extractedData.validUntil || '',
+      supplierName: extractedData.supplier?.name || extractedData.supplierName || '',
+      supplierEmail: extractedData.supplier?.email || '',
+      supplierAddress: extractedData.supplier?.address || '',
+      clientRef: extractedData.clientRef?.poNumber || '',
+      products: extractedData.products || extractedData.items || [],
+      paymentTerms: extractedData.paymentTerms || '',
+      deliveryTerms: extractedData.deliveryTerms || '',
+      currency: extractedData.currency || 'USD',
+      exchangeRate: extractedData.exchangeRate || 1,
+      subtotal: extractedData.subtotal || 0,
+      discount: extractedData.discount || 0,
+      shipping: extractedData.shipping || 0,
+      tax: extractedData.tax || 0,
+      grandTotal: extractedData.grandTotal || extractedData.subtotal || 0,
+      notes: extractedData.notes || '',
+      status: 'pending'
+    };
+    actionMessage = 'Document processed successfully. Please verify the extracted data.';
+}
 
       // ✅ CRITICAL: Include document storage information in PI data
       const enhancedPIData = {
