@@ -461,6 +461,31 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     }
   }, [selectedProducts, formData.discount, formData.shipping, formData.tax]);
 
+  // ✅ Debug useEffect to monitor document storage fields
+  useEffect(() => {
+    if (formData.documentId) {
+      console.log('🎯 PIModal: FormData document storage fields updated:', {
+        documentId: formData.documentId,
+        hasStoredDocuments: formData.hasStoredDocuments,
+        originalFileName: formData.originalFileName,
+        documentType: formData.documentType,
+        storageInfo: !!formData.storageInfo
+      });
+    }
+  }, [formData.documentId, formData.hasStoredDocuments, formData.originalFileName]);
+
+  // ✅ Debug useEffect to monitor props changes
+  useEffect(() => {
+    if (proformaInvoice) {
+      console.log('🎯 PIModal: Props vs FormData comparison:', {
+        propsDocumentId: proformaInvoice.documentId,
+        propsHasStoredDocs: proformaInvoice.hasStoredDocuments,
+        formDataDocumentId: formData.documentId,
+        formDataHasStoredDocs: formData.hasStoredDocuments
+      });
+    }
+  }, [proformaInvoice?.documentId, proformaInvoice?.hasStoredDocuments, formData.documentId]);
+
   const generatePINumber = () => {
     const date = new Date();
     const year = date.getFullYear();
