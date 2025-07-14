@@ -364,7 +364,8 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
         receivedDate: item.receivedDate || '',
         hasDiscrepancy: item.hasDiscrepancy || false,
         discrepancyReason: item.discrepancyReason || '',
-        receivingNotes: item.receivingNotes || ''
+        receivingNotes: item.receivingNotes || '',
+        isReceived: item.isReceived || false
       }));
 
      // ✅ Auto-fix price calculations with enhanced function
