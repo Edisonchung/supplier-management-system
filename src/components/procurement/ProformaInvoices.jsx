@@ -311,113 +311,130 @@ const ProformaInvoices = ({ showNotification }) => {
 
   // Enhanced file upload handler with comprehensive document type support
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+  const file = event.target.files[0];
+  if (!file) return;
 
-    setExtracting(true);
-    console.log('Starting PI extraction for:', file.name);
+  setExtracting(true);
+  console.log('🚀 FIXED: Starting PI extraction for:', file.name);
+  
+  try {
+    showNotification(`Analyzing ${file.name}...`, 'info');
     
-    try {
-      // Show extraction progress with file info
-      showNotification(`Analyzing ${file.name}...`, 'info');
+    // 🔍 FIXED: Call extraction with storage
+    console.log('📞 FIXED: Calling AIExtractionService.extractPIWithStorage...');
+    const result = await AIExtractionService.extractPIWithStorage(file);
+    
+    console.log('✅ FIXED: Extraction completed:', {
+      success: result.success,
+      hasData: !!result.data,
+      documentId: result.data?.documentId,
+      hasStorageInfo: !!result.data?.storageInfo,
+      documentsStored: result.data?.hasStoredDocuments
+    });
+    
+    if (result.success && result.data) {
+      const extractedData = result.data;
+      const documentType = extractedData.documentType;
       
-      const result = await AIExtractionService.extractPIWithStorage(file);
-      console.log('Extraction result:', result);
+      console.log(`📋 FIXED: Processing ${documentType} with confidence: ${result.confidence || 'unknown'}`);
       
-      if (result.success && result.data) {
-        const extractedData = result.data;
-        const documentType = extractedData.documentType;
-        
-        console.log(`Detected document type: ${documentType} with confidence: ${result.confidence || 'unknown'}`);
-        
-        let piData;
-        let actionMessage = '';
-        
-        // Handle different document types with Chinese supplier optimization
-        switch (documentType) {
-          case 'supplier_proforma':
-          case 'proforma_invoice':
-            // Use optimized Chinese supplier processing
-            piData = await processChineseSupplierPI(extractedData);
-            actionMessage = 'Chinese Supplier PI extracted and optimized!';
-            break;
-            
-          case 'client_purchase_order':
-            piData = await processClientPOForPI(extractedData);
-            actionMessage = 'Client PO converted to PI template. Please select supplier and add pricing.';
-            break;
-            
-          case 'supplier_invoice':
-            piData = await processSupplierInvoiceAsPI(extractedData);
-            actionMessage = 'Supplier Invoice converted to PI format.';
-            break;
-            
-          case 'quotation':
-          case 'supplier_quotation':
-            piData = await processQuotationAsPI(extractedData);
-            actionMessage = 'Supplier Quotation converted to PI format.';
-            break;
-            
-          default:
-            // Try Chinese supplier extraction as fallback
-            console.warn(`Unknown document type: ${documentType}, trying Chinese supplier extraction`);
-            piData = await processChineseSupplierPI(extractedData);
-            actionMessage = 'Document processed with Chinese supplier patterns. Please verify details.';
-            break;
-        }
-        
-        if (piData) {
-          console.log('Final PI data:', piData);
-          console.log('ProformaInvoices - Final piData with items:', piData);
-          console.log('ProformaInvoices - Items count:', piData.items?.length || 0);
-          if (piData.items && piData.items.length > 0) {
-            console.log('ProformaInvoices - Sample mapped item:', piData.items[0]);
-          }
+      let piData;
+      let actionMessage = '';
+      
+      // Handle different document types with Chinese supplier optimization
+      switch (documentType) {
+        case 'supplier_proforma':
+        case 'proforma_invoice':
+          // Use optimized Chinese supplier processing
+          piData = await processChineseSupplierPI(extractedData);
+          actionMessage = 'Chinese Supplier PI extracted and stored!';
+          break;
           
-          // Validate and enhance the data
-          console.log('BEFORE enhancePIData - Items count:', piData.items?.length || 0);
-          console.log('BEFORE enhancePIData - Sample item:', piData.items?.[0]);
-          piData = await enhancePIData(piData, extractedData);
-          console.log('AFTER enhancePIData - Items count:', piData.items?.length || 0);
-          console.log('AFTER enhancePIData - Sample item:', piData.items?.[0]);
+        case 'client_purchase_order':
+          piData = await processClientPOForPI(extractedData);
+          actionMessage = 'Client PO converted to PI template. Please select supplier and add pricing.';
+          break;
+          
+        case 'supplier_invoice':
+          piData = await processSupplierInvoiceAsPI(extractedData);
+          actionMessage = 'Supplier Invoice converted to PI format.';
+          break;
+          
+        default:
+          piData = await processGenericDocumentAsPI(extractedData);
+          actionMessage = 'Document processed. Please verify the extracted data.';
+      }
 
-          setSelectedPI(piData);
-          setShowModal(true);
-          
-          const confidenceText = result.confidence ? 
-            ` (Confidence: ${(result.confidence * 100).toFixed(0)}%)` : '';
-          
-          const supplierInfo = piData.supplierName ? 
-            `\nSupplier: ${piData.supplierName}` : '';
-          
-          const itemCount = piData.items?.length || 0;
-          const itemText = itemCount > 0 ? `\n${itemCount} items extracted` : '';
-          
-          showNotification(
-            `${actionMessage}${confidenceText}${supplierInfo}${itemText}`,
-            'success'
-          );
-        } else {
-          throw new Error('Failed to process document data');
-        }
+      // ✅ CRITICAL: Include document storage information in PI data
+      const enhancedPIData = {
+        ...piData,
+        // Document storage identifiers
+        documentId: extractedData.documentId,
+        documentNumber: extractedData.documentNumber,
+        documentType: 'pi',
         
+        // Storage metadata
+        storageInfo: extractedData.storageInfo,
+        hasStoredDocuments: extractedData.hasStoredDocuments,
+        
+        // File information
+        originalFileName: extractedData.originalFileName,
+        fileSize: extractedData.fileSize,
+        contentType: extractedData.contentType,
+        
+        // Timestamps
+        extractedAt: extractedData.extractedAt,
+        storedAt: extractedData.storedAt
+      };
+
+      console.log('📋 FIXED: Enhanced PI data:', {
+        piNumber: enhancedPIData.piNumber,
+        documentId: enhancedPIData.documentId,
+        hasStoredDocuments: enhancedPIData.hasStoredDocuments,
+        storageInfo: !!enhancedPIData.storageInfo
+      });
+
+      // Check for PO matches
+      if (extractedData.clientRef?.poNumber) {
+        try {
+          const matchedPO = await findPOByNumber(extractedData.clientRef.poNumber);
+          if (matchedPO) {
+            showNotification(`Matched with PO: ${matchedPO.orderNumber}`, 'success');
+            enhancedPIData.linkedPO = matchedPO.id;
+          }
+        } catch (error) {
+          console.warn('PO matching failed:', error);
+        }
+      }
+
+      // Set PI data for modal
+      setSelectedPI(enhancedPIData);
+      setShowModal(true);
+      
+      showNotification(actionMessage, 'success');
+      
+      // Show document storage status
+      if (extractedData.hasStoredDocuments) {
+        showNotification(`📁 ${extractedData.storageInfo?.summary?.filesStored || 2} documents stored successfully`, 'info');
       } else {
-        throw new Error(result.error || 'Document extraction failed');
+        showNotification('⚠️ Document storage failed - extraction data saved locally', 'warning');
       }
       
-    } catch (error) {
-      console.error('Extraction failed:', error);
-      showNotification(
-        error.message || 'Failed to extract document data. Please try again or enter manually.',
-        'error'
-      );
-    } finally {
-      setExtracting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+    } else {
+      throw new Error(result.error || 'Extraction failed');
     }
-  };
+    
+  } catch (error) {
+    console.error('❌ FIXED: Extraction failed:', error);
+    showNotification(`Failed to extract PI data: ${error.message}`, 'error');
+  } finally {
+    setExtracting(false);
+    // Clear file input
+    if (event.target) {
+      event.target.value = '';
+    }
+  }
+};
 
   // Enhanced Chinese supplier PI processing
   const processChineseSupplierPI = async (extractedData) => {
