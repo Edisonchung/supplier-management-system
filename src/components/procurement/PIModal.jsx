@@ -1,5 +1,6 @@
 // src/components/procurement/PIModal.jsx
 import React, { useState, useEffect } from 'react';
+import DocumentViewer from '../common/DocumentViewer';
 import { 
   X, Plus, Trash2, Search, Package, 
   FileText, Calculator, Calendar, Tag,
@@ -884,6 +885,22 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                   <AlertCircle className="inline-block ml-2 h-4 w-4 text-orange-500" />
                 )}
               </button>
+              {/* ✅ ADD THIS NEW DOCUMENTS TAB */}
+      <button
+        onClick={() => setActiveTab('documents')}
+        className={`px-6 py-3 font-medium ${
+          activeTab === 'documents' 
+            ? 'border-b-2 border-blue-500 text-blue-600' 
+            : 'text-gray-600 hover:text-gray-900'
+        }`}
+      >
+        Documents
+        {proformaInvoice?.id && (
+          <span className="ml-2 bg-blue-100 text-blue-600 text-xs px-1.5 py-0.5 rounded-full">
+            Stored
+          </span>
+        )}
+      </button>
             </div>
           </div>
         )}
