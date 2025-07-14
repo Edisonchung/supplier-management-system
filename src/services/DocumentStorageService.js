@@ -1,6 +1,6 @@
 // src/services/DocumentStorageService.js
 import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
-import { storage } from './firebase';
+import { storage } from '../config/firebase';
 
 class DocumentStorageService {
   constructor() {
