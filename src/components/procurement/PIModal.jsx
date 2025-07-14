@@ -1304,7 +1304,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
               )}
               
               {/* Currency and exchange rate section ends */}
-              )}
+              
 
               {/* ADD THIS ENTIRE SECTION HERE */}
               {/* Financial Details Input Fields */}
