@@ -193,6 +193,8 @@ const StockAllocationModal = ({
     setLoading(false);
   }
 };
+
+
   const totalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
   const availableQty = itemData.unallocatedQty || itemData.receivedQty || 0;
   const remainingQty = availableQty - totalAllocated;
