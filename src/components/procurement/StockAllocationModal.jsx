@@ -23,15 +23,8 @@ const StockAllocationModal = ({
   onAllocationComplete 
 }) => {
   // ✅ STEP 1: PROPS VALIDATION AND EARLY CALCULATIONS
-  console.log('🎯 StockAllocationModal Props Debug:', {
-    isOpen,
-    piId: piId || 'MISSING',
-    itemData: itemData ? 'Present' : 'Missing',
-    itemDataPiId: itemData?.piId || 'Not in itemData'
-  });
 
   const effectivePiId = piId || itemData?.piId || itemData?.piNumber;
-  console.log('🎯 Effective PI ID for service:', effectivePiId);
   
   // ✅ STEP 2: ALL STATE DECLARATIONS
   const [allocations, setAllocations] = useState([]);
@@ -268,45 +261,6 @@ const StockAllocationModal = ({
       loadAllocationData();
     }
   }, [isOpen, itemData, effectivePiId]);
-
-  useEffect(() => {
-    console.log('🔍 Validation state changed:', {
-      remainingQty,
-      totalAllocated,
-      isValid,
-      validationBreakdown: {
-        remainingQtyValid: remainingQty >= 0,
-        totalAllocatedValid: totalAllocated > 0,
-        allHaveTargets: allocations.every(alloc => alloc.allocationTarget),
-        allHaveQuantity: allocations.every(alloc => alloc.quantity > 0),
-        allocationsCount: allocations.length
-      },
-      allocations: allocations.map(a => ({
-        hasTarget: !!a.allocationTarget,
-        hasQuantity: a.quantity > 0,
-        target: a.allocationTarget,
-        quantity: a.quantity
-      }))
-    });
-  }, [isValid, remainingQty, totalAllocated, allocations]);
-
-  useEffect(() => {
-    const handleGlobalClick = (e) => {
-      if (e.target.textContent && e.target.textContent.includes('Allocate Stock')) {
-        console.log('🖱️ Global click detected on Allocate Stock button:', {
-          target: e.target,
-          disabled: e.target.disabled,
-          type: e.target.type,
-          className: e.target.className,
-          tagName: e.target.tagName,
-          parentElement: e.target.parentElement?.tagName
-        });
-      }
-    };
-
-    document.addEventListener('click', handleGlobalClick, true);
-    return () => document.removeEventListener('click', handleGlobalClick, true);
-  }, []);
 
   // ✅ STEP 7: EARLY RETURNS
   if (!isOpen) return null;
