@@ -2273,17 +2273,6 @@ const StockReceivingTab = ({
     'proformaInvoice.id': proformaInvoice?.id,
     'proformaInvoice.piNumber': proformaInvoice?.piNumber
   });
-   // ✅ Try multiple sources for the actual PI ID
-  const actualPiId = pi?.id || proformaInvoice?.id;
-  const piNumber = pi?.piNumber || proformaInvoice?.piNumber;
-  
-  console.log('🎯 Selected PI ID:', actualPiId, 'PI Number:', piNumber);
-  
-  if (!actualPiId && !piNumber) {
-    console.error('❌ No PI ID or PI Number found!');
-    showNotification('Cannot allocate: No PI reference found', 'error');
-    return;
-  }
   
 
 // ✅ CRITICAL FIX: Use the actual PI ID (not piNumber)
