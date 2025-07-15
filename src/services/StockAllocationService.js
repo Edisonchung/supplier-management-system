@@ -39,8 +39,6 @@ export class StockAllocationService {
    */
   static async allocateStock(piId, itemId, allocations) {
     try {
-      console.log('🎯 Allocating stock:', { piId, itemId, allocations });
-
       // Enhanced validation with better error handling
       const validationResult = await this.validateAllocation(piId, itemId, allocations);
       if (!validationResult.valid) {
@@ -348,7 +346,6 @@ export class StockAllocationService {
         });
       }
 
-      console.log('✅ Generated suggestions:', suggestions);
       return suggestions;
 
     } catch (error) {
