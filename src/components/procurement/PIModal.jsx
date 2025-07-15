@@ -1,6 +1,9 @@
 // src/components/procurement/PIModal.jsx
 import React, { useState, useEffect } from 'react';
 import DocumentViewer from '../common/DocumentViewer';
+import StockAllocationModal from './StockAllocationModal';
+import { StockAllocationService } from '../../services/StockAllocationService';
+
 import { 
   X, Plus, Trash2, Search, Package, 
   FileText, Calculator, Calendar, Tag,
@@ -1928,111 +1931,16 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
             </div>
           ) : activeTab === 'receiving' ?  (
             // Receiving Tab
-            <div className="space-y-6">
-              {/* Receiving Summary */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-600">Total Ordered</p>
-                    <p className="text-xl font-bold">{totalOrdered} items</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Total Received</p>
-                    <p className="text-xl font-bold text-green-600">{totalReceived} items</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Pending</p>
-                    <p className="text-xl font-bold text-orange-600">{totalOrdered - totalReceived} items</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Receiving Items */}
-              <div className="space-y-4">
-                {selectedProducts.map((item, index) => {
-                  const hasDiscrepancy = item.receivedQty > 0 && item.receivedQty !== item.quantity;
-                  
-                  return (
-                    <div key={item.id || index} className={`border rounded-lg p-4 ${hasDiscrepancy ? 'border-orange-300 bg-orange-50' : 'border-gray-200'}`}>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="font-medium">{item.productName}</h4>
-                          <p className="text-sm text-gray-600">{item.productCode}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleReceived(index)}
-                          className="ml-4"
-                        >
-                          {item.isReceived ? (
-                            <CheckSquare className="h-5 w-5 text-green-600" />
-                          ) : (
-                            <Square className="h-5 w-5 text-gray-400" />
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Ordered Qty</label>
-                          <p className="font-medium">{item.quantity}</p>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Received Qty</label>
-                          <input
-                            type="number"
-                            min="0"
-                            max={item.quantity}
-                            value={item.receivedQty}
-                            onChange={(e) => handleUpdateItem(index, 'receivedQty', parseInt(e.target.value) || 0)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm text-gray-600 mb-1">Difference</label>
-                          <p className={`font-medium ${
-                            item.quantity - item.receivedQty > 0 ? 'text-orange-600' : 
-                            item.quantity - item.receivedQty < 0 ? 'text-red-600' : 
-                            'text-green-600'
-                          }`}>
-                            {item.quantity - item.receivedQty}
-                          </p>
-                        </div>
-                      </div>
-
-                      {hasDiscrepancy && (
-                        <div className="mt-3 p-2 bg-orange-100 rounded flex items-center gap-2">
-                          <AlertCircle className="h-4 w-4 text-orange-600" />
-                          <span className="text-sm text-orange-800">Quantity discrepancy detected</span>
-                        </div>
-                      )}
-
-                      <div className="mt-3">
-                        <label className="block text-sm text-gray-600 mb-1">Receiving Notes</label>
-                        <input
-                          type="text"
-                          value={item.receivingNotes || ''}
-                          onChange={(e) => handleUpdateItem(index, 'receivingNotes', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="e.g., Damaged packaging, Wrong item, etc."
-                        />
-                      </div>
-
-                      {/* PO Allocation Section (Future Enhancement) */}
-                      {item.receivedQty > 0 && (
-                        <div className="mt-3 p-3 bg-gray-50 rounded">
-                          <p className="text-sm text-gray-600">
-                            <span className="font-medium">Note:</span> Stock allocation to POs will be available in the next update
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-           </div>
-            </div>
+            <StockReceivingTab 
+              pi={formData} 
+              onUpdatePI={(updatedPI) => {
+                setFormData(updatedPI);
+                // Auto-save the updates
+                onSave(updatedPI);
+              }}
+              suppliers={suppliers}
+              showNotification={showNotification}
+            />
           ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
             <div className="space-y-4">
@@ -2258,5 +2166,305 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     </div>
   );
 };
+
+// ADD THIS ENTIRE COMPONENT before the export default PIModal; line
+
+// Stock Receiving Tab Component with Stock Allocation
+const StockReceivingTab = ({ 
+  pi, 
+  onUpdatePI, 
+  suppliers, 
+  showNotification 
+}) => {
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [showAllocationModal, setShowAllocationModal] = useState(false);
+  const [receivingForm, setReceivingForm] = useState({});
+
+  // Initialize receiving form data
+  useEffect(() => {
+    if (pi && pi.items) {
+      const formData = {};
+      pi.items.forEach(item => {
+        formData[item.id] = {
+          receivedQty: item.receivedQty || 0,
+          receivingNotes: item.receivingNotes || '',
+          hasDiscrepancy: item.hasDiscrepancy || false,
+          discrepancyReason: item.discrepancyReason || ''
+        };
+      });
+      setReceivingForm(formData);
+    }
+  }, [pi]);
+
+  const handleReceivingUpdate = (itemId, field, value) => {
+    setReceivingForm(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        [field]: value
+      }
+    }));
+  };
+
+  const saveReceivingData = async (itemId) => {
+    try {
+      const receivingData = receivingForm[itemId];
+      
+      // Update the PI item
+      const updatedItems = pi.items.map(item => {
+        if (item.id === itemId) {
+          const receivedQty = receivingData.receivedQty;
+          const orderedQty = item.quantity;
+          const difference = receivedQty - orderedQty;
+          
+          return {
+            ...item,
+            receivedQty: receivedQty,
+            receivingNotes: receivingData.receivingNotes,
+            hasDiscrepancy: receivingData.hasDiscrepancy || difference !== 0,
+            discrepancyReason: difference !== 0 ? `Quantity difference: ${difference > 0 ? '+' : ''}${difference}` : receivingData.discrepancyReason,
+            difference: difference,
+            receivedDate: new Date().toISOString().split('T')[0],
+            unallocatedQty: receivedQty - (item.totalAllocated || 0)
+          };
+        }
+        return item;
+      });
+
+      // Update the PI
+      const updatedPI = {
+        ...pi,
+        items: updatedItems,
+        updatedAt: new Date().toISOString()
+      };
+
+      await onUpdatePI(updatedPI);
+      showNotification('Receiving data saved successfully', 'success');
+    } catch (error) {
+      console.error('Error saving receiving data:', error);
+      showNotification('Failed to save receiving data', 'error');
+    }
+  };
+
+  const openAllocationModal = (item) => {
+    if (!item.receivedQty || item.receivedQty <= 0) {
+      showNotification('Please receive items before allocating stock', 'warning');
+      return;
+    }
+    setSelectedItem(item);
+    setShowAllocationModal(true);
+  };
+
+  const handleAllocationComplete = async (allocations) => {
+    try {
+      // Refresh the PI data to show updated allocations
+      const updatedItems = pi.items.map(item => {
+        if (item.id === selectedItem.id) {
+          const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
+          return {
+            ...item,
+            allocations: allocations,
+            totalAllocated: totalAllocated,
+            unallocatedQty: (item.receivedQty || 0) - totalAllocated
+          };
+        }
+        return item;
+      });
+
+      const updatedPI = {
+        ...pi,
+        items: updatedItems,
+        updatedAt: new Date().toISOString()
+      };
+
+      await onUpdatePI(updatedPI);
+      showNotification('Stock allocated successfully', 'success');
+      setShowAllocationModal(false);
+      setSelectedItem(null);
+    } catch (error) {
+      console.error('Error updating allocations:', error);
+      showNotification('Failed to update allocations', 'error');
+    }
+  };
+
+  const getItemStatus = (item) => {
+    const received = item.receivedQty || 0;
+    const ordered = item.quantity || 0;
+    const allocated = item.totalAllocated || 0;
+
+    if (received === 0) return { status: 'pending', color: 'gray', icon: Clock };
+    if (received !== ordered) return { status: 'discrepancy', color: 'yellow', icon: AlertTriangle };
+    if (allocated < received) return { status: 'partial-allocation', color: 'orange', icon: Package };
+    return { status: 'complete', color: 'green', icon: CheckCircle };
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Stock Allocation Feature Notice */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center">
+          <Package className="h-5 w-5 text-blue-600 mr-2" />
+          <div>
+            <h3 className="text-sm font-medium text-blue-900">
+              Stock Allocation Available
+            </h3>
+            <p className="text-sm text-blue-700 mt-1">
+              Allocate received stock to Purchase Orders, Project Codes, or Warehouse inventory.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Items List */}
+      <div className="space-y-4">
+        {pi.items && pi.items.map(item => {
+          const itemForm = receivingForm[item.id] || {};
+          const itemStatus = getItemStatus(item);
+          const StatusIcon = itemStatus.icon;
+
+          return (
+            <div key={item.id} className="border border-gray-200 rounded-lg p-6 bg-white">
+              {/* Item Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <h4 className="font-medium text-gray-900">{item.productName}</h4>
+                  <p className="text-sm text-gray-600">{item.productCode}</p>
+                </div>
+                <div className="flex items-center">
+                  <StatusIcon className={`h-5 w-5 text-${itemStatus.color}-500 mr-2`} />
+                  <span className={`text-sm font-medium text-${itemStatus.color}-700 capitalize`}>
+                    {itemStatus.status.replace('-', ' ')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quantity Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Ordered Qty
+                  </label>
+                  <div className="text-lg font-semibold text-gray-900">
+                    {item.quantity}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Received Qty
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={itemForm.receivedQty || 0}
+                    onChange={(e) => handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Difference
+                  </label>
+                  <div className={`text-lg font-semibold ${
+                    (itemForm.receivedQty || 0) - item.quantity > 0 ? 'text-green-600' :
+                    (itemForm.receivedQty || 0) - item.quantity < 0 ? 'text-red-600' : 'text-gray-600'
+                  }`}>
+                    {(itemForm.receivedQty || 0) - item.quantity > 0 && '+'}
+                    {(itemForm.receivedQty || 0) - item.quantity}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unallocated
+                  </label>
+                  <div className={`text-lg font-semibold ${
+                    (item.unallocatedQty || 0) > 0 ? 'text-orange-600' : 'text-gray-600'
+                  }`}>
+                    {item.unallocatedQty || (itemForm.receivedQty || 0) - (item.totalAllocated || 0)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Receiving Notes */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Receiving Notes
+                </label>
+                <textarea
+                  value={itemForm.receivingNotes || ''}
+                  onChange={(e) => handleReceivingUpdate(item.id, 'receivingNotes', e.target.value)}
+                  placeholder="e.g., Damaged packaging, Wrong item, etc."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  rows="2"
+                />
+              </div>
+
+              {/* Current Allocations Display */}
+              {item.allocations && item.allocations.length > 0 && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Current Allocations:</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {item.allocations.map((allocation, index) => (
+                      <div key={index} className="text-sm bg-white p-2 rounded border flex items-center">
+                        {allocation.allocationType === 'po' && <FileText className="mr-2 h-3 w-3 text-green-500" />}
+                        {allocation.allocationType === 'project' && <Tag className="mr-2 h-3 w-3 text-blue-500" />}
+                        {allocation.allocationType === 'warehouse' && <Package className="mr-2 h-3 w-3 text-gray-500" />}
+                        <span className="font-medium">{allocation.quantity}</span>
+                        <span className="mx-1">→</span>
+                        <span className="text-gray-600 truncate">{allocation.targetName}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-between items-center">
+                <button
+                  onClick={() => saveReceivingData(item.id)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center"
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Save Receiving Data
+                </button>
+
+                {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
+                  <button
+                    onClick={() => openAllocationModal({
+                      ...item,
+                      receivedQty: itemForm.receivedQty || item.receivedQty || 0,
+                      unallocatedQty: (itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)
+                    })}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    Allocate Stock ({(itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)} available)
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Stock Allocation Modal */}
+      {showAllocationModal && selectedItem && (
+        <StockAllocationModal
+          isOpen={showAllocationModal}
+          onClose={() => {
+            setShowAllocationModal(false);
+            setSelectedItem(null);
+          }}
+          piId={pi.id}
+          itemData={selectedItem}
+          onAllocationComplete={handleAllocationComplete}
+        />
+      )}
+    </div>
+  );
+};
+
 
 export default PIModal;
