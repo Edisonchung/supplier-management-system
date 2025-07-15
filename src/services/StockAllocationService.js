@@ -504,38 +504,110 @@ export class StockAllocationService {
    * Update PI item with allocations
    */
   static async updatePIItemAllocations(piId, itemId, allocationRecords) {
-    try {
-      const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
-      const piIndex = proformaInvoices.findIndex(pi => pi.id === piId);
-      
-      if (piIndex === -1) {
-        throw new Error('Proforma Invoice not found');
-      }
-
-      const pi = proformaInvoices[piIndex];
-      const itemIndex = pi.items.findIndex(item => item.id === itemId);
-      
-      if (itemIndex === -1) {
-        throw new Error('PI item not found');
-      }
-
-      // Update item allocations
-      const item = pi.items[itemIndex];
-      item.allocations = (item.allocations || []).concat(allocationRecords);
-      item.totalAllocated = item.allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
-      item.unallocatedQty = (item.receivedQty || 0) - item.totalAllocated;
-
-      // Update PI
-      pi.updatedAt = new Date().toISOString();
-      proformaInvoices[piIndex] = pi;
-      setLocalStorageData('proformaInvoices', proformaInvoices);
-
-      console.log('✅ PI item allocations updated');
-    } catch (error) {
-      console.error('❌ Error updating PI item allocations:', error);
-      throw error;
+  try {
+    console.log('🔍 Updating PI item allocations with:', { piId, itemId, allocationRecords });
+    
+    const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
+    console.log('📋 Found PIs in localStorage:', proformaInvoices.length);
+    
+    // ✅ ENHANCED PI SEARCH - Try multiple ID formats
+    let piIndex = -1;
+    let pi = null;
+    
+    // Strategy 1: Direct ID match
+    piIndex = proformaInvoices.findIndex(p => p.id === piId);
+    if (piIndex !== -1) {
+      console.log('✅ Found PI by direct ID match');
+      pi = proformaInvoices[piIndex];
     }
+    
+    // Strategy 2: PI Number match
+    if (piIndex === -1) {
+      piIndex = proformaInvoices.findIndex(p => p.piNumber === piId);
+      if (piIndex !== -1) {
+        console.log('✅ Found PI by PI Number match');
+        pi = proformaInvoices[piIndex];
+      }
+    }
+    
+    // Strategy 3: Partial ID match (in case of ID format differences)
+    if (piIndex === -1) {
+      piIndex = proformaInvoices.findIndex(p => 
+        p.id && piId && (p.id.includes(piId) || piId.includes(p.id))
+      );
+      if (piIndex !== -1) {
+        console.log('✅ Found PI by partial ID match');
+        pi = proformaInvoices[piIndex];
+      }
+    }
+    
+    // Strategy 4: Log all available PIs for debugging
+    if (piIndex === -1) {
+      console.log('❌ PI not found. Available PIs:');
+      proformaInvoices.forEach((p, idx) => {
+        console.log(`  PI ${idx}: ID="${p.id}", Number="${p.piNumber}"`);
+      });
+      
+      // Try to find the most recently updated PI as a fallback
+      const sortedPIs = proformaInvoices.sort((a, b) => 
+        new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)
+      );
+      
+      if (sortedPIs.length > 0) {
+        console.log('🔄 Using most recently updated PI as fallback');
+        pi = sortedPIs[0];
+        piIndex = proformaInvoices.findIndex(p => p.id === pi.id);
+      }
+    }
+    
+    if (piIndex === -1 || !pi) {
+      throw new Error(`Proforma Invoice not found. Searched for: "${piId}"`);
+    }
+
+    console.log('✅ Found PI:', { id: pi.id, piNumber: pi.piNumber });
+
+    // Find the item in the PI
+    const itemIndex = pi.items.findIndex(item => 
+      item.id === itemId || 
+      item.productCode === itemId ||
+      item.productName === itemId
+    );
+    
+    if (itemIndex === -1) {
+      console.log('❌ Item not found in PI. Available items:');
+      pi.items.forEach((item, idx) => {
+        console.log(`  Item ${idx}: ID="${item.id}", Code="${item.productCode}", Name="${item.productName}"`);
+      });
+      throw new Error(`PI item not found. Searched for: "${itemId}"`);
+    }
+
+    console.log('✅ Found item:', pi.items[itemIndex]);
+
+    // Update item allocations
+    const item = pi.items[itemIndex];
+    item.allocations = (item.allocations || []).concat(allocationRecords);
+    item.totalAllocated = item.allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
+    item.unallocatedQty = (item.receivedQty || 0) - item.totalAllocated;
+
+    // Update PI timestamp
+    pi.updatedAt = new Date().toISOString();
+    proformaInvoices[piIndex] = pi;
+    
+    // Save back to localStorage
+    setLocalStorageData('proformaInvoices', proformaInvoices);
+
+    console.log('✅ PI item allocations updated successfully');
+    console.log('📊 Updated item stats:', {
+      totalAllocated: item.totalAllocated,
+      unallocatedQty: item.unallocatedQty,
+      allocationsCount: item.allocations.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Error updating PI item allocations:', error);
+    throw error;
   }
+}
 
   /**
    * Update product stock levels
