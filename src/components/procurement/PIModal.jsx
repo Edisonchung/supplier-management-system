@@ -2337,9 +2337,23 @@ const StockReceivingTab = ({
     return { status: 'complete', color: 'green', icon: CheckCircle };
   };
 
+  // ADD THIS DEBUG RIGHT BEFORE YOUR RETURN STATEMENT
+  console.log('🔍 About to render StockReceivingTab');
+  console.log('🔍 PI items length:', pi?.items?.length);
+  console.log('🔍 Receiving form keys:', Object.keys(receivingForm));
+  
 
   // DEBUG: Show debug info if no items
   if (!pi || !pi.items || pi.items.length === 0) {
+      console.log('🚨 No items to render - early return');
+    return (
+      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
+        <p>⚠️ DEBUG: No PI items found to display</p>
+        <p>PI: {pi ? 'Present' : 'Missing'}</p>
+        <p>Items: {pi?.items ? `${pi.items.length} items` : 'No items array'}</p>
+      </div>
+    );
+  }
     return (
       <div className="space-y-6">
         {/* Stock Allocation Feature Notice */}
@@ -2408,6 +2422,8 @@ const StockReceivingTab = ({
       {/* Items List */}
       <div className="space-y-4">
         {pi.items && pi.items.map(item => {
+                console.log(`🔍 Rendering item ${index + 1}:`, item.id);
+
           const itemForm = receivingForm[item.id] || {};
           const itemStatus = getItemStatus(item);
           const StatusIcon = itemStatus.icon;
@@ -2417,6 +2433,11 @@ const StockReceivingTab = ({
 
           return (
             <div key={item.id} className="border border-gray-200 rounded-lg p-6 bg-white">
+
+              {/* DEBUG: Item Header */}
+              <div className="bg-yellow-50 p-2 rounded mb-4 text-sm">
+                <strong>DEBUG:</strong> Item {index + 1} - ID: {item.id} - Name: {item.productName || 'No name'}
+              </div>
               {/* Item Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -2450,7 +2471,11 @@ const StockReceivingTab = ({
                     type="number"
                     min="0"
                     value={itemForm.receivedQty || 0}
-                    onChange={(e) => handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0)}
+                    onChange={(e) => {
+                      console.log(`📝 Updating received qty for ${item.id}:`, e.target.value);
+                      handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0);
+                    }}
+                    
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
