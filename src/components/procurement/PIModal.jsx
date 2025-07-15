@@ -2269,6 +2269,8 @@ const StockReceivingTab = ({
   const piId = pi.id || pi.piNumber;
   
   console.log('🎯 Opening allocation modal with PI ID:', piId, 'for item:', item.id);
+  console.log('🔍 PI Object:', { id: pi.id, piNumber: pi.piNumber });
+  
   
   setSelectedItem({
     ...item,
@@ -2291,7 +2293,7 @@ const StockReceivingTab = ({
     }}
     
     // ✅ FIX: Use the same PI ID logic consistently
-    piId={selectedItem.piId || pi.id || pi.piNumber}
+    piId={selectedItem.piId}
     
     itemData={selectedItem}
     onAllocationComplete={handleAllocationComplete}
