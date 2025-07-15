@@ -2264,6 +2264,28 @@ const StockReceivingTab = ({
     showNotification('Please receive items before allocating stock', 'warning');
     return;
   }
+    // ✅ DEBUG: Log all available PI data sources
+  console.log('🔍 DEBUG ALL PI SOURCES:', {
+    'pi object': pi,
+    'proformaInvoice prop': proformaInvoice,
+    'pi.id': pi?.id,
+    'pi.piNumber': pi?.piNumber,
+    'proformaInvoice.id': proformaInvoice?.id,
+    'proformaInvoice.piNumber': proformaInvoice?.piNumber
+  });
+   // ✅ Try multiple sources for the actual PI ID
+  const actualPiId = pi?.id || proformaInvoice?.id;
+  const piNumber = pi?.piNumber || proformaInvoice?.piNumber;
+  
+  console.log('🎯 Selected PI ID:', actualPiId, 'PI Number:', piNumber);
+  
+  if (!actualPiId && !piNumber) {
+    console.error('❌ No PI ID or PI Number found!');
+    showNotification('Cannot allocate: No PI reference found', 'error');
+    return;
+  }
+  
+
 // ✅ CRITICAL FIX: Use the actual PI ID (not piNumber)
   // Your logs show selectedPI?.id: "pi-1752515534915" - this is what we need!
   const actualPiId = pi.id || proformaInvoice?.id; // Use the actual database ID
