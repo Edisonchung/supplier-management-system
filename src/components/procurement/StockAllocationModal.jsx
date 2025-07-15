@@ -22,15 +22,6 @@ const StockAllocationModal = ({
   itemData, 
   onAllocationComplete 
 }) => {
-
-  // ✅ FIX 1: Add debugging and PI ID validation at the top of the component
-const StockAllocationModal = ({ 
-  isOpen, 
-  onClose, 
-  piId, 
-  itemData, 
-  onAllocationComplete 
-}) => {
   // ✅ ADD THIS DEBUG BLOCK RIGHT AFTER THE COMPONENT DECLARATION
   console.log('🎯 StockAllocationModal Props Debug:', {
     isOpen,
@@ -52,7 +43,7 @@ const StockAllocationModal = ({
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (isOpen && itemData) {
+    if (isOpen && itemData && effectivePiId) {
       loadAllocationData();
     }
   }, [isOpen, itemData, effectivePiId]);
@@ -62,7 +53,7 @@ const StockAllocationModal = ({
     setError('');
     
     try {
-            console.log('🔍 Loading allocation data with PI ID:', effectivePiId);
+      console.log('🔍 Loading allocation data with PI ID:', effectivePiId);
 
       // Load available targets
       const targets = await StockAllocationService.getAvailableTargets(
@@ -172,8 +163,7 @@ const StockAllocationModal = ({
         throw new Error('Please fill in all allocation targets and quantities');
       }
 
-            console.log('💾 Saving allocation with PI ID:', effectivePiId);
-
+      console.log('💾 Saving allocation with PI ID:', effectivePiId);
 
       await StockAllocationService.allocateStock(effectivePiId, itemData.id, allocations);
       onAllocationComplete(allocations);
@@ -193,6 +183,7 @@ const StockAllocationModal = ({
                   allocations.every(alloc => alloc.allocationTarget && alloc.quantity > 0);
 
   if (!isOpen) return null;
+  
   if (!effectivePiId) {
     console.error('⚠️ No PI ID available for StockAllocationModal');
     return (
