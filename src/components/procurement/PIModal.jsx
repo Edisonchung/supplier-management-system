@@ -2490,14 +2490,18 @@ console.log('🔍 Modal Props Debug:', {
                 </button>
 
                 {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
-                  <button
-                    onClick={() => openAllocationModal({
-                      ...item,
-                      receivedQty: itemForm.receivedQty || item.receivedQty || 0,
-                      unallocatedQty: (itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)
-                    })}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-                  >
+                 <button
+  onClick={(event) => {
+    console.log('🎯 Allocate Stock button clicked');
+    openAllocationModal({
+      ...item,
+      receivedQty: itemForm.receivedQty || item.receivedQty || 0,
+      unallocatedQty: (itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)
+    }, event); // ← Pass the event
+  }}
+  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+  type="button" // ← ADD THIS TO PREVENT FORM SUBMISSION
+>
                     <Package className="mr-2 h-4 w-4" />
                     Allocate Stock ({(itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)} available)
                   </button>
