@@ -2260,16 +2260,55 @@ const StockReceivingTab = ({
   };
 
   const openAllocationModal = (item) => {
-    if (!item.receivedQty || item.receivedQty <= 0) {
-      showNotification('Please receive items before allocating stock', 'warning');
-      return;
-    }
-    setSelectedItem({
+  if (!item.receivedQty || item.receivedQty <= 0) {
+    showNotification('Please receive items before allocating stock', 'warning');
+    return;
+  }
+
+  // ✅ FIX: Ensure PI ID is properly set
+  const piId = pi.id || pi.piNumber;
+  
+  console.log('🎯 Opening allocation modal with PI ID:', piId, 'for item:', item.id);
+  
+  setSelectedItem({
     ...item,
-    piId: pi.id || pi.piNumber || formData.piNumber // Add this line
+    piId: piId, // Ensure PI ID is in the item data
+    // Add additional context that might be needed
+    piNumber: pi.piNumber,
+    supplierName: pi.supplierName
   });
-    setShowAllocationModal(true);
-  };
+  
+  setShowAllocationModal(true);
+};
+
+// ✅ UPDATED: StockAllocationModal JSX with consistent PI ID passing
+{showAllocationModal && selectedItem && (
+  <StockAllocationModal
+    isOpen={showAllocationModal}
+    onClose={() => {
+      setShowAllocationModal(false);
+      setSelectedItem(null);
+    }}
+    
+    // ✅ FIX: Use the same PI ID logic consistently
+    piId={selectedItem.piId || pi.id || pi.piNumber}
+    
+    itemData={selectedItem}
+    onAllocationComplete={handleAllocationComplete}
+  />
+)}
+
+// ✅ DEBUGGING: Add this console log right before the StockAllocationModal render
+console.log('🔍 Modal Props Debug:', {
+  isOpen: showAllocationModal,
+  piId: selectedItem?.piId || pi.id || pi.piNumber,
+  selectedItem: selectedItem ? 'Present' : 'Missing',
+  piObject: {
+    id: pi?.id,
+    piNumber: pi?.piNumber,
+    hasItems: pi?.items?.length > 0
+  }
+});
 
   const handleAllocationComplete = async (allocations) => {
     try {
