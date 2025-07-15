@@ -1,5 +1,24 @@
 // src/services/StockAllocationService.js
-import { getLocalStorageData, setLocalStorageData } from './firebase';
+import { mockFirebase } from './firebase';
+
+// Helper functions to work with your existing firebase service
+const getLocalStorageData = (key) => {
+  try {
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
+  } catch (error) {
+    console.error(`Error getting ${key} from localStorage:`, error);
+    return [];
+  }
+};
+
+const setLocalStorageData = (key, data) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (error) {
+    console.error(`Error setting ${key} to localStorage:`, error);
+  }
+};
 
 export class StockAllocationService {
   static ALLOCATION_TYPES = {
