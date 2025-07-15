@@ -182,7 +182,7 @@ const StockAllocationModal = ({
     onAllocationComplete(allocations);
     
     // TEMPORARILY COMMENT THIS OUT TO DEBUG
-     onClose();
+    // onClose();
     console.log('✅ ALLOCATION COMPLETE - Modal staying open for debugging');
     
   } catch (error) {
