@@ -665,22 +665,25 @@ export class StockAllocationService {
   /**
    * Helper methods - Enhanced
    */
-  static async getPIById(piId) {
-    try {
-      const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
-      const pi = proformaInvoices.find(pi => pi.id === piId);
-      
-      if (!pi) {
-        console.log('⚠️ PI not found:', piId);
-      }
-      
-      return pi;
-    } catch (error) {
-      console.error('Error getting PI by ID:', error);
-      return null;
+  static async getPIById(piIdOrNumber) {
+  try {
+    const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
+    
+    // First try to find by actual ID
+    let pi = proformaInvoices.find(p => p.id === piIdOrNumber);
+    
+    // If not found, try to find by PI number
+    if (!pi) {
+      pi = proformaInvoices.find(p => p.piNumber === piIdOrNumber);
+      console.log('🔍 PI found by number:', pi ? 'Yes' : 'No');
     }
+    
+    return pi;
+  } catch (error) {
+    console.error('Error getting PI by ID:', error);
+    return null;
   }
-
+}
   static async getPIItem(piId, itemId) {
     try {
       const pi = await this.getPIById(piId);
