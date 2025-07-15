@@ -150,32 +150,49 @@ const StockAllocationModal = ({
   };
 
   const handleSubmit = async () => {
-    setLoading(true);
-    setError('');
+  console.log('🎯 Starting allocation submission...');
+  setLoading(true);
+  setError('');
+  
+  try {
+    // Enhanced validation logging
+    const invalidAllocations = allocations.filter(alloc => 
+      !alloc.allocationTarget || alloc.quantity <= 0
+    );
     
-    try {
-      // Validate allocations have targets
-      const invalidAllocations = allocations.filter(alloc => 
-        !alloc.allocationTarget || alloc.quantity <= 0
-      );
-      
-      if (invalidAllocations.length > 0) {
-        throw new Error('Please fill in all allocation targets and quantities');
-      }
-
-      console.log('💾 Saving allocation with PI ID:', effectivePiId);
-
-      await StockAllocationService.allocateStock(effectivePiId, itemData.id, allocations);
-      onAllocationComplete(allocations);
-      onClose();
-    } catch (error) {
-      console.error('Allocation failed:', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
+    console.log('🔍 Allocation validation:', {
+      totalAllocations: allocations.length,
+      invalidAllocations: invalidAllocations.length,
+      allocations: allocations,
+      piId: effectivePiId,
+      itemId: itemData.id
+    });
+    
+    if (invalidAllocations.length > 0) {
+      const errorMsg = 'Please fill in all allocation targets and quantities';
+      console.error('❌ Validation failed:', errorMsg, invalidAllocations);
+      throw new Error(errorMsg);
     }
-  };
 
+    console.log('💾 Calling StockAllocationService.allocateStock...');
+    const result = await StockAllocationService.allocateStock(effectivePiId, itemData.id, allocations);
+    console.log('✅ Allocation successful:', result);
+    
+    console.log('🎯 Calling onAllocationComplete...');
+    onAllocationComplete(allocations);
+    
+    // TEMPORARILY COMMENT THIS OUT TO DEBUG
+    // onClose();
+    console.log('✅ ALLOCATION COMPLETE - Modal staying open for debugging');
+    
+  } catch (error) {
+    console.error('❌ Allocation failed with error:', error);
+    setError(`Allocation failed: ${error.message}`);
+  } finally {
+    console.log('🏁 Setting loading to false');
+    setLoading(false);
+  }
+};
   const totalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
   const availableQty = itemData.unallocatedQty || itemData.receivedQty || 0;
   const remainingQty = availableQty - totalAllocated;
