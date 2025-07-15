@@ -1929,20 +1929,18 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                 )}
               </div>
             </div>
-          ) : activeTab === 'receiving' ? (
-  <StockReceivingTab 
-    pi={{
-      ...formData,
-      items: selectedProducts  // ← This is the key fix!
-    }} 
-    onUpdatePI={(updatedPI) => {
-      setFormData(updatedPI);
-      setSelectedProducts(updatedPI.items);  // ← Keep selectedProducts in sync
-      onSave(updatedPI);
-    }}
-    suppliers={suppliers}
-    showNotification={showNotification}
-  />
+          ) : activeTab === 'receiving' ?  (
+            // Receiving Tab
+            <StockReceivingTab 
+              pi={formData} 
+              onUpdatePI={(updatedPI) => {
+                setFormData(updatedPI);
+                // Auto-save the updates
+                onSave(updatedPI);
+              }}
+              suppliers={suppliers}
+              showNotification={showNotification}
+            />
           ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
             <div className="space-y-4">
@@ -2178,33 +2176,15 @@ const StockReceivingTab = ({
   suppliers, 
   showNotification 
 }) => {
-
-  // Log the actual PI structure
-  console.log('🔍 PI Object Structure:', pi);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [receivingForm, setReceivingForm] = useState({});
 
-  // DEBUG: Add console logs to understand the data structure
-  console.log('🔍 StockReceivingTab DEBUG:', {
-    pi: pi,
-    piItems: pi?.items,
-    itemsLength: pi?.items?.length,
-    piId: pi?.id,
-    suppliers: suppliers?.length
-  });
-
   // Initialize receiving form data
   useEffect(() => {
-        console.log('🔍 useEffect triggered with pi:', pi);
-
     if (pi && pi.items) {
-            console.log('🔍 Processing items:', pi.items);
-
       const formData = {};
       pi.items.forEach(item => {
-                console.log('🔍 Processing item:', item);
-
         formData[item.id] = {
           receivedQty: item.receivedQty || 0,
           receivingNotes: item.receivingNotes || '',
@@ -2213,15 +2193,10 @@ const StockReceivingTab = ({
         };
       });
       setReceivingForm(formData);
-       console.log('🔍 Set receiving form data:', formData);
-    } else {
-      console.log('🔍 No PI or items found');
     }
   }, [pi]);
 
   const handleReceivingUpdate = (itemId, field, value) => {
-        console.log('🔍 Updating receiving data:', { itemId, field, value });
-
     setReceivingForm(prev => ({
       ...prev,
       [itemId]: {
@@ -2234,8 +2209,6 @@ const StockReceivingTab = ({
   const saveReceivingData = async (itemId) => {
     try {
       const receivingData = receivingForm[itemId];
-            console.log('🔍 Saving receiving data for item:', itemId, receivingData);
-
       
       // Update the PI item
       const updatedItems = pi.items.map(item => {
@@ -2264,7 +2237,6 @@ const StockReceivingTab = ({
         items: updatedItems,
         updatedAt: new Date().toISOString()
       };
-            console.log('🔍 Calling onUpdatePI with:', updatedPI);
 
       await onUpdatePI(updatedPI);
       showNotification('Receiving data saved successfully', 'success');
@@ -2275,8 +2247,6 @@ const StockReceivingTab = ({
   };
 
   const openAllocationModal = (item) => {
-        console.log('🔍 Opening allocation modal for item:', item);
-
     if (!item.receivedQty || item.receivedQty <= 0) {
       showNotification('Please receive items before allocating stock', 'warning');
       return;
@@ -2286,8 +2256,6 @@ const StockReceivingTab = ({
   };
 
   const handleAllocationComplete = async (allocations) => {
-        console.log('🔍 Allocation completed:', allocations);
-
     try {
       // Refresh the PI data to show updated allocations
       const updatedItems = pi.items.map(item => {
@@ -2330,61 +2298,6 @@ const StockReceivingTab = ({
     return { status: 'complete', color: 'green', icon: CheckCircle };
   };
 
-  // ADD THIS DEBUG RIGHT BEFORE YOUR RETURN STATEMENT
-  console.log('🔍 About to render StockReceivingTab');
-  console.log('🔍 PI items length:', pi?.items?.length);
-  console.log('🔍 Receiving form keys:', Object.keys(receivingForm));
-  
-
-  // DEBUG: Show debug info if no items
-  if (!pi || !pi.items || pi.items.length === 0) {
-      console.log('🚨 No items to render - early return');
-    return (
-      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
-        <p>⚠️ DEBUG: No PI items found to display</p>
-        <p>PI: {pi ? 'Present' : 'Missing'}</p>
-        <p>Items: {pi?.items ? `${pi.items.length} items` : 'No items array'}</p>
-      </div>
-    );
-  }
-    return (
-      <div className="space-y-6">
-        {/* Stock Allocation Feature Notice */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <Package className="h-5 w-5 text-blue-600 mr-2" />
-            <div>
-              <h3 className="text-sm font-medium text-blue-900">
-                Stock Allocation Available
-              </h3>
-              <p className="text-sm text-blue-700 mt-1">
-                Allocate received stock to Purchase Orders, Project Codes, or Warehouse inventory.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* DEBUG INFO */}
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-red-900 mb-2">
-            🔍 DEBUG: No Items Found
-          </h3>
-          <div className="text-sm text-red-700 space-y-1">
-            <p>PI Object: {pi ? 'Present' : 'Missing'}</p>
-            <p>PI ID: {pi?.id || 'No ID'}</p>
-            <p>PI Items: {pi?.items ? `Array with ${pi.items.length} items` : 'No items array'}</p>
-            <p>Items Array: {JSON.stringify(pi?.items || [])}</p>
-          </div>
-        </div>
-
-        <div className="text-center py-8 text-gray-500">
-          <Package className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-          <p className="font-medium">No items available for allocation</p>
-          <p className="text-sm">Add items to this PI first, then return to allocate stock.</p>
-        </div>
-      </div>
-    );
-  }
   return (
     <div className="space-y-6">
       {/* Stock Allocation Feature Notice */}
@@ -2402,35 +2315,15 @@ const StockReceivingTab = ({
         </div>
       </div>
 
-      {/* DEBUG INFO */}
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-green-900 mb-2">
-          🔍 DEBUG: Items Found
-        </h3>
-        <div className="text-sm text-green-700">
-          <p>Found {pi.items.length} items to process</p>
-        </div>
-      </div>
-
       {/* Items List */}
       <div className="space-y-4">
         {pi.items && pi.items.map(item => {
-                console.log(`🔍 Rendering item ${index + 1}:`, item.id);
-
           const itemForm = receivingForm[item.id] || {};
           const itemStatus = getItemStatus(item);
           const StatusIcon = itemStatus.icon;
 
-                console.log('🔍 Rendering item:', item.id, item.productName);
-
-
           return (
             <div key={item.id} className="border border-gray-200 rounded-lg p-6 bg-white">
-
-              {/* DEBUG: Item Header */}
-              <div className="bg-yellow-50 p-2 rounded mb-4 text-sm">
-                <strong>DEBUG:</strong> Item {index + 1} - ID: {item.id} - Name: {item.productName || 'No name'}
-              </div>
               {/* Item Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -2464,11 +2357,7 @@ const StockReceivingTab = ({
                     type="number"
                     min="0"
                     value={itemForm.receivedQty || 0}
-                    onChange={(e) => {
-                      console.log(`📝 Updating received qty for ${item.id}:`, e.target.value);
-                      handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0);
-                    }}
-                    
+                    onChange={(e) => handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
