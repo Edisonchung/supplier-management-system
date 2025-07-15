@@ -1929,18 +1929,20 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
                 )}
               </div>
             </div>
-          ) : activeTab === 'receiving' ?  (
-            // Receiving Tab
-            <StockReceivingTab 
-              pi={formData} 
-              onUpdatePI={(updatedPI) => {
-                setFormData(updatedPI);
-                // Auto-save the updates
-                onSave(updatedPI);
-              }}
-              suppliers={suppliers}
-              showNotification={showNotification}
-            />
+          ) : activeTab === 'receiving' ? (
+  <StockReceivingTab 
+    pi={{
+      ...formData,
+      items: selectedProducts  // ← This is the key fix!
+    }} 
+    onUpdatePI={(updatedPI) => {
+      setFormData(updatedPI);
+      setSelectedProducts(updatedPI.items);  // ← Keep selectedProducts in sync
+      onSave(updatedPI);
+    }}
+    suppliers={suppliers}
+    showNotification={showNotification}
+  />
           ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
             <div className="space-y-4">
