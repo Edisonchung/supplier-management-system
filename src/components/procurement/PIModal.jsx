@@ -2178,13 +2178,6 @@ const StockReceivingTab = ({
   suppliers, 
   showNotification 
 }) => {
-  console.log('🔍 StockReceivingTab DEBUG:', {
-    pi: pi ? 'Present' : 'Missing',
-    piItems: pi?.items ? 'Array' : 'Missing',
-    itemsLength: pi?.items?.length || 0,
-    piId: pi?.id,
-    suppliers: suppliers?.length || 0
-  });
 
   // Log the actual PI structure
   console.log('🔍 PI Object Structure:', pi);
