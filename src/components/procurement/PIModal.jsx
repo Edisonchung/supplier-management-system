@@ -11,7 +11,7 @@ import {
   DollarSign, Upload, Link, Eye, Download,
   CreditCard, MessageSquare, Briefcase, AlertTriangle,
   Building2, Mail, Phone, MapPin, User, Loader2,
-  ChevronDown, Check, CheckCircle
+  ChevronDown, Check, CheckCircle, Clock
 } from 'lucide-react';
 
 // ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
@@ -2173,6 +2173,16 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
 
 // Stock Receiving Tab Component with Stock Allocation
 const StockReceivingTab = ({ 
+    console.log('🔍 StockReceivingTab DEBUG:', {
+    pi: pi ? 'Present' : 'Missing',
+    piItems: pi?.items ? 'Array' : 'Missing',
+    itemsLength: pi?.items?.length || 0,
+    piId: pi?.id,
+    suppliers: suppliers?.length || 0
+  });
+  console.log('🔍 PI Object Structure:', pi);
+
+
   pi, 
   onUpdatePI, 
   suppliers, 
