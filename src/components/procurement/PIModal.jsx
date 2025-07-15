@@ -2264,7 +2264,10 @@ const StockReceivingTab = ({
       showNotification('Please receive items before allocating stock', 'warning');
       return;
     }
-    setSelectedItem(item);
+    setSelectedItem({
+    ...item,
+    piId: pi.id || pi.piNumber || formData.piNumber // Add this line
+  });
     setShowAllocationModal(true);
   };
 
