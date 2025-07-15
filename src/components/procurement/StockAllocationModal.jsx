@@ -48,6 +48,49 @@ const StockAllocationModal = ({
     }
   }, [isOpen, itemData, effectivePiId]);
 
+  
+
+  useEffect(() => {
+  console.log('🔍 Validation state changed:', {
+    remainingQty,
+    totalAllocated,
+    isValid,
+    validationBreakdown: {
+      remainingQtyValid: remainingQty >= 0,
+      totalAllocatedValid: totalAllocated > 0,
+      allHaveTargets: allocations.every(alloc => alloc.allocationTarget),
+      allHaveQuantity: allocations.every(alloc => alloc.quantity > 0),
+      allocationsCount: allocations.length
+    },
+    allocations: allocations.map(a => ({
+      hasTarget: !!a.allocationTarget,
+      hasQuantity: a.quantity > 0,
+      target: a.allocationTarget,
+      quantity: a.quantity
+    }))
+  });
+}, [isValid, remainingQty, totalAllocated, allocations]);
+
+  useEffect(() => {
+  const handleGlobalClick = (e) => {
+    if (e.target.textContent && e.target.textContent.includes('Allocate Stock')) {
+      console.log('🖱️ Global click detected on Allocate Stock button:', {
+        target: e.target,
+        disabled: e.target.disabled,
+        type: e.target.type,
+        className: e.target.className,
+        tagName: e.target.tagName,
+        parentElement: e.target.parentElement?.tagName
+      });
+    }
+  };
+
+  document.addEventListener('click', handleGlobalClick, true);
+  return () => document.removeEventListener('click', handleGlobalClick, true);
+}, []);
+
+  
+
   const loadAllocationData = async () => {
     setLoading(true);
     setError('');
@@ -67,6 +110,8 @@ const StockAllocationModal = ({
         itemId: itemData.id,
         availableQty: itemData.unallocatedQty || itemData.receivedQty || 0
       });
+
+      
       
       // Get smart suggestions
       const suggestions = await StockAllocationService.suggestAllocations(
@@ -150,6 +195,44 @@ const StockAllocationModal = ({
   };
 
   const handleSubmit = async () => {
+  console.log('🎯 === BUTTON CLICKED - handleSubmit started ===');
+  console.log('🔍 Current state when button clicked:', {
+    isValid,
+    loading,
+    totalAllocated,
+    remainingQty,
+    allocationsCount: allocations.length,
+    allocations: allocations.map(a => ({
+      id: a.id,
+      type: a.allocationType,
+      target: a.allocationTarget,
+      quantity: a.quantity,
+      hasTarget: !!a.allocationTarget,
+      hasQuantity: a.quantity > 0
+    }))
+  });
+
+  // ✅ CHECK IF BUTTON IS ACTUALLY DISABLED
+  if (!isValid) {
+    console.error('❌ Button should be disabled - validation failed:', {
+      remainingQty,
+      totalAllocated,
+      validationChecks: {
+        remainingQtyOK: remainingQty >= 0,
+        totalAllocatedOK: totalAllocated > 0,
+        allHaveTargets: allocations.every(alloc => alloc.allocationTarget),
+        allHaveQuantity: allocations.every(alloc => alloc.quantity > 0)
+      }
+    });
+    setError('Validation failed - please check all fields are filled correctly');
+    return;
+  }
+
+  if (loading) {
+    console.warn('⚠️ Already loading, ignoring click');
+    return;
+  }
+
   console.log('🎯 Starting allocation submission...');
   setLoading(true);
   setError('');
@@ -181,9 +264,9 @@ const StockAllocationModal = ({
     console.log('🎯 Calling onAllocationComplete...');
     onAllocationComplete(allocations);
     
-    // TEMPORARILY COMMENT THIS OUT TO DEBUG
-    // onClose();
+    // ✅ TEMPORARILY DISABLE AUTO-CLOSE FOR DEBUGGING
     console.log('✅ ALLOCATION COMPLETE - Modal staying open for debugging');
+    // onClose(); // ← UNCOMMENT THIS AFTER DEBUGGING
     
   } catch (error) {
     console.error('❌ Allocation failed with error:', error);
@@ -194,6 +277,21 @@ const StockAllocationModal = ({
   }
 };
 
+const handleButtonClick = (e) => {
+  console.log('🖱️ Button physical click detected!', {
+    event: e.type,
+    disabled: e.target.disabled,
+    loading,
+    isValid,
+    buttonElement: e.target
+  });
+  
+  // Prevent default and see if that helps
+  e.preventDefault();
+  
+  // Call the actual submit
+  handleSubmit();
+};
 
   const totalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
   const availableQty = itemData.unallocatedQty || itemData.receivedQty || 0;
@@ -355,6 +453,34 @@ const StockAllocationModal = ({
           )}
         </div>
 
+        {/* DEBUG PANEL - REMOVE AFTER FIXING */}
+{process.env.NODE_ENV === 'development' && (
+  <div className="mx-6 mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+    <strong>🐛 DEBUG INFO:</strong>
+    <div>isValid: {isValid ? '✅' : '❌'}</div>
+    <div>loading: {loading ? '🔄' : '✅'}</div>
+    <div>remainingQty: {remainingQty}</div>
+    <div>totalAllocated: {totalAllocated}</div>
+    <div>allocations.length: {allocations.length}</div>
+    <div>effectivePiId: {effectivePiId || 'MISSING'}</div>
+    <div>itemData.id: {itemData?.id || 'MISSING'}</div>
+    <div>Button should be: {(!isValid || loading) ? 'DISABLED' : 'ENABLED'}</div>
+    
+    {/* FORCE SUBMIT BUTTON FOR TESTING */}
+    <button 
+      onClick={() => {
+        console.log('🚀 FORCE SUBMIT - bypassing validation for debugging');
+        handleSubmit();
+      }}
+      className="mt-2 px-2 py-1 bg-red-600 text-white rounded text-xs"
+      type="button"
+    >
+      🚀 Force Submit (Debug)
+    </button>
+  </div>
+)}
+
+        
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
           <button
@@ -365,22 +491,27 @@ const StockAllocationModal = ({
             Cancel
           </button>
           <button
-            onClick={handleSubmit}
-            disabled={!isValid || loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-          >
-            {loading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Allocating...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Allocate Stock
-              </>
-            )}
-          </button>
+  onClick={handleButtonClick}  // ← CHANGED THIS
+  disabled={!isValid || loading}
+  className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
+    !isValid ? 'bg-gray-400' : 'bg-blue-600'
+  }`}
+  style={{ 
+    pointerEvents: (!isValid || loading) ? 'none' : 'auto' // ← ADDED THIS
+  }}
+>
+  {loading ? (
+    <>
+      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+      Allocating...
+    </>
+  ) : (
+    <>
+      <CheckCircle className="mr-2 h-4 w-4" />
+      Allocate Stock
+    </>
+  )}
+</button>
         </div>
       </div>
     </div>
