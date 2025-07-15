@@ -1930,7 +1930,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
               </div>
             </div>
           ) : activeTab === 'receiving' ?  (
-            // Receiving Tab
+            // Receiving Tab f
             <StockReceivingTab 
     pi={{
       ...formData,
