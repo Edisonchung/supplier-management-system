@@ -15,6 +15,8 @@ import AIExtractionService from '../../services/ai/AIExtractionService';
 import PICard from './PICard';
 import PIModal from './PIModal';
 import DocumentViewer from '../common/DocumentViewer';
+import StockAllocationModal from './StockAllocationModal';
+import { StockAllocationService } from '../../services/StockAllocationService';
 
 
 const ProformaInvoices = ({ showNotification }) => {
@@ -1311,6 +1313,7 @@ switch (documentType) {
           products={products}
           addSupplier={addSupplier}
           showNotification={showNotification}
+          enableStockAllocation={true}
         />
       )}
 
