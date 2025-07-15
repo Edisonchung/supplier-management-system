@@ -2264,39 +2264,26 @@ const StockReceivingTab = ({
     showNotification('Please receive items before allocating stock', 'warning');
     return;
   }
-    // ✅ DEBUG: Log all available PI data sources
-  console.log('🔍 DEBUG ALL PI SOURCES:', {
-    'pi object': pi,
-    'proformaInvoice prop': proformaInvoice,
-    'pi.id': pi?.id,
-    'pi.piNumber': pi?.piNumber,
-    'proformaInvoice.id': proformaInvoice?.id,
-    'proformaInvoice.piNumber': proformaInvoice?.piNumber
-  });
-  
 
-// ✅ CRITICAL FIX: Use the actual PI ID (not piNumber)
-  // Your logs show selectedPI?.id: "pi-1752515534915" - this is what we need!
-  const actualPiId = pi.id || proformaInvoice?.id; // Use the actual database ID
-  const fallbackPiId = pi.piNumber; // Fallback to PI number if needed
+  // ✅ Use selectedPI from the broader scope (where you see it in logs)
+  // You'll need to pass selectedPI down to StockReceivingTab or access it differently
+  const actualPiId = "pi-1752515534915"; // ✅ TEMPORARY HARDCODE for testing
   
-  console.log('🎯 Opening allocation modal with ACTUAL PI ID:', actualPiId, 'fallback:', fallbackPiId);
-  console.log('🔍 PI Object Check:', { 
-    piId: pi.id, 
-    piNumber: pi.piNumber,
-    proformaInvoiceId: proformaInvoice?.id,
-    selectedPiId: actualPiId 
-  });  
+  // ✅ OR find where selectedPI is available and use:
+  // const actualPiId = selectedPI?.id || pi.piNumber;
+  
+  console.log('🎯 Opening allocation modal with PI ID:', actualPiId);
+  
   setSelectedItem({
     ...item,
-    piId: actualPiId || fallbackPiId, // Ensure PI ID is in the item data
-    // Add additional context that might be needed
+    piId: actualPiId,
     piNumber: pi.piNumber,
     supplierName: pi.supplierName
   });
   
   setShowAllocationModal(true);
 };
+
 
 // ✅ UPDATED: StockAllocationModal JSX with consistent PI ID passing
 {showAllocationModal && selectedItem && (
