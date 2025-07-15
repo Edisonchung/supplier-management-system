@@ -2470,7 +2470,9 @@ const StockReceivingTab = ({
             setShowAllocationModal(false);
             setSelectedItem(null);
           }}
-          piId={pi.id}
+          
+          piId={pi.id || pi.piNumber || 'temp-pi-id'}
+
           itemData={selectedItem}
           onAllocationComplete={handleAllocationComplete}
         />
