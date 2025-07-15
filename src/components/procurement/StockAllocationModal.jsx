@@ -22,7 +22,7 @@ const StockAllocationModal = ({
   itemData, 
   onAllocationComplete 
 }) => {
-  // ✅ ADD THIS DEBUG BLOCK RIGHT AFTER THE COMPONENT DECLARATION
+  // ✅ STEP 1: PROPS VALIDATION AND EARLY CALCULATIONS
   console.log('🎯 StockAllocationModal Props Debug:', {
     isOpen,
     piId: piId || 'MISSING',
@@ -30,11 +30,10 @@ const StockAllocationModal = ({
     itemDataPiId: itemData?.piId || 'Not in itemData'
   });
 
-  // ✅ ADD THIS: Create effective PI ID with fallback
   const effectivePiId = piId || itemData?.piId || itemData?.piNumber;
-  
   console.log('🎯 Effective PI ID for service:', effectivePiId);
   
+  // ✅ STEP 2: ALL STATE DECLARATIONS
   const [allocations, setAllocations] = useState([]);
   const [availableTargets, setAvailableTargets] = useState({});
   const [suggestions, setSuggestions] = useState([]);
@@ -42,55 +41,28 @@ const StockAllocationModal = ({
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (isOpen && itemData && effectivePiId) {
-      loadAllocationData();
-    }
-  }, [isOpen, itemData, effectivePiId]);
-
+  // ✅ STEP 3: DERIVED VALUES (CALCULATED FROM STATE)
+  const totalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+  const availableQty = itemData?.unallocatedQty || itemData?.receivedQty || 0;
+  const remainingQty = availableQty - totalAllocated;
   
+  // ✅ STEP 4: COMPLEX CALCULATIONS (WRAPPED IN useMemo FOR SAFETY)
+  const isValid = React.useMemo(() => {
+    const result = remainingQty >= 0 && 
+                   totalAllocated > 0 && 
+                   allocations.every(alloc => alloc.allocationTarget && alloc.quantity > 0);
+    
+    console.log('🔍 isValid calculation:', {
+      remainingQty,
+      totalAllocated,
+      allocationsLength: allocations.length,
+      result
+    });
+    
+    return result;
+  }, [remainingQty, totalAllocated, allocations]);
 
-  useEffect(() => {
-  console.log('🔍 Validation state changed:', {
-    remainingQty,
-    totalAllocated,
-    isValid,
-    validationBreakdown: {
-      remainingQtyValid: remainingQty >= 0,
-      totalAllocatedValid: totalAllocated > 0,
-      allHaveTargets: allocations.every(alloc => alloc.allocationTarget),
-      allHaveQuantity: allocations.every(alloc => alloc.quantity > 0),
-      allocationsCount: allocations.length
-    },
-    allocations: allocations.map(a => ({
-      hasTarget: !!a.allocationTarget,
-      hasQuantity: a.quantity > 0,
-      target: a.allocationTarget,
-      quantity: a.quantity
-    }))
-  });
-}, [isValid, remainingQty, totalAllocated, allocations]);
-
-  useEffect(() => {
-  const handleGlobalClick = (e) => {
-    if (e.target.textContent && e.target.textContent.includes('Allocate Stock')) {
-      console.log('🖱️ Global click detected on Allocate Stock button:', {
-        target: e.target,
-        disabled: e.target.disabled,
-        type: e.target.type,
-        className: e.target.className,
-        tagName: e.target.tagName,
-        parentElement: e.target.parentElement?.tagName
-      });
-    }
-  };
-
-  document.addEventListener('click', handleGlobalClick, true);
-  return () => document.removeEventListener('click', handleGlobalClick, true);
-}, []);
-
-  
-
+  // ✅ STEP 5: FUNCTION DECLARATIONS
   const loadAllocationData = async () => {
     setLoading(true);
     setError('');
@@ -104,14 +76,11 @@ const StockAllocationModal = ({
       );
       setAvailableTargets(targets);
       
-      // ✅ CHANGE: Use effectivePiId instead of piId
       console.log('🧠 Generating suggestions for:', {
-        piId: effectivePiId,  // ⬅️ CHANGE THIS
+        piId: effectivePiId,
         itemId: itemData.id,
         availableQty: itemData.unallocatedQty || itemData.receivedQty || 0
       });
-
-      
       
       // Get smart suggestions
       const suggestions = await StockAllocationService.suggestAllocations(
@@ -195,110 +164,151 @@ const StockAllocationModal = ({
   };
 
   const handleSubmit = async () => {
-  console.log('🎯 === BUTTON CLICKED - handleSubmit started ===');
-  console.log('🔍 Current state when button clicked:', {
-    isValid,
-    loading,
-    totalAllocated,
-    remainingQty,
-    allocationsCount: allocations.length,
-    allocations: allocations.map(a => ({
-      id: a.id,
-      type: a.allocationType,
-      target: a.allocationTarget,
-      quantity: a.quantity,
-      hasTarget: !!a.allocationTarget,
-      hasQuantity: a.quantity > 0
-    }))
-  });
-
-  // ✅ CHECK IF BUTTON IS ACTUALLY DISABLED
-  if (!isValid) {
-    console.error('❌ Button should be disabled - validation failed:', {
-      remainingQty,
+    console.log('🎯 === BUTTON CLICKED - handleSubmit started ===');
+    console.log('🔍 Current state when button clicked:', {
+      isValid,
+      loading,
       totalAllocated,
-      validationChecks: {
-        remainingQtyOK: remainingQty >= 0,
-        totalAllocatedOK: totalAllocated > 0,
-        allHaveTargets: allocations.every(alloc => alloc.allocationTarget),
-        allHaveQuantity: allocations.every(alloc => alloc.quantity > 0)
-      }
+      remainingQty,
+      allocationsCount: allocations.length,
+      allocations: allocations.map(a => ({
+        id: a.id,
+        type: a.allocationType,
+        target: a.allocationTarget,
+        quantity: a.quantity,
+        hasTarget: !!a.allocationTarget,
+        hasQuantity: a.quantity > 0
+      }))
     });
-    setError('Validation failed - please check all fields are filled correctly');
-    return;
-  }
 
-  if (loading) {
-    console.warn('⚠️ Already loading, ignoring click');
-    return;
-  }
-
-  console.log('🎯 Starting allocation submission...');
-  setLoading(true);
-  setError('');
-  
-  try {
-    // Enhanced validation logging
-    const invalidAllocations = allocations.filter(alloc => 
-      !alloc.allocationTarget || alloc.quantity <= 0
-    );
-    
-    console.log('🔍 Allocation validation:', {
-      totalAllocations: allocations.length,
-      invalidAllocations: invalidAllocations.length,
-      allocations: allocations,
-      piId: effectivePiId,
-      itemId: itemData.id
-    });
-    
-    if (invalidAllocations.length > 0) {
-      const errorMsg = 'Please fill in all allocation targets and quantities';
-      console.error('❌ Validation failed:', errorMsg, invalidAllocations);
-      throw new Error(errorMsg);
+    // Check if button is actually disabled
+    if (!isValid) {
+      console.error('❌ Button should be disabled - validation failed:', {
+        remainingQty,
+        totalAllocated,
+        validationChecks: {
+          remainingQtyOK: remainingQty >= 0,
+          totalAllocatedOK: totalAllocated > 0,
+          allHaveTargets: allocations.every(alloc => alloc.allocationTarget),
+          allHaveQuantity: allocations.every(alloc => alloc.quantity > 0)
+        }
+      });
+      setError('Validation failed - please check all fields are filled correctly');
+      return;
     }
 
-    console.log('💾 Calling StockAllocationService.allocateStock...');
-    const result = await StockAllocationService.allocateStock(effectivePiId, itemData.id, allocations);
-    console.log('✅ Allocation successful:', result);
-    
-    console.log('🎯 Calling onAllocationComplete...');
-    onAllocationComplete(allocations);
-    
-    // ✅ TEMPORARILY DISABLE AUTO-CLOSE FOR DEBUGGING
-    console.log('✅ ALLOCATION COMPLETE - Modal staying open for debugging');
-    // onClose(); // ← UNCOMMENT THIS AFTER DEBUGGING
-    
-  } catch (error) {
-    console.error('❌ Allocation failed with error:', error);
-    setError(`Allocation failed: ${error.message}`);
-  } finally {
-    console.log('🏁 Setting loading to false');
-    setLoading(false);
-  }
-};
+    if (loading) {
+      console.warn('⚠️ Already loading, ignoring click');
+      return;
+    }
 
-const handleButtonClick = (e) => {
-  console.log('🖱️ Button physical click detected!', {
-    event: e.type,
-    disabled: e.target.disabled,
-    loading,
-    isValid,
-    buttonElement: e.target
-  });
-  
-  // Prevent default and see if that helps
-  e.preventDefault();
-  
-  // Call the actual submit
-  handleSubmit();
-};
+    console.log('🎯 Starting allocation submission...');
+    setLoading(true);
+    setError('');
+    
+    try {
+      // Enhanced validation logging
+      const invalidAllocations = allocations.filter(alloc => 
+        !alloc.allocationTarget || alloc.quantity <= 0
+      );
+      
+      console.log('🔍 Allocation validation:', {
+        totalAllocations: allocations.length,
+        invalidAllocations: invalidAllocations.length,
+        allocations: allocations,
+        piId: effectivePiId,
+        itemId: itemData.id
+      });
+      
+      if (invalidAllocations.length > 0) {
+        const errorMsg = 'Please fill in all allocation targets and quantities';
+        console.error('❌ Validation failed:', errorMsg, invalidAllocations);
+        throw new Error(errorMsg);
+      }
 
-  const totalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-  const availableQty = itemData.unallocatedQty || itemData.receivedQty || 0;
-  const remainingQty = availableQty - totalAllocated;
-  const isValid = remainingQty >= 0 && totalAllocated > 0 && 
-                  allocations.every(alloc => alloc.allocationTarget && alloc.quantity > 0);
+      console.log('💾 Calling StockAllocationService.allocateStock...');
+      const result = await StockAllocationService.allocateStock(effectivePiId, itemData.id, allocations);
+      console.log('✅ Allocation successful:', result);
+      
+      console.log('🎯 Calling onAllocationComplete...');
+      onAllocationComplete(allocations);
+      
+      // Success - close modal
+      console.log('✅ ALLOCATION COMPLETE - Closing modal');
+      onClose();
+      
+    } catch (error) {
+      console.error('❌ Allocation failed with error:', error);
+      setError(`Allocation failed: ${error.message}`);
+    } finally {
+      console.log('🏁 Setting loading to false');
+      setLoading(false);
+    }
+  };
 
+  const handleButtonClick = (e) => {
+    console.log('🖱️ Button physical click detected!', {
+      event: e.type,
+      disabled: e.target.disabled,
+      loading,
+      isValid,
+      buttonElement: e.target
+    });
+    
+    // Prevent default and see if that helps
+    e.preventDefault();
+    
+    // Call the actual submit
+    handleSubmit();
+  };
+
+  // ✅ STEP 6: useEffect HOOKS (AFTER ALL FUNCTIONS ARE DECLARED)
+  useEffect(() => {
+    if (isOpen && itemData && effectivePiId) {
+      loadAllocationData();
+    }
+  }, [isOpen, itemData, effectivePiId]);
+
+  useEffect(() => {
+    console.log('🔍 Validation state changed:', {
+      remainingQty,
+      totalAllocated,
+      isValid,
+      validationBreakdown: {
+        remainingQtyValid: remainingQty >= 0,
+        totalAllocatedValid: totalAllocated > 0,
+        allHaveTargets: allocations.every(alloc => alloc.allocationTarget),
+        allHaveQuantity: allocations.every(alloc => alloc.quantity > 0),
+        allocationsCount: allocations.length
+      },
+      allocations: allocations.map(a => ({
+        hasTarget: !!a.allocationTarget,
+        hasQuantity: a.quantity > 0,
+        target: a.allocationTarget,
+        quantity: a.quantity
+      }))
+    });
+  }, [isValid, remainingQty, totalAllocated, allocations]);
+
+  useEffect(() => {
+    const handleGlobalClick = (e) => {
+      if (e.target.textContent && e.target.textContent.includes('Allocate Stock')) {
+        console.log('🖱️ Global click detected on Allocate Stock button:', {
+          target: e.target,
+          disabled: e.target.disabled,
+          type: e.target.type,
+          className: e.target.className,
+          tagName: e.target.tagName,
+          parentElement: e.target.parentElement?.tagName
+        });
+      }
+    };
+
+    document.addEventListener('click', handleGlobalClick, true);
+    return () => document.removeEventListener('click', handleGlobalClick, true);
+  }, []);
+
+  // ✅ STEP 7: EARLY RETURNS
   if (!isOpen) return null;
   
   if (!effectivePiId) {
@@ -322,6 +332,7 @@ const handleButtonClick = (e) => {
     );
   }
   
+  // ✅ STEP 8: MAIN JSX RENDER
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -454,32 +465,31 @@ const handleButtonClick = (e) => {
         </div>
 
         {/* DEBUG PANEL - REMOVE AFTER FIXING */}
-{process.env.NODE_ENV === 'development' && (
-  <div className="mx-6 mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
-    <strong>🐛 DEBUG INFO:</strong>
-    <div>isValid: {isValid ? '✅' : '❌'}</div>
-    <div>loading: {loading ? '🔄' : '✅'}</div>
-    <div>remainingQty: {remainingQty}</div>
-    <div>totalAllocated: {totalAllocated}</div>
-    <div>allocations.length: {allocations.length}</div>
-    <div>effectivePiId: {effectivePiId || 'MISSING'}</div>
-    <div>itemData.id: {itemData?.id || 'MISSING'}</div>
-    <div>Button should be: {(!isValid || loading) ? 'DISABLED' : 'ENABLED'}</div>
-    
-    {/* FORCE SUBMIT BUTTON FOR TESTING */}
-    <button 
-      onClick={() => {
-        console.log('🚀 FORCE SUBMIT - bypassing validation for debugging');
-        handleSubmit();
-      }}
-      className="mt-2 px-2 py-1 bg-red-600 text-white rounded text-xs"
-      type="button"
-    >
-      🚀 Force Submit (Debug)
-    </button>
-  </div>
-)}
-
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mx-6 mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+            <strong>🐛 DEBUG INFO:</strong>
+            <div>isValid: {isValid ? '✅' : '❌'}</div>
+            <div>loading: {loading ? '🔄' : '✅'}</div>
+            <div>remainingQty: {remainingQty}</div>
+            <div>totalAllocated: {totalAllocated}</div>
+            <div>allocations.length: {allocations.length}</div>
+            <div>effectivePiId: {effectivePiId || 'MISSING'}</div>
+            <div>itemData.id: {itemData?.id || 'MISSING'}</div>
+            <div>Button should be: {(!isValid || loading) ? 'DISABLED' : 'ENABLED'}</div>
+            
+            {/* FORCE SUBMIT BUTTON FOR TESTING */}
+            <button 
+              onClick={() => {
+                console.log('🚀 FORCE SUBMIT - bypassing validation for debugging');
+                handleSubmit();
+              }}
+              className="mt-2 px-2 py-1 bg-red-600 text-white rounded text-xs"
+              type="button"
+            >
+              🚀 Force Submit (Debug)
+            </button>
+          </div>
+        )}
         
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
@@ -491,27 +501,27 @@ const handleButtonClick = (e) => {
             Cancel
           </button>
           <button
-  onClick={handleButtonClick}  // ← CHANGED THIS
-  disabled={!isValid || loading}
-  className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
-    !isValid ? 'bg-gray-400' : 'bg-blue-600'
-  }`}
-  style={{ 
-    pointerEvents: (!isValid || loading) ? 'none' : 'auto' // ← ADDED THIS
-  }}
->
-  {loading ? (
-    <>
-      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-      Allocating...
-    </>
-  ) : (
-    <>
-      <CheckCircle className="mr-2 h-4 w-4" />
-      Allocate Stock
-    </>
-  )}
-</button>
+            onClick={handleButtonClick}
+            disabled={!isValid || loading}
+            className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center ${
+              !isValid ? 'bg-gray-400' : 'bg-blue-600'
+            }`}
+            style={{ 
+              pointerEvents: (!isValid || loading) ? 'none' : 'auto'
+            }}
+          >
+            {loading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Allocating...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Allocate Stock
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
