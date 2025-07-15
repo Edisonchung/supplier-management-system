@@ -465,31 +465,39 @@ const StockAllocationModal = ({
         </div>
 
         {/* DEBUG PANEL - REMOVE AFTER FIXING */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mx-6 mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
-            <strong>🐛 DEBUG INFO:</strong>
-            <div>isValid: {isValid ? '✅' : '❌'}</div>
-            <div>loading: {loading ? '🔄' : '✅'}</div>
-            <div>remainingQty: {remainingQty}</div>
-            <div>totalAllocated: {totalAllocated}</div>
-            <div>allocations.length: {allocations.length}</div>
-            <div>effectivePiId: {effectivePiId || 'MISSING'}</div>
-            <div>itemData.id: {itemData?.id || 'MISSING'}</div>
-            <div>Button should be: {(!isValid || loading) ? 'DISABLED' : 'ENABLED'}</div>
-            
-            {/* FORCE SUBMIT BUTTON FOR TESTING */}
-            <button 
-              onClick={() => {
-                console.log('🚀 FORCE SUBMIT - bypassing validation for debugging');
-                handleSubmit();
-              }}
-              className="mt-2 px-2 py-1 bg-red-600 text-white rounded text-xs"
-              type="button"
-            >
-              🚀 Force Submit (Debug)
-            </button>
-          </div>
-        )}
+        {/* DEBUG PANEL - ALWAYS VISIBLE FOR TESTING */}
+<div className="mx-6 mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+  <strong>🐛 DEBUG INFO:</strong>
+  <div>isValid: {isValid ? '✅' : '❌'}</div>
+  <div>loading: {loading ? '🔄' : '✅'}</div>
+  <div>remainingQty: {remainingQty}</div>
+  <div>totalAllocated: {totalAllocated}</div>
+  <div>allocations.length: {allocations.length}</div>
+  <div>effectivePiId: {effectivePiId || 'MISSING'}</div>
+  <div>itemData.id: {itemData?.id || 'MISSING'}</div>
+  <div>Button should be: {(!isValid || loading) ? 'DISABLED' : 'ENABLED'}</div>
+  
+  {/* FORCE SUBMIT BUTTON FOR TESTING */}
+  <button 
+    onClick={() => {
+      console.log('🚀 FORCE SUBMIT - bypassing validation for debugging');
+      handleSubmit();
+    }}
+    className="mt-2 px-2 py-1 bg-red-600 text-white rounded text-xs"
+    type="button"
+  >
+    🚀 Force Submit (Debug)
+  </button>
+  
+  {/* REGULAR BUTTON TEST */}
+  <button 
+    onClick={handleButtonClick}
+    className="mt-2 ml-2 px-2 py-1 bg-blue-600 text-white rounded text-xs"
+    type="button"
+  >
+    🔵 Test Button Click
+  </button>
+</div>
         
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
