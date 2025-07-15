@@ -22,6 +22,28 @@ const StockAllocationModal = ({
   itemData, 
   onAllocationComplete 
 }) => {
+
+  // ✅ FIX 1: Add debugging and PI ID validation at the top of the component
+const StockAllocationModal = ({ 
+  isOpen, 
+  onClose, 
+  piId, 
+  itemData, 
+  onAllocationComplete 
+}) => {
+  // ✅ ADD THIS DEBUG BLOCK RIGHT AFTER THE COMPONENT DECLARATION
+  console.log('🎯 StockAllocationModal Props Debug:', {
+    isOpen,
+    piId: piId || 'MISSING',
+    itemData: itemData ? 'Present' : 'Missing',
+    itemDataPiId: itemData?.piId || 'Not in itemData'
+  });
+
+  // ✅ ADD THIS: Create effective PI ID with fallback
+  const effectivePiId = piId || itemData?.piId || itemData?.piNumber;
+  
+  console.log('🎯 Effective PI ID for service:', effectivePiId);
+  
   const [allocations, setAllocations] = useState([]);
   const [availableTargets, setAvailableTargets] = useState({});
   const [suggestions, setSuggestions] = useState([]);
@@ -33,22 +55,31 @@ const StockAllocationModal = ({
     if (isOpen && itemData) {
       loadAllocationData();
     }
-  }, [isOpen, itemData]);
+  }, [isOpen, itemData, effectivePiId]);
 
   const loadAllocationData = async () => {
     setLoading(true);
     setError('');
     
     try {
+            console.log('🔍 Loading allocation data with PI ID:', effectivePiId);
+
       // Load available targets
       const targets = await StockAllocationService.getAvailableTargets(
         itemData.productId || itemData.productCode
       );
       setAvailableTargets(targets);
       
+      // ✅ CHANGE: Use effectivePiId instead of piId
+      console.log('🧠 Generating suggestions for:', {
+        piId: effectivePiId,  // ⬅️ CHANGE THIS
+        itemId: itemData.id,
+        availableQty: itemData.unallocatedQty || itemData.receivedQty || 0
+      });
+      
       // Get smart suggestions
       const suggestions = await StockAllocationService.suggestAllocations(
-        piId, 
+        effectivePiId, 
         itemData.id, 
         itemData.unallocatedQty || itemData.receivedQty || 0
       );
@@ -141,7 +172,10 @@ const StockAllocationModal = ({
         throw new Error('Please fill in all allocation targets and quantities');
       }
 
-      await StockAllocationService.allocateStock(piId, itemData.id, allocations);
+            console.log('💾 Saving allocation with PI ID:', effectivePiId);
+
+
+      await StockAllocationService.allocateStock(effectivePiId, itemData.id, allocations);
       onAllocationComplete(allocations);
       onClose();
     } catch (error) {
@@ -159,7 +193,27 @@ const StockAllocationModal = ({
                   allocations.every(alloc => alloc.allocationTarget && alloc.quantity > 0);
 
   if (!isOpen) return null;
-
+  if (!effectivePiId) {
+    console.error('⚠️ No PI ID available for StockAllocationModal');
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="text-center">
+            <AlertCircle className="mx-auto h-12 w-12 text-red-500 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Missing PI Information</h3>
+            <p className="text-gray-600 mb-4">Cannot allocate stock without PI reference.</p>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
