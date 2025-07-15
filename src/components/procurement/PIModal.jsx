@@ -2264,17 +2264,21 @@ const StockReceivingTab = ({
     showNotification('Please receive items before allocating stock', 'warning');
     return;
   }
-
-  // ✅ FIX: Ensure PI ID is properly set
-  const piId = pi.id || pi.piNumber;
+// ✅ CRITICAL FIX: Use the actual PI ID (not piNumber)
+  // Your logs show selectedPI?.id: "pi-1752515534915" - this is what we need!
+  const actualPiId = pi.id || proformaInvoice?.id; // Use the actual database ID
+  const fallbackPiId = pi.piNumber; // Fallback to PI number if needed
   
-  console.log('🎯 Opening allocation modal with PI ID:', piId, 'for item:', item.id);
-  console.log('🔍 PI Object:', { id: pi.id, piNumber: pi.piNumber });
-  
-  
+  console.log('🎯 Opening allocation modal with ACTUAL PI ID:', actualPiId, 'fallback:', fallbackPiId);
+  console.log('🔍 PI Object Check:', { 
+    piId: pi.id, 
+    piNumber: pi.piNumber,
+    proformaInvoiceId: proformaInvoice?.id,
+    selectedPiId: actualPiId 
+  });  
   setSelectedItem({
     ...item,
-    piId: piId, // Ensure PI ID is in the item data
+    piId: actualPiId || fallbackPiId, // Ensure PI ID is in the item data
     // Add additional context that might be needed
     piNumber: pi.piNumber,
     supplierName: pi.supplierName
