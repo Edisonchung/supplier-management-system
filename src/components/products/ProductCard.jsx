@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
   Package, DollarSign, Layers, Tag, Building2, 
-  Edit, Trash2, CheckCircle, AlertCircle, Clock
+  Edit, Trash2, CheckCircle, AlertCircle, Clock, FileText
 } from 'lucide-react';
 
 const ProductCard = ({ product, supplier, onEdit, onDelete, onFurnish, canEdit }) => {
@@ -20,8 +20,48 @@ const ProductCard = ({ product, supplier, onEdit, onDelete, onFurnish, canEdit }
     return <Tag size={14} />;
   };
 
+  // NEW: Documentation status functions
+  const getDocumentationStatus = () => {
+    // Check if product has documents structure
+    if (!product.documents || !product.documents.metadata) {
+      return {
+        completeness: 'incomplete',
+        totalDocuments: 0,
+        publicDocuments: 0
+      };
+    }
+    
+    return {
+      completeness: product.documents.metadata.completeness || 'incomplete',
+      totalDocuments: product.documents.metadata.totalDocuments || 0,
+      publicDocuments: product.documents.metadata.publicDocuments || 0
+    };
+  };
+
+  const getDocStatusColor = (completeness) => {
+    switch (completeness) {
+      case 'complete': return 'text-green-600 bg-green-100 border-green-200';
+      case 'basic': return 'text-yellow-600 bg-yellow-100 border-yellow-200';
+      default: return 'text-red-600 bg-red-100 border-red-200';
+    }
+  };
+
+  const getDocStatusIcon = (completeness) => {
+    switch (completeness) {
+      case 'complete': return <CheckCircle size={12} className="text-green-600" />;
+      case 'basic': return <Clock size={12} className="text-yellow-600" />;
+      default: return <AlertCircle size={12} className="text-red-600" />;
+    }
+  };
+
   const isLowStock = product.stock <= product.minStock;
   const isOutOfStock = product.stock === 0;
+  const docStatus = getDocumentationStatus();
+
+  // NEW: Handle edit with tab parameter
+  const handleEdit = (tab = 'basic') => {
+    onEdit(product, tab);
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
@@ -38,6 +78,37 @@ const ProductCard = ({ product, supplier, onEdit, onDelete, onFurnish, canEdit }
         </span>
       </div>
 
+      {/* NEW: Documentation Status Section */}
+      <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText size={14} className="text-gray-500" />
+            <span className="text-sm text-gray-600 font-medium">Documentation</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              {getDocStatusIcon(docStatus.completeness)}
+              <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getDocStatusColor(docStatus.completeness)}`}>
+                {docStatus.completeness}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Document counts */}
+        <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+          <span>{docStatus.totalDocuments} total docs</span>
+          <span>{docStatus.publicDocuments} customer-ready</span>
+        </div>
+        
+        {/* Documentation completion hint */}
+        {docStatus.completeness === 'incomplete' && (
+          <div className="mt-2 text-xs text-gray-600">
+            <span className="text-orange-600">⚠</span> Missing product documentation
+          </div>
+        )}
+      </div>
+
       {/* Details */}
       <div className="space-y-3 mb-4">
         {product.sku && (
@@ -51,7 +122,7 @@ const ProductCard = ({ product, supplier, onEdit, onDelete, onFurnish, canEdit }
           <span className="text-gray-600">Category</span>
           <span className="flex items-center gap-1 capitalize">
             {getCategoryIcon(product.category)}
-            {product.category}
+            {product.category?.replace('_', ' ')}
           </span>
         </div>
 
@@ -100,11 +171,26 @@ const ProductCard = ({ product, supplier, onEdit, onDelete, onFurnish, canEdit }
       {/* Actions */}
       <div className="flex gap-2 pt-4 border-t">
         <button
-          onClick={onEdit}
+          onClick={() => handleEdit('basic')}
           className="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
         >
           <Edit size={16} />
           Edit
+        </button>
+        
+        {/* NEW: Documents button */}
+        <button
+          onClick={() => handleEdit('documents')}
+          className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center ${
+            docStatus.completeness === 'complete' 
+              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+              : docStatus.completeness === 'basic'
+              ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+              : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+          }`}
+          title={`Manage Documents (${docStatus.completeness})`}
+        >
+          <FileText size={16} />
         </button>
         
         {canEdit && product.status === 'complete' && (
@@ -126,6 +212,18 @@ const ProductCard = ({ product, supplier, onEdit, onDelete, onFurnish, canEdit }
           </button>
         )}
       </div>
+
+      {/* NEW: Quick Actions Hint */}
+      {docStatus.completeness !== 'complete' && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <button
+            onClick={() => handleEdit('documents')}
+            className="w-full text-xs text-blue-600 hover:text-blue-700 transition-colors"
+          >
+            + Add product documentation to improve customer experience
+          </button>
+        </div>
+      )}
     </div>
   );
 };
