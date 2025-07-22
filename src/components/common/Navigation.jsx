@@ -277,13 +277,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           description: 'System activity and audit logs',
           permission: 'canManageUsers'
         },
-        {
-          name: 'User Management',
-          href: '/users',
-          icon: Users,
-          description: 'Legacy user management',
-          permission: 'canManageUsers'
-        }
+      
       ]
     }
   ];
