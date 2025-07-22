@@ -1,4 +1,4 @@
-// src/App.jsx - FIXED VERSION - Clean imports and Smart Notifications
+// src/App.jsx - UPDATED VERSION - UserManagement component removed
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -17,7 +17,7 @@ import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
 import SampleDataTest from './components/test/SampleDataTest';
 
 
-// Import lazy components - FIXED IMPORTS
+// Import lazy components - CLEANED UP IMPORTS (UserManagement removed)
 import { 
   LazyDashboard, 
   LazySuppliers, 
@@ -26,8 +26,8 @@ import {
   LazyPurchaseOrders,
   LazyClientInvoices,
   LazyQuickImport,
-  LazyUserManagement,
-  LazySmartNotifications, // ✅ Single import for Smart Notifications
+  // ❌ LazyUserManagement removed - using TeamManagement instead
+  LazySmartNotifications,
   LazyWrapper 
 } from './components/LazyComponents';
 
@@ -302,7 +302,7 @@ function AppContent() {
               } 
             />
 
-            {/* 🔥 SMART NOTIFICATIONS ROUTE - FIXED */}
+            {/* Smart Notifications Route */}
             <Route 
               path="/notifications" 
               element={
@@ -367,7 +367,7 @@ function AppContent() {
               } 
             />
             
-            {/* Administration Routes */}
+            {/* Administration Routes - UserManagement route REMOVED */}
             <Route 
               path="/team-management" 
               element={
@@ -404,7 +404,14 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
-         
+            
+            {/* Legacy route redirect for /users -> /team-management */}
+            <Route 
+              path="/users" 
+              element={<Navigate to="/team-management" replace />}
+            />
+          </Route>
+          
           {/* Catch all */}
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>
