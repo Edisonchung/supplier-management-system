@@ -115,4 +115,187 @@ export const determineBrandingStrategy = (product, context = {}) => {
   }
 };
 
-const analyzeRebrandingFactors = (product, context) =>
+const analyzeRebrandingFactors = (product, context) => {
+  return {
+    // Product characteristics
+    productValue: product.price || 0,
+    category: product.category,
+    supplier: product.supplier,
+    
+    // Market factors
+    brandRecognition: context.brandRecognition || 'unknown',
+    customerType: context.customerType || 'unknown',
+    competitivePresence: context.competitivePresence || 'medium',
+    
+    // Business factors
+    marginImprovement: context.marginImprovement || false,
+    supportAdvantage: context.supportAdvantage || false,
+    stockAvailability: context.stockAvailability || false,
+    
+    // Customer requirements
+    warrantyRequirements: context.warrantyRequirements || false,
+    customerPreference: context.customerPreference || 'neutral',
+    oemPartnership: context.oemPartnership || false,
+    
+    // Application context
+    applicationCriticality: context.applicationCriticality || 'standard',
+    regulatoryCompliance: context.regulatoryCompliance || false
+  };
+};
+
+const calculateRebrandingScore = (factors) => {
+  let score = 0;
+  
+  // Favor rebranding for our specialized categories
+  if (['mechanical', 'bearings', 'sensors', 'diaphragm_pumps'].includes(factors.category)) {
+    score += 3;
+  }
+  
+  // Business advantages
+  if (factors.marginImprovement) score += 2;
+  if (factors.supportAdvantage) score += 2;
+  if (factors.stockAvailability) score += 1;
+  
+  // Customer factors
+  if (factors.customerType === 'sme') score += 1;
+  if (factors.customerPreference === 'local_brand') score += 2;
+  
+  // Market positioning
+  if (factors.competitivePresence === 'high') score += 1;
+  if (factors.brandRecognition === 'weak') score += 2;
+  
+  return Math.min(10, score);
+};
+
+const calculateOriginalBrandScore = (factors) => {
+  let score = 0;
+  
+  // Strong original brand factors
+  if (factors.productValue > 1000) score += 2; // High-value products
+  if (factors.brandRecognition === 'strong') score += 3;
+  if (factors.warrantyRequirements) score += 3;
+  if (factors.oemPartnership) score += 3;
+  if (factors.customerPreference === 'original_brand') score += 3;
+  if (factors.regulatoryCompliance) score += 2;
+  if (factors.applicationCriticality === 'critical') score += 2;
+  if (factors.customerType === 'enterprise') score += 1;
+  
+  return Math.min(10, score);
+};
+
+const selectCustomBrand = (category) => {
+  const categoryMapping = {
+    'mechanical': 'faradaytech',
+    'bearings': 'faradaytech', 
+    'gears': 'faradaytech',
+    'couplings': 'faradaytech',
+    'drives': 'faradaytech',
+    'sensors': 'faraday_instruments',
+    'instrumentation': 'faraday_instruments',
+    'networking_products': 'faraday_instruments',
+    'automation': 'faraday_instruments',
+    'diaphragm_pumps': 'hydra',
+    'pumping_systems': 'hydra',
+    'fluid_handling': 'hydra',
+    'pneumatics': 'hydra'
+  };
+  
+  return categoryMapping[category] || 'original_brand';
+};
+
+const generateReasoning = (factors, strategy) => {
+  const reasons = [];
+  
+  if (strategy === 'original') {
+    if (factors.brandRecognition === 'strong') reasons.push('Strong brand recognition');
+    if (factors.warrantyRequirements) reasons.push('Warranty requirements');
+    if (factors.oemPartnership) reasons.push('OEM partnership restrictions');
+    if (factors.productValue > 1000) reasons.push('High-value product benefits from original branding');
+    if (factors.customerPreference === 'original_brand') reasons.push('Customer brand preference');
+    if (factors.regulatoryCompliance) reasons.push('Regulatory compliance requirements');
+    if (factors.applicationCriticality === 'critical') reasons.push('Critical application requires established brand trust');
+  } else {
+    if (factors.marginImprovement) reasons.push('Better profit margins with our branding');
+    if (factors.supportAdvantage) reasons.push('Superior technical support capability');
+    if (factors.stockAvailability) reasons.push('Better stock availability and delivery');
+    if (factors.customerType === 'sme') reasons.push('SME customers prefer local brands');
+    if (factors.brandRecognition === 'weak') reasons.push('Weak original brand recognition');
+    if (['mechanical', 'sensors', 'diaphragm_pumps'].includes(factors.category)) {
+      reasons.push('Our specialized expertise in this category');
+    }
+  }
+  
+  return reasons.length > 0 ? reasons.join(', ') : 'Based on overall analysis';
+};
+
+// Export utility functions
+export const getBrandForCategory = (category) => {
+  return selectCustomBrand(category);
+};
+
+export const getAllowedBrands = (category) => {
+  const categoryBrandMap = {
+    'mechanical': ['faradaytech', 'original_brand'],
+    'bearings': ['faradaytech', 'original_brand'],
+    'gears': ['faradaytech', 'original_brand'],
+    'couplings': ['faradaytech', 'original_brand'],
+    'drives': ['faradaytech', 'original_brand'],
+    'sensors': ['faraday_instruments', 'original_brand'],
+    'instrumentation': ['faraday_instruments', 'original_brand'],
+    'networking_products': ['faraday_instruments', 'original_brand'],
+    'automation': ['faraday_instruments', 'original_brand'],
+    'diaphragm_pumps': ['hydra', 'original_brand'],
+    'pumping_systems': ['hydra', 'original_brand'],
+    'fluid_handling': ['hydra', 'original_brand'],
+    'pneumatics': ['hydra', 'original_brand']
+  };
+  
+  return categoryBrandMap[category] || ['original_brand'];
+};
+
+export const getBrandConfig = (brandId) => {
+  return BRAND_CONFIGURATIONS[brandId] || BRAND_CONFIGURATIONS.original_brand;
+};
+
+export const validateBrandSelection = (brandId, category) => {
+  const allowedBrands = getAllowedBrands(category);
+  return allowedBrands.includes(brandId);
+};
+
+// Document type configurations for different brands
+export const DOCUMENT_TEMPLATES = {
+  faradaytech: {
+    logoPlacement: 'top-right',
+    colorScheme: '#1e40af',
+    footer: 'FaradayTech - Mechanical Engineering Solutions',
+    contactInfo: {
+      website: 'www.faradaytech.com',
+      email: 'sales@faradaytech.com',
+      phone: '+1-555-FARADAY'
+    }
+  },
+  faraday_instruments: {
+    logoPlacement: 'top-center',
+    colorScheme: '#059669',
+    footer: 'Faraday Instruments - Advanced Instrumentation Solutions',
+    contactInfo: {
+      website: 'www.faraday-instruments.com',
+      email: 'info@faraday-instruments.com',
+      phone: '+1-555-INSTRUM'
+    }
+  },
+  hydra: {
+    logoPlacement: 'top-left',
+    colorScheme: '#0891b2',
+    footer: 'Hydra - Pumping & Fluid Handling Solutions',
+    contactInfo: {
+      website: 'www.hydrapumps.com',
+      email: 'support@hydrapumps.com',
+      phone: '+1-555-HYDRA-1'
+    }
+  },
+  original_brand: {
+    preserveOriginal: true,
+    modifications: 'none'
+  }
+};
