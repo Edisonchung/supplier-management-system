@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Package, Plus, Search, Filter, AlertCircle, 
   TrendingUp, DollarSign, Layers, Clock, CheckCircle,
-  RefreshCw, Database, Cloud
+  RefreshCw, Database, Cloud, FileText
 } from 'lucide-react';
 import { useProductsDual } from '../../hooks/useProductsDual';
 import { useSuppliers } from '../../hooks/useSuppliers';
@@ -35,15 +35,25 @@ const Products = ({ showNotification }) => {
   const [showModal, setShowModal] = useState(false);
   const [showFurnishModal, setShowFurnishModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [initialTab, setInitialTab] = useState('basic'); // NEW: For tab control
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterStock, setFilterStock] = useState('all');
+  const [filterDocumentation, setFilterDocumentation] = useState('all'); // NEW: Documentation filter
   const [viewMode, setViewMode] = useState('grid');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const canEdit = permissions.canEditProducts || permissions.isAdmin;
   const canView = permissions.canViewProducts || permissions.isAdmin;
+
+  // NEW: Helper function to get documentation status
+  const getDocumentationStatus = (product) => {
+    if (!product.documents || !product.documents.metadata) {
+      return 'incomplete';
+    }
+    return product.documents.metadata.completeness || 'incomplete';
+  };
 
   // Filter products
   const filteredProducts = products.filter(product => {
@@ -66,7 +76,11 @@ const Products = ({ showNotification }) => {
       (filterStock === 'out' && productStock === 0) ||
       (filterStock === 'ok' && productStock > productMinStock);
     
-    return matchesSearch && matchesCategory && matchesStatus && matchesStock;
+    // NEW: Documentation filter
+    const docStatus = getDocumentationStatus(product);
+    const matchesDocumentation = filterDocumentation === 'all' || docStatus === filterDocumentation;
+    
+    return matchesSearch && matchesCategory && matchesStatus && matchesStock && matchesDocumentation;
   });
 
   // Get categories from products
@@ -74,6 +88,14 @@ const Products = ({ showNotification }) => {
   
   // Calculate stats
   const lowStockProducts = getLowStockProducts();
+  
+  // NEW: Calculate documentation stats
+  const documentationStats = {
+    complete: products.filter(p => getDocumentationStatus(p) === 'complete').length,
+    basic: products.filter(p => getDocumentationStatus(p) === 'basic').length,
+    incomplete: products.filter(p => getDocumentationStatus(p) === 'incomplete').length
+  };
+
   const stats = {
     total: products.length,
     lowStock: lowStockProducts.length,
@@ -85,17 +107,22 @@ const Products = ({ showNotification }) => {
       const stock = p.stock || p.currentStock || 0;
       const price = p.unitCost || p.unitPrice || 0;
       return sum + (stock * price);
-    }, 0)
+    }, 0),
+    // NEW: Documentation stats
+    documentsComplete: documentationStats.complete
   };
 
   const handleAddProduct = () => {
     setSelectedProduct(null);
+    setInitialTab('basic'); // Reset to basic tab
     setShowModal(true);
   };
 
-  const handleEditProduct = (product) => {
+  // NEW: Enhanced edit handler with tab support
+  const handleEditProduct = (product, tab = 'basic') => {
     if (!canEdit) return;
     setSelectedProduct(product);
+    setInitialTab(tab); // Set the initial tab
     setShowModal(true);
   };
 
@@ -118,6 +145,8 @@ const Products = ({ showNotification }) => {
       if (result.success) {
         showNotification('Product updated successfully', 'success');
         setShowModal(false);
+        setSelectedProduct(null);
+        setInitialTab('basic');
       } else {
         showNotification(result.error || 'Failed to update product', 'error');
       }
@@ -126,6 +155,8 @@ const Products = ({ showNotification }) => {
       if (result.success) {
         showNotification('Product added successfully', 'success');
         setShowModal(false);
+        setSelectedProduct(null);
+        setInitialTab('basic');
       } else {
         showNotification(result.error || 'Failed to add product', 'error');
       }
@@ -174,6 +205,13 @@ const Products = ({ showNotification }) => {
     }
   };
 
+  // NEW: Handle modal close with cleanup
+  const handleModalClose = () => {
+    setShowModal(false);
+    setSelectedProduct(null);
+    setInitialTab('basic');
+  };
+
   if (!canView) {
     return (
       <div className="text-center py-12">
@@ -206,7 +244,7 @@ const Products = ({ showNotification }) => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600 mt-1">
-            Manage your product inventory
+            Manage your product inventory and documentation
             {dataSource === 'firestore' && (
               <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
             )}
@@ -241,7 +279,7 @@ const Products = ({ showNotification }) => {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
@@ -272,6 +310,17 @@ const Products = ({ showNotification }) => {
           </div>
         </div>
 
+        {/* NEW: Documentation Stats */}
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Complete Docs</p>
+              <p className="text-2xl font-bold text-green-600">{stats.documentsComplete}</p>
+            </div>
+            <FileText className="h-8 w-8 text-green-500" />
+          </div>
+        </div>
+
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
@@ -287,7 +336,7 @@ const Products = ({ showNotification }) => {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -308,7 +357,9 @@ const Products = ({ showNotification }) => {
           >
             <option value="all">All Categories</option>
             {categories.map(category => (
-              <option key={category} value={category}>{category}</option>
+              <option key={category} value={category}>
+                {category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </option>
             ))}
           </select>
 
@@ -334,6 +385,18 @@ const Products = ({ showNotification }) => {
             <option value="out">Out of Stock</option>
           </select>
 
+          {/* NEW: Documentation Filter */}
+          <select
+            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={filterDocumentation}
+            onChange={(e) => setFilterDocumentation(e.target.value)}
+          >
+            <option value="all">All Documentation</option>
+            <option value="complete">Complete Docs</option>
+            <option value="basic">Basic Docs</option>
+            <option value="incomplete">Missing Docs</option>
+          </select>
+
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode('grid')}
@@ -355,6 +418,36 @@ const Products = ({ showNotification }) => {
         </div>
       </div>
 
+      {/* NEW: Documentation Status Summary */}
+      {filterDocumentation === 'all' && (
+        <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <FileText className="h-6 w-6 text-blue-600" />
+              <div>
+                <h3 className="text-sm font-medium text-gray-900">Documentation Progress</h3>
+                <p className="text-xs text-gray-600">
+                  {documentationStats.complete} complete • {documentationStats.basic} basic • {documentationStats.incomplete} missing
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-32 bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-green-600 h-2 rounded-full" 
+                  style={{ 
+                    width: `${products.length > 0 ? (documentationStats.complete / products.length) * 100 : 0}%` 
+                  }}
+                ></div>
+              </div>
+              <span className="text-sm font-medium text-gray-700">
+                {products.length > 0 ? Math.round((documentationStats.complete / products.length) * 100) : 0}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Products Display */}
       {loading && products.length > 0 ? (
         <div className="text-center py-4">
@@ -367,7 +460,7 @@ const Products = ({ showNotification }) => {
               key={product.id}
               product={product}
               supplier={suppliers.find(s => s.id === product.supplierId)}
-              onEdit={() => handleEditProduct(product)}
+              onEdit={handleEditProduct} // Now supports tab parameter
               onDelete={() => handleDeleteProduct(product.id)}
               onFurnish={() => handleFurnishProduct(product)}
               canEdit={canEdit}
@@ -388,11 +481,11 @@ const Products = ({ showNotification }) => {
             <Package className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No Products</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || filterCategory !== 'all' || filterStatus !== 'all' || filterStock !== 'all'
+              {searchTerm || filterCategory !== 'all' || filterStatus !== 'all' || filterStock !== 'all' || filterDocumentation !== 'all'
                 ? 'No products found matching your filters.'
                 : 'Get started by adding a new product.'}
             </p>
-            {canEdit && !searchTerm && filterCategory === 'all' && filterStatus === 'all' && filterStock === 'all' && (
+            {canEdit && !searchTerm && filterCategory === 'all' && filterStatus === 'all' && filterStock === 'all' && filterDocumentation === 'all' && (
               <div className="mt-6">
                 <button
                   onClick={handleAddProduct}
@@ -413,7 +506,9 @@ const Products = ({ showNotification }) => {
           product={selectedProduct}
           suppliers={suppliers}
           onSave={handleSaveProduct}
-          onClose={() => setShowModal(false)}
+          onClose={handleModalClose} // Updated to use new handler
+          initialTab={initialTab} // NEW: Pass initial tab
+          showNotification={showNotification} // NEW: Pass notification handler
         />
       )}
 
