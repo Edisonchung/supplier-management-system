@@ -1,4 +1,4 @@
-// src/components/documents/DocumentManager.jsx
+/// src/components/documents/DocumentManager.jsx
 // IMPROVED VERSION with better document categories
 
 import React, { useState } from 'react';
