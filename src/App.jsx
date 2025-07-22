@@ -404,10 +404,7 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
-            
-                  
-          </Route>
-          
+         
           {/* Catch all */}
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>
