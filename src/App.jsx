@@ -405,17 +405,7 @@ function AppContent() {
               } 
             />
             
-            {/* Legacy Routes */}
-            <Route 
-              path="/users" 
-              element={
-                <ProtectedRoute permission="canManageUsers">
-                  <LazyWrapper componentName="User Management">
-                    <LazyUserManagement showNotification={showNotification} />
-                  </LazyWrapper>
-                </ProtectedRoute>
-              } 
-            />
+                       />
           </Route>
           
           {/* Catch all */}
