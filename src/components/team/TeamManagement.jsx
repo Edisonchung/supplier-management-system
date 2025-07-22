@@ -113,14 +113,40 @@ export default function TeamManagement() {
     }
   };
 
-  // Handle role update
-  const handleRoleUpdate = async (userId, newRole, newDepartment) => {
+  // Handle role update - ENHANCED WITH BETTER FEEDBACK
+  const handleRoleUpdate = async (userId, newRole, currentDepartment) => {
+    // Don't allow changing Edison's role
+    if (teamMembers.find(m => m.uid === userId)?.email === 'edisonchung@flowsolution.net') {
+      alert('⚠️ Cannot modify Edison\'s role - permanent super admin access.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await updateUserRole(userId, newRole, newDepartment);
+      await updateUserRole(userId, newRole, currentDepartment);
       await loadData();
+      alert(`✅ Role updated successfully to ${newRole.charAt(0).toUpperCase() + newRole.slice(1)}`);
     } catch (error) {
       alert('❌ Failed to update role: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle department update - NEW FUNCTION
+  const handleDepartmentUpdate = async (userId, currentRole, newDepartment) => {
+    if (!newDepartment.trim()) {
+      alert('⚠️ Department cannot be empty');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await updateUserRole(userId, currentRole, newDepartment.trim());
+      await loadData();
+      alert(`✅ Department updated successfully to ${newDepartment}`);
+    } catch (error) {
+      alert('❌ Failed to update department: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -133,6 +159,7 @@ export default function TeamManagement() {
       try {
         await deactivateUser(userId);
         await loadData();
+        alert(`✅ User ${userName} has been deactivated`);
       } catch (error) {
         alert('❌ Failed to deactivate user: ' + error.message);
       } finally {
@@ -313,7 +340,7 @@ export default function TeamManagement() {
         </div>
       )}
 
-      {/* Team Members Table */}
+      {/* Team Members Table - ENHANCED WITH INLINE EDITING */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex justify-between items-center">
@@ -360,35 +387,78 @@ export default function TeamManagement() {
                       {member.photoURL ? (
                         <img src={member.photoURL} alt="" className="w-8 h-8 rounded-full" />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
-                          <span className="text-sm font-medium text-gray-700">
-                            {member.displayName?.charAt(0) || member.email.charAt(0)}
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                          <span className="text-sm font-medium text-white">
+                            {(member.displayName || member.email)?.charAt(0)?.toUpperCase()}
                           </span>
                         </div>
                       )}
                       <div className="ml-3">
-                        <div className="text-sm font-medium text-gray-900">{member.displayName}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {member.displayName || member.email?.split('@')[0]}
+                        </div>
                         <div className="text-sm text-gray-500">{member.email}</div>
                       </div>
                     </div>
                   </td>
+                  
+                  {/* ENHANCED: Inline Role Editor */}
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <RoleBadge role={member.role} />
+                    <select
+                      value={member.role || 'viewer'}
+                      onChange={(e) => handleRoleUpdate(member.uid, e.target.value, member.department)}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      disabled={loading || member.email === 'edisonchung@flowsolution.net'}
+                      title={member.email === 'edisonchung@flowsolution.net' ? 'Edison has permanent admin access' : 'Click to change role'}
+                    >
+                      <option value="viewer">Viewer</option>
+                      <option value="employee">Employee</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {member.department || 'General'}
+                  
+                  {/* ENHANCED: Inline Department Editor */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="text"
+                      value={member.department || 'General'}
+                      onChange={(e) => {
+                        // Update immediately on blur to avoid too many API calls
+                        if (e.type === 'blur' && e.target.value !== (member.department || 'General')) {
+                          handleDepartmentUpdate(member.uid, member.role, e.target.value);
+                        }
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.target.blur(); // Trigger blur event to save
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value !== (member.department || 'General')) {
+                          handleDepartmentUpdate(member.uid, member.role, e.target.value);
+                        }
+                      }}
+                      className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                      disabled={loading}
+                      placeholder="Department"
+                      title="Click to edit department, press Enter or click away to save"
+                    />
                   </td>
+                  
                   <td className="px-6 py-4 whitespace-nowrap">
                     <StatusBadge status={member.status || 'active'} />
                   </td>
+                  
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {member.lastLogin ? member.lastLogin.toLocaleDateString() : 'Never'}
                   </td>
+                  
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => showUserDetailsModal(member)}
-                        className="text-blue-600 hover:text-blue-900 p-1"
+                        className="text-blue-600 hover:text-blue-900 p-1 rounded"
                         title="View Details"
                       >
                         <Eye className="w-4 h-4" />
@@ -398,19 +468,23 @@ export default function TeamManagement() {
                         <>
                           <button
                             onClick={() => handlePasswordReset(member.email)}
-                            className="text-orange-600 hover:text-orange-900 p-1"
+                            className="text-orange-600 hover:text-orange-900 p-1 rounded"
                             title="Reset Password"
+                            disabled={loading}
                           >
                             <RefreshCw className="w-4 h-4" />
                           </button>
                           
-                          <button
-                            onClick={() => handleDeactivateUser(member.uid, member.displayName)}
-                            className="text-red-600 hover:text-red-900 p-1"
-                            title="Deactivate User"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {member.email !== 'edisonchung@flowsolution.net' && (
+                            <button
+                              onClick={() => handleDeactivateUser(member.uid, member.displayName)}
+                              className="text-red-600 hover:text-red-900 p-1 rounded"
+                              title="Deactivate User"
+                              disabled={loading}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -420,6 +494,21 @@ export default function TeamManagement() {
             </tbody>
           </table>
         </div>
+        
+        {/* Empty State */}
+        {!loading && teamMembers.length === 0 && (
+          <div className="text-center py-12">
+            <Users className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Team Members</h3>
+            <p className="text-gray-600 mb-4">Add your first team member to get started.</p>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Add Team Member
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Create Member Modal */}
@@ -565,12 +654,14 @@ export default function TeamManagement() {
                   >
                     Reset Password
                   </button>
-                  <button
-                    onClick={() => handleDeactivateUser(selectedUser.uid, selectedUser.displayName)}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                  >
-                    Deactivate User
-                  </button>
+                  {selectedUser.email !== 'edisonchung@flowsolution.net' && (
+                    <button
+                      onClick={() => handleDeactivateUser(selectedUser.uid, selectedUser.displayName)}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Deactivate User
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -613,6 +704,17 @@ export default function TeamManagement() {
           </div>
         </div>
       )}
+
+      {/* Role Permissions Info */}
+      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 className="font-medium text-blue-900 mb-2">💡 How to Edit Roles</h3>
+        <ul className="text-sm text-blue-800 space-y-1">
+          <li><strong>Role:</strong> Click the dropdown in the Role column to change user permissions</li>
+          <li><strong>Department:</strong> Click the department field to edit, press Enter to save</li>
+          <li><strong>Protection:</strong> Edison's account cannot be modified (permanent admin access)</li>
+          <li><strong>Changes:</strong> All changes are saved automatically with confirmation messages</li>
+        </ul>
+      </div>
     </div>
   );
 }
