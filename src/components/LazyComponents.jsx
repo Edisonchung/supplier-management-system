@@ -59,16 +59,6 @@ export const LazyQuickImport = lazy(() =>
   }))
 );
 
-export const LazyUserManagement = lazy(() => 
-  import('./users/UserManagement').catch(() => ({
-    default: () => (
-      <div className="p-6 text-center text-gray-500">
-        <h2 className="text-xl font-semibold mb-2">User Management</h2>
-        <p>This feature is coming soon!</p>
-      </div>
-    )
-  }))
-);
 
 // Smart Notifications Component with error handling
 export const LazySmartNotifications = lazy(() => 
