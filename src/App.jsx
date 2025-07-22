@@ -440,7 +440,7 @@ function AppContent() {
         )}
         
         {/* Firestore Health Check */}
-        {user && <FirestoreHealthCheck />}
+        {/* {user && <FirestoreHealthCheck />} */}
       </Router>
     </ErrorBoundary>
   );
