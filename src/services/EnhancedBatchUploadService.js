@@ -54,6 +54,17 @@ class EnhancedBatchUploadService {
   }
 
   /**
+   * COMPATIBILITY METHOD: Alias for addBatch to match component expectations
+   */
+  async startBatch(files, options = {}) {
+    console.log('🚀 startBatch called with:', files.length, 'files');
+    const result = await this.addBatch(files, options.type || 'proforma_invoice', options);
+    
+    // Return batch ID for compatibility
+    return result.batchId;
+  }
+
+  /**
    * Add multiple files to batch processing with Web Worker support
    */
   async addBatch(files, documentType = 'proforma_invoice', options = {}) {
@@ -435,74 +446,99 @@ class EnhancedBatchUploadService {
   }
 
   /**
-   * Cancel a batch
+   * Cancel a batch by ID
    */
   cancelBatch(batchId) {
-    const queueKey = Array.from(this.queues.keys()).find(key => key.includes(batchId));
-    if (!queueKey) return false;
-
-    const batch = this.queues.get(queueKey);
-    const worker = this.workers.get(queueKey);
+    console.log(`🛑 Cancelling batch: ${batchId}`);
     
-    if (worker) {
-      // Send cancel message to worker
-      worker.postMessage({ type: 'CANCEL_BATCH' });
-    } else {
-      // Cancel main thread processing
-      batch.status = 'cancelled';
-      batch.files.forEach(file => {
-        if (file.status === 'queued' || file.status === 'processing') {
-          file.status = 'cancelled';
+    for (const [queueKey, batch] of this.queues.entries()) {
+      if (batch.id === batchId) {
+        const worker = this.workers.get(queueKey);
+        
+        if (worker) {
+          // Send cancel message to worker
+          worker.postMessage({ type: 'CANCEL_BATCH' });
+        } else {
+          // Cancel main thread processing
+          batch.status = 'cancelled';
+          batch.cancelledAt = new Date().toISOString();
+          batch.files.forEach(file => {
+            if (file.status === 'queued' || file.status === 'processing') {
+              file.status = 'cancelled';
+            }
+          });
+          this.persistQueue(queueKey, batch);
         }
-      });
-      this.persistQueue(queueKey, batch);
+        
+        this.notify(`Batch ${batchId} cancelled`, 'info');
+        return true;
+      }
     }
     
-    return true;
+    console.warn(`Batch ${batchId} not found for cancellation`);
+    return false;
   }
 
   /**
-   * Get batch status
+   * Get batch status by ID
    */
   getBatchStatus(batchId) {
-    const queueKey = Array.from(this.queues.keys()).find(key => key.includes(batchId));
-    if (!queueKey) return null;
-
-    const batch = this.queues.get(queueKey);
-    
-    return {
-      id: batch.id,
-      status: batch.status,
-      progress: batch.totalFiles > 0 ? Math.round((batch.processedFiles / batch.totalFiles) * 100) : 0,
-      totalFiles: batch.totalFiles,
-      processedFiles: batch.processedFiles,
-      successfulFiles: batch.successfulFiles,
-      failedFiles: batch.failedFiles,
-      processingMethod: batch.processingMethod,
-      files: batch.files.map(f => ({
-        id: f.id,
-        name: f.name,
-        status: f.status,
-        progress: f.progress,
-        error: f.error
-      })),
-      estimatedTimeRemaining: this.calculateEstimatedTime(batch),
-      createdAt: batch.createdAt,
-      startedAt: batch.startedAt,
-      completedAt: batch.completedAt
-    };
+    for (const batch of this.queues.values()) {
+      if (batch.id === batchId) {
+        return {
+          id: batch.id,
+          status: batch.status,
+          progress: batch.totalFiles > 0 ? Math.round((batch.processedFiles / batch.totalFiles) * 100) : 0,
+          totalFiles: batch.totalFiles,
+          processedFiles: batch.processedFiles,
+          successfulFiles: batch.successfulFiles,
+          failedFiles: batch.failedFiles,
+          processingMethod: batch.processingMethod,
+          files: batch.files.map(f => ({
+            id: f.id,
+            name: f.name,
+            status: f.status,
+            progress: f.progress,
+            error: f.error
+          })),
+          estimatedTimeRemaining: this.calculateEstimatedTime(batch),
+          createdAt: batch.createdAt,
+          startedAt: batch.startedAt,
+          completedAt: batch.completedAt
+        };
+      }
+    }
+    return null;
   }
 
   /**
-   * Get all active batches
+   * Get all active batches (compatible with existing components)
    */
   getActiveBatches() {
     const batches = [];
     
     for (const [queueKey, batch] of this.queues.entries()) {
-      if (batch.status !== 'completed' && batch.status !== 'cancelled') {
-        batches.push(this.getBatchStatus(batch.id));
-      }
+      batches.push({
+        id: batch.id,
+        status: batch.status,
+        totalFiles: batch.totalFiles,
+        completedFiles: batch.processedFiles,
+        successfulFiles: batch.successfulFiles,
+        failedFiles: batch.failedFiles,
+        files: batch.files.map(f => ({
+          id: f.id,
+          name: f.name,
+          status: f.status,
+          progress: f.progress,
+          error: f.error,
+          extractedData: f.result?.data
+        })),
+        processingMethod: batch.processingMethod,
+        createdAt: batch.createdAt,
+        startedAt: batch.startedAt,
+        completedAt: batch.completedAt,
+        estimatedTimeRemaining: this.calculateEstimatedTime(batch)
+      });
     }
 
     return batches.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -527,7 +563,7 @@ class EnhancedBatchUploadService {
     for (const batch of this.queues.values()) {
       if (batch.status === 'completed') {
         stats.completedBatches++;
-      } else {
+      } else if (batch.status === 'processing') {
         stats.activeBatches++;
       }
       
