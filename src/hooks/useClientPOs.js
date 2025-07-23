@@ -1,4 +1,4 @@
-// src/hooks/useClientPOs.js - Minimal version
+// src/hooks/useClientPOs.js
 import { useState, useEffect } from 'react';
 
 export const useClientPOs = () => {
@@ -8,34 +8,62 @@ export const useClientPOs = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Placeholder - replace with actual Firestore implementation later
+    // Initialize with empty data - replace with actual Firestore implementation later
     setClientPOs([]);
     setSourcingRequired([]);
     setLoading(false);
   }, []);
 
   const addClientPO = async (poData) => {
-    // Placeholder implementation
-    console.log('Adding client PO:', poData);
-    return { success: true, id: `po-${Date.now()}` };
+    try {
+      // Placeholder implementation
+      console.log('Adding client PO:', poData);
+      return { success: true, id: `po-${Date.now()}` };
+    } catch (error) {
+      console.error('Error adding client PO:', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const updateClientPO = async (id, updates) => {
-    // Placeholder implementation
-    console.log('Updating client PO:', id, updates);
-    return { success: true };
+    try {
+      // Placeholder implementation
+      console.log('Updating client PO:', id, updates);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating client PO:', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const updateItemSourcing = async (poId, itemId, sourcingData) => {
-    // Placeholder implementation
-    console.log('Updating item sourcing:', poId, itemId, sourcingData);
-    return { success: true };
+    try {
+      // Placeholder implementation
+      console.log('Updating item sourcing:', poId, itemId, sourcingData);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating item sourcing:', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const deleteClientPO = async (id) => {
-    // Placeholder implementation
-    console.log('Deleting client PO:', id);
-    return { success: true };
+    try {
+      // Placeholder implementation
+      console.log('Deleting client PO:', id);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting client PO:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const getClientPOById = (id) => {
+    return clientPOs.find(po => po.id === id);
+  };
+
+  const getClientPOsByStatus = (status) => {
+    return clientPOs.filter(po => po.status === status);
   };
 
   return {
@@ -46,6 +74,8 @@ export const useClientPOs = () => {
     addClientPO,
     updateClientPO,
     updateItemSourcing,
-    deleteClientPO
+    deleteClientPO,
+    getClientPOById,
+    getClientPOsByStatus
   };
 };
