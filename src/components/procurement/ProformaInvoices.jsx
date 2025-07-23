@@ -1,10 +1,13 @@
 // src/components/procurement/ProformaInvoices.jsx
+// Enhanced with batch upload integration while preserving ALL existing functionality
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Plus, Search, Filter, Calendar, 
   Download, Eye, Edit, Trash2, Truck, Package,
   AlertCircle, Clock, CheckCircle, CreditCard,
-  Grid, List, Briefcase, AlertTriangle, Upload, Loader2, X
+  Grid, List, Briefcase, AlertTriangle, Upload, Loader2, X,
+  Layers  // For batch upload icon
 } from 'lucide-react';
 import { useProformaInvoices } from '../../hooks/useProformaInvoices';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -12,12 +15,13 @@ import { useSuppliers } from '../../hooks/useSuppliers';
 import { useProducts } from '../../hooks/useProducts';
 import { mockFirebase } from '../../services/firebase';
 import AIExtractionService from '../../services/ai/AIExtractionService';
+import enhancedBatchUploadService from '../../services/EnhancedBatchUploadService';
 import PICard from './PICard';
 import PIModal from './PIModal';
 import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
-
+import BatchUploadModal from './BatchUploadModal';
 
 const ProformaInvoices = ({ showNotification }) => {
   const permissions = usePermissions();
@@ -49,6 +53,7 @@ const ProformaInvoices = ({ showNotification }) => {
   } = useProducts();
   
   const [showModal, setShowModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false); // NEW: Batch upload modal
   const [selectedPI, setSelectedPI] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -59,6 +64,12 @@ const ProformaInvoices = ({ showNotification }) => {
   const [viewMode, setViewMode] = useState('grid');
   const [groupByYear, setGroupByYear] = useState(true);
   
+  // NEW: Batch upload statistics
+  const [batchStats, setBatchStats] = useState({
+    activeBatches: 0,
+    processingFiles: 0
+  });
+  
   // AI Extraction states
   const fileInputRef = useRef(null);
   const [extracting, setExtracting] = useState(false);
@@ -66,7 +77,24 @@ const ProformaInvoices = ({ showNotification }) => {
   const canEdit = permissions.canEditPI || permissions.isAdmin;
   const canDelete = permissions.isAdmin;
 
-  // ✅ NEW: Product Sync Function
+  // NEW: Poll for batch upload statistics
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const stats = enhancedBatchUploadService.getStatistics();
+      const activeBatches = enhancedBatchUploadService.getActiveBatches();
+      
+      setBatchStats({
+        activeBatches: activeBatches.length,
+        processingFiles: activeBatches.reduce((sum, batch) => 
+          sum + batch.files.filter(f => f.status === 'processing').length, 0
+        )
+      });
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // ✅ NEW: Product Sync Function (PRESERVED)
   const syncPIProductsToDatabase = async (piData, savedPI) => {
     console.log('🔄 Syncing PI products to Products database...');
     
@@ -204,7 +232,7 @@ const ProformaInvoices = ({ showNotification }) => {
     return syncStats;
   };
 
-  // Helper function to detect product category
+  // Helper function to detect product category (PRESERVED)
   const detectProductCategory = (productName) => {
     if (!productName) return 'components';
     
@@ -220,7 +248,7 @@ const ProformaInvoices = ({ showNotification }) => {
     return 'components'; // Default category
   };
 
-  // Enhanced addSupplier function that works with PIModal
+  // Enhanced addSupplier function that works with PIModal (PRESERVED)
   const addSupplier = async (supplierData) => {
     try {
       console.log('ProformaInvoices - Adding supplier:', supplierData);
@@ -250,7 +278,7 @@ const ProformaInvoices = ({ showNotification }) => {
     }
   };
 
-  // Filter PIs based on search and filters
+  // Filter PIs based on search and filters (PRESERVED)
   const filteredPIs = proformaInvoices.filter(pi => {
     const supplier = suppliers.find(s => s.id === pi.supplierId);
     const matchesSearch = 
@@ -268,7 +296,7 @@ const ProformaInvoices = ({ showNotification }) => {
     return matchesSearch && matchesStatus && matchesDelivery && matchesPurpose && matchesPriority;
   });
 
-  // Group PIs by year
+  // Group PIs by year (PRESERVED)
   const pisByYear = groupByYear ? filteredPIs.reduce((acc, pi) => {
     const year = new Date(pi.date).getFullYear();
     if (!acc[year]) acc[year] = [];
@@ -276,14 +304,14 @@ const ProformaInvoices = ({ showNotification }) => {
     return acc;
   }, {}) : { 'All': filteredPIs };
 
-  // Sort years descending (newest first)
+  // Sort years descending (newest first) (PRESERVED)
   const sortedYears = Object.keys(pisByYear).sort((a, b) => {
     if (a === 'All') return 1;
     if (b === 'All') return -1;
     return b - a;
   });
 
-  // Enhanced PO finding with better matching
+  // Enhanced PO finding with better matching (PRESERVED)
   const findPOByNumber = async (poNumber) => {
     try {
       const snapshot = await mockFirebase.firestore.collection('purchaseOrders').get();
@@ -311,155 +339,155 @@ const ProformaInvoices = ({ showNotification }) => {
     }
   };
 
-  // Enhanced file upload handler with comprehensive document type support
+  // Enhanced file upload handler with comprehensive document type support (PRESERVED + ENHANCED)
   const handleFileUpload = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+    const file = event.target.files[0];
+    if (!file) return;
 
-  setExtracting(true);
-  console.log('🚀 FIXED: Starting PI extraction for:', file.name);
-  
-  try {
-    showNotification(`Analyzing ${file.name}...`, 'info');
+    setExtracting(true);
+    console.log('🚀 FIXED: Starting PI extraction for:', file.name);
     
-    // 🔍 FIXED: Call extraction with storage
-    console.log('📞 FIXED: Calling AIExtractionService.extractPIWithStorage...');
-    const result = await AIExtractionService.extractPIWithStorage(file);
-    
-    console.log('✅ FIXED: Extraction completed:', {
-      success: result.success,
-      hasData: !!result.data,
-      documentId: result.data?.documentId,
-      hasStorageInfo: !!result.data?.storageInfo,
-      documentsStored: result.data?.hasStoredDocuments
-    });
-    
-    if (result.success && result.data) {
-      const extractedData = result.data;
-      const documentType = extractedData.documentType;
+    try {
+      showNotification(`Analyzing ${file.name}...`, 'info');
       
-      console.log(`📋 FIXED: Processing ${documentType} with confidence: ${result.confidence || 'unknown'}`);
+      // 🔍 FIXED: Call extraction with storage
+      console.log('📞 FIXED: Calling AIExtractionService.extractPIWithStorage...');
+      const result = await AIExtractionService.extractPIWithStorage(file);
       
-      let piData;
-      let actionMessage = '';
-      
-      // Handle different document types with Chinese supplier optimization
-switch (documentType) {
-  case 'supplier_proforma':
-  case 'proforma_invoice':
-    // Use optimized Chinese supplier processing
-    piData = await processChineseSupplierPI(extractedData);
-    actionMessage = 'Chinese Supplier PI extracted and stored!';
-    break;
-    
-  case 'client_purchase_order':
-    piData = await processClientPOForPI(extractedData);
-    actionMessage = 'Client PO converted to PI template. Please select supplier and add pricing.';
-    break;
-    
-  case 'supplier_invoice':
-    piData = await processSupplierInvoiceAsPI(extractedData);
-    actionMessage = 'Supplier Invoice converted to PI format.';
-    break;
-    
-  default:
-    // ✅ FIXED: Use direct processing instead of non-existent function
-    piData = {
-      piNumber: extractedData.piNumber || `PI-${Date.now()}`,
-      date: extractedData.date || new Date().toISOString().split('T')[0],
-      expiryDate: extractedData.validUntil || '',
-      supplierName: extractedData.supplier?.name || extractedData.supplierName || '',
-      supplierEmail: extractedData.supplier?.email || '',
-      supplierAddress: extractedData.supplier?.address || '',
-      clientRef: extractedData.clientRef?.poNumber || '',
-      products: extractedData.products || extractedData.items || [],
-      paymentTerms: extractedData.paymentTerms || '',
-      deliveryTerms: extractedData.deliveryTerms || '',
-      currency: extractedData.currency || 'USD',
-      exchangeRate: extractedData.exchangeRate || 1,
-      subtotal: extractedData.subtotal || 0,
-      discount: extractedData.discount || 0,
-      shipping: extractedData.shipping || 0,
-      tax: extractedData.tax || 0,
-      grandTotal: extractedData.grandTotal || extractedData.subtotal || 0,
-      notes: extractedData.notes || '',
-      status: 'pending'
-    };
-    actionMessage = 'Document processed successfully. Please verify the extracted data.';
-}
-
-      // ✅ CRITICAL: Include document storage information in PI data
-      const enhancedPIData = {
-        ...piData,
-        // Document storage identifiers
-        documentId: extractedData.documentId,
-        documentNumber: extractedData.documentNumber,
-        documentType: 'pi',
-        
-        // Storage metadata
-        storageInfo: extractedData.storageInfo,
-        hasStoredDocuments: extractedData.hasStoredDocuments,
-        
-        // File information
-        originalFileName: extractedData.originalFileName,
-        fileSize: extractedData.fileSize,
-        contentType: extractedData.contentType,
-        
-        // Timestamps
-        extractedAt: extractedData.extractedAt,
-        storedAt: extractedData.storedAt
-      };
-
-      console.log('📋 FIXED: Enhanced PI data:', {
-        piNumber: enhancedPIData.piNumber,
-        documentId: enhancedPIData.documentId,
-        hasStoredDocuments: enhancedPIData.hasStoredDocuments,
-        storageInfo: !!enhancedPIData.storageInfo
+      console.log('✅ FIXED: Extraction completed:', {
+        success: result.success,
+        hasData: !!result.data,
+        documentId: result.data?.documentId,
+        hasStorageInfo: !!result.data?.storageInfo,
+        documentsStored: result.data?.hasStoredDocuments
       });
-
-      // Check for PO matches
-      if (extractedData.clientRef?.poNumber) {
-        try {
-          const matchedPO = await findPOByNumber(extractedData.clientRef.poNumber);
-          if (matchedPO) {
-            showNotification(`Matched with PO: ${matchedPO.orderNumber}`, 'success');
-            enhancedPIData.linkedPO = matchedPO.id;
-          }
-        } catch (error) {
-          console.warn('PO matching failed:', error);
+      
+      if (result.success && result.data) {
+        const extractedData = result.data;
+        const documentType = extractedData.documentType;
+        
+        console.log(`📋 FIXED: Processing ${documentType} with confidence: ${result.confidence || 'unknown'}`);
+        
+        let piData;
+        let actionMessage = '';
+        
+        // Handle different document types with Chinese supplier optimization
+        switch (documentType) {
+          case 'supplier_proforma':
+          case 'proforma_invoice':
+            // Use optimized Chinese supplier processing
+            piData = await processChineseSupplierPI(extractedData);
+            actionMessage = 'Chinese Supplier PI extracted and stored!';
+            break;
+            
+          case 'client_purchase_order':
+            piData = await processClientPOForPI(extractedData);
+            actionMessage = 'Client PO converted to PI template. Please select supplier and add pricing.';
+            break;
+            
+          case 'supplier_invoice':
+            piData = await processSupplierInvoiceAsPI(extractedData);
+            actionMessage = 'Supplier Invoice converted to PI format.';
+            break;
+            
+          default:
+            // ✅ FIXED: Use direct processing instead of non-existent function
+            piData = {
+              piNumber: extractedData.piNumber || `PI-${Date.now()}`,
+              date: extractedData.date || new Date().toISOString().split('T')[0],
+              expiryDate: extractedData.validUntil || '',
+              supplierName: extractedData.supplier?.name || extractedData.supplierName || '',
+              supplierEmail: extractedData.supplier?.email || '',
+              supplierAddress: extractedData.supplier?.address || '',
+              clientRef: extractedData.clientRef?.poNumber || '',
+              products: extractedData.products || extractedData.items || [],
+              paymentTerms: extractedData.paymentTerms || '',
+              deliveryTerms: extractedData.deliveryTerms || '',
+              currency: extractedData.currency || 'USD',
+              exchangeRate: extractedData.exchangeRate || 1,
+              subtotal: extractedData.subtotal || 0,
+              discount: extractedData.discount || 0,
+              shipping: extractedData.shipping || 0,
+              tax: extractedData.tax || 0,
+              grandTotal: extractedData.grandTotal || extractedData.subtotal || 0,
+              notes: extractedData.notes || '',
+              status: 'pending'
+            };
+            actionMessage = 'Document processed successfully. Please verify the extracted data.';
         }
-      }
 
-      // Set PI data for modal
-      setSelectedPI(enhancedPIData);
-      setShowModal(true);
-      
-      showNotification(actionMessage, 'success');
-      
-      // Show document storage status
-      if (extractedData.hasStoredDocuments) {
-        showNotification(`📁 ${extractedData.storageInfo?.summary?.filesStored || 2} documents stored successfully`, 'info');
+        // ✅ CRITICAL: Include document storage information in PI data
+        const enhancedPIData = {
+          ...piData,
+          // Document storage identifiers
+          documentId: extractedData.documentId,
+          documentNumber: extractedData.documentNumber,
+          documentType: 'pi',
+          
+          // Storage metadata
+          storageInfo: extractedData.storageInfo,
+          hasStoredDocuments: extractedData.hasStoredDocuments,
+          
+          // File information
+          originalFileName: extractedData.originalFileName,
+          fileSize: extractedData.fileSize,
+          contentType: extractedData.contentType,
+          
+          // Timestamps
+          extractedAt: extractedData.extractedAt,
+          storedAt: extractedData.storedAt
+        };
+
+        console.log('📋 FIXED: Enhanced PI data:', {
+          piNumber: enhancedPIData.piNumber,
+          documentId: enhancedPIData.documentId,
+          hasStoredDocuments: enhancedPIData.hasStoredDocuments,
+          storageInfo: !!enhancedPIData.storageInfo
+        });
+
+        // Check for PO matches
+        if (extractedData.clientRef?.poNumber) {
+          try {
+            const matchedPO = await findPOByNumber(extractedData.clientRef.poNumber);
+            if (matchedPO) {
+              showNotification(`Matched with PO: ${matchedPO.orderNumber}`, 'success');
+              enhancedPIData.linkedPO = matchedPO.id;
+            }
+          } catch (error) {
+            console.warn('PO matching failed:', error);
+          }
+        }
+
+        // Set PI data for modal
+        setSelectedPI(enhancedPIData);
+        setShowModal(true);
+        
+        showNotification(actionMessage, 'success');
+        
+        // Show document storage status
+        if (extractedData.hasStoredDocuments) {
+          showNotification(`📁 ${extractedData.storageInfo?.summary?.filesStored || 2} documents stored successfully`, 'info');
+        } else {
+          showNotification('⚠️ Document storage failed - extraction data saved locally', 'warning');
+        }
+        
       } else {
-        showNotification('⚠️ Document storage failed - extraction data saved locally', 'warning');
+        throw new Error(result.error || 'Extraction failed');
       }
       
-    } else {
-      throw new Error(result.error || 'Extraction failed');
+    } catch (error) {
+      console.error('❌ FIXED: Extraction failed:', error);
+      showNotification(`Failed to extract PI data: ${error.message}`, 'error');
+    } finally {
+      setExtracting(false);
+      // Clear file input
+      if (event.target) {
+        event.target.value = '';
+      }
     }
-    
-  } catch (error) {
-    console.error('❌ FIXED: Extraction failed:', error);
-    showNotification(`Failed to extract PI data: ${error.message}`, 'error');
-  } finally {
-    setExtracting(false);
-    // Clear file input
-    if (event.target) {
-      event.target.value = '';
-    }
-  }
-};
+  };
 
-  // Enhanced Chinese supplier PI processing
+  // Enhanced Chinese supplier PI processing (PRESERVED)
   const processChineseSupplierPI = async (extractedData) => {
     console.log('Processing Chinese supplier PI with optimized extractor:', extractedData);
     
@@ -623,7 +651,7 @@ switch (documentType) {
     return piData;
   };
 
-  // Process client PO for PI creation
+  // Process client PO for PI creation (PRESERVED)
   const processClientPOForPI = async (extractedData) => {
     console.log('Processing client PO for PI creation:', extractedData);
     
@@ -721,12 +749,9 @@ switch (documentType) {
     };
 
     return piData;
-    const handleViewDocuments = (pi) => {
-  setDocumentsModal({ open: true, pi });
-};
   };
 
-  // Process supplier invoice as PI
+  // Process supplier invoice as PI (PRESERVED)
   const processSupplierInvoiceAsPI = async (extractedData) => {
     console.log('Processing supplier invoice as PI:', extractedData);
     
@@ -746,7 +771,7 @@ switch (documentType) {
     return piData;
   };
 
-  // Process quotation as PI
+  // Process quotation as PI (PRESERVED)
   const processQuotationAsPI = async (extractedData) => {
     console.log('Processing quotation as PI:', extractedData);
     
@@ -764,7 +789,7 @@ switch (documentType) {
     return piData;
   };
 
-  // Enhanced data validation and enrichment
+  // Enhanced data validation and enrichment (PRESERVED)
   const enhancePIData = async (piData, extractedData) => {
     console.log('Enhancing PI data...');
     
@@ -810,7 +835,7 @@ switch (documentType) {
     return piData;
   };
 
-  // Handler functions
+  // Handler functions (PRESERVED)
   const handleAddPI = () => {
     setSelectedPI(null);
     setShowModal(true);
@@ -850,7 +875,11 @@ switch (documentType) {
     showNotification('Share link copied to clipboard', 'success');
   };
 
-  // ✅ UPDATED: Enhanced handleSavePI with product sync
+  const handleViewDocuments = (pi) => {
+    setDocumentsModal({ open: true, pi });
+  };
+
+  // ✅ UPDATED: Enhanced handleSavePI with product sync (PRESERVED)
   const handleSavePI = async (piData) => {
     try {
       console.log('Saving PI data:', piData);
@@ -889,7 +918,7 @@ switch (documentType) {
     }
   };
 
-  // Status color helpers
+  // Status color helpers (PRESERVED)
   const getStatusColor = (status) => {
     switch (status) {
       case 'confirmed': return 'bg-green-100 text-green-800';
@@ -930,6 +959,33 @@ switch (documentType) {
           <p className="text-gray-600">Manage supplier quotations and track deliveries</p>
         </div>
         <div className="flex gap-3">
+          {/* NEW: Batch Status Indicator */}
+          {batchStats.activeBatches > 0 && (
+            <div className="flex items-center space-x-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+              <span className="text-sm text-blue-700">
+                {batchStats.activeBatches} batch{batchStats.activeBatches > 1 ? 'es' : ''} processing
+              </span>
+              <button
+                onClick={() => setShowBatchModal(true)}
+                className="text-blue-600 hover:text-blue-800 text-sm underline"
+              >
+                View
+              </button>
+            </div>
+          )}
+
+          {/* NEW: Batch Upload Button */}
+          {canEdit && (
+            <button
+              onClick={() => setShowBatchModal(true)}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 inline-flex items-center gap-2"
+            >
+              <Layers className="w-4 h-4" />
+              Batch Upload
+            </button>
+          )}
+
           {canEdit && (
             <>
               <input
@@ -969,7 +1025,7 @@ switch (documentType) {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards (PRESERVED) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center justify-between">
@@ -1018,7 +1074,7 @@ switch (documentType) {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters (PRESERVED) */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
         <div className="flex flex-wrap gap-4 items-center justify-between">
           <div className="flex items-center gap-2 flex-1 min-w-[300px]">
@@ -1094,7 +1150,7 @@ switch (documentType) {
         </div>
       </div>
 
-      {/* PI List/Grid */}
+      {/* PI List/Grid (PRESERVED with slight modification for documents button) */}
       {viewMode === 'grid' ? (
         <div className="space-y-8">
           {sortedYears.map(year => (
@@ -1109,17 +1165,17 @@ switch (documentType) {
                   .sort((a, b) => new Date(b.date) - new Date(a.date))
                   .map(pi => (
                     <PICard
-  key={pi.id}
-  proformaInvoice={pi}
-  supplier={suppliers.find(s => s.id === pi.supplierId)}
-  onEdit={() => handleEditPI(pi)}
-  onDelete={() => handleDeletePI(pi.id)}
-  onUpdateDelivery={() => handleUpdateDeliveryStatus(pi)}
-  onShare={() => handleSharePI(pi)}
-  onViewDocuments={() => handleViewDocuments(pi)} // ADD THIS LINE
-  canEdit={canEdit}
-  canDelete={canDelete}
-/>
+                      key={pi.id}
+                      proformaInvoice={pi}
+                      supplier={suppliers.find(s => s.id === pi.supplierId)}
+                      onEdit={() => handleEditPI(pi)}
+                      onDelete={() => handleDeletePI(pi.id)}
+                      onUpdateDelivery={() => handleUpdateDeliveryStatus(pi)}
+                      onShare={() => handleSharePI(pi)}
+                      onViewDocuments={() => handleViewDocuments(pi)}
+                      canEdit={canEdit}
+                      canDelete={canDelete}
+                    />
                   ))}
               </div>
             </div>
@@ -1220,44 +1276,44 @@ switch (documentType) {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-  <div className="flex justify-end gap-2">
-    {/* ADD THIS NEW DOCUMENTS BUTTON */}
-    {pi.id && (
-      <button
-        onClick={() => handleViewDocuments(pi)}
-        className="text-purple-600 hover:text-purple-900"
-        title="View Documents"
-      >
-        <FileText size={16} />
-      </button>
-    )}
-    <button
-      onClick={() => handleSharePI(pi)}
-      className="text-gray-600 hover:text-gray-900"
-      title="Share"
-    >
-      <Eye size={16} />
-    </button>
-    {canEdit && (
-      <button
-        onClick={() => handleEditPI(pi)}
-        className="text-blue-600 hover:text-blue-900"
-        title="Edit"
-      >
-        <Edit size={16} />
-      </button>
-    )}
-    {canDelete && (
-      <button
-        onClick={() => handleDeletePI(pi.id)}
-        className="text-red-600 hover:text-red-900"
-        title="Delete"
-      >
-        <Trash2 size={16} />
-      </button>
-    )}
-  </div>
-</td>
+                            <div className="flex justify-end gap-2">
+                              {/* Documents Button */}
+                              {pi.id && (
+                                <button
+                                  onClick={() => handleViewDocuments(pi)}
+                                  className="text-purple-600 hover:text-purple-900"
+                                  title="View Documents"
+                                >
+                                  <FileText size={16} />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleSharePI(pi)}
+                                className="text-gray-600 hover:text-gray-900"
+                                title="Share"
+                              >
+                                <Eye size={16} />
+                              </button>
+                              {canEdit && (
+                                <button
+                                  onClick={() => handleEditPI(pi)}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Edit"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => handleDeletePI(pi.id)}
+                                  className="text-red-600 hover:text-red-900"
+                                  title="Delete"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1268,7 +1324,7 @@ switch (documentType) {
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State (PRESERVED) */}
       {filteredPIs.length === 0 && (
         <div className="text-center py-12">
           <Package className="mx-auto h-12 w-12 text-gray-400" />
@@ -1299,7 +1355,7 @@ switch (documentType) {
         </div>
       )}
 
-{/* PI Modal with Enhanced Props */}
+      {/* PI Modal with Enhanced Props (PRESERVED) */}
       {showModal && (
         <PIModal
           isOpen={showModal}
@@ -1317,7 +1373,16 @@ switch (documentType) {
         />
       )}
 
-      {/* Documents Modal */}
+      {/* NEW: Batch Upload Modal */}
+      {showBatchModal && (
+        <BatchUploadModal
+          isOpen={showBatchModal}
+          onClose={() => setShowBatchModal(false)}
+          documentType="proforma_invoice"
+        />
+      )}
+
+      {/* Documents Modal (PRESERVED) */}
       {documentsModal.open && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
