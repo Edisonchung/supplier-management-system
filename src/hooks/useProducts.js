@@ -1,38 +1,55 @@
 // src/hooks/useProducts.js
 import { useState, useEffect } from 'react';
-import { mockFirebase } from '../services/firebase';
+import { db } from '../config/firebase';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp 
+} from 'firebase/firestore';
 
 export const useProducts = () => {
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const loadProducts = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const snapshot = await mockFirebase.firestore.collection('products').get();
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setProducts(data);
-    } catch (error) {
-      console.error('Error loading products:', error);
-      setError('Failed to load products');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    // Firestore real-time listener
+    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        const productsData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setProducts(productsData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Firestore error:', error);
+        setError('Failed to load products');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const addProduct = async (productData) => {
     try {
       const newProduct = {
         ...productData,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       };
       
-      const docRef = await mockFirebase.firestore.collection('products').add(newProduct);
-      await loadProducts();
-      
+      const docRef = await addDoc(collection(db, 'products'), newProduct);
       return { success: true, id: docRef.id };
     } catch (error) {
       console.error('Error adding product:', error);
@@ -42,12 +59,11 @@ export const useProducts = () => {
 
   const updateProduct = async (id, productData) => {
     try {
-      await mockFirebase.firestore.collection('products').doc(id).update({
+      await updateDoc(doc(db, 'products', id), {
         ...productData,
-        updatedAt: new Date().toISOString()
+        updatedAt: serverTimestamp()
       });
       
-      await loadProducts();
       return { success: true };
     } catch (error) {
       console.error('Error updating product:', error);
@@ -57,8 +73,7 @@ export const useProducts = () => {
 
   const deleteProduct = async (id) => {
     try {
-      await mockFirebase.firestore.collection('products').doc(id).delete();
-      await loadProducts();
+      await deleteDoc(doc(db, 'products', id));
       return { success: true };
     } catch (error) {
       console.error('Error deleting product:', error);
@@ -75,7 +90,7 @@ export const useProducts = () => {
   };
 
   const getLowStockProducts = (threshold = 10) => {
-    return products.filter(product => product.currentStock <= threshold);
+    return products.filter(product => (product.currentStock || product.stock || 0) <= threshold);
   };
 
   const updateProductStock = async (id, stockChange, type = 'add') => {
@@ -83,9 +98,10 @@ export const useProducts = () => {
       const product = getProductById(id);
       if (!product) throw new Error('Product not found');
       
+      const currentStock = product.currentStock || product.stock || 0;
       const newStock = type === 'add' 
-        ? product.currentStock + stockChange 
-        : product.currentStock - stockChange;
+        ? currentStock + stockChange 
+        : currentStock - stockChange;
       
       if (newStock < 0) throw new Error('Insufficient stock');
       
@@ -97,10 +113,6 @@ export const useProducts = () => {
     }
   };
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
   return {
     products,
     loading,
@@ -111,7 +123,6 @@ export const useProducts = () => {
     getProductById,
     getProductsBySupplierId,
     getLowStockProducts,
-    updateProductStock,
-    refetch: loadProducts
+    updateProductStock
   };
 };
