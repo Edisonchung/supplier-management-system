@@ -1,7 +1,7 @@
 // src/components/sourcing/SourcingDashboard.jsx
 import React, { useState } from 'react';
 import { Package, ShoppingCart, AlertCircle, Search, CheckCircle, Clock, ArrowRight, Filter, X } from 'lucide-react';
-import { useClientPOsDual } from '../../hooks/useClientPOsDual';
+import { useClientPOs } from '../../hooks/useClientPOs';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
