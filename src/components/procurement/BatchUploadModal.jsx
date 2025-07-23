@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, X, FileText, Clock, CheckCircle, XCircle, RotateCcw, Pause, Play } from 'lucide-react';
-import enhancedBatchUploadService from '../services/EnhancedBatchUploadService';
+import enhancedBatchUploadService from '../../services/EnhancedBatchUploadService';
 
 const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }) => {
   const [dragActive, setDragActive] = useState(false);
