@@ -2,7 +2,6 @@
 // Enhanced batch upload service with Web Worker support for true background processing
 
 import { AIExtractionService } from './ai/AIExtractionService';
-import { showNotification } from '../utils/notifications';
 
 class EnhancedBatchUploadService {
   constructor() {
@@ -12,8 +11,27 @@ class EnhancedBatchUploadService {
     this.maxFilesPerWorker = 10;
     this.isInitialized = false;
     this.notifications = [];
+    this.showNotification = null; // Will be set by component
     
     this.init();
+  }
+
+  /**
+   * Set notification function from component
+   */
+  setNotificationFunction(notificationFn) {
+    this.showNotification = notificationFn;
+  }
+
+  /**
+   * Show notification if function is available
+   */
+  notify(message, type = 'info') {
+    if (this.showNotification) {
+      this.showNotification(message, type);
+    } else {
+      console.log(`[${type.toUpperCase()}] ${message}`);
+    }
   }
 
   /**
@@ -399,7 +417,7 @@ class EnhancedBatchUploadService {
     // Show notification if user is online
     if (batch.options.notifyWhenComplete) {
       if (document.visibilityState === 'visible') {
-        showNotification(
+        this.notify(
           `Batch processing complete! ${summary.successful}/${summary.total} files processed successfully using ${summary.processingMethod}.`,
           summary.failed > 0 ? 'warning' : 'success'
         );
@@ -636,7 +654,7 @@ class EnhancedBatchUploadService {
     
     notifications.forEach(notification => {
       if (!notification.shown) {
-        showNotification(
+        this.notify(
           `Batch ${notification.batchId} completed while you were away! ${notification.summary.successful}/${notification.summary.total} files processed via ${notification.summary.processingMethod}.`,
           notification.summary.failed > 0 ? 'warning' : 'success'
         );
