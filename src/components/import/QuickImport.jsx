@@ -11,16 +11,16 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { AIExtractionService } from '../../services/ai/AIExtractionService';
-import { useSuppliersDual } from '../../hooks/useSuppliersDual';
-import { useProductsDual } from '../../hooks/useProductsDual';
+import { useSuppliers } from '../../hooks/useSuppliers';
+import { useProducts } from '../../hooks/useProducts';
 import { useNavigate } from 'react-router-dom';
 
 const QuickImport = ({ showNotification }) => {
   const { user } = useAuth();
   const permissions = usePermissions();
   const navigate = useNavigate();
-  const { suppliers, addSupplier } = useSuppliersDual();
-  const { products, addProduct } = useProductsDual();
+  const { suppliers, addSupplier } = useSuppliers();
+  const { products, addProduct } = useProducts();
   
   const [file, setFile] = useState(null);
   const [extracting, setExtracting] = useState(false);

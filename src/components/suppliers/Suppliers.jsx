@@ -5,11 +5,10 @@ import {
   MapPin, User, Calendar, MoreVertical, RefreshCw,
   Database, Cloud
 } from 'lucide-react';
-import { useSuppliersDual } from '../../hooks/useSuppliersDual';
+import { useSuppliers } from '../../hooks/useSuppliers';
 import { usePermissions } from '../../hooks/usePermissions';
 import SupplierCard from './SupplierCard';
 import SupplierModal from './SupplierModal';
-import DataSourceToggle from '../common/DataSourceToggle';
 
 const Suppliers = ({ showNotification }) => {
   const permissions = usePermissions();
@@ -24,7 +23,7 @@ const Suppliers = ({ showNotification }) => {
     toggleDataSource,
     migrateToFirestore,
     refetch
-  } = useSuppliersDual();
+  } = useSuppliers();
   
   const [showModal, setShowModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
@@ -127,7 +126,6 @@ const Suppliers = ({ showNotification }) => {
   return (
     <div className="space-y-6">
       {/* Data Source Toggle */}
-      <DataSourceToggle
         dataSource={dataSource}
         onToggle={toggleDataSource}
         onMigrate={handleMigrate}

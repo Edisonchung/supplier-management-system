@@ -5,13 +5,12 @@ import {
   TrendingUp, DollarSign, Layers, Clock, CheckCircle,
   RefreshCw, Database, Cloud, FileText
 } from 'lucide-react';
-import { useProductsDual } from '../../hooks/useProductsDual';
+import { useProducts } from '../../hooks/useProducts';
 import { useSuppliers } from '../../hooks/useSuppliers';
 import { usePermissions } from '../../hooks/usePermissions';
 import ProductCard from './ProductCard';
 import ProductModal from './ProductModal';
 import FurnishModal from './FurnishModal';
-import DataSourceToggle from '../common/DataSourceToggle';
 
 const Products = ({ showNotification }) => {
   const permissions = usePermissions();
@@ -28,7 +27,7 @@ const Products = ({ showNotification }) => {
     toggleDataSource,
     migrateToFirestore,
     refetch
-  } = useProductsDual();
+  } = useProducts();
   
   const { suppliers } = useSuppliers();
   
@@ -231,7 +230,6 @@ const Products = ({ showNotification }) => {
   return (
     <div className="space-y-6">
       {/* Data Source Toggle */}
-      <DataSourceToggle
         dataSource={dataSource}
         onToggle={toggleDataSource}
         onMigrate={handleMigrate}
