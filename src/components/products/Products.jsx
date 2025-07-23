@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Package, Plus, Search, Filter, AlertCircle, 
   TrendingUp, DollarSign, Layers, Clock, CheckCircle,
-  RefreshCw, Database, Cloud, FileText
+  RefreshCw, FileText
 } from 'lucide-react';
 import { useProducts } from '../../hooks/useProducts';
 import { useSuppliers } from '../../hooks/useSuppliers';
@@ -30,19 +30,18 @@ const Products = ({ showNotification }) => {
   const [showModal, setShowModal] = useState(false);
   const [showFurnishModal, setShowFurnishModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [initialTab, setInitialTab] = useState('basic'); // NEW: For tab control
+  const [initialTab, setInitialTab] = useState('basic');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterStock, setFilterStock] = useState('all');
-  const [filterDocumentation, setFilterDocumentation] = useState('all'); // NEW: Documentation filter
+  const [filterDocumentation, setFilterDocumentation] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const canEdit = permissions.canEditProducts || permissions.isAdmin;
   const canView = permissions.canViewProducts || permissions.isAdmin;
 
-  // NEW: Helper function to get documentation status
+  // Helper function to get documentation status
   const getDocumentationStatus = (product) => {
     if (!product.documents || !product.documents.metadata) {
       return 'incomplete';
@@ -71,7 +70,7 @@ const Products = ({ showNotification }) => {
       (filterStock === 'out' && productStock === 0) ||
       (filterStock === 'ok' && productStock > productMinStock);
     
-    // NEW: Documentation filter
+    // Documentation filter
     const docStatus = getDocumentationStatus(product);
     const matchesDocumentation = filterDocumentation === 'all' || docStatus === filterDocumentation;
     
@@ -84,7 +83,7 @@ const Products = ({ showNotification }) => {
   // Calculate stats
   const lowStockProducts = getLowStockProducts();
   
-  // NEW: Calculate documentation stats
+  // Calculate documentation stats
   const documentationStats = {
     complete: products.filter(p => getDocumentationStatus(p) === 'complete').length,
     basic: products.filter(p => getDocumentationStatus(p) === 'basic').length,
@@ -103,21 +102,20 @@ const Products = ({ showNotification }) => {
       const price = p.unitCost || p.unitPrice || 0;
       return sum + (stock * price);
     }, 0),
-    // NEW: Documentation stats
     documentsComplete: documentationStats.complete
   };
 
   const handleAddProduct = () => {
     setSelectedProduct(null);
-    setInitialTab('basic'); // Reset to basic tab
+    setInitialTab('basic');
     setShowModal(true);
   };
 
-  // NEW: Enhanced edit handler with tab support
+  // Enhanced edit handler with tab support
   const handleEditProduct = (product, tab = 'basic') => {
     if (!canEdit) return;
     setSelectedProduct(product);
-    setInitialTab(tab); // Set the initial tab
+    setInitialTab(tab);
     setShowModal(true);
   };
 
@@ -177,30 +175,7 @@ const Products = ({ showNotification }) => {
     }
   };
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await refetch();
-      showNotification('Data refreshed successfully', 'success');
-    } catch (error) {
-      showNotification('Failed to refresh data', 'error');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const handleMigrate = async () => {
-    try {
-      const result = await migrateToFirestore();
-      showNotification(`Successfully migrated ${result.migrated} products to Firestore`, 'success');
-      return result;
-    } catch (error) {
-      showNotification('Migration failed: ' + error.message, 'error');
-      throw error;
-    }
-  };
-
-  // NEW: Handle modal close with cleanup
+  // Handle modal close with cleanup
   const handleModalClose = () => {
     setShowModal(false);
     setSelectedProduct(null);
@@ -225,28 +200,16 @@ const Products = ({ showNotification }) => {
 
   return (
     <div className="space-y-6">
-     
-
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600 mt-1">
             Manage your product inventory and documentation
-            {dataSource === 'firestore' && (
-              <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
-            )}
+            <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={loading || isRefreshing}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
-            title="Refresh data"
-          >
-            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
           {canEdit && (
             <button
               onClick={handleAddProduct}
@@ -298,7 +261,7 @@ const Products = ({ showNotification }) => {
           </div>
         </div>
 
-        {/* NEW: Documentation Stats */}
+        {/* Documentation Stats */}
         <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
@@ -373,7 +336,7 @@ const Products = ({ showNotification }) => {
             <option value="out">Out of Stock</option>
           </select>
 
-          {/* NEW: Documentation Filter */}
+          {/* Documentation Filter */}
           <select
             className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={filterDocumentation}
@@ -406,7 +369,7 @@ const Products = ({ showNotification }) => {
         </div>
       </div>
 
-      {/* NEW: Documentation Status Summary */}
+      {/* Documentation Status Summary */}
       {filterDocumentation === 'all' && (
         <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
@@ -448,7 +411,7 @@ const Products = ({ showNotification }) => {
               key={product.id}
               product={product}
               supplier={suppliers.find(s => s.id === product.supplierId)}
-              onEdit={handleEditProduct} // Now supports tab parameter
+              onEdit={handleEditProduct}
               onDelete={() => handleDeleteProduct(product.id)}
               onFurnish={() => handleFurnishProduct(product)}
               canEdit={canEdit}
@@ -456,7 +419,6 @@ const Products = ({ showNotification }) => {
           ))}
         </div>
       ) : (
-        // List view would go here - keeping it simple for now
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <p className="p-4 text-gray-500">List view coming soon...</p>
         </div>
@@ -494,9 +456,9 @@ const Products = ({ showNotification }) => {
           product={selectedProduct}
           suppliers={suppliers}
           onSave={handleSaveProduct}
-          onClose={handleModalClose} // Updated to use new handler
-          initialTab={initialTab} // NEW: Pass initial tab
-          showNotification={showNotification} // NEW: Pass notification handler
+          onClose={handleModalClose}
+          initialTab={initialTab}
+          showNotification={showNotification}
         />
       )}
 
