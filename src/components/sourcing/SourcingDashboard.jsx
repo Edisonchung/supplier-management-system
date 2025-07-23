@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 const SourcingDashboard = ({ showNotification }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { sourcingRequired, loading, error, updateItemSourcing, dataSource, toggleDataSource } = useClientPOsDual();
+  const { sourcingRequired, loading, error, updateItemSourcing } = useClientPOs();
   const [selectedPO, setSelectedPO] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -124,14 +124,7 @@ const SourcingDashboard = ({ showNotification }) => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Sourcing Dashboard</h1>
             <p className="text-gray-600">Manage client POs that require supplier sourcing</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleDataSource}
-              className="text-sm px-3 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-            >
-              Mode: {dataSource === 'firestore' ? 'Firestore' : 'Local'}
-            </button>
+            <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
           </div>
         </div>
       </div>
