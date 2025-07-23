@@ -18,15 +18,11 @@ const Products = ({ showNotification }) => {
     products, 
     loading, 
     error,
-    dataSource,
     addProduct,
     updateProduct,
     deleteProduct,
     updateProductStock,
     getLowStockProducts,
-    toggleDataSource,
-    migrateToFirestore,
-    refetch
   } = useProducts();
   
   const { suppliers } = useSuppliers();
