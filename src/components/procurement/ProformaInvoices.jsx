@@ -1385,7 +1385,10 @@ const ProformaInvoices = ({ showNotification }) => {
         <BatchUploadModal
           isOpen={showBatchModal}
           onClose={() => setShowBatchModal(false)}
-          documentType="proforma_invoice"
+             showNotification={showNotification}
+    addProformaInvoice={addProformaInvoice}  // Pass the PI creation function
+    suppliers={suppliers}                    // Pass suppliers for matching
+    addSupplier={hookAddSupplier}           // Pass supplier creation function
         />
       )}
 
