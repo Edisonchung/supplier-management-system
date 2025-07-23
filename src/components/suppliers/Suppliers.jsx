@@ -16,13 +16,9 @@ const Suppliers = ({ showNotification }) => {
     suppliers, 
     loading, 
     error,
-    dataSource,
     addSupplier,
     updateSupplier,
     deleteSupplier,
-    toggleDataSource,
-    migrateToFirestore,
-    refetch
   } = useSuppliers();
   
   const [showModal, setShowModal] = useState(false);
