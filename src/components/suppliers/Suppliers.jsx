@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, Plus, Search, Filter, Mail, Phone, 
-  MapPin, User, Calendar, MoreVertical, RefreshCw,
-  Database, Cloud
+  MapPin, User, Calendar, MoreVertical, RefreshCw
 } from 'lucide-react';
 import { useSuppliers } from '../../hooks/useSuppliers';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -81,29 +80,6 @@ const Suppliers = ({ showNotification }) => {
     }
   };
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await refetch();
-      showNotification('Data refreshed successfully', 'success');
-    } catch (error) {
-      showNotification('Failed to refresh data', 'error');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const handleMigrate = async () => {
-    try {
-      const result = await migrateToFirestore();
-      showNotification(`Successfully migrated ${result.migrated} suppliers to Firestore`, 'success');
-      return result;
-    } catch (error) {
-      showNotification('Migration failed: ' + error.message, 'error');
-      throw error;
-    }
-  };
-
   const stats = {
     total: suppliers.length,
     active: suppliers.filter(s => s.status === 'active').length,
@@ -121,28 +97,16 @@ const Suppliers = ({ showNotification }) => {
 
   return (
     <div className="space-y-6">
-
-
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Suppliers</h1>
           <p className="text-gray-600 mt-1">
             Manage your supplier relationships
-            {dataSource === 'firestore' && (
-              <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
-            )}
+            <span className="ml-2 text-sm text-blue-600">(Real-time sync enabled)</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={loading || isRefreshing}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
-            title="Refresh data"
-          >
-            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
           {canEdit && (
             <button
               onClick={handleAddSupplier}
