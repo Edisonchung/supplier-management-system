@@ -77,6 +77,13 @@ const ProformaInvoices = ({ showNotification }) => {
   const canEdit = permissions.canEditPI || permissions.isAdmin;
   const canDelete = permissions.isAdmin;
 
+  // Initialize batch service with notification function
+  useEffect(() => {
+    if (showNotification) {
+      enhancedBatchUploadService.setNotificationFunction(showNotification);
+    }
+  }, [showNotification]);
+
   // NEW: Poll for batch upload statistics
   useEffect(() => {
     const interval = setInterval(() => {
