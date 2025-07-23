@@ -16,7 +16,7 @@ import {
   FileText,
   TrendingUp
 } from 'lucide-react';
-import enhancedBatchUploadService from '../services/EnhancedBatchUploadService';
+import enhancedBatchUploadService from '../../services/EnhancedBatchUploadService';
 
 const BatchStatusDashboard = ({ isOpen, onClose }) => {
   const [activeBatches, setActiveBatches] = useState([]);
