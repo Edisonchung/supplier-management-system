@@ -16,8 +16,8 @@ import {
 export const useSuppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [useFirestore, setUseFirestore] = useState(true); // Toggle for testing
-
+  const [useFirestore] = useState(true); // Always use Firestore
+  
   useEffect(() => {
     if (useFirestore) {
       // Firestore real-time listener
