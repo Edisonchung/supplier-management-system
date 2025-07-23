@@ -225,13 +225,7 @@ const Products = ({ showNotification }) => {
 
   return (
     <div className="space-y-6">
-      {/* Data Source Toggle */}
-        dataSource={dataSource}
-        onToggle={toggleDataSource}
-        onMigrate={handleMigrate}
-        loading={loading}
-        supplierCount={products.length}
-      />
+     
 
       {/* Header */}
       <div className="flex justify-between items-center">
