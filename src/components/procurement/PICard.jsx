@@ -14,8 +14,14 @@ const PICard = ({
   onDelete, 
   onUpdateDelivery,
   onShare,
+  onViewDocuments,
   canEdit, 
-  canDelete 
+  canDelete,
+  // NEW: Bulk selection props
+  bulkMode = false,
+  isSelected = false,
+  onSelectionChange,
+  className = ''
 }) => {
   const getStatusColor = (status) => {
     switch (status) {
@@ -76,10 +82,43 @@ const PICard = ({
   const totalPaid = proformaInvoice.totalPaid || 0;
   const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
 
+  // Handle selection change
+  const handleSelectionChange = (e) => {
+    e.stopPropagation(); // Prevent card click when checking
+    if (onSelectionChange) {
+      onSelectionChange(proformaInvoice.id, e.target.checked);
+    }
+  };
+
+  // Handle card click (only allow edit when not in bulk mode)
+  const handleCardClick = () => {
+    if (!bulkMode && onEdit) {
+      onEdit();
+    }
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border border-gray-100">
+    <div 
+      className={`bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-all border border-gray-100 relative ${
+        isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+      } ${bulkMode ? 'cursor-pointer hover:bg-gray-50' : ''} ${className}`}
+      onClick={bulkMode ? handleSelectionChange : undefined}
+    >
+      {/* NEW: Selection Checkbox */}
+      {bulkMode && (
+        <div className="absolute top-3 left-3 z-10">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={handleSelectionChange}
+            onClick={(e) => e.stopPropagation()}
+            className="h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 bg-white shadow-sm"
+          />
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
+      <div className={`flex items-start justify-between mb-4 ${bulkMode ? 'ml-8' : ''}`}>
         <div className="flex items-center gap-3">
           <div className="bg-blue-100 p-2 rounded-lg">
             <FileText className="h-5 w-5 text-blue-600" />
@@ -237,45 +276,79 @@ const PICard = ({
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={onEdit}
-          className="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
-        >
-          <Eye size={16} />
-          View
-        </button>
-        
-        {canEdit && proformaInvoice.status === 'confirmed' && (
+      {/* Actions - Only show when NOT in bulk mode */}
+      {!bulkMode && (
+        <div className="flex gap-2">
           <button
-            onClick={onUpdateDelivery}
-            className="bg-blue-100 text-blue-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors flex items-center justify-center"
-            title="Update Delivery Status"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="flex-1 bg-gray-100 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
           >
-            <Truck size={16} />
+            <Eye size={16} />
+            View
           </button>
-        )}
-        
-        {canDelete && (
-          <button
-            onClick={onDelete}
-            className="bg-red-100 text-red-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors flex items-center justify-center"
-          >
-            <Trash2 size={16} />
-          </button>
-        )}
-        
-        {onShare && (
-          <button
-            onClick={onShare}
-            className="bg-purple-100 text-purple-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors flex items-center justify-center"
-            title="Share PI Link"
-          >
-            <Share2 size={16} />
-          </button>
-        )}
-      </div>
+          
+          {onViewDocuments && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewDocuments();
+              }}
+              className="bg-purple-100 text-purple-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors flex items-center justify-center"
+              title="View Documents"
+            >
+              <FileText size={16} />
+            </button>
+          )}
+          
+          {canEdit && proformaInvoice.status === 'confirmed' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdateDelivery();
+              }}
+              className="bg-blue-100 text-blue-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors flex items-center justify-center"
+              title="Update Delivery Status"
+            >
+              <Truck size={16} />
+            </button>
+          )}
+          
+          {canDelete && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="bg-red-100 text-red-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors flex items-center justify-center"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+          
+          {onShare && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare();
+              }}
+              className="bg-purple-100 text-purple-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors flex items-center justify-center"
+              title="Share PI Link"
+            >
+              <Share2 size={16} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Bulk Mode Instruction */}
+      {bulkMode && (
+        <div className="text-center py-2 text-sm text-gray-500 border-t">
+          {isSelected ? 'Selected for deletion' : 'Click to select for deletion'}
+        </div>
+      )}
     </div>
   );
 };
