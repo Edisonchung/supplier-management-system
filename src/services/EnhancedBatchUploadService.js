@@ -462,19 +462,93 @@ async fileToBase64(file) {
    * Auto-save extracted data
    */
   async autoSaveExtractedData(data, documentType) {
-    try {
-      if (documentType === 'proforma_invoice') {
-        // Import dynamically to avoid circular dependencies
-        const { createProformaInvoice } = await import('../hooks/useProformaInvoices');
-        await createProformaInvoice(this.mapExtractedDataToPI(data));
-      } else if (documentType === 'purchase_order') {
-        const { createPurchaseOrder } = await import('../hooks/usePurchaseOrders');
-        await createPurchaseOrder(this.mapExtractedDataToPO(data));
+  try {
+    console.log('🔄 Auto-saving extracted data:', documentType, data);
+    
+    if (documentType === 'proforma_invoice') {
+      try {
+        // Import the hook module properly
+        const hookModule = await import('../hooks/useProformaInvoices');
+        
+        // Check what's actually exported
+        console.log('📦 Hook module exports:', Object.keys(hookModule));
+        
+        // Try different possible export names
+        const createFunction = hookModule.createProformaInvoice || 
+                             hookModule.default?.createProformaInvoice ||
+                             hookModule.addProformaInvoice ||
+                             hookModule.default?.addProformaInvoice;
+        
+        if (typeof createFunction === 'function') {
+          const piData = this.mapExtractedDataToPI(data);
+          console.log('💾 Saving PI data:', piData);
+          
+          await createFunction(piData);
+          console.log('✅ Auto-save successful');
+        } else {
+          console.error('❌ Create function not found in hook module');
+          // Fallback: try to save directly to localStorage
+          this.saveToLocalStorage(data, documentType);
+        }
+        
+      } catch (importError) {
+        console.error('❌ Failed to import hook:', importError);
+        // Fallback: save to localStorage
+        this.saveToLocalStorage(data, documentType);
       }
-    } catch (error) {
-      console.error('Auto-save failed:', error);
+      
+    } else if (documentType === 'purchase_order') {
+      try {
+        const hookModule = await import('../hooks/usePurchaseOrders');
+        const createFunction = hookModule.createPurchaseOrder || 
+                             hookModule.default?.createPurchaseOrder ||
+                             hookModule.addPurchaseOrder ||
+                             hookModule.default?.addPurchaseOrder;
+        
+        if (typeof createFunction === 'function') {
+          const poData = this.mapExtractedDataToPO(data);
+          await createFunction(poData);
+          console.log('✅ Auto-save PO successful');
+        } else {
+          this.saveToLocalStorage(data, documentType);
+        }
+        
+      } catch (importError) {
+        console.error('❌ Failed to import PO hook:', importError);
+        this.saveToLocalStorage(data, documentType);
+      }
     }
+    
+  } catch (error) {
+    console.error('❌ Auto-save failed:', error);
+    // Don't throw the error - just log it so batch processing continues
   }
+}
+
+// Add this fallback method to save directly to localStorage
+saveToLocalStorage(data, documentType) {
+  try {
+    console.log('🔄 Fallback: saving to localStorage');
+    
+    if (documentType === 'proforma_invoice') {
+      const piData = this.mapExtractedDataToPI(data);
+      
+      // Get existing PIs from localStorage
+      const existingPIs = JSON.parse(localStorage.getItem('proforma_invoices') || '[]');
+      
+      // Add new PI
+      existingPIs.push(piData);
+      
+      // Save back to localStorage
+      localStorage.setItem('proforma_invoices', JSON.stringify(existingPIs));
+      
+      console.log('✅ Fallback save to localStorage successful');
+    }
+    
+  } catch (error) {
+    console.error('❌ Fallback save failed:', error);
+  }
+}
 
   /**
    * Map extracted data to PI format
