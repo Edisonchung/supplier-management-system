@@ -112,30 +112,32 @@ class MockFirebase {
   }
 
   initializeProformaInvoices() {
-    const samplePIs = [
-      {
-        id: 'pi-001',
-        piNumber: 'PI-2024-001',
-        supplierId: 'sup-001',
-        date: '2024-01-15',
-        items: [
-          {
-            productId: 'prod-001',
-            productName: 'Industrial Pump A-200',
-            quantity: 10,
-            unitPrice: 1500,
-            totalPrice: 15000
-          }
-        ],
-        totalAmount: 15000,
-        status: 'confirmed',
-        purpose: 'stock',
-        deliveryStatus: 'pending',
-        paymentStatus: 'paid',
-        expectedDelivery: '2024-02-15',
-        notes: 'Urgent order for stock replenishment'
-      }
-    ];
+   // Only add demo data in development or if explicitly requested
+  const shouldAddDemoData = localStorage.getItem('includeDemoData') === 'true';
+  
+  const samplePIs = shouldAddDemoData ? [
+    {
+      id: 'pi-001',
+      piNumber: 'PI-2024-DEMO',  // ← Changed to clearly mark as demo
+      supplierId: 'sup-001',
+      date: '2024-01-15',
+      items: [
+        {
+          productId: 'prod-001',
+          productName: 'Demo Product',
+          quantity: 1,
+          unitPrice: 100,
+          totalPrice: 100
+        }
+      ],
+      totalAmount: 100,
+      status: 'draft',  // ← Changed from 'confirmed'
+      purpose: 'demo',  // ← Added demo purpose
+      deliveryStatus: 'pending',
+      paymentStatus: 'pending',  // ← Changed from 'paid'
+      notes: '🎭 DEMO DATA - Safe to delete'
+    }
+  ] : [];
     
     localStorage.setItem('proformaInvoices', JSON.stringify(samplePIs));
     this.data.proformaInvoices = samplePIs;
