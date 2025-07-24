@@ -1046,6 +1046,56 @@ const ProformaInvoices = ({ showNotification }) => {
             </div>
           )}
 
+          {/* NEW: Bulk Operations Controls */}
+          {canDelete && proformaInvoices.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setBulkMode(!bulkMode);
+                  setSelectedPIs(new Set());
+                }}
+                className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 transition-colors ${
+                  bulkMode 
+                    ? 'bg-gray-600 text-white hover:bg-gray-700' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {bulkMode ? (
+                  <>
+                    <X className="w-4 h-4" />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Bulk Delete
+                  </>
+                )}
+              </button>
+              
+              {bulkMode && (
+                <>
+                  <button
+                    onClick={handleSelectAll}
+                    className="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-200 text-sm"
+                  >
+                    {selectedPIs.size === filteredPIs.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                  
+                  {selectedPIs.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 inline-flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete {selectedPIs.size} PI{selectedPIs.size > 1 ? 's' : ''}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          
           {/* NEW: Batch Upload Button */}
           {canEdit && (
             <button
