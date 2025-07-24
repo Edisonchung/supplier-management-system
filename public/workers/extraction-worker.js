@@ -1,5 +1,5 @@
 // Updated public/workers/extraction-worker.js
-// This version handles ArrayBuffer files correctly
+// This version handles base64 strings directly (no ArrayBuffer conversion needed)
 
 let isProcessing = false;
 let currentQueue = [];
@@ -85,13 +85,14 @@ async function startBatchProcessing(batchData) {
     
     try {
       console.log(`📄 Worker processing file: ${file.name} (${i + 1}/${files.length})`);
+      console.log(`📄 File data available: ${file.base64Data ? 'YES' : 'NO'}, length: ${file.base64Data?.length || 0}`);
       
       // Send processing update
       postMessage({
         type: 'FILE_PROCESSING',
         payload: {
           batchId,
-          fileIndex: file.index || i, // Use original index if available
+          fileIndex: file.originalIndex !== undefined ? file.originalIndex : i,
           fileName: file.name,
           progress: Math.round((i / files.length) * 100)
         }
@@ -107,7 +108,7 @@ async function startBatchProcessing(batchData) {
         type: 'FILE_COMPLETED',
         payload: {
           batchId,
-          fileIndex: file.index || i,
+          fileIndex: file.originalIndex !== undefined ? file.originalIndex : i,
           fileName: file.name,
           result: result,
           progress: Math.round(((i + 1) / files.length) * 100)
@@ -122,7 +123,7 @@ async function startBatchProcessing(batchData) {
         type: 'FILE_FAILED',
         payload: {
           batchId,
-          fileIndex: file.index || i,
+          fileIndex: file.originalIndex !== undefined ? file.originalIndex : i,
           fileName: file.name,
           error: error.message,
           progress: Math.round(((i + 1) / files.length) * 100)
@@ -152,29 +153,25 @@ async function startBatchProcessing(batchData) {
 
 async function processFile(file) {
   try {
-    // Convert ArrayBuffer back to base64 for processing
-    let base64Data;
-    
-    if (file.arrayBuffer) {
-      // Convert ArrayBuffer to base64
-      base64Data = arrayBufferToBase64(file.arrayBuffer);
-      console.log(`📄 Converted ArrayBuffer to base64 for ${file.name}`);
-    } else {
-      throw new Error('No file data available');
+    // Validate that we have the base64 data
+    if (!file.base64Data) {
+      throw new Error('No base64 data available for file');
     }
     
-    if (!base64Data) {
-      throw new Error('Failed to convert file to base64');
+    if (typeof file.base64Data !== 'string' || file.base64Data.length === 0) {
+      throw new Error('Invalid base64 data for file');
     }
+    
+    console.log(`📄 Processing file ${file.name} with base64 data (${file.base64Data.length} chars)`);
     
     // Simulate AI processing (replace with actual API call)
     return new Promise((resolve, reject) => {
-      // Simulate processing time (5-10 seconds for testing)
-      const processingTime = Math.random() * 5000 + 5000;
+      // Shorter processing time for testing (3-7 seconds)
+      const processingTime = Math.random() * 4000 + 3000;
       
       setTimeout(() => {
-        // Simulate 85% success rate
-        if (Math.random() > 0.15) {
+        // Simulate 90% success rate
+        if (Math.random() > 0.1) {
           resolve({
             success: true,
             data: {
@@ -196,7 +193,9 @@ async function processFile(file) {
               processingTime: processingTime,
               confidence: Math.random() * 0.3 + 0.7,
               workerProcessed: true,
-              fileName: file.name
+              fileName: file.name,
+              fileSize: file.size,
+              dataLength: file.base64Data.length
             }
           });
         } else {
@@ -235,26 +234,6 @@ function sendStatus() {
   });
 }
 
-// Utility function to convert ArrayBuffer to base64
-function arrayBufferToBase64(arrayBuffer) {
-  try {
-    const uint8Array = new Uint8Array(arrayBuffer);
-    let binary = '';
-    const chunkSize = 1024;
-    
-    // Process in chunks to avoid call stack issues with large files
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-      binary += String.fromCharCode.apply(null, chunk);
-    }
-    
-    return btoa(binary);
-  } catch (error) {
-    console.error('Error converting ArrayBuffer to base64:', error);
-    throw new Error(`ArrayBuffer conversion failed: ${error.message}`);
-  }
-}
-
 // Enhanced error handling for the worker
 self.addEventListener('error', function(error) {
   console.error('Worker global error:', error);
@@ -284,7 +263,7 @@ self.addEventListener('unhandledrejection', function(event) {
 });
 
 // Notify that worker is ready
-console.log('✅ Web Worker initialized and ready');
+console.log('✅ Web Worker initialized and ready for base64 file processing');
 postMessage({
   type: 'WORKER_READY',
   payload: {
