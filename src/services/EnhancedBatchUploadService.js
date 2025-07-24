@@ -1,4 +1,4 @@
-// src/services/EnhancedBatchUploadService.js
+/// src/services/EnhancedBatchUploadService.js
 // Enhanced batch upload service with Web Worker support for true background processing
 
 import { AIExtractionService } from './ai/AIExtractionService';
