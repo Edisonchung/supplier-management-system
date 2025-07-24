@@ -138,50 +138,144 @@ class EnhancedBatchUploadService {
    * Process batch using Web Worker (true background processing)
    */
   async processWithWebWorker(queueKey, batch) {
-    try {
-      // Create new Web Worker
-      const worker = new Worker('/workers/extraction-worker.js');
-      this.workers.set(queueKey, worker);
-      
-      // Set up worker message handlers
-      worker.onmessage = (event) => {
+  try {
+    console.log(`🚀 Starting Web Worker for batch ${batch.id}`);
+    
+    // Create new Web Worker with enhanced error handling
+    const worker = new Worker('/workers/extraction-worker.js');
+    this.workers.set(queueKey, worker);
+    
+    // Set up worker message handlers
+    worker.onmessage = (event) => {
+      try {
+        console.log('📨 Worker message received:', event.data.type);
         this.handleWorkerMessage(queueKey, event.data);
-      };
-      
-      worker.onerror = (error) => {
-        console.error('Worker error:', error);
+      } catch (error) {
+        console.error('Error handling worker message:', error);
         this.handleWorkerError(queueKey, error);
-      };
-      
-      // Update batch status
-      batch.status = 'processing';
-      batch.processingMethod = 'web-worker';
-      batch.startedAt = new Date().toISOString();
-      this.persistQueue(queueKey, batch);
-      
-      // Send files to worker for processing
-      worker.postMessage({
-        type: 'START_BATCH',
-        payload: {
-          files: batch.files.map(f => ({
-            name: f.name,
-            size: f.size,
-            type: f.type,
-            file: f.file
-          })),
-          batchId: batch.id,
-          options: batch.options
-        }
+      }
+    };
+    
+    worker.onerror = (error) => {
+      console.error('❌ Worker error event:', error);
+      this.handleWorkerError(queueKey, {
+        message: error.message,
+        filename: error.filename,
+        lineno: error.lineno,
+        type: 'WORKER_ERROR_EVENT'
       });
+    };
+    
+    // Update batch status
+    batch.status = 'processing';
+    batch.processingMethod = 'web-worker';
+    batch.startedAt = new Date().toISOString();
+    this.persistQueue(queueKey, batch);
+    
+    // Convert files to base64 strings (safer for Web Worker transfer)
+    const processableFiles = [];
+    
+    for (let i = 0; i < batch.files.length; i++) {
+      const fileItem = batch.files[i];
       
-      console.log(`Started Web Worker processing for batch ${batch.id}`);
-      
-    } catch (error) {
-      console.error('Failed to start Web Worker:', error);
-      // Fallback to main thread processing
-      await this.processWithMainThread(queueKey, batch);
+      try {
+        console.log(`📄 Converting file ${fileItem.name} to base64...`);
+        
+        // Convert File to base64 string directly
+        const base64Data = await this.fileToBase64(fileItem.file);
+        
+        processableFiles.push({
+          name: fileItem.name,
+          size: fileItem.size,
+          type: fileItem.type,
+          base64Data: base64Data,
+          originalIndex: i
+        });
+        
+        console.log(`✅ Converted file ${fileItem.name} to base64 (${base64Data.length} chars)`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to convert file ${fileItem.name}:`, error);
+        // Mark this file as failed
+        fileItem.status = 'failed';
+        fileItem.error = `File conversion failed: ${error.message}`;
+        fileItem.completedAt = new Date().toISOString();
+        batch.failedFiles++;
+        batch.processedFiles++;
+        this.persistQueue(queueKey, batch);
+      }
     }
+    
+    if (processableFiles.length === 0) {
+      throw new Error('No files could be converted for processing');
+    }
+    
+    // Send files to worker for processing (using regular postMessage, not transferable)
+    const workerPayload = {
+      files: processableFiles,
+      batchId: batch.id,
+      options: batch.options
+    };
+    
+    console.log(`📤 Sending START_BATCH to worker with ${processableFiles.length} files`);
+    
+    // Send without transferable objects
+    worker.postMessage({
+      type: 'START_BATCH',
+      payload: workerPayload
+    });
+    
+    console.log(`✅ Started Web Worker processing for batch ${batch.id}`);
+    
+  } catch (error) {
+    console.error('Failed to start Web Worker:', error);
+    this.notify(
+      `Failed to start background processing for batch ${batch.id}. Using main thread instead.`, 
+      'warning'
+    );
+    // Fallback to main thread processing
+    await this.processWithMainThread(queueKey, batch);
   }
+}
+
+// Add this helper method to convert File to base64 string
+async fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !(file instanceof File)) {
+      reject(new Error('Invalid file object'));
+      return;
+    }
+    
+    const reader = new FileReader();
+    
+    reader.onload = () => {
+      try {
+        const result = reader.result;
+        if (!result || typeof result !== 'string') {
+          reject(new Error('Failed to read file as data URL'));
+          return;
+        }
+        
+        // Extract base64 data (remove data:mime/type;base64, prefix)
+        const base64 = result.split(',')[1];
+        if (!base64) {
+          reject(new Error('Failed to extract base64 data from file'));
+          return;
+        }
+        
+        resolve(base64);
+      } catch (error) {
+        reject(new Error(`Error processing file reader result: ${error.message}`));
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(new Error(`FileReader error: ${reader.error?.message || 'Unknown error'}`));
+    };
+    
+    reader.readAsDataURL(file);
+  });
+}
 
   /**
    * Process batch in main thread (traditional approach)
