@@ -69,7 +69,9 @@ const ProformaInvoices = ({ showNotification }) => {
     activeBatches: 0,
     processingFiles: 0
   });
-  
+  const [selectedPIs, setSelectedPIs] = useState(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
+    
   // AI Extraction states
   const fileInputRef = useRef(null);
   const [extracting, setExtracting] = useState(false);
@@ -885,7 +887,69 @@ const ProformaInvoices = ({ showNotification }) => {
   const handleViewDocuments = (pi) => {
     setDocumentsModal({ open: true, pi });
   };
+  // Bulk delete functionality
+  const handleBulkDelete = async () => {
+    if (selectedPIs.size === 0) {
+      showNotification('No PIs selected for deletion', 'warning');
+      return;
+    }
+    
+    const confirmed = window.confirm(
+      `Delete ${selectedPIs.size} Proforma Invoice${selectedPIs.size > 1 ? 's' : ''}? This cannot be undone.`
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      showNotification(`Deleting ${selectedPIs.size} PIs...`, 'info');
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      // Delete each PI
+      for (const piId of selectedPIs) {
+        try {
+          const result = await deleteProformaInvoice(piId);
+          if (result.success) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error) {
+          console.error(`Error deleting PI ${piId}:`, error);
+          errorCount++;
+        }
+      }
+      
+      // Clear selections and exit bulk mode
+      setSelectedPIs(new Set());
+      setBulkMode(false);
+      
+      // Show results
+      if (successCount > 0) {
+        showNotification(
+          `Successfully deleted ${successCount} PI${successCount > 1 ? 's' : ''}${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+          errorCount > 0 ? 'warning' : 'success'
+        );
+      } else {
+        showNotification('Failed to delete any PIs', 'error');
+      }
+      
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      showNotification(`Error during bulk delete: ${error.message}`, 'error');
+    }
+  };
 
+  const handleSelectAll = () => {
+    if (selectedPIs.size === filteredPIs.length) {
+      // Deselect all
+      setSelectedPIs(new Set());
+    } else {
+      // Select all filtered PIs
+      setSelectedPIs(new Set(filteredPIs.map(pi => pi.id)));
+    }
+  };
   // ✅ UPDATED: Enhanced handleSavePI with product sync (PRESERVED)
   const handleSavePI = async (piData) => {
     try {
