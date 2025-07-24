@@ -1,5 +1,5 @@
 // src/services/EnhancedBatchUploadService.js
-// Enhanced batch upload service with Web Worker support and duplicate prevention
+// Enhanced batch upload service with Web Worker support, duplicate prevention, and fixed auto-save
 
 import { AIExtractionService } from './ai/AIExtractionService';
 
@@ -553,114 +553,78 @@ class EnhancedBatchUploadService {
   }
 
   /**
-   * Auto-save extracted data with duplicate prevention
+   * FIXED: Auto-save extracted data directly to localStorage (bypassing hooks)
    */
   async autoSaveExtractedData(data, documentType, fileName = null) {
     try {
-      console.log('🔄 Auto-saving extracted data:', documentType, fileName);
+      console.log('🔄 Auto-saving extracted data directly:', documentType, fileName);
       
       if (documentType === 'proforma_invoice') {
         // Create PI data with filename for consistent IDs
         const piData = this.mapExtractedDataToPI(data, fileName);
         
-        // Check for existing PI with same filename to prevent duplicates
-        const existingPIs = JSON.parse(localStorage.getItem('proforma_invoices') || '[]');
-        const duplicate = existingPIs.find(pi => 
-          pi.extractedFrom === fileName || 
-          (pi.piNumber && pi.piNumber === piData.piNumber)
-        );
-        
-        if (duplicate) {
-          console.log('⚠️ Duplicate PI detected for file:', fileName, '- skipping save');
-          return;
-        }
-        
-        try {
-          // Import the hook module properly
-          const hookModule = await import('../hooks/useProformaInvoices');
-          
-          // Try different possible export names
-          const createFunction = hookModule.createProformaInvoice || 
-                               hookModule.default?.createProformaInvoice ||
-                               hookModule.addProformaInvoice ||
-                               hookModule.default?.addProformaInvoice;
-          
-          if (typeof createFunction === 'function') {
-            await createFunction(piData);
-            console.log('✅ Auto-save via hook successful for:', fileName);
-          } else {
-            console.error('❌ Create function not found in hook module');
-            // Fallback: try to save directly to localStorage
-            this.saveToLocalStorage(piData, 'proforma_invoice');
-          }
-          
-        } catch (importError) {
-          console.error('❌ Failed to import hook:', importError);
-          // Fallback: save to localStorage
-          this.saveToLocalStorage(piData, 'proforma_invoice');
-        }
-        
-      } else if (documentType === 'purchase_order') {
-        try {
-          const hookModule = await import('../hooks/usePurchaseOrders');
-          const createFunction = hookModule.createPurchaseOrder || 
-                               hookModule.default?.createPurchaseOrder ||
-                               hookModule.addPurchaseOrder ||
-                               hookModule.default?.addPurchaseOrder;
-          
-          if (typeof createFunction === 'function') {
-            const poData = this.mapExtractedDataToPO(data, fileName);
-            await createFunction(poData);
-            console.log('✅ Auto-save PO successful');
-          } else {
-            this.saveToLocalStorage(data, documentType, fileName);
-          }
-          
-        } catch (importError) {
-          console.error('❌ Failed to import PO hook:', importError);
-          this.saveToLocalStorage(data, documentType, fileName);
-        }
-      }
-      
-    } catch (error) {
-      console.error('❌ Auto-save failed:', error);
-      // Don't throw the error - just log it so batch processing continues
-    }
-  }
-
-  // Enhanced fallback method to save directly to localStorage with duplicate prevention
-  saveToLocalStorage(piData, documentType) {
-    try {
-      console.log('🔄 Fallback: saving to localStorage');
-      
-      if (documentType === 'proforma_invoice') {
         // Get existing PIs from localStorage
         const existingPIs = JSON.parse(localStorage.getItem('proforma_invoices') || '[]');
         
         // Check for duplicates by filename and PI number
         const duplicate = existingPIs.find(pi => 
-          pi.extractedFrom === piData.extractedFrom ||
+          pi.extractedFrom === fileName ||
           (pi.piNumber && pi.piNumber === piData.piNumber)
         );
         
         if (duplicate) {
-          console.log('⚠️ Duplicate PI detected in localStorage - skipping save');
+          console.log('⚠️ Duplicate PI detected - skipping save for:', fileName);
           return;
         }
         
-        // Add new PI
-        existingPIs.push(piData);
+        // Add new PI to the beginning of the array (so it shows at top)
+        existingPIs.unshift(piData);
         
         // Save back to localStorage
         localStorage.setItem('proforma_invoices', JSON.stringify(existingPIs));
         
-        console.log('✅ Fallback save to localStorage successful');
+        console.log('✅ Auto-save successful for:', fileName);
+        
+        // Trigger a storage event to refresh any components listening for changes
+        // This makes the PI appear immediately in the UI
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'proforma_invoices',
+          newValue: JSON.stringify(existingPIs),
+          url: window.location.href
+        }));
+        
+        // Also trigger a custom event that components can listen to
+        window.dispatchEvent(new CustomEvent('proformaInvoiceAdded', {
+          detail: { piData, fileName }
+        }));
+        
+      } else if (documentType === 'purchase_order') {
+        // Handle PO auto-save if needed
+        const poData = this.mapExtractedDataToPO(data, fileName);
+        const existingPOs = JSON.parse(localStorage.getItem('purchase_orders') || '[]');
+        
+        // Check for duplicates
+        const duplicate = existingPOs.find(po => 
+          po.extractedFrom === fileName ||
+          (po.poNumber && po.poNumber === poData.poNumber)
+        );
+        
+        if (!duplicate) {
+          existingPOs.unshift(poData);
+          localStorage.setItem('purchase_orders', JSON.stringify(existingPOs));
+          console.log('✅ Auto-save PO successful for:', fileName);
+        }
       }
       
     } catch (error) {
-      console.error('❌ Fallback save failed:', error);
+      console.error('❌ Auto-save failed:', error);
+      // Don't throw - let batch processing continue
     }
   }
+
+  /**
+   * REMOVED: saveToLocalStorage method (integrated into autoSaveExtractedData)
+   */
 
   /**
    * Map extracted data to PI format with duplicate prevention
@@ -747,7 +711,9 @@ class EnhancedBatchUploadService {
     console.log('🧹 Cleared processed files tracking');
   }
 
-  // [Rest of the methods remain the same as in your original code]
+  /**
+   * Cancel a batch by ID
+   */
   cancelBatch(batchId) {
     console.log(`🛑 Cancelling batch: ${batchId}`);
     
@@ -779,6 +745,9 @@ class EnhancedBatchUploadService {
     return false;
   }
 
+  /**
+   * Get batch status by ID
+   */
   getBatchStatus(batchId) {
     for (const batch of this.queues.values()) {
       if (batch.id === batchId) {
@@ -809,6 +778,9 @@ class EnhancedBatchUploadService {
     return null;
   }
 
+  /**
+   * Get all active batches (compatible with existing components)
+   */
   getActiveBatches() {
     const batches = [];
     
@@ -840,6 +812,9 @@ class EnhancedBatchUploadService {
     return batches.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
 
+  /**
+   * Get service statistics
+   */
   getStatistics() {
     const stats = {
       totalBatches: this.queues.size,
@@ -870,6 +845,9 @@ class EnhancedBatchUploadService {
     return stats;
   }
 
+  /**
+   * Utility methods
+   */
   generateBatchId() {
     return `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -890,6 +868,9 @@ class EnhancedBatchUploadService {
     return `${minutes}m ${seconds}s`;
   }
 
+  /**
+   * Persistence and offline handling
+   */
   persistQueue(queueKey, batch) {
     try {
       const persistBatch = {
