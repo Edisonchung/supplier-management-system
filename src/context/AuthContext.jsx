@@ -126,11 +126,18 @@ export const AuthProvider = ({ children }) => {
     
     if (userSnap.exists()) {
       // Update last login
-      await updateDoc(userRef, {
-        lastLogin: serverTimestamp(),
-        displayName: firebaseUser.displayName || userSnap.data().displayName,
-        photoURL: firebaseUser.photoURL || userSnap.data().photoURL
-      });
+      const updateData = {
+  lastLogin: serverTimestamp(),
+  displayName: firebaseUser.displayName || userSnap.data().displayName
+};
+
+// Only include photoURL if it has a valid value (not null or undefined)
+const photoURL = firebaseUser.photoURL || userSnap.data().photoURL;
+if (photoURL !== null && photoURL !== undefined) {
+  updateData.photoURL = photoURL;
+}
+
+await updateDoc(userRef, updateData);
       return { ...userSnap.data(), lastLogin: new Date() };
     } else {
       // Create new user document
