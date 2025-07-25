@@ -113,31 +113,51 @@ export const getProformaInvoices = async () => {
   }
 };
 
+// ✅ FIXED: addProformaInvoice function with proper undefined field handling
 export const addProformaInvoice = async (invoice) => {
   try {
     console.log('💾 FIRESTORE: Adding PI with data:', invoice);
     console.log('💾 FIRESTORE: DocumentId in input:', invoice.documentId);
     
+    // ✅ CRITICAL FIX: Build clean document data without undefined fields
     const docData = {
       ...invoice,
-      // Preserve document storage fields
+      // Core document storage fields (always include these)
       documentId: invoice.documentId,
       documentNumber: invoice.documentNumber,
-      documentType: 'pi',
+      documentType: invoice.documentType || 'pi',
       hasStoredDocuments: !!invoice.hasStoredDocuments,
       
-      // Optional storage metadata
-      storageInfo: invoice.storageInfo,
-      originalFileName: invoice.originalFileName,
-      fileSize: invoice.fileSize,
-      contentType: invoice.contentType,
-      extractedAt: invoice.extractedAt,
-      storedAt: invoice.storedAt,
+      // ✅ FIXED: Only include optional storage metadata if they have values
+      ...(invoice.storageInfo !== undefined && invoice.storageInfo !== null && { storageInfo: invoice.storageInfo }),
+      ...(invoice.originalFileName !== undefined && invoice.originalFileName !== null && { originalFileName: invoice.originalFileName }),
+      ...(invoice.fileSize !== undefined && invoice.fileSize !== null && { fileSize: invoice.fileSize }),
+      ...(invoice.contentType !== undefined && invoice.contentType !== null && { contentType: invoice.contentType }),
+      ...(invoice.extractedAt !== undefined && invoice.extractedAt !== null && { extractedAt: invoice.extractedAt }),
+      ...(invoice.storedAt !== undefined && invoice.storedAt !== null && { storedAt: invoice.storedAt }),
       
       // Firestore timestamps
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
+
+    // ✅ CRITICAL FIX: Remove any remaining undefined or null values that might cause issues
+    Object.keys(docData).forEach(key => {
+      if (docData[key] === undefined || docData[key] === null) {
+        delete docData[key];
+        console.log(`🧹 FIRESTORE: Removed undefined/null field: ${key}`);
+      }
+    });
+
+    console.log('💾 FIRESTORE: Clean document data being sent:', {
+      piNumber: docData.piNumber,
+      documentId: docData.documentId,
+      documentNumber: docData.documentNumber,
+      documentType: docData.documentType,
+      hasStoredDocuments: docData.hasStoredDocuments,
+      hasStorageInfo: !!docData.storageInfo,
+      totalFields: Object.keys(docData).length
+    });
     
     const docRef = await addDoc(collection(db, 'proformaInvoices'), docData);
     
@@ -162,29 +182,39 @@ export const addProformaInvoice = async (invoice) => {
   }
 };
 
+// ✅ FIXED: updateProformaInvoice function with proper undefined field handling
 export const updateProformaInvoice = async (id, updates) => {
   try {
     console.log('💾 FIRESTORE: Updating PI with data:', { id, updates });
     
+    // ✅ FIXED: Build clean update data without undefined fields
     const updateData = {
       ...updates,
       
-      // Preserve document storage fields during updates
-      documentId: updates.documentId,
-      documentNumber: updates.documentNumber,
-      documentType: updates.documentType || 'pi',
-      hasStoredDocuments: updates.hasStoredDocuments,
+      // Preserve document storage fields during updates (only if they exist)
+      ...(updates.documentId !== undefined && updates.documentId !== null && { documentId: updates.documentId }),
+      ...(updates.documentNumber !== undefined && updates.documentNumber !== null && { documentNumber: updates.documentNumber }),
+      ...(updates.documentType !== undefined && updates.documentType !== null && { documentType: updates.documentType }),
+      ...(updates.hasStoredDocuments !== undefined && updates.hasStoredDocuments !== null && { hasStoredDocuments: updates.hasStoredDocuments }),
       
-      // Optional storage metadata
-      storageInfo: updates.storageInfo,
-      originalFileName: updates.originalFileName,
-      fileSize: updates.fileSize,
-      contentType: updates.contentType,
-      extractedAt: updates.extractedAt,
-      storedAt: updates.storedAt,
+      // ✅ FIXED: Only include optional storage metadata if they have values
+      ...(updates.storageInfo !== undefined && updates.storageInfo !== null && { storageInfo: updates.storageInfo }),
+      ...(updates.originalFileName !== undefined && updates.originalFileName !== null && { originalFileName: updates.originalFileName }),
+      ...(updates.fileSize !== undefined && updates.fileSize !== null && { fileSize: updates.fileSize }),
+      ...(updates.contentType !== undefined && updates.contentType !== null && { contentType: updates.contentType }),
+      ...(updates.extractedAt !== undefined && updates.extractedAt !== null && { extractedAt: updates.extractedAt }),
+      ...(updates.storedAt !== undefined && updates.storedAt !== null && { storedAt: updates.storedAt }),
       
       updatedAt: serverTimestamp()
     };
+
+    // ✅ CRITICAL FIX: Remove any remaining undefined or null values
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined || updateData[key] === null) {
+        delete updateData[key];
+        console.log(`🧹 FIRESTORE: Removed undefined/null field from update: ${key}`);
+      }
+    });
     
     const docRef = doc(db, 'proformaInvoices', id);
     await updateDoc(docRef, updateData);
