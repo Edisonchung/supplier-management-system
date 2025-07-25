@@ -1,5 +1,5 @@
 // src/components/procurement/BatchUploadModal.jsx
-// FINAL FIX - Properly prevent multiple batch processing
+// FINAL FIX - Properly prevent multiple batch processing with DocumentId fix
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
@@ -51,7 +51,7 @@ const BatchUploadModal = ({
     }
   }, []);
 
-  // ✅ FIXED: Separate useEffect that only triggers when batches actually complete
+  // ✅ CRITICAL FIX: Updated batch completion handler with document storage support
   useEffect(() => {
     const handleBatchComplete = async (batchId) => {
       // ✅ Check if this batch has already been processed using ref
@@ -94,7 +94,24 @@ const BatchUploadModal = ({
 
         for (const file of successfulFiles) {
           try {
-            const piData = await convertExtractedDataToPI(file.extractedData, file.fileName);
+            // ✅ DEBUG: Log the file data structure
+            console.log('🔍 Processing file for PI conversion:', {
+              fileName: file.fileName,
+              hasExtractedData: !!file.extractedData,
+              hasDocumentStorage: !!file.documentStorage,
+              hasExtractionMetadata: !!file.extractionMetadata,
+              extractedDataKeys: file.extractedData ? Object.keys(file.extractedData) : []
+            });
+            
+            // ✅ CRITICAL FIX: Merge document storage information into extracted data
+            const enhancedExtractedData = {
+              ...file.extractedData,
+              // Include document storage information if available
+              ...(file.documentStorage && { documentStorage: file.documentStorage }),
+              ...(file.extractionMetadata && { extractionMetadata: file.extractionMetadata })
+            };
+            
+            const piData = await convertExtractedDataToPI(enhancedExtractedData, file.fileName);
             
             // ✅ Save to database
             const result = await addProformaInvoice(piData);
@@ -142,7 +159,7 @@ const BatchUploadModal = ({
 
   }, [activeBatches.map(b => `${b.id}-${b.status}`).join(',')]); // ✅ Only trigger when completion status changes
 
-  // Convert extracted data to PI format
+  // ✅ CRITICAL FIX: Enhanced convertExtractedDataToPI with document storage support
   const convertExtractedDataToPI = async (extractedData, fileName) => {
     const data = extractedData.proforma_invoice || extractedData;
     
@@ -181,7 +198,7 @@ const BatchUploadModal = ({
       }
     }
 
-    // Convert to PI format
+    // ✅ CRITICAL FIX: Build the PI data with proper document storage mapping
     const piData = {
       piNumber: data.pi_number || data.piNumber || `PI-${Date.now()}`,
       date: data.date || new Date().toISOString().split('T')[0],
@@ -211,6 +228,58 @@ const BatchUploadModal = ({
         extractionSource: 'batch_upload'
       }
     };
+
+    // ✅ CRITICAL FIX: Map document storage information from multiple possible sources
+    
+    // Priority 1: Check for documentStorage (newer format)
+    if (extractedData.documentStorage) {
+      piData.documentId = extractedData.documentStorage.documentId;
+      piData.documentNumber = extractedData.documentStorage.documentNumber;
+      piData.documentType = 'pi';
+      piData.hasStoredDocuments = true;
+      piData.originalFileName = extractedData.documentStorage.originalFile?.originalFileName;
+      piData.fileSize = extractedData.documentStorage.originalFile?.fileSize;
+      piData.contentType = extractedData.documentStorage.originalFile?.contentType;
+      piData.extractedAt = extractedData.documentStorage.storedAt;
+      piData.storageInfo = extractedData.documentStorage;
+      
+      console.log('✅ Mapped document storage from documentStorage:', piData.documentId);
+    }
+    // Priority 2: Check for extractionMetadata (fallback)
+    else if (extractedData.extractionMetadata) {
+      piData.documentId = extractedData.extractionMetadata.documentId;
+      piData.documentNumber = extractedData.extractionMetadata.documentNumber;
+      piData.documentType = 'pi';
+      piData.hasStoredDocuments = false; // Metadata only, no stored documents
+      piData.originalFileName = extractedData.extractionMetadata.originalFileName;
+      piData.fileSize = extractedData.extractionMetadata.fileSize;
+      piData.contentType = extractedData.extractionMetadata.contentType;
+      piData.extractedAt = extractedData.extractionMetadata.extractedAt;
+      
+      console.log('✅ Mapped document storage from extractionMetadata:', piData.documentId);
+    }
+    // Priority 3: Check root level for documentId (legacy support)
+    else if (extractedData.documentId) {
+      piData.documentId = extractedData.documentId;
+      piData.hasStoredDocuments = false;
+      
+      console.log('✅ Mapped document storage from root level:', piData.documentId);
+    }
+    
+    // ✅ VALIDATION: Ensure documentId is never undefined
+    if (!piData.documentId || piData.documentId === undefined) {
+      console.warn('⚠️ DocumentId is undefined, generating fallback for:', piData.piNumber);
+      piData.documentId = `doc-fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      piData.hasStoredDocuments = false;
+      
+      console.log('🔧 Generated fallback documentId:', piData.documentId);
+    }
+
+    console.log('📋 Final PI data with documentId:', {
+      piNumber: piData.piNumber,
+      documentId: piData.documentId,
+      hasStoredDocuments: piData.hasStoredDocuments
+    });
 
     return piData;
   };
