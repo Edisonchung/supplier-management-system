@@ -1,8 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, X, FileText, Clock, CheckCircle, XCircle, RotateCcw, Pause, Play } from 'lucide-react';
+import { Upload, X, FileText, Clock, CheckCircle, XCircle, RotateCcw, Pause, Play, Download } from 'lucide-react';
 import enhancedBatchUploadService from '../services/EnhancedBatchUploadService';
 
-const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }) => {
+const BatchUploadModal = ({ 
+  isOpen, 
+  onClose, 
+  documentType = 'proforma_invoice',
+  showNotification,
+  addProformaInvoice,
+  suppliers,
+  addSupplier
+}) => {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeBatches, setActiveBatches] = useState([]);
@@ -13,7 +21,26 @@ const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }
     notifyWhenComplete: true
   });
 
+  // ✅ FIX: Add processed batches tracking to prevent duplicates
+  const processedBatchesRef = useRef(new Set());
+  const [processedBatchesDisplay, setProcessedBatchesDisplay] = useState(new Set());
+
   const fileInputRef = useRef(null);
+
+  // ✅ FIX: Load processed batches from localStorage on mount
+  useEffect(() => {
+    const savedProcessedBatches = localStorage.getItem('processedBatches');
+    if (savedProcessedBatches) {
+      try {
+        const batchIds = JSON.parse(savedProcessedBatches);
+        const batchSet = new Set(batchIds);
+        processedBatchesRef.current = batchSet;
+        setProcessedBatchesDisplay(batchSet);
+      } catch (error) {
+        console.error('Failed to load processed batches:', error);
+      }
+    }
+  }, []);
 
   // Poll for batch updates
   useEffect(() => {
@@ -34,6 +61,219 @@ const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }
       setActiveBatches(batches);
     }
   }, [isOpen]);
+
+  // ✅ FIX: Add batch completion handling with documentId fix
+  useEffect(() => {
+    const handleBatchComplete = async (batchId) => {
+      // Check if this batch has already been processed
+      if (processedBatchesRef.current.has(batchId)) {
+        console.log('⚠️ Batch already processed, skipping:', batchId);
+        return;
+      }
+
+      console.log('🎉 Processing completed batch for first time:', batchId);
+      
+      // IMMEDIATELY mark as processed to prevent re-entry
+      processedBatchesRef.current.add(batchId);
+      const newProcessedBatches = new Set(processedBatchesRef.current);
+      setProcessedBatchesDisplay(newProcessedBatches);
+      
+      // Persist to localStorage immediately
+      localStorage.setItem('processedBatches', JSON.stringify([...newProcessedBatches]));
+      
+      try {
+        const batch = activeBatches.find(b => b.id === batchId);
+        if (!batch) {
+          console.log('❌ Batch not found:', batchId);
+          return;
+        }
+
+        // Get all successful extractions
+        const successfulFiles = batch.files.filter(f => 
+          f.status === 'completed' && f.extractedData
+        );
+
+        console.log(`📊 Found ${successfulFiles.length} successful extractions`);
+
+        if (successfulFiles.length === 0) {
+          console.log('⚠️ No successful extractions found');
+          return;
+        }
+
+        let savedCount = 0;
+        let errors = [];
+
+        for (const file of successfulFiles) {
+          try {
+            const piData = await convertExtractedDataToPI(file.extractedData, file.fileName);
+            
+            // ✅ CRITICAL FIX: Ensure documentId is properly mapped
+            if (file.extractedData.documentStorage) {
+              piData.documentId = file.extractedData.documentStorage.documentId;
+              piData.documentNumber = file.extractedData.documentStorage.documentNumber;
+              piData.documentType = 'pi';
+              piData.hasStoredDocuments = true;
+              piData.originalFileName = file.extractedData.documentStorage.originalFile?.originalFileName;
+              piData.fileSize = file.extractedData.documentStorage.originalFile?.fileSize;
+              piData.contentType = file.extractedData.documentStorage.originalFile?.contentType;
+              piData.extractedAt = file.extractedData.documentStorage.storedAt;
+              piData.storageInfo = file.extractedData.documentStorage;
+            } else if (file.extractedData.extractionMetadata) {
+              // Fallback to extraction metadata
+              piData.documentId = file.extractedData.extractionMetadata.documentId;
+              piData.documentNumber = file.extractedData.extractionMetadata.documentNumber;
+              piData.documentType = 'pi';
+              piData.hasStoredDocuments = false;
+              piData.originalFileName = file.extractedData.extractionMetadata.originalFileName;
+              piData.fileSize = file.extractedData.extractionMetadata.fileSize;
+              piData.contentType = file.extractedData.extractionMetadata.contentType;
+              piData.extractedAt = file.extractedData.extractionMetadata.extractedAt;
+            }
+            
+            // ✅ VALIDATION: Ensure documentId is never undefined
+            if (!piData.documentId || piData.documentId === undefined) {
+              console.warn('⚠️ DocumentId is undefined, generating fallback for:', piData.piNumber);
+              piData.documentId = `doc-fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              piData.hasStoredDocuments = false;
+            }
+            
+            console.log('📋 Saving PI with verified documentId:', piData.documentId);
+            
+            // Save to database
+            const result = await addProformaInvoice(piData);
+            
+            if (result && result.success !== false) {
+              savedCount++;
+              console.log('✅ Saved PI:', piData.piNumber);
+            } else {
+              throw new Error(result?.error || 'Failed to save PI');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save PI:', error);
+            errors.push(`${file.fileName}: ${error.message}`);
+          }
+        }
+
+        // Show final notification
+        if (savedCount > 0) {
+          showNotification && showNotification(
+            `Successfully imported ${savedCount} proforma invoice(s) to your database!`,
+            'success'
+          );
+        }
+
+        if (errors.length > 0) {
+          showNotification && showNotification(
+            `${errors.length} files had errors: ${errors.join(', ')}`,
+            'error'
+          );
+        }
+
+      } catch (error) {
+        console.error('Batch completion error:', error);
+        showNotification && showNotification('Failed to save extracted data to database', 'error');
+      }
+    };
+
+    // Only check for newly completed batches
+    for (const batch of activeBatches) {
+      if (batch.status === 'completed' && !processedBatchesRef.current.has(batch.id)) {
+        // Use setTimeout to prevent multiple rapid calls
+        setTimeout(() => handleBatchComplete(batch.id), 100);
+      }
+    }
+
+  }, [activeBatches.map(b => `${b.id}-${b.status}`).join(','), addProformaInvoice, showNotification]);
+
+  // ✅ FIX: Add conversion function for extracted data to PI format
+  const convertExtractedDataToPI = async (extractedData, fileName) => {
+    const data = extractedData.proforma_invoice || extractedData;
+    
+    // Find or create supplier
+    let supplierId = '';
+    let supplierName = data.supplier?.name || data.supplierName || 'Unknown Supplier';
+    
+    if (supplierName && supplierName !== 'Unknown Supplier' && suppliers) {
+      const existingSupplier = suppliers.find(s => 
+        s.name.toLowerCase().includes(supplierName.toLowerCase()) ||
+        supplierName.toLowerCase().includes(s.name.toLowerCase())
+      );
+      
+      if (existingSupplier) {
+        supplierId = existingSupplier.id;
+        supplierName = existingSupplier.name;
+      } else if (addSupplier) {
+        try {
+          const newSupplierData = {
+            name: supplierName,
+            email: data.supplier?.email || '',
+            phone: data.supplier?.phone || '',
+            address: data.supplier?.address || '',
+            status: 'active'
+          };
+          
+          const supplierResult = await addSupplier(newSupplierData);
+          if (supplierResult && supplierResult.success !== false) {
+            supplierId = supplierResult.data?.id || supplierResult.id;
+            console.log('✅ Created new supplier:', supplierName);
+          }
+        } catch (error) {
+          console.error('Failed to create supplier:', error);
+        }
+      }
+    }
+
+    // Format items
+    const items = (data.products || data.items || []).map((item, index) => ({
+      id: `item-${Date.now()}-${index}`,
+      productCode: item.productCode || item.code || '',
+      productName: item.productName || item.description || item.name || '',
+      quantity: parseInt(item.quantity) || 1,
+      unitPrice: parseFloat(item.unitPrice) || parseFloat(item.price) || 0,
+      totalPrice: parseFloat(item.totalPrice) || parseFloat(item.total) || 0
+    }));
+
+    return {
+      piNumber: data.piNumber || data.invoiceNumber || `PI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      date: data.date || data.invoiceDate || new Date().toISOString().split('T')[0],
+      supplierId: supplierId,
+      supplierName: supplierName,
+      currency: data.currency || 'USD',
+      totalAmount: parseFloat(data.grandTotal || data.totalAmount || data.total) || 0,
+      items: items,
+      status: 'pending',
+      deliveryStatus: 'pending',
+      extractedFrom: fileName,
+      extractedAt: new Date().toISOString()
+    };
+  };
+
+  // ✅ FIX: Add debug controls for batch management
+  const clearProcessedBatches = () => {
+    if (window.confirm('This will allow reprocessing of completed batches. Continue?')) {
+      processedBatchesRef.current = new Set();
+      setProcessedBatchesDisplay(new Set());
+      localStorage.removeItem('processedBatches');
+      showNotification && showNotification('Processed batches cleared', 'info');
+    }
+  };
+
+  const clearProcessedFiles = () => {
+    if (window.confirm('This will allow reprocessing of the same files. Continue?')) {
+      enhancedBatchUploadService.clearProcessedFiles();
+      showNotification && showNotification('Processed files cleared - you can now reprocess the same files', 'info');
+    }
+  };
+
+  const clearAll = () => {
+    if (window.confirm('This will clear all processing history. Continue?')) {
+      processedBatchesRef.current = new Set();
+      setProcessedBatchesDisplay(new Set());
+      localStorage.removeItem('processedBatches');
+      enhancedBatchUploadService.clearProcessedFiles();
+      showNotification && showNotification('All processing history cleared', 'info');
+    }
+  };
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -78,21 +318,26 @@ const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }
     if (selectedFiles.length === 0) return;
 
     try {
-      const result = await enhancedBatchUploadService.addBatch(
-        selectedFiles,
-        documentType,
-        uploadOptions
-      );
+      const result = await enhancedBatchUploadService.startBatch(selectedFiles, {
+        type: documentType,
+        priority: uploadOptions.priority,
+        autoSave: uploadOptions.autoSave,
+        notifyWhenComplete: uploadOptions.notifyWhenComplete,
+        storeDocuments: true
+      });
 
       setCurrentBatch(result);
       setSelectedFiles([]);
       
       // Show success message
-      alert(`Batch upload started! ${result.totalFiles} files queued for processing.`);
+      showNotification && showNotification(
+        `Batch upload started! ${selectedFiles.length} files queued for processing.`,
+        'success'
+      );
       
     } catch (error) {
       console.error('Failed to start batch upload:', error);
-      alert('Failed to start batch upload. Please try again.');
+      showNotification && showNotification('Failed to start batch upload. Please try again.', 'error');
     }
   };
 
@@ -149,13 +394,46 @@ const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }
       <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-semibold">Batch Upload - {documentType.replace('_', ' ').toUpperCase()}</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-4">
+            <h2 className="text-xl font-semibold">
+              Batch Upload - {documentType.replace('_', ' ').toUpperCase()}
+            </h2>
+            {processedBatchesDisplay.size > 0 && (
+              <span className="text-sm text-gray-600">
+                ({processedBatchesDisplay.size} processed)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center space-x-2">
+            {/* ✅ FIX: Add debug controls */}
+            <button
+              onClick={clearProcessedBatches}
+              className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300"
+              title="Clear processed batches (allows re-saving to database)"
+            >
+              Clear Batches
+            </button>
+            <button
+              onClick={clearProcessedFiles}
+              className="text-xs bg-yellow-200 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-300"
+              title="Clear processed files (allows reprocessing same files)"
+            >
+              Clear Files
+            </button>
+            <button
+              onClick={clearAll}
+              className="text-xs bg-red-200 text-red-700 px-2 py-1 rounded hover:bg-red-300"
+              title="Clear all processing history"
+            >
+              Clear All
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
@@ -292,6 +570,11 @@ const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }
                       <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(batch.status)}`}>
                         {batch.status}
                       </span>
+                      {processedBatchesDisplay.has(batch.id) && (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                          Saved to DB
+                        </span>
+                      )}
                     </div>
                     
                     <div className="flex items-center space-x-2">
@@ -349,6 +632,19 @@ const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }
                     )}
                   </div>
 
+                  {/* Completion Message */}
+                  {batch.status === 'completed' && (
+                    <div className="mt-3 p-2 bg-green-50 rounded">
+                      <p className="text-sm text-green-800">
+                        ✅ Batch completed! {batch.successfulFiles} of {batch.totalFiles} files processed successfully.
+                        {processedBatchesDisplay.has(batch.id) ? 
+                          " All proforma invoices have been added to your database." : 
+                          " Processing for database save..."
+                        }
+                      </p>
+                    </div>
+                  )}
+
                   {/* File Details (collapsible) */}
                   <details className="mt-3">
                     <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-800">
@@ -387,6 +683,7 @@ const BatchUploadModal = ({ isOpen, onClose, documentType = 'proforma_invoice' }
               <li>• Get notified when extraction is complete</li>
               <li>• Results are automatically saved to your PI list</li>
               <li>• Failed extractions can be retried individually</li>
+              <li>• Document storage is enabled for all uploaded files</li>
             </ul>
           </div>
         </div>
