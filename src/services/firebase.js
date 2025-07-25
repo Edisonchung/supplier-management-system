@@ -571,4 +571,60 @@ export {
   getMetadata
 };
 
+// Add this to the END of your firebase.js file to maintain compatibility
+
+// Compatibility layer for components still importing mockFirebase
+export const mockFirebase = {
+  firestore: {
+    collection: (collectionName) => ({
+      get: async () => {
+        const querySnapshot = await getDocs(collection(db, collectionName));
+        return {
+          docs: querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            data: () => ({ ...doc.data() })
+          }))
+        };
+      },
+      doc: (docId) => ({
+        get: async () => {
+          const docRef = doc(db, collectionName, docId);
+          const docSnap = await getDoc(docRef);
+          return {
+            exists: docSnap.exists(),
+            data: () => docSnap.data()
+          };
+        },
+        update: async (updates) => {
+          const docRef = doc(db, collectionName, docId);
+          await updateDoc(docRef, updates);
+        },
+        delete: async () => {
+          const docRef = doc(db, collectionName, docId);
+          await deleteDoc(docRef);
+        }
+      }),
+      add: async (newDoc) => {
+        const docRef = await addDoc(collection(db, collectionName), newDoc);
+        return { id: docRef.id };
+      },
+      where: (field, operator, value) => {
+        return {
+          get: async () => {
+            const q = query(collection(db, collectionName), where(field, operator, value));
+            const querySnapshot = await getDocs(q);
+            return {
+              empty: querySnapshot.empty,
+              docs: querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                data: () => ({ ...doc.data() })
+              }))
+            };
+          }
+        };
+      }
+    })
+  }
+};
+
 export default app;
