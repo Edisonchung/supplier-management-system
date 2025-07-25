@@ -1,9 +1,12 @@
-// Updated public/workers/extraction-worker.js
-// This version handles base64 strings directly (no ArrayBuffer conversion needed)
+// Fixed public/workers/extraction-worker.js
+// This version calls the REAL Railway API instead of using mock data
 
 let isProcessing = false;
 let currentQueue = [];
 let processingIndex = 0;
+
+// Railway backend URL (same as single upload uses)
+const API_BASE_URL = 'https://supplier-mcp-server-production.up.railway.app';
 
 // Listen for messages from main thread
 self.addEventListener('message', async function(e) {
@@ -12,13 +15,16 @@ self.addEventListener('message', async function(e) {
   try {
     switch (type) {
       case 'PING':
-        // Respond to ping to confirm worker is loaded
         postMessage({
           type: 'PONG',
           payload: {
             timestamp: new Date().toISOString(),
             status: 'ready'
           }
+    
+    // Small delay to prevent overwhelming the system
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
         });
         break;
         
@@ -98,8 +104,8 @@ async function startBatchProcessing(batchData) {
         }
       });
       
-      // Process the file
-      const result = await processFile(file);
+      // 🔧 FIX: Process file using REAL API instead of mock data
+      const result = await processFileWithRealAPI(file);
       
       console.log(`✅ Worker completed file: ${file.name}`);
       
@@ -111,100 +117,104 @@ async function startBatchProcessing(batchData) {
           fileIndex: file.originalIndex !== undefined ? file.originalIndex : i,
           fileName: file.name,
           result: result,
-          progress: Math.round(((i + 1) / files.length) * 100)
+          progress: Math.round(((i + 1) / files.length) * 100),
+          timestamp: new Date().toISOString()
         }
       });
       
     } catch (error) {
-      console.error(`❌ Worker failed to process file: ${file.name}`, error);
+      console.error(`❌ Worker failed to process ${file.name}:`, error);
       
       // Send error result
       postMessage({
-        type: 'FILE_FAILED',
+        type: 'FILE_ERROR',
         payload: {
           batchId,
           fileIndex: file.originalIndex !== undefined ? file.originalIndex : i,
           fileName: file.name,
           error: error.message,
-          progress: Math.round(((i + 1) / files.length) * 100)
+          progress: Math.round(((i + 1) / files.length) * 100),
+          timestamp: new Date().toISOString()
         }
       });
     }
-    
-    // Small delay to prevent overwhelming the system
-    await new Promise(resolve => setTimeout(resolve, 1000));
   }
   
+  // Mark batch as completed
+  isProcessing = false;
   console.log(`🎉 Worker completed batch processing: ${batchId}`);
   
-  // Send completion message
   postMessage({
     type: 'BATCH_COMPLETED',
     payload: {
       batchId,
       totalFiles: files.length,
       processedFiles: files.length,
-      completedAt: new Date().toISOString()
+      completedAt: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     }
   });
-  
-  isProcessing = false;
 }
 
-async function processFile(file) {
+/**
+ * 🔧 FIXED: Process file using the REAL Railway API (same as single upload)
+ */
+async function processFileWithRealAPI(file) {
   try {
-    // Validate that we have the base64 data
-    if (!file.base64Data) {
-      throw new Error('No base64 data available for file');
-    }
-    
-    if (typeof file.base64Data !== 'string' || file.base64Data.length === 0) {
-      throw new Error('Invalid base64 data for file');
-    }
-    
     console.log(`📄 Processing file ${file.name} with base64 data (${file.base64Data.length} chars)`);
     
-    // Simulate AI processing (replace with actual API call)
-    return new Promise((resolve, reject) => {
-      // Shorter processing time for testing (3-7 seconds)
-      const processingTime = Math.random() * 4000 + 3000;
-      
-      setTimeout(() => {
-        // Simulate 90% success rate
-        if (Math.random() > 0.1) {
-          resolve({
-            success: true,
-            data: {
-              piNumber: `PI-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-              supplierName: `Supplier ${Math.floor(Math.random() * 100)}`,
-              totalAmount: Math.floor(Math.random() * 50000) + 1000,
-              currency: 'USD',
-              date: new Date().toISOString().split('T')[0],
-              items: [
-                {
-                  productName: `Product ${Math.floor(Math.random() * 1000)}`,
-                  quantity: Math.floor(Math.random() * 10) + 1,
-                  unitPrice: Math.floor(Math.random() * 1000) + 100
-                }
-              ]
-            },
-            metadata: {
-              documentType: 'proforma_invoice',
-              processingTime: processingTime,
-              confidence: Math.random() * 0.3 + 0.7,
-              workerProcessed: true,
-              fileName: file.name,
-              fileSize: file.size,
-              dataLength: file.base64Data.length
-            }
-          });
-        } else {
-          reject(new Error('Extraction failed - document format not recognized or corrupted'));
-        }
-      }, processingTime);
+    // Convert base64 back to File object for API call
+    const byteCharacters = atob(file.base64Data.split(',')[1]);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: file.type });
+    const apiFile = new File([blob], file.name, { type: file.type });
+    
+    // Create FormData for API call (same format as single upload)
+    const formData = new FormData();
+    formData.append('file', apiFile);
+    formData.append('extractionMode', 'enhanced');
+    formData.append('includeOCR', 'true');
+    
+    console.log(`🔧 WORKER: Calling Railway API at ${API_BASE_URL}/api/extract-po`);
+    
+    // Call the REAL Railway API endpoint
+    const response = await fetch(`${API_BASE_URL}/api/extract-po`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json'
+      }
     });
+    
+    if (!response.ok) {
+      throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    console.log(`🔧 WORKER: Railway API response received for ${file.name}`);
+    
+    // Return the real API result (not mock data)
+    return {
+      success: true,
+      data: result.data || result, // Handle different response formats
+      metadata: {
+        documentType: 'proforma_invoice',
+        confidence: result.confidence || 0.85,
+        workerProcessed: true,
+        fileName: file.name,
+        fileSize: file.size,
+        dataLength: file.base64Data.length,
+        apiEndpoint: `${API_BASE_URL}/api/extract-po`,
+        processingMethod: 'real-api'
+      }
+    };
+    
   } catch (error) {
-    console.error('File processing error in worker:', error);
+    console.error('🔧 WORKER: File processing error:', error);
     throw new Error(`File processing failed: ${error.message}`);
   }
 }
@@ -229,7 +239,8 @@ function sendStatus() {
       isProcessing,
       currentIndex: processingIndex,
       totalFiles: currentQueue.length,
-      progress: currentQueue.length > 0 ? Math.round((processingIndex / currentQueue.length) * 100) : 0
+      progress: currentQueue.length > 0 ? 
+        Math.round((processingIndex / currentQueue.length) * 100) : 0
     }
   });
 }
@@ -263,11 +274,13 @@ self.addEventListener('unhandledrejection', function(event) {
 });
 
 // Notify that worker is ready
-console.log('✅ Web Worker initialized and ready for base64 file processing');
+console.log('✅ Web Worker initialized and ready for REAL API processing');
 postMessage({
   type: 'WORKER_READY',
   payload: {
     timestamp: new Date().toISOString(),
-    status: 'initialized'
+    status: 'initialized',
+    apiEndpoint: `${API_BASE_URL}/api/extract-po`,
+    processingMethod: 'real-api'
   }
 });
