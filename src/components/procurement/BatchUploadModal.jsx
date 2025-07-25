@@ -1,7 +1,7 @@
 // src/components/procurement/BatchUploadModal.jsx
-// Fixed version with proper PI integration and duplicate prevention
+// FINAL FIX - Properly prevent multiple batch processing
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
 import enhancedBatchUploadService from '../../services/EnhancedBatchUploadService';
 
@@ -9,9 +9,9 @@ const BatchUploadModal = ({
   isOpen, 
   onClose, 
   showNotification,
-  addProformaInvoice, // NEW: Function to save PIs to database
-  suppliers,          // NEW: For supplier matching
-  addSupplier        // NEW: For creating new suppliers
+  addProformaInvoice,
+  suppliers,
+  addSupplier
 }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeBatches, setActiveBatches] = useState([]);
@@ -20,8 +20,9 @@ const BatchUploadModal = ({
   const [autoSave, setAutoSave] = useState(true);
   const [notifyComplete, setNotifyComplete] = useState(true);
 
-  // ✅ NEW: Track processed batches to prevent duplicates
-  const [processedBatches, setProcessedBatches] = useState(new Set());
+  // ✅ FIXED: Use useRef to track processed batches instead of state
+  const processedBatchesRef = useRef(new Set());
+  const [processedBatchesDisplay, setProcessedBatchesDisplay] = useState(new Set());
 
   // Poll for batch updates
   useEffect(() => {
@@ -41,23 +42,33 @@ const BatchUploadModal = ({
     if (savedProcessedBatches) {
       try {
         const batchIds = JSON.parse(savedProcessedBatches);
-        setProcessedBatches(new Set(batchIds));
+        const batchSet = new Set(batchIds);
+        processedBatchesRef.current = batchSet;
+        setProcessedBatchesDisplay(batchSet);
       } catch (error) {
         console.error('Failed to load processed batches:', error);
       }
     }
   }, []);
 
-  // ✅ FIXED: Handle batch completion with proper duplicate prevention
+  // ✅ FIXED: Separate useEffect that only triggers when batches actually complete
   useEffect(() => {
     const handleBatchComplete = async (batchId) => {
-      // ✅ Check if this batch has already been processed
-      if (processedBatches.has(batchId)) {
+      // ✅ Check if this batch has already been processed using ref
+      if (processedBatchesRef.current.has(batchId)) {
         console.log('⚠️ Batch already processed, skipping:', batchId);
         return;
       }
 
       console.log('🎉 Processing completed batch for first time:', batchId);
+      
+      // ✅ IMMEDIATELY mark as processed to prevent re-entry
+      processedBatchesRef.current.add(batchId);
+      const newProcessedBatches = new Set(processedBatchesRef.current);
+      setProcessedBatchesDisplay(newProcessedBatches);
+      
+      // Persist to localStorage immediately
+      localStorage.setItem('processedBatches', JSON.stringify([...newProcessedBatches]));
       
       try {
         const batch = activeBatches.find(b => b.id === batchId);
@@ -72,6 +83,11 @@ const BatchUploadModal = ({
         );
 
         console.log(`📊 Found ${successfulFiles.length} successful extractions`);
+
+        if (successfulFiles.length === 0) {
+          console.log('⚠️ No successful extractions found');
+          return;
+        }
 
         let savedCount = 0;
         let errors = [];
@@ -95,13 +111,6 @@ const BatchUploadModal = ({
           }
         }
 
-        // ✅ Mark batch as processed and persist to localStorage
-        const newProcessedBatches = new Set([...processedBatches, batchId]);
-        setProcessedBatches(newProcessedBatches);
-        
-        // Persist to localStorage
-        localStorage.setItem('processedBatches', JSON.stringify([...newProcessedBatches]));
-
         // Show final notification
         if (savedCount > 0) {
           showNotification(
@@ -123,17 +132,18 @@ const BatchUploadModal = ({
       }
     };
 
-    // ✅ FIXED: Only process newly completed batches
-    activeBatches.forEach(batch => {
-      if (batch.status === 'completed' && !processedBatches.has(batch.id)) {
-        handleBatchComplete(batch.id);
+    // ✅ FIXED: Only check for newly completed batches
+    for (const batch of activeBatches) {
+      if (batch.status === 'completed' && !processedBatchesRef.current.has(batch.id)) {
+        // Use setTimeout to prevent multiple rapid calls
+        setTimeout(() => handleBatchComplete(batch.id), 100);
       }
-    });
-  }, [activeBatches, processedBatches, addProformaInvoice, showNotification, suppliers, addSupplier]);
+    }
 
-  // NEW: Convert extracted data to PI format
+  }, [activeBatches.map(b => `${b.id}-${b.status}`).join(',')]); // ✅ Only trigger when completion status changes
+
+  // Convert extracted data to PI format
   const convertExtractedDataToPI = async (extractedData, fileName) => {
-    // Handle nested structure from AI extraction
     const data = extractedData.proforma_invoice || extractedData;
     
     // Find or create supplier
@@ -141,7 +151,6 @@ const BatchUploadModal = ({
     let supplierName = data.supplier?.name || data.supplierName || 'Unknown Supplier';
     
     if (supplierName && supplierName !== 'Unknown Supplier') {
-      // Try to find existing supplier
       const existingSupplier = suppliers.find(s => 
         s.name.toLowerCase().includes(supplierName.toLowerCase()) ||
         supplierName.toLowerCase().includes(s.name.toLowerCase())
@@ -151,7 +160,6 @@ const BatchUploadModal = ({
         supplierId = existingSupplier.id;
         supplierName = existingSupplier.name;
       } else if (addSupplier) {
-        // Create new supplier
         try {
           const newSupplierData = {
             name: supplierName,
@@ -197,7 +205,6 @@ const BatchUploadModal = ({
       notes: `Imported from ${fileName}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      // Document storage
       documents: {
         originalFile: fileName,
         extractedAt: new Date().toISOString(),
@@ -208,16 +215,17 @@ const BatchUploadModal = ({
     return piData;
   };
 
-  // ✅ NEW: Clear processed batches (for debugging/admin)
+  // ✅ FIXED: Clear processed batches
   const clearProcessedBatches = () => {
     if (window.confirm('This will allow completed batches to be processed again. Continue?')) {
-      setProcessedBatches(new Set());
+      processedBatchesRef.current = new Set();
+      setProcessedBatchesDisplay(new Set());
       localStorage.removeItem('processedBatches');
       showNotification('Processed batches cleared', 'info');
     }
   };
 
-  // ✅ NEW: Clear processed files (for debugging/admin)
+  // Clear processed files
   const clearProcessedFiles = () => {
     if (window.confirm('This will allow the same files to be processed again. Continue?')) {
       enhancedBatchUploadService.clearProcessedFiles();
@@ -225,10 +233,11 @@ const BatchUploadModal = ({
     }
   };
 
-  // ✅ NEW: Clear everything (for debugging/admin)
+  // Clear everything
   const clearAll = () => {
     if (window.confirm('This will clear all processing history. Continue?')) {
-      setProcessedBatches(new Set());
+      processedBatchesRef.current = new Set();
+      setProcessedBatchesDisplay(new Set());
       localStorage.removeItem('processedBatches');
       enhancedBatchUploadService.clearProcessedFiles();
       showNotification('All processing history cleared', 'info');
@@ -268,7 +277,6 @@ const BatchUploadModal = ({
       showNotification(`Started batch processing ${selectedFiles.length} files`, 'success');
       setSelectedFiles([]);
       
-      // Don't close modal immediately - let user see progress
     } catch (error) {
       showNotification('Failed to start batch processing', 'error');
       console.error('Batch start error:', error);
@@ -284,7 +292,6 @@ const BatchUploadModal = ({
     const batch = activeBatches.find(b => b.id === batchId);
     if (!batch) return;
 
-    // Create downloadable results
     const results = batch.files.map(file => ({
       fileName: file.name,
       status: file.status,
@@ -310,7 +317,7 @@ const BatchUploadModal = ({
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">Batch Upload - PROFORMA INVOICE</h2>
           <div className="flex items-center space-x-2">
-            {/* ✅ DEBUG: Add buttons to clear processed data */}
+            {/* Debug buttons */}
             <button
               onClick={clearProcessedBatches}
               className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300"
@@ -332,10 +339,7 @@ const BatchUploadModal = ({
             >
               Clear All
             </button>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
-            >
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
               <X className="h-6 w-6" />
             </button>
           </div>
@@ -445,9 +449,9 @@ const BatchUploadModal = ({
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium">Active Batches</h3>
-              {processedBatches.size > 0 && (
+              {processedBatchesDisplay.size > 0 && (
                 <span className="text-xs text-gray-500">
-                  {processedBatches.size} batch(es) processed
+                  {processedBatchesDisplay.size} batch(es) processed
                 </span>
               )}
             </div>
@@ -458,7 +462,6 @@ const BatchUploadModal = ({
               <div className="space-y-4">
                 {activeBatches.map(batch => (
                   <div key={batch.id} className="border border-gray-200 rounded-lg p-4">
-                    {/* Batch Header */}
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <h4 className="font-medium">Batch {batch.id}</h4>
@@ -476,8 +479,7 @@ const BatchUploadModal = ({
                           {batch.status}
                         </span>
                         
-                        {/* ✅ Show if batch was processed */}
-                        {processedBatches.has(batch.id) && (
+                        {processedBatchesDisplay.has(batch.id) && (
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                             Saved to DB
                           </span>
@@ -504,7 +506,6 @@ const BatchUploadModal = ({
                       </div>
                     </div>
 
-                    {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
                       <div
                         className="bg-blue-600 h-2 rounded-full transition-all duration-500"
@@ -512,7 +513,6 @@ const BatchUploadModal = ({
                       ></div>
                     </div>
 
-                    {/* File Status */}
                     <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
                       {batch.files.map((file, index) => (
                         <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
@@ -527,7 +527,7 @@ const BatchUploadModal = ({
                             <span className="text-sm text-gray-700">{file.name}</span>
                           </div>
                           
-                          {file.status === 'completed' && processedBatches.has(batch.id) && (
+                          {file.status === 'completed' && processedBatchesDisplay.has(batch.id) && (
                             <span className="text-xs text-green-600">
                               ✅ Saved to Database
                             </span>
@@ -542,12 +542,11 @@ const BatchUploadModal = ({
                       ))}
                     </div>
 
-                    {/* Batch Summary */}
                     {batch.status === 'completed' && (
                       <div className="mt-3 p-2 bg-green-50 rounded">
                         <p className="text-sm text-green-800">
                           ✅ Batch completed! {batch.successfulFiles} of {batch.totalFiles} files processed successfully.
-                          {processedBatches.has(batch.id) ? 
+                          {processedBatchesDisplay.has(batch.id) ? 
                             " All proforma invoices have been added to your database." : 
                             " Processing for database save..."
                           }
