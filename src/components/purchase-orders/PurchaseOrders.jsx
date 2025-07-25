@@ -661,7 +661,7 @@ const PurchaseOrders = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  PO Number
+                  Client PO Number
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Project Code
@@ -708,7 +708,8 @@ const PurchaseOrders = () => {
                     {/* PO NUMBER */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex items-center gap-2">
-                        {po.orderNumber || po.poNumber}
+                           {po.clientPoNumber || po.clientPONumber || po.orderNumber || po.poNumber}
+
                         {/* ✅ NEW: Show document storage indicator */}
                         {po.hasStoredDocuments && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800" title="Documents stored in Firebase">
