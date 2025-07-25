@@ -276,7 +276,7 @@ const BatchUploadModal = ({
     if (extractedData.documentStorage) {
       console.log('✅ Found documentStorage:', extractedData.documentStorage);
       piData.documentId = extractedData.documentStorage.documentId;
-      piData.documentNumber = extractedData.documentStorage.documentNumber;
+      piData.documentNumber = extractedData.documentStorage.documentNumber || piData.piNumber; // ✅ FALLBACK FIX
       piData.documentType = 'pi';
       piData.hasStoredDocuments = true;
       piData.originalFileName = extractedData.documentStorage.originalFile?.originalFileName;
@@ -289,7 +289,7 @@ const BatchUploadModal = ({
     else if (extractedData.extractionMetadata) {
       console.log('✅ Found extractionMetadata:', extractedData.extractionMetadata);
       piData.documentId = extractedData.extractionMetadata.documentId;
-      piData.documentNumber = extractedData.extractionMetadata.documentNumber;
+      piData.documentNumber = extractedData.extractionMetadata.documentNumber || piData.piNumber; // ✅ FALLBACK FIX
       piData.documentType = 'pi';
       piData.hasStoredDocuments = false;
       piData.originalFileName = extractedData.extractionMetadata.originalFileName;
@@ -301,6 +301,7 @@ const BatchUploadModal = ({
     else if (extractedData.documentId) {
       console.log('✅ Found root documentId:', extractedData.documentId);
       piData.documentId = extractedData.documentId;
+      piData.documentNumber = piData.piNumber; // ✅ USE PI NUMBER AS FALLBACK
       piData.hasStoredDocuments = false;
       console.log('✅ Mapped document storage from root level:', piData.documentId);
     }
@@ -308,11 +309,24 @@ const BatchUploadModal = ({
       console.log('❌ No document storage information found in any location');
     }
     
+    // ✅ CRITICAL FIX: Ensure documentId and documentNumber are never undefined
     if (!piData.documentId || piData.documentId === undefined) {
       console.warn('⚠️ DocumentId is undefined, generating fallback for:', piData.piNumber);
       piData.documentId = `doc-fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       piData.hasStoredDocuments = false;
       console.log('🔧 Generated fallback documentId:', piData.documentId);
+    }
+    
+    // ✅ CRITICAL FIX: Ensure documentNumber is never undefined
+    if (!piData.documentNumber || piData.documentNumber === undefined) {
+      piData.documentNumber = piData.piNumber; // Use PI number as document number
+      console.log('🔧 Generated fallback documentNumber from piNumber:', piData.documentNumber);
+    }
+    
+    // ✅ CRITICAL FIX: Ensure documentType is never undefined
+    if (!piData.documentType || piData.documentType === undefined) {
+      piData.documentType = 'pi';
+      console.log('🔧 Set default documentType:', piData.documentType);
     }
 
     console.log('📋 Final PI data with documentId:', {
