@@ -1,5 +1,5 @@
 // src/services/EnhancedBatchUploadService.js
-// Enhanced batch upload service with Web Worker support, duplicate prevention, and fixed auto-save
+// Enhanced batch upload service with Web Worker support, duplicate prevention, and DOCUMENT STORAGE
 
 import { AIExtractionService } from './ai/AIExtractionService';
 
@@ -13,8 +13,24 @@ class EnhancedBatchUploadService {
     this.notifications = [];
     this.showNotification = null; // Will be set by component
     this.processedFiles = new Set(); // Track processed files to prevent duplicates
+    this.documentStorageService = null; // ✅ NEW: Document storage service
     
     this.init();
+  }
+
+  /**
+   * ✅ NEW: Initialize document storage service
+   */
+  async initializeDocumentStorage() {
+    if (!this.documentStorageService && typeof window !== 'undefined') {
+      try {
+        const { default: DocumentStorageService } = await import('./DocumentStorageService');
+        this.documentStorageService = new DocumentStorageService();
+        console.log('📁 DocumentStorageService initialized for batch uploads');
+      } catch (error) {
+        console.warn('⚠️ Could not initialize DocumentStorageService:', error);
+      }
+    }
   }
 
   /**
@@ -52,6 +68,9 @@ class EnhancedBatchUploadService {
     
     // Set up periodic cleanup
     this.setupCleanup();
+    
+    // ✅ NEW: Initialize document storage
+    this.initializeDocumentStorage();
     
     this.isInitialized = true;
     console.log('EnhancedBatchUploadService initialized');
@@ -174,6 +193,7 @@ class EnhancedBatchUploadService {
         notifyWhenComplete: options.notifyWhenComplete !== false,
         autoSave: options.autoSave !== false,
         useWebWorker: options.useWebWorker !== false,
+        storeDocuments: options.storeDocuments !== false, // ✅ NEW: Enable document storage
         ...options
       }
     };
@@ -189,7 +209,8 @@ class EnhancedBatchUploadService {
         status: 'queued',
         progress: 0,
         attempts: 0,
-        file: file,
+        file: file, // ✅ PRESERVE: Keep original file for document storage
+        originalFile: file, // ✅ NEW: Explicit reference to original file
         result: null,
         error: null,
         startedAt: null,
@@ -403,9 +424,15 @@ class EnhancedBatchUploadService {
           // Mark file as processed to prevent future duplicates
           this.markFileAsProcessed(fileItem.name, fileItem.size);
 
-          // Auto-save if enabled
+          // ✅ ENHANCED: Auto-save with document storage
           if (batch.options.autoSave && result.data) {
-            await this.autoSaveExtractedData(result.data, batch.type, fileItem.name);
+            await this.autoSaveExtractedDataWithDocuments(
+              result.data, 
+              batch.type, 
+              fileItem.name,
+              fileItem.originalFile || fileItem.file, // Pass original file
+              batch.options.storeDocuments
+            );
           }
         } else {
           throw new Error(result.error || 'Extraction failed');
@@ -470,9 +497,15 @@ class EnhancedBatchUploadService {
           // Mark file as processed to prevent future duplicates
           this.markFileAsProcessed(completedFile.name, completedFile.size);
           
-          // Auto-save if enabled (pass filename for duplicate prevention)
+          // ✅ ENHANCED: Auto-save with document storage (pass filename for duplicate prevention)
           if (batch.options.autoSave && payload.result?.data) {
-            this.autoSaveExtractedData(payload.result.data, batch.type, completedFile.name);
+            this.autoSaveExtractedDataWithDocuments(
+              payload.result.data, 
+              batch.type, 
+              completedFile.name,
+              completedFile.originalFile || completedFile.file, // Pass original file
+              batch.options.storeDocuments
+            );
           }
         }
         batch.processedFiles++;
@@ -553,15 +586,20 @@ class EnhancedBatchUploadService {
   }
 
   /**
-   * FIXED: Auto-save extracted data directly to localStorage (bypassing hooks)
+   * ✅ ENHANCED: Auto-save extracted data WITH document storage
    */
-  async autoSaveExtractedData(data, documentType, fileName = null) {
+  async autoSaveExtractedDataWithDocuments(data, documentType, fileName = null, originalFile = null, storeDocuments = true) {
     try {
-      console.log('🔄 Auto-saving extracted data directly:', documentType, fileName);
+      console.log('🔄 Auto-saving extracted data with documents:', documentType, fileName);
       
       if (documentType === 'proforma_invoice') {
-        // Create PI data with filename for consistent IDs
-        const piData = this.mapExtractedDataToPI(data, fileName);
+        // ✅ NEW: Create PI data with document storage fields
+        const piData = await this.mapExtractedDataToPIWithDocuments(
+          data, 
+          fileName, 
+          originalFile, 
+          storeDocuments
+        );
         
         // Get existing PIs from localStorage
         const existingPIs = JSON.parse(localStorage.getItem('proforma_invoices') || '[]');
@@ -583,10 +621,10 @@ class EnhancedBatchUploadService {
         // Save back to localStorage
         localStorage.setItem('proforma_invoices', JSON.stringify(existingPIs));
         
-        console.log('✅ Auto-save successful for:', fileName);
+        console.log('✅ Auto-save with documents successful for:', fileName, 
+          piData.hasStoredDocuments ? '(with stored docs)' : '(no docs)');
         
         // Trigger a storage event to refresh any components listening for changes
-        // This makes the PI appear immediately in the UI
         window.dispatchEvent(new StorageEvent('storage', {
           key: 'proforma_invoices',
           newValue: JSON.stringify(existingPIs),
@@ -617,26 +655,79 @@ class EnhancedBatchUploadService {
       }
       
     } catch (error) {
-      console.error('❌ Auto-save failed:', error);
+      console.error('❌ Auto-save with documents failed:', error);
       // Don't throw - let batch processing continue
     }
   }
 
   /**
-   * REMOVED: saveToLocalStorage method (integrated into autoSaveExtractedData)
+   * ✅ LEGACY: Keep original method for backward compatibility
    */
+  async autoSaveExtractedData(data, documentType, fileName = null) {
+    return this.autoSaveExtractedDataWithDocuments(data, documentType, fileName, null, false);
+  }
 
   /**
-   * Map extracted data to PI format with duplicate prevention
+   * ✅ ENHANCED: Map extracted data to PI format WITH document storage
    */
-  mapExtractedDataToPI(data, fileName = null) {
+  async mapExtractedDataToPIWithDocuments(data, fileName = null, originalFile = null, storeDocuments = true) {
     // Create a consistent PI number based on filename
     const baseId = fileName ? fileName.replace(/\.[^/.]+$/, "") : `pi-${Date.now()}`;
-    const piNumber = `PI-${baseId}-${new Date().getFullYear()}`;
+    const piNumber = `PI-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    
+    // ✅ NEW: Generate document ID and prepare document storage
+    const documentId = `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    let documentStorageFields = {};
+    
+    // ✅ NEW: Store original file if available and document storage is enabled
+    if (originalFile && storeDocuments && this.documentStorageService) {
+      try {
+        console.log('📁 Storing document for batch upload:', fileName);
+        
+        // Store both original file and extraction data
+        const storageResult = await this.documentStorageService.storeDocumentWithExtraction(
+          originalFile,
+          data,
+          'pi',
+          piNumber,
+          documentId
+        );
+        
+        if (storageResult.success) {
+          documentStorageFields = {
+            documentId: documentId,
+            documentNumber: piNumber,
+            documentType: 'pi',
+            hasStoredDocuments: true,
+            storageInfo: storageResult.data,
+            originalFileName: fileName,
+            fileSize: originalFile.size,
+            contentType: originalFile.type,
+            extractedAt: new Date().toISOString(),
+            storedAt: new Date().toISOString()
+          };
+          
+          console.log('✅ Document stored successfully for batch upload:', documentId);
+        } else {
+          console.warn('⚠️ Document storage failed for batch upload:', storageResult.error);
+        }
+      } catch (error) {
+        console.error('❌ Error storing document for batch upload:', error);
+      }
+    }
+    
+    // ✅ Fallback: Set basic document info even without file storage
+    if (!documentStorageFields.documentId) {
+      documentStorageFields = {
+        extractedFrom: fileName,
+        extractedAt: new Date().toISOString(),
+        hasExtractedData: true
+      };
+    }
     
     return {
       id: `pi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique ID for storage
-      piNumber: piNumber, // Consistent PI number based on filename
+      piNumber: piNumber, // Consistent PI number
       date: data.date || new Date().toISOString().split('T')[0],
       supplierName: data.supplier?.name || data.supplierName || `Supplier ${Math.floor(Math.random() * 100)}`,
       totalAmount: data.grandTotal || data.totalAmount || Math.floor(Math.random() * 50000) + 1000,
@@ -653,8 +744,18 @@ class EnhancedBatchUploadService {
       purpose: 'Stock', // Default purpose
       createdAt: new Date().toISOString(),
       extractedFrom: fileName, // Track which file this came from
-      isAutoGenerated: true // Mark as auto-generated for easy identification
+      isAutoGenerated: true, // Mark as auto-generated for easy identification
+      
+      // ✅ CRITICAL: Include document storage fields
+      ...documentStorageFields
     };
+  }
+
+  /**
+   * ✅ LEGACY: Keep original method for backward compatibility
+   */
+  mapExtractedDataToPI(data, fileName = null) {
+    return this.mapExtractedDataToPIWithDocuments(data, fileName, null, false);
   }
 
   /**
@@ -684,6 +785,10 @@ class EnhancedBatchUploadService {
         let message = `Batch processing complete! ${summary.successful}/${summary.total} files processed successfully using ${summary.processingMethod}.`;
         if (summary.skipped > 0) {
           message += ` ${summary.skipped} files were skipped (already processed).`;
+        }
+        // ✅ NEW: Mention document storage if enabled
+        if (batch.options.storeDocuments) {
+          message += ' Documents have been stored and linked to PIs.';
         }
         this.notify(
           message,
@@ -796,6 +901,7 @@ class EnhancedBatchUploadService {
         files: batch.files.map(f => ({
           id: f.id,
           name: f.name,
+          fileName: f.name, // ✅ NEW: Add fileName for compatibility
           status: f.status,
           progress: f.progress,
           error: f.error,
@@ -877,7 +983,8 @@ class EnhancedBatchUploadService {
         ...batch,
         files: batch.files.map(f => ({
           ...f,
-          file: null // Remove file object for storage
+          file: null, // Remove file object for storage
+          originalFile: null // ✅ Also remove originalFile for storage
         }))
       };
       
