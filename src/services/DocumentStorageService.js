@@ -9,6 +9,32 @@ class DocumentStorageService {
       pi: 'documents/proforma-invoices',
       temp: 'documents/temp'
     };
+    this.isInitialized = false;
+    this.initializeService();
+  }
+
+  /**
+   * Initialize the service and verify Firebase connection
+   */
+  async initializeService() {
+    try {
+      // Simple connectivity test
+      if (storage && storage.app) {
+        this.isInitialized = true;
+        console.log('✅ DocumentStorageService initialized successfully');
+      } else {
+        console.warn('⚠️ Firebase storage not properly configured');
+      }
+    } catch (error) {
+      console.warn('⚠️ DocumentStorageService initialization warning:', error.message);
+    }
+  }
+
+  /**
+   * Check if service is ready for use
+   */
+  isReady() {
+    return this.isInitialized && storage;
   }
 
   /**
@@ -20,6 +46,10 @@ class DocumentStorageService {
    * @returns {Promise<Object>} - Storage result with download URL
    */
   async storeOriginalDocument(file, documentType, documentNumber, documentId) {
+    if (!this.isReady()) {
+      throw new Error('DocumentStorageService is not ready. Check Firebase configuration.');
+    }
+
     try {
       console.log(`📁 Storing original ${documentType.toUpperCase()} document:`, {
         fileName: file.name,
@@ -100,6 +130,15 @@ class DocumentStorageService {
    * @returns {Promise<Object>} - Storage results
    */
   async storeDocumentWithExtraction(originalFile, extractedData, documentType, documentNumber, documentId) {
+    if (!this.isReady()) {
+      console.warn('⚠️ DocumentStorageService not ready, skipping document storage');
+      return {
+        success: false,
+        error: 'DocumentStorageService not ready',
+        fallbackMode: true
+      };
+    }
+
     try {
       console.log(`📋 Storing ${documentType.toUpperCase()} with extraction data`);
 
@@ -223,72 +262,129 @@ class DocumentStorageService {
    * @returns {Promise<Array>} - List of stored documents
    */
   async getDocumentFiles(documentId, documentType) {
-  try {
-    console.log(`📋 Getting documents for ${documentType} ${documentId}`);
-    const folderPath = `${this.bucketPaths[documentType]}/${documentId}`;
-    const folderRef = ref(storage, folderPath);
-    
-    const listResult = await listAll(folderRef);
-    console.log(`📁 Found ${listResult.items.length} files in ${folderPath}`);
-    
-    const files = await Promise.all(
-      listResult.items.map(async (itemRef) => {
-        try {
-          const downloadURL = await getDownloadURL(itemRef);
-          const metadata = await getMetadata(itemRef);  // ✅ FIXED: Use imported getMetadata function
-          
-          return {
-            name: itemRef.name,
-            path: itemRef.fullPath,
-            downloadURL: downloadURL,
-            size: metadata.size,
-            contentType: metadata.contentType,
-            timeCreated: metadata.timeCreated,
-            updated: metadata.updated,
-            customMetadata: metadata.customMetadata || {}
-          };
-        } catch (fileError) {
-          console.error(`❌ Error processing file ${itemRef.name}:`, fileError);
-          // Return basic file info even if metadata fails
-          const downloadURL = await getDownloadURL(itemRef);
-          return {
-            name: itemRef.name,
-            path: itemRef.fullPath,
-            downloadURL: downloadURL,
-            size: 0,
-            contentType: 'application/octet-stream',
-            timeCreated: new Date().toISOString(),
-            updated: new Date().toISOString(),
-            customMetadata: {}
-          };
-        }
-      })
-    );
+    if (!this.isReady()) {
+      console.warn('⚠️ DocumentStorageService not ready');
+      return {
+        success: false,
+        error: 'DocumentStorageService not ready',
+        data: []
+      };
+    }
 
-    console.log(`✅ Successfully processed ${files.length} documents`);
+    try {
+      console.log(`📋 Getting documents for ${documentType} ${documentId}`);
+      const folderPath = `${this.bucketPaths[documentType]}/${documentId}`;
+      const folderRef = ref(storage, folderPath);
+      
+      const listResult = await listAll(folderRef);
+      console.log(`📁 Found ${listResult.items.length} files in ${folderPath}`);
+      
+      const files = await Promise.all(
+        listResult.items.map(async (itemRef) => {
+          try {
+            const downloadURL = await getDownloadURL(itemRef);
+            const metadata = await getMetadata(itemRef);  // ✅ Using imported getMetadata function
+            
+            return {
+              name: itemRef.name,
+              path: itemRef.fullPath,
+              fullPath: itemRef.fullPath, // Added for compatibility
+              downloadURL: downloadURL,
+              size: metadata.size,
+              contentType: metadata.contentType,
+              timeCreated: metadata.timeCreated,
+              updated: metadata.updated,
+              customMetadata: metadata.customMetadata || {}
+            };
+          } catch (fileError) {
+            console.error(`❌ Error processing file ${itemRef.name}:`, fileError);
+            // Return basic file info even if metadata fails
+            try {
+              const downloadURL = await getDownloadURL(itemRef);
+              return {
+                name: itemRef.name,
+                path: itemRef.fullPath,
+                fullPath: itemRef.fullPath,
+                downloadURL: downloadURL,
+                size: 0,
+                contentType: 'application/octet-stream',
+                timeCreated: new Date().toISOString(),
+                updated: new Date().toISOString(),
+                customMetadata: {}
+              };
+            } catch (fallbackError) {
+              console.error(`❌ Fallback failed for ${itemRef.name}:`, fallbackError);
+              return null;
+            }
+          }
+        })
+      );
 
-    return {
-      success: true,
-      data: files.sort((a, b) => new Date(b.timeCreated) - new Date(a.timeCreated))
-    };
+      // Filter out null results
+      const validFiles = files.filter(file => file !== null);
+      console.log(`✅ Successfully processed ${validFiles.length} documents`);
 
-  } catch (error) {
-    console.error('❌ Error retrieving documents:', error);
-    return {
-      success: false,
-      error: error.message,
-      data: []
-    };
+      return {
+        success: true,
+        data: validFiles.sort((a, b) => new Date(b.timeCreated) - new Date(a.timeCreated))
+      };
+
+    } catch (error) {
+      console.error('❌ Error retrieving documents:', error);
+      return {
+        success: false,
+        error: error.message,
+        data: []
+      };
+    }
   }
-}
 
   /**
-   * Delete document files
+   * Delete specific document file
+   * @param {string} filePath - Full storage path to the file
+   * @returns {Promise<Object>} - Deletion result
+   */
+  async deleteDocumentFile(filePath) {
+    if (!this.isReady()) {
+      return {
+        success: false,
+        error: 'DocumentStorageService not ready'
+      };
+    }
+
+    try {
+      const fileRef = ref(storage, filePath);
+      await deleteObject(fileRef);
+      
+      console.log(`🗑️ Deleted file: ${filePath}`);
+      return {
+        success: true,
+        deletedFile: filePath
+      };
+
+    } catch (error) {
+      console.error('❌ Error deleting file:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Delete all document files for a document
    * @param {string} documentId - Document ID
    * @param {string} documentType - 'po' or 'pi'
    * @returns {Promise<Object>} - Deletion result
    */
   async deleteDocumentFiles(documentId, documentType) {
+    if (!this.isReady()) {
+      return {
+        success: false,
+        error: 'DocumentStorageService not ready'
+      };
+    }
+
     try {
       const folderPath = `${this.bucketPaths[documentType]}/${documentId}`;
       const folderRef = ref(storage, folderPath);
@@ -322,6 +418,10 @@ class DocumentStorageService {
    * @returns {Promise<string>} - Authenticated download URL
    */
   async getAuthenticatedDownloadURL(storagePath) {
+    if (!this.isReady()) {
+      throw new Error('DocumentStorageService not ready');
+    }
+
     try {
       const storageRef = ref(storage, storagePath);
       const downloadURL = await getDownloadURL(storageRef);
@@ -361,6 +461,14 @@ class DocumentStorageService {
    * @returns {Promise<Object>} - Storage statistics
    */
   async getStorageStats(documentType) {
+    if (!this.isReady()) {
+      return {
+        success: false,
+        error: 'DocumentStorageService not ready',
+        data: { fileCount: 0, totalSize: 0, formattedSize: '0 Bytes' }
+      };
+    }
+
     try {
       const folderRef = ref(storage, this.bucketPaths[documentType]);
       const listResult = await listAll(folderRef);
@@ -371,9 +479,14 @@ class DocumentStorageService {
       // Get metadata for all files to calculate total size
       await Promise.all(
         listResult.items.map(async (itemRef) => {
-          const metadata = await itemRef.getMetadata();
-          totalSize += metadata.size;
-          fileCount++;
+          try {
+            const metadata = await getMetadata(itemRef);
+            totalSize += metadata.size;
+            fileCount++;
+          } catch (error) {
+            console.warn(`⚠️ Could not get metadata for ${itemRef.name}`);
+            fileCount++; // Count the file even if we can't get size
+          }
         })
       );
 
@@ -396,7 +509,31 @@ class DocumentStorageService {
       };
     }
   }
+
+  /**
+   * Health check method
+   * @returns {Promise<Object>} - Service health status
+   */
+  async healthCheck() {
+    try {
+      const isReady = this.isReady();
+      return {
+        isReady,
+        hasStorage: !!storage,
+        hasApp: !!(storage && storage.app),
+        bucketPaths: this.bucketPaths,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        isReady: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
 }
 
-// Export singleton instance
+// Export both the class and a default instance for flexibility
+export { DocumentStorageService };
 export default new DocumentStorageService();
