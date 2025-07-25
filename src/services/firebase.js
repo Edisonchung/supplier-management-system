@@ -1,586 +1,428 @@
-// src/services/firebase.js
-import { initializeSampleData } from '../utils/mockData';
+// src/config/firebase.js - Real Firestore Implementation
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDoc, 
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
+  serverTimestamp,
+  onSnapshot
+} from 'firebase/firestore';
+import { 
+  getStorage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  deleteObject, 
+  listAll, 
+  getMetadata 
+} from 'firebase/storage';
 
-// Mock Firebase implementation for demo
-class MockFirebase {
-  constructor() {
-    this.data = {
-      suppliers: JSON.parse(localStorage.getItem('suppliers') || '[]'),
-      products: JSON.parse(localStorage.getItem('products') || '[]'),
-      purchaseOrders: JSON.parse(localStorage.getItem('purchaseOrders') || '[]'),
-      users: JSON.parse(localStorage.getItem('users') || '[]'),
-      proformaInvoices: JSON.parse(localStorage.getItem('proformaInvoices') || '[]'),
-      clientInvoices: JSON.parse(localStorage.getItem('clientInvoices') || '[]'),
-      clientPurchaseOrders: JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]')
-    };
-    
-    // Initialize with sample data if empty
-    if (this.data.suppliers.length === 0) {
-      this.initializeSuppliers();
-    }
-    if (this.data.products.length === 0) {
-      this.initializeProducts();
-    }
-    if (this.data.proformaInvoices.length === 0) {
-      this.initializeProformaInvoices();
-    }
-  }
-
-  initializeSuppliers() {
-    const sampleSuppliers = [
-      {
-        id: 'sup-001',
-        name: 'Flow Solution Sdn. Bhd.',
-        email: 'sales@flowsolution.my',
-        phone: '+60 3-1234 5678',
-        address: '123 Industrial Park, Petaling Jaya, Selangor',
-        contactPerson: 'Ahmad Rahman',
-        status: 'active',
-        dateAdded: new Date().toISOString()
-      },
-      {
-        id: 'sup-002',
-        name: 'TechParts Malaysia',
-        email: 'info@techparts.com.my',
-        phone: '+60 3-9876 5432',
-        address: '456 Tech Avenue, Cyberjaya, Selangor',
-        contactPerson: 'Sarah Lim',
-        status: 'active',
-        dateAdded: new Date().toISOString()
-      },
-      {
-        id: 'sup-003',
-        name: 'Global Components Pte Ltd',
-        email: 'order@globalcomp.sg',
-        phone: '+65 6789 0123',
-        address: '789 Business Hub, Singapore',
-        contactPerson: 'David Tan',
-        status: 'pending',
-        dateAdded: new Date().toISOString()
-      }
-    ];
-    
-    localStorage.setItem('suppliers', JSON.stringify(sampleSuppliers));
-    this.data.suppliers = sampleSuppliers;
-  }
-
-  initializeProducts() {
-    const sampleProducts = [
-      {
-        id: 'prod-001',
-        name: 'Industrial Pump A-200',
-        category: 'Pumps',
-        supplierId: 'sup-001',
-        currentStock: 25,
-        minStock: 10,
-        price: 1500,
-        status: 'complete',
-        furnishedTo: '',
-        clientSupplied: '',
-        dateAdded: new Date().toISOString()
-      },
-      {
-        id: 'prod-002',
-        name: 'Control Valve CV-50',
-        category: 'Valves',
-        supplierId: 'sup-001',
-        currentStock: 8,
-        minStock: 15,
-        price: 750,
-        status: 'pending',
-        furnishedTo: '',
-        clientSupplied: '',
-        dateAdded: new Date().toISOString()
-      },
-      {
-        id: 'prod-003',
-        name: 'Sensor Module SM-100',
-        category: 'Electronics',
-        supplierId: 'sup-002',
-        currentStock: 50,
-        minStock: 20,
-        price: 250,
-        status: 'complete',
-        furnishedTo: '',
-        clientSupplied: '',
-        dateAdded: new Date().toISOString()
-      }
-    ];
-    
-    localStorage.setItem('products', JSON.stringify(sampleProducts));
-    this.data.products = sampleProducts;
-  }
-
-  initializeProformaInvoices() {
-   // Only add demo data in development or if explicitly requested
-  const shouldAddDemoData = localStorage.getItem('includeDemoData') === 'true';
-  
-  const samplePIs = shouldAddDemoData ? [
-    {
-      id: 'pi-001',
-      piNumber: 'PI-2024-DEMO',  // ← Changed to clearly mark as demo
-      supplierId: 'sup-001',
-      date: '2024-01-15',
-      items: [
-        {
-          productId: 'prod-001',
-          productName: 'Demo Product',
-          quantity: 1,
-          unitPrice: 100,
-          totalPrice: 100
-        }
-      ],
-      totalAmount: 100,
-      status: 'draft',  // ← Changed from 'confirmed'
-      purpose: 'demo',  // ← Added demo purpose
-      deliveryStatus: 'pending',
-      paymentStatus: 'pending',  // ← Changed from 'paid'
-      notes: '🎭 DEMO DATA - Safe to delete'
-    }
-  ] : [];
-    
-    localStorage.setItem('proformaInvoices', JSON.stringify(samplePIs));
-    this.data.proformaInvoices = samplePIs;
-  }
-
-  // Firestore-like API
-  firestore = {
-    collection: (collectionName) => ({
-      get: async () => {
-        const data = this.data[collectionName] || [];
-        return {
-          docs: data.map(item => ({
-            id: item.id,
-            data: () => ({ ...item })
-          }))
-        };
-      },
-      doc: (docId) => ({
-        get: async () => {
-          const data = this.data[collectionName] || [];
-          const doc = data.find(item => item.id === docId);
-          return {
-            exists: !!doc,
-            data: () => doc
-          };
-        },
-        update: async (updates) => {
-          const data = this.data[collectionName] || [];
-          const index = data.findIndex(item => item.id === docId);
-          if (index !== -1) {
-            data[index] = { ...data[index], ...updates };
-            localStorage.setItem(collectionName, JSON.stringify(data));
-            this.data[collectionName] = data;
-          }
-        },
-        delete: async () => {
-          let data = this.data[collectionName] || [];
-          data = data.filter(item => item.id !== docId);
-          localStorage.setItem(collectionName, JSON.stringify(data));
-          this.data[collectionName] = data;
-        }
-      }),
-      add: async (newDoc) => {
-        const data = this.data[collectionName] || [];
-        const id = `${collectionName.slice(0, 3)}-${Date.now()}`;
-        const docWithId = { ...newDoc, id };
-        data.push(docWithId);
-        localStorage.setItem(collectionName, JSON.stringify(data));
-        this.data[collectionName] = data;
-        return { id };
-      }
-    })
-  };
-
-  // Auth-like API
-  auth = {
-    signInWithEmailAndPassword: async (email, password) => {
-      // Demo accounts
-      const demoAccounts = {
-        'admin@company.com': { password: 'admin123', role: 'admin', name: 'Admin User' },
-        'manager@company.com': { password: 'manager123', role: 'manager', name: 'Manager User' },
-        'employee@company.com': { password: 'employee123', role: 'employee', name: 'Employee User' },
-        'viewer@company.com': { password: 'viewer123', role: 'viewer', name: 'Viewer User' }
-      };
-
-      const account = demoAccounts[email];
-      if (account && account.password === password) {
-        const user = {
-          uid: email.split('@')[0],
-          email,
-          displayName: account.name,
-          role: account.role
-        };
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        return { user };
-      }
-      throw new Error('Invalid email or password');
-    },
-    signOut: async () => {
-      localStorage.removeItem('currentUser');
-    },
-    onAuthStateChanged: (callback) => {
-      const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
-      callback(user);
-    }
-  };
-}
-
-// Create singleton instance
-export const mockFirebase = new MockFirebase();
-
-// Create a mock Firestore database object
-export const db = {
-  // Mock properties to satisfy Firestore checks
-  _delegate: {},
-  _persistenceKey: 'mock',
-  _settings: {},
-  type: 'firestore',
-  
-  toJSON: () => ({ type: 'firestore-mock' })
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Mock collection reference class
-class MockCollectionReference {
-  constructor(db, collectionName) {
-    this._db = db;
-    this._collectionName = collectionName;
-    this.firestore = db;
-    this.path = collectionName;
-    this.id = collectionName;
-  }
-}
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
-// Mock document reference class
-class MockDocumentReference {
-  constructor(collectionRef, docId) {
-    this._collectionRef = collectionRef;
-    this._docId = docId;
-    this.firestore = collectionRef._db;
-    this.path = `${collectionRef.path}/${docId}`;
-    this.id = docId;
-  }
-}
+// Initialize services
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
 
-// Mock Firestore functions
-export const collection = (database, collectionName) => {
-  const collectionRef = new MockCollectionReference(database, collectionName);
-  
-  // Add methods to the collection reference
-  collectionRef.add = async (data) => {
-    return mockFirebase.firestore.collection(collectionName).add(data);
-  };
-  
-  collectionRef.get = async () => {
-    return mockFirebase.firestore.collection(collectionName).get();
-  };
-  
-  collectionRef.doc = (docId) => {
-    return doc(database, collectionName, docId);
-  };
-  
-  return collectionRef;
-};
+console.log('🔥 Firebase initialized with Firestore and Storage');
 
-export const doc = (database, collectionName, docId) => {
-  const collectionRef = new MockCollectionReference(database, collectionName);
-  const docRef = new MockDocumentReference(collectionRef, docId);
-  
-  // Add methods to the document reference
-  docRef.get = async () => {
-    return mockFirebase.firestore.collection(collectionName).doc(docId).get();
-  };
-  
-  docRef.update = async (data) => {
-    return mockFirebase.firestore.collection(collectionName).doc(docId).update(data);
-  };
-  
-  docRef.delete = async () => {
-    return mockFirebase.firestore.collection(collectionName).doc(docId).delete();
-  };
-  
-  return docRef;
-};
-
-export const addDoc = async (collectionRef, data) => {
-  const collectionName = collectionRef._collectionName || collectionRef.path || 'unknown';
-  return mockFirebase.firestore.collection(collectionName).add(data);
-};
-
-export const updateDoc = async (docRef, data) => {
-  const pathParts = docRef.path.split('/');
-  const collectionName = pathParts[0];
-  const docId = pathParts[1];
-  return mockFirebase.firestore.collection(collectionName).doc(docId).update(data);
-};
-
-export const deleteDoc = async (docRef) => {
-  const pathParts = docRef.path.split('/');
-  const collectionName = pathParts[0];
-  const docId = pathParts[1];
-  return mockFirebase.firestore.collection(collectionName).doc(docId).delete();
-};
-
-export const getDoc = async (docRef) => {
-  const pathParts = docRef.path.split('/');
-  const collectionName = pathParts[0];
-  const docId = pathParts[1];
-  return mockFirebase.firestore.collection(collectionName).doc(docId).get();
-};
-
-export const getDocs = async (queryOrCollection) => {
-  const collectionName = queryOrCollection._collectionName || queryOrCollection.path || 'unknown';
-  return mockFirebase.firestore.collection(collectionName).get();
-};
-
-// Mock query functions
-export const query = (collectionRef, ...constraints) => {
-  // Create a query object that extends the collection reference
-  const queryObj = Object.create(collectionRef);
-  queryObj._constraints = constraints;
-  queryObj._isQuery = true;
-  return queryObj;
-};
-
-export const where = (field, operator, value) => {
-  return { type: 'where', field, operator, value };
-};
-
-export const orderBy = (field, direction = 'asc') => {
-  return { type: 'orderBy', field, direction };
-};
-
-export const serverTimestamp = () => {
-  return new Date().toISOString();
-};
-
-// Mock real-time listeners
-export const onSnapshot = (ref, callbackOrOptions, errorCallback) => {
-  const callback = typeof callbackOrOptions === 'function' ? callbackOrOptions : callbackOrOptions.next;
-  const onError = errorCallback || (typeof callbackOrOptions === 'object' ? callbackOrOptions.error : undefined);
-  
-  // Determine collection name
-  let collectionName;
-  if (ref._collectionName) {
-    collectionName = ref._collectionName;
-  } else if (ref.path && !ref.path.includes('/')) {
-    collectionName = ref.path;
-  } else {
-    collectionName = 'unknown';
-  }
-  
-  // Initial data fetch
-  const fetchData = async () => {
-    try {
-      const snapshot = await mockFirebase.firestore.collection(collectionName).get();
-      
-      // Apply query constraints if any
-      let docs = snapshot.docs;
-      if (ref._constraints) {
-        ref._constraints.forEach(constraint => {
-          if (constraint.type === 'where') {
-            docs = docs.filter(doc => {
-              const data = doc.data();
-              const fieldValue = data[constraint.field];
-              
-              if (constraint.operator === '==') {
-                return fieldValue === constraint.value;
-              } else if (constraint.operator === 'in') {
-                return constraint.value.includes(fieldValue);
-              }
-              // Add more operators as needed
-              return true;
-            });
-          } else if (constraint.type === 'orderBy') {
-            docs.sort((a, b) => {
-              const aValue = a.data()[constraint.field];
-              const bValue = b.data()[constraint.field];
-              const multiplier = constraint.direction === 'desc' ? -1 : 1;
-              
-              if (aValue < bValue) return -1 * multiplier;
-              if (aValue > bValue) return 1 * multiplier;
-              return 0;
-            });
-          }
-        });
-      }
-      
-      callback({ docs });
-    } catch (error) {
-      if (onError) onError(error);
-    }
-  };
-  
-  // Fetch initial data
-  fetchData();
-  
-  // Set up polling for updates (simulate real-time)
-  const intervalId = setInterval(fetchData, 5000);
-  
-  // Return unsubscribe function
-  return () => {
-    clearInterval(intervalId);
-  };
-};
-
-// Initialize sample data
-initializeSampleData();
-
-// Export individual functions for compatibility
-export const signInWithEmailAndPassword = (email, password) => 
-  mockFirebase.auth.signInWithEmailAndPassword(email, password);
-
-export const signOut = () => mockFirebase.auth.signOut();
-
-export const onAuthStateChanged = (callback) => 
-  mockFirebase.auth.onAuthStateChanged(callback);
-
-// Purchase Order Functions
-export const getPurchaseOrders = async () => {
-  const orders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-  return { success: true, data: orders };
-};
-
-export const addPurchaseOrder = async (order) => {
-  const orders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-  const newOrder = {
-    ...order,
-    id: order.id || `po-${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  orders.push(newOrder);
-  localStorage.setItem('purchaseOrders', JSON.stringify(orders));
-  return { success: true, data: newOrder };
-};
-
-export const updatePurchaseOrder = async (id, updates) => {
-  const orders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-  const index = orders.findIndex(order => order.id === id);
-  
-  if (index === -1) {
-    return { success: false, error: 'Purchase order not found' };
-  }
-  
-  orders[index] = { ...orders[index], ...updates, updatedAt: new Date().toISOString() };
-  localStorage.setItem('purchaseOrders', JSON.stringify(orders));
-  return { success: true, data: orders[index] };
-};
-
-export const deletePurchaseOrder = async (id) => {
-  let orders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-  orders = orders.filter(order => order.id !== id);
-  localStorage.setItem('purchaseOrders', JSON.stringify(orders));
-  return { success: true };
-};
-
-// Proforma Invoice Functions
+// Real Firestore service functions
 export const getProformaInvoices = async () => {
-  const invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-  return { success: true, data: invoices };
+  try {
+    const querySnapshot = await getDocs(collection(db, 'proformaInvoices'));
+    const invoices = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    console.log(`📋 Loaded ${invoices.length} Proforma Invoices from Firestore`);
+    return { success: true, data: invoices };
+  } catch (error) {
+    console.error('Error getting proforma invoices:', error);
+    return { success: false, data: [], error: error.message };
+  }
 };
 
 export const addProformaInvoice = async (invoice) => {
-  console.log('💾 FIREBASE: Adding PI with data:', invoice);
-  console.log('💾 FIREBASE: DocumentId in input:', invoice.documentId);
-  
-  const invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-  
-  // ✅ CRITICAL FIX: Don't use || null - use || undefined to preserve the field
-  const newInvoice = {
-    ...invoice, // This should preserve ALL fields from input
-    id: invoice.id || `pi-${Date.now()}`,
+  try {
+    console.log('💾 FIRESTORE: Adding PI with data:', invoice);
+    console.log('💾 FIRESTORE: DocumentId in input:', invoice.documentId);
     
-    // ✅ PRESERVE document storage fields exactly as received
-    documentId: invoice.documentId, // Don't use || null
-    documentNumber: invoice.documentNumber,
-    documentType: 'pi',
-    hasStoredDocuments: !!invoice.hasStoredDocuments, // Convert to boolean
+    const docData = {
+      ...invoice,
+      // Preserve document storage fields
+      documentId: invoice.documentId,
+      documentNumber: invoice.documentNumber,
+      documentType: 'pi',
+      hasStoredDocuments: !!invoice.hasStoredDocuments,
+      
+      // Optional storage metadata
+      storageInfo: invoice.storageInfo,
+      originalFileName: invoice.originalFileName,
+      fileSize: invoice.fileSize,
+      contentType: invoice.contentType,
+      extractedAt: invoice.extractedAt,
+      storedAt: invoice.storedAt,
+      
+      // Firestore timestamps
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
     
-    // ✅ Optional storage metadata
-    storageInfo: invoice.storageInfo,
-    originalFileName: invoice.originalFileName,
-    fileSize: invoice.fileSize,
-    contentType: invoice.contentType,
-    extractedAt: invoice.extractedAt,
-    storedAt: invoice.storedAt,
+    const docRef = await addDoc(collection(db, 'proformaInvoices'), docData);
     
-    // ✅ Timestamps
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  
-  console.log('💾 FIREBASE: Complete PI object being saved:', {
-    id: newInvoice.id,
-    piNumber: newInvoice.piNumber,
-    documentId: newInvoice.documentId, // ✅ This should NOT be null
-    hasStoredDocuments: newInvoice.hasStoredDocuments,
-    documentIdType: typeof newInvoice.documentId
-  });
-  
-  invoices.push(newInvoice);
-  localStorage.setItem('proformaInvoices', JSON.stringify(invoices));
-  return { success: true, data: newInvoice };
-};
-export const updateProformaInvoice = async (id, updates) => {
-  console.log('💾 FIREBASE: Updating PI with data:', { id, updates });
-  
-  const invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-  const index = invoices.findIndex(inv => inv.id === id);
-  
-  if (index === -1) {
-    return { success: false, error: 'Proforma invoice not found' };
+    const savedInvoice = {
+      id: docRef.id,
+      ...docData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log('💾 FIRESTORE: Complete PI object saved:', {
+      id: savedInvoice.id,
+      piNumber: savedInvoice.piNumber,
+      documentId: savedInvoice.documentId,
+      hasStoredDocuments: savedInvoice.hasStoredDocuments
+    });
+    
+    return { success: true, data: savedInvoice };
+  } catch (error) {
+    console.error('Error adding proforma invoice:', error);
+    return { success: false, error: error.message };
   }
-  
-  // ✅ ENHANCED: Preserve document storage fields during updates
-  const updatedInvoice = { 
-    ...invoices[index], 
-    ...updates, 
+};
+
+export const updateProformaInvoice = async (id, updates) => {
+  try {
+    console.log('💾 FIRESTORE: Updating PI with data:', { id, updates });
     
-    // ✅ CRITICAL: Preserve or update document storage fields
-    documentId: updates.documentId || invoices[index].documentId,
-    documentNumber: updates.documentNumber || invoices[index].documentNumber,
-    documentType: updates.documentType || invoices[index].documentType || 'pi',
-    hasStoredDocuments: updates.hasStoredDocuments !== undefined ? updates.hasStoredDocuments : invoices[index].hasStoredDocuments,
+    const updateData = {
+      ...updates,
+      
+      // Preserve document storage fields during updates
+      documentId: updates.documentId,
+      documentNumber: updates.documentNumber,
+      documentType: updates.documentType || 'pi',
+      hasStoredDocuments: updates.hasStoredDocuments,
+      
+      // Optional storage metadata
+      storageInfo: updates.storageInfo,
+      originalFileName: updates.originalFileName,
+      fileSize: updates.fileSize,
+      contentType: updates.contentType,
+      extractedAt: updates.extractedAt,
+      storedAt: updates.storedAt,
+      
+      updatedAt: serverTimestamp()
+    };
     
-    // ✅ OPTIONAL: Preserve storage metadata
-    storageInfo: updates.storageInfo || invoices[index].storageInfo,
-    originalFileName: updates.originalFileName || invoices[index].originalFileName,
-    fileSize: updates.fileSize || invoices[index].fileSize,
-    contentType: updates.contentType || invoices[index].contentType,
-    extractedAt: updates.extractedAt || invoices[index].extractedAt,
-    storedAt: updates.storedAt || invoices[index].storedAt,
+    const docRef = doc(db, 'proformaInvoices', id);
+    await updateDoc(docRef, updateData);
     
-    updatedAt: new Date().toISOString() 
-  };
-  
-  console.log('💾 FIREBASE: Complete updated PI object:', {
-    id: updatedInvoice.id,
-    piNumber: updatedInvoice.piNumber,
-    documentId: updatedInvoice.documentId,
-    hasStoredDocuments: updatedInvoice.hasStoredDocuments
-  });
-  
-  invoices[index] = updatedInvoice;
-  localStorage.setItem('proformaInvoices', JSON.stringify(invoices));
-  return { success: true, data: updatedInvoice };
+    const result = {
+      id,
+      ...updateData,
+      updatedAt: new Date()
+    };
+    
+    console.log('💾 FIRESTORE: Complete updated PI object:', {
+      id: result.id,
+      piNumber: result.piNumber,
+      documentId: result.documentId,
+      hasStoredDocuments: result.hasStoredDocuments
+    });
+    
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Error updating proforma invoice:', error);
+    return { success: false, error: error.message };
+  }
 };
 
 export const deleteProformaInvoice = async (id) => {
-  let invoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-  invoices = invoices.filter(inv => inv.id !== id);
-  localStorage.setItem('proformaInvoices', JSON.stringify(invoices));
-  return { success: true };
+  try {
+    await deleteDoc(doc(db, 'proformaInvoices', id));
+    console.log(`🗑️ FIRESTORE: Deleted PI ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting proforma invoice:', error);
+    return { success: false, error: error.message };
+  }
 };
 
 export const updateDeliveryStatus = async (id, status) => {
   return updateProformaInvoice(id, { deliveryStatus: status });
 };
 
-// Client Invoice Functions
+// Suppliers
+export const getSuppliers = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'suppliers'));
+    const suppliers = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    console.log(`👥 Loaded ${suppliers.length} suppliers from Firestore`);
+    return { success: true, data: suppliers };
+  } catch (error) {
+    console.error('Error getting suppliers:', error);
+    return { success: false, data: [], error: error.message };
+  }
+};
+
+export const addSupplier = async (supplier) => {
+  try {
+    const docData = {
+      ...supplier,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(collection(db, 'suppliers'), docData);
+    const result = {
+      id: docRef.id,
+      ...docData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log(`👥 Added supplier: ${result.name}`);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Error adding supplier:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateSupplier = async (id, updates) => {
+  try {
+    const updateData = {
+      ...updates,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = doc(db, 'suppliers', id);
+    await updateDoc(docRef, updateData);
+    
+    const result = {
+      id,
+      ...updateData,
+      updatedAt: new Date()
+    };
+    
+    console.log(`👥 Updated supplier: ${id}`);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Error updating supplier:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const deleteSupplier = async (id) => {
+  try {
+    await deleteDoc(doc(db, 'suppliers', id));
+    console.log(`🗑️ Deleted supplier: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting supplier:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Products
+export const getProducts = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'products'));
+    const products = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    console.log(`📦 Loaded ${products.length} products from Firestore`);
+    return { success: true, data: products };
+  } catch (error) {
+    console.error('Error getting products:', error);
+    return { success: false, data: [], error: error.message };
+  }
+};
+
+export const addProduct = async (product) => {
+  try {
+    const docData = {
+      ...product,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(collection(db, 'products'), docData);
+    const result = {
+      id: docRef.id,
+      ...docData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log(`📦 Added product: ${result.name}`);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Error adding product:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateProduct = async (id, updates) => {
+  try {
+    const updateData = {
+      ...updates,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = doc(db, 'products', id);
+    await updateDoc(docRef, updateData);
+    
+    const result = {
+      id,
+      ...updateData,
+      updatedAt: new Date()
+    };
+    
+    console.log(`📦 Updated product: ${id}`);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Error updating product:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const deleteProduct = async (id) => {
+  try {
+    await deleteDoc(doc(db, 'products', id));
+    console.log(`🗑️ Deleted product: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Purchase Orders
+export const getPurchaseOrders = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'purchaseOrders'));
+    const orders = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    console.log(`📋 Loaded ${orders.length} purchase orders from Firestore`);
+    return { success: true, data: orders };
+  } catch (error) {
+    console.error('Error getting purchase orders:', error);
+    return { success: false, data: [], error: error.message };
+  }
+};
+
+export const addPurchaseOrder = async (order) => {
+  try {
+    const docData = {
+      ...order,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(collection(db, 'purchaseOrders'), docData);
+    const result = {
+      id: docRef.id,
+      ...docData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log(`📋 Added purchase order: ${result.poNumber}`);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Error adding purchase order:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const updatePurchaseOrder = async (id, updates) => {
+  try {
+    const updateData = {
+      ...updates,
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = doc(db, 'purchaseOrders', id);
+    await updateDoc(docRef, updateData);
+    
+    const result = {
+      id,
+      ...updateData,
+      updatedAt: new Date()
+    };
+    
+    console.log(`📋 Updated purchase order: ${id}`);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('Error updating purchase order:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const deletePurchaseOrder = async (id) => {
+  try {
+    await deleteDoc(doc(db, 'purchaseOrders', id));
+    console.log(`🗑️ Deleted purchase order: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting purchase order:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Client Invoices
 export const getClientInvoices = async () => {
   try {
-    const invoices = JSON.parse(localStorage.getItem('clientInvoices') || '[]');
+    const querySnapshot = await getDocs(collection(db, 'clientInvoices'));
+    const invoices = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    console.log(`📋 Loaded ${invoices.length} client invoices from Firestore`);
     return { success: true, data: invoices };
   } catch (error) {
     console.error('Error getting client invoices:', error);
@@ -590,16 +432,22 @@ export const getClientInvoices = async () => {
 
 export const addClientInvoice = async (invoice) => {
   try {
-    const invoices = JSON.parse(localStorage.getItem('clientInvoices') || '[]');
-    const newInvoice = {
+    const docData = {
       ...invoice,
-      id: invoice.id || `inv-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     };
-    invoices.push(newInvoice);
-    localStorage.setItem('clientInvoices', JSON.stringify(invoices));
-    return { success: true, data: newInvoice };
+    
+    const docRef = await addDoc(collection(db, 'clientInvoices'), docData);
+    const result = {
+      id: docRef.id,
+      ...docData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log(`📋 Added client invoice: ${result.invoiceNumber}`);
+    return { success: true, data: result };
   } catch (error) {
     console.error('Error adding client invoice:', error);
     return { success: false, error: error.message };
@@ -608,21 +456,22 @@ export const addClientInvoice = async (invoice) => {
 
 export const updateClientInvoice = async (id, updates) => {
   try {
-    const invoices = JSON.parse(localStorage.getItem('clientInvoices') || '[]');
-    const index = invoices.findIndex(inv => inv.id === id);
-    
-    if (index === -1) {
-      return { success: false, error: 'Invoice not found' };
-    }
-    
-    invoices[index] = { 
-      ...invoices[index], 
-      ...updates, 
-      updatedAt: new Date().toISOString() 
+    const updateData = {
+      ...updates,
+      updatedAt: serverTimestamp()
     };
     
-    localStorage.setItem('clientInvoices', JSON.stringify(invoices));
-    return { success: true, data: invoices[index] };
+    const docRef = doc(db, 'clientInvoices', id);
+    await updateDoc(docRef, updateData);
+    
+    const result = {
+      id,
+      ...updateData,
+      updatedAt: new Date()
+    };
+    
+    console.log(`📋 Updated client invoice: ${id}`);
+    return { success: true, data: result };
   } catch (error) {
     console.error('Error updating client invoice:', error);
     return { success: false, error: error.message };
@@ -631,9 +480,8 @@ export const updateClientInvoice = async (id, updates) => {
 
 export const deleteClientInvoice = async (id) => {
   try {
-    let invoices = JSON.parse(localStorage.getItem('clientInvoices') || '[]');
-    invoices = invoices.filter(inv => inv.id !== id);
-    localStorage.setItem('clientInvoices', JSON.stringify(invoices));
+    await deleteDoc(doc(db, 'clientInvoices', id));
+    console.log(`🗑️ Deleted client invoice: ${id}`);
     return { success: true };
   } catch (error) {
     console.error('Error deleting client invoice:', error);
@@ -644,9 +492,14 @@ export const deleteClientInvoice = async (id) => {
 // Get invoices by PO ID
 export const getInvoicesByPOId = async (poId) => {
   try {
-    const invoices = JSON.parse(localStorage.getItem('clientInvoices') || '[]');
-    const filtered = invoices.filter(inv => inv.poId === poId);
-    return { success: true, data: filtered };
+    const q = query(collection(db, 'clientInvoices'), where('poId', '==', poId));
+    const querySnapshot = await getDocs(q);
+    const invoices = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    return { success: true, data: invoices };
   } catch (error) {
     console.error('Error getting invoices by PO:', error);
     return { success: false, data: [], error: error.message };
@@ -656,29 +509,66 @@ export const getInvoicesByPOId = async (poId) => {
 // Update payment status
 export const updateInvoicePaymentStatus = async (id, paymentData) => {
   try {
-    const invoices = JSON.parse(localStorage.getItem('clientInvoices') || '[]');
-    const index = invoices.findIndex(inv => inv.id === id);
-    
-    if (index === -1) {
-      return { success: false, error: 'Invoice not found' };
-    }
-    
-    invoices[index] = {
-      ...invoices[index],
+    const updateData = {
       paymentStatus: paymentData.status,
       paidAmount: paymentData.paidAmount || 0,
       paymentDate: paymentData.paymentDate,
       paymentMethod: paymentData.paymentMethod,
-      updatedAt: new Date().toISOString()
+      updatedAt: serverTimestamp()
     };
     
-    localStorage.setItem('clientInvoices', JSON.stringify(invoices));
-    return { success: true, data: invoices[index] };
+    const docRef = doc(db, 'clientInvoices', id);
+    await updateDoc(docRef, updateData);
+    
+    const result = {
+      id,
+      ...updateData,
+      updatedAt: new Date()
+    };
+    
+    return { success: true, data: result };
   } catch (error) {
     console.error('Error updating payment status:', error);
     return { success: false, error: error.message };
   }
 };
 
-// Export default
-export default mockFirebase;
+// Auth functions
+export {
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail
+};
+
+// Firestore functions  
+export {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
+  serverTimestamp,
+  onSnapshot
+};
+
+// Storage functions
+export {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+  listAll,
+  getMetadata
+};
+
+export default app;
