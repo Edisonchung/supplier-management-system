@@ -950,6 +950,16 @@ const ProformaInvoices = ({ showNotification }) => {
       setSelectedPIs(new Set(filteredPIs.map(pi => pi.id)));
     }
   };
+
+    const handlePISelection = (piId, isSelected) => {
+  const newSelection = new Set(selectedPIs);
+  if (isSelected) {
+    newSelection.add(piId);
+  } else {
+    newSelection.delete(piId);
+  }
+  setSelectedPIs(newSelection);
+};
   // ✅ UPDATED: Enhanced handleSavePI with product sync (PRESERVED)
   const handleSavePI = async (piData) => {
     try {
@@ -1318,6 +1328,18 @@ const ProformaInvoices = ({ showNotification }) => {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
+                {/* NEW: Bulk Selection Column */}
+                {bulkMode && (
+                  <th className="px-4 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={selectedPIs.size === filteredPIs.length && filteredPIs.length > 0}
+                      onChange={handleSelectAll}
+                      className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                      title="Select All"
+                    />
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   PI Number
                 </th>
@@ -1355,7 +1377,7 @@ const ProformaInvoices = ({ showNotification }) => {
                 <React.Fragment key={year}>
                   {groupByYear && (
                     <tr className="bg-gray-50">
-                      <td colSpan="10" className="px-6 py-3 text-sm font-semibold text-gray-900">
+                      <td colSpan={bulkMode ? 11 : 10} className="px-6 py-3 text-sm font-semibold text-gray-900">
                         {year} - {pisByYear[year].length} Proforma Invoices
                       </td>
                     </tr>
@@ -1364,8 +1386,31 @@ const ProformaInvoices = ({ showNotification }) => {
                     .sort((a, b) => new Date(b.date) - new Date(a.date))
                     .map(pi => {
                       const supplier = suppliers.find(s => s.id === pi.supplierId);
+                      const isSelected = selectedPIs.has(pi.id);
+                      
                       return (
-                        <tr key={pi.id}>
+                        <tr 
+                          key={pi.id}
+                          className={`hover:bg-gray-50 transition-colors ${
+                            isSelected ? 'bg-blue-50 ring-1 ring-blue-200' : ''
+                          } ${bulkMode ? 'cursor-pointer' : ''}`}
+                          onClick={bulkMode ? () => handlePISelection(pi.id, !isSelected) : undefined}
+                        >
+                          {/* NEW: Bulk Selection Checkbox */}
+                          {bulkMode && (
+                            <td className="px-4 py-4">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  handlePISelection(pi.id, e.target.checked);
+                                }}
+                                className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                              />
+                            </td>
+                          )}
+                          
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {pi.piNumber}
                           </td>
@@ -1407,44 +1452,53 @@ const ProformaInvoices = ({ showNotification }) => {
                               {pi.paymentStatus || 'pending'}
                             </span>
                           </td>
+                          
+                          {/* Actions Column - Hide individual actions in bulk mode */}
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex justify-end gap-2">
-                              {/* Documents Button */}
-                              {pi.id && (
+                            {!bulkMode && (
+                              <div className="flex justify-end gap-2">
+                                {/* Documents Button */}
+                                {pi.id && (
+                                  <button
+                                    onClick={() => handleViewDocuments(pi)}
+                                    className="text-purple-600 hover:text-purple-900"
+                                    title="View Documents"
+                                  >
+                                    <FileText size={16} />
+                                  </button>
+                                )}
                                 <button
-                                  onClick={() => handleViewDocuments(pi)}
-                                  className="text-purple-600 hover:text-purple-900"
-                                  title="View Documents"
+                                  onClick={() => handleSharePI(pi)}
+                                  className="text-gray-600 hover:text-gray-900"
+                                  title="Share"
                                 >
-                                  <FileText size={16} />
+                                  <Eye size={16} />
                                 </button>
-                              )}
-                              <button
-                                onClick={() => handleSharePI(pi)}
-                                className="text-gray-600 hover:text-gray-900"
-                                title="Share"
-                              >
-                                <Eye size={16} />
-                              </button>
-                              {canEdit && (
-                                <button
-                                  onClick={() => handleEditPI(pi)}
-                                  className="text-blue-600 hover:text-blue-900"
-                                  title="Edit"
-                                >
-                                  <Edit size={16} />
-                                </button>
-                              )}
-                              {canDelete && (
-                                <button
-                                  onClick={() => handleDeletePI(pi.id)}
-                                  className="text-red-600 hover:text-red-900"
-                                  title="Delete"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
-                            </div>
+                                {canEdit && (
+                                  <button
+                                    onClick={() => handleEditPI(pi)}
+                                    className="text-blue-600 hover:text-blue-900"
+                                    title="Edit"
+                                  >
+                                    <Edit size={16} />
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    onClick={() => handleDeletePI(pi.id)}
+                                    className="text-red-600 hover:text-red-900"
+                                    title="Delete"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {bulkMode && (
+                              <div className="text-xs text-gray-500">
+                                {isSelected ? 'Selected' : 'Click to select'}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
