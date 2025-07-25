@@ -109,119 +109,177 @@ const ProformaInvoices = ({ showNotification }) => {
 
   // ✅ NEW: Product Sync Function (PRESERVED)
   const syncPIProductsToDatabase = async (piData, savedPI) => {
+  try {
     console.log('🔄 Syncing PI products to Products database...');
     
-    if (!piData.items || piData.items.length === 0) {
+    if (!piData.items || !Array.isArray(piData.items)) {
       console.log('No items to sync');
       return { synced: 0, created: 0, updated: 0 };
     }
 
-    // Get supplier info
+    const syncStats = { synced: 0, created: 0, updated: 0 };
     const supplier = suppliers.find(s => s.id === piData.supplierId);
-    let syncStats = { synced: 0, created: 0, updated: 0 };
-    
+
     for (const item of piData.items) {
       try {
-        // Check if product already exists by product code
+        // Find existing product by SKU/code
         const existingProduct = products.find(p => 
           p.sku === item.productCode || 
-          p.name === item.productName ||
-          (p.sku && item.productCode && p.sku.toLowerCase() === item.productCode.toLowerCase())
+          p.name === item.productName
         );
 
         if (existingProduct) {
-          // Update existing product with latest supplier pricing
+          // Update existing product
           console.log(`Updating existing product: ${item.productCode}`);
           
+          // Build clean update data - CRITICAL FIX
           const updateData = {
-            ...existingProduct,
-            // Update price if this is a better/newer price
-            price: item.unitPrice || existingProduct.price,
-            unitCost: item.unitPrice || existingProduct.unitCost,
-            unitPrice: item.unitPrice || existingProduct.unitPrice,
-            lastUpdated: new Date().toISOString(),
-            // Add supplier reference if not already linked
-            supplierId: existingProduct.supplierId || piData.supplierId,
-            supplierName: existingProduct.supplierName || supplier?.name,
-            // Track PI references
+            // Core product info
+            name: item.productName || existingProduct.name || 'Unnamed Product',
+            sku: item.productCode || existingProduct.sku || `SKU-${Date.now()}`,
+            description: item.notes || item.specifications || existingProduct.description || '',
+            
+            // Pricing - only include if values exist
+            ...(item.unitPrice !== undefined && item.unitPrice !== null && { 
+              price: parseFloat(item.unitPrice) || 0,
+              unitCost: parseFloat(item.unitPrice) || 0,
+              unitPrice: parseFloat(item.unitPrice) || 0
+            }),
+            
+            // Supplier info - only if available
+            ...(piData.supplierId && { supplierId: piData.supplierId }),
+            ...(supplier?.name && { supplierName: supplier.name }),
+            
+            // Stock management with defaults
+            stock: existingProduct.stock || 0,
+            currentStock: existingProduct.currentStock || 0,
+            minStock: existingProduct.minStock || 1,
+            minStockLevel: existingProduct.minStockLevel || 1,
+            
+            // Categories
+            category: existingProduct.category || detectProductCategory(item.productName) || 'components',
+            ...(item.brand && { brand: item.brand }),
+            
+            // Status
+            status: existingProduct.status || 'active',
+            
+            // Tracking
+            updatedAt: new Date().toISOString(),
+            
+            // PI References - safely merge with existing
             piReferences: [
               ...(existingProduct.piReferences || []),
               {
                 piId: savedPI.id,
                 piNumber: piData.piNumber,
-                unitPrice: item.unitPrice,
-                date: piData.date,
-                supplierName: supplier?.name
+                unitPrice: parseFloat(item.unitPrice) || 0,
+                date: piData.date || new Date().toISOString(),
+                supplierName: supplier?.name || 'Unknown Supplier'
               }
             ].filter((ref, index, arr) => 
-              // Remove duplicates by piId
+              // Remove duplicates based on piId
               arr.findIndex(r => r.piId === ref.piId) === index
-            )
+            ),
+            
+            // Additional fields - only if they exist
+            ...(item.leadTime && { leadTime: item.leadTime }),
+            ...(item.warranty && { warranty: item.warranty }),
+            ...(item.notes && { 
+              notes: `${existingProduct.notes || ''}${existingProduct.notes ? '\n' : ''}Updated from PI: ${piData.piNumber}${item.notes ? '\n' + item.notes : ''}`.trim()
+            })
           };
+
+          // CRITICAL: Remove any undefined or null values before sending to Firestore
+          Object.keys(updateData).forEach(key => {
+            if (updateData[key] === undefined || updateData[key] === null) {
+              delete updateData[key];
+              console.log(`🧹 PRODUCTS: Removed undefined/null field: ${key}`);
+            }
+          });
 
           const result = await updateProduct(existingProduct.id, updateData);
           if (result.success) {
             syncStats.updated++;
             console.log(`✅ Updated product: ${existingProduct.name}`);
+          } else {
+            console.error(`❌ Failed to update product: ${existingProduct.name}`, result.error);
           }
         } else {
           // Create new product from PI item
           console.log(`Creating new product: ${item.productCode}`);
           
+          // Build clean new product data - CRITICAL FIX
           const newProduct = {
+            // Core product info - with safe defaults
             name: item.productName || 'Unnamed Product',
             sku: item.productCode || `SKU-${Date.now()}`,
             description: item.notes || item.specifications || '',
             
-            // Pricing
-            price: item.unitPrice || 0,
-            unitCost: item.unitPrice || 0,
-            unitPrice: item.unitPrice || 0,
+            // Pricing - only include if values exist
+            ...(item.unitPrice !== undefined && item.unitPrice !== null && { 
+              price: parseFloat(item.unitPrice) || 0,
+              unitCost: parseFloat(item.unitPrice) || 0,
+              unitPrice: parseFloat(item.unitPrice) || 0
+            }),
             
-            // Supplier linking
-            supplierId: piData.supplierId,
-            supplierName: supplier?.name || 'Unknown Supplier',
+            // Supplier info - only if available
+            ...(piData.supplierId && { supplierId: piData.supplierId }),
+            ...(supplier?.name && { supplierName: supplier.name }),
             
-            // Stock management
+            // Stock management with safe defaults
             stock: 0,
             currentStock: 0,
             minStock: 1,
             minStockLevel: 1,
             
-            // Categories (try to auto-detect from product name)
-            category: detectProductCategory(item.productName),
-            brand: item.brand || '',
+            // Categories
+            category: detectProductCategory(item.productName) || 'components',
+            ...(item.brand && { brand: item.brand }),
             
             // Status
-            status: 'pending',
+            status: 'active',
             
             // Tracking
             dateAdded: new Date().toISOString(),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             source: 'pi_import',
+            
+            // PI References
             piReferences: [{
               piId: savedPI.id,
               piNumber: piData.piNumber,
-              unitPrice: item.unitPrice,
-              date: piData.date,
-              supplierName: supplier?.name
+              unitPrice: parseFloat(item.unitPrice) || 0,
+              date: piData.date || new Date().toISOString(),
+              supplierName: supplier?.name || 'Unknown Supplier'
             }],
             
-            // Additional fields from PI
-            leadTime: item.leadTime,
-            warranty: item.warranty,
-            notes: `Imported from PI: ${piData.piNumber}${item.notes ? ('\n' + item.notes) : ''}`,
+            // Additional fields - only if they exist
+            ...(item.leadTime && { leadTime: item.leadTime }),
+            ...(item.warranty && { warranty: item.warranty }),
+            ...(item.notes && { 
+              notes: `Imported from PI: ${piData.piNumber}${item.notes ? '\n' + item.notes : ''}`
+            }),
             
-            // Photo and catalog (empty for now)
+            // Empty fields for missing data
             photo: '',
             catalog: ''
           };
+
+          // CRITICAL: Remove any undefined or null values before sending to Firestore
+          Object.keys(newProduct).forEach(key => {
+            if (newProduct[key] === undefined || newProduct[key] === null) {
+              delete newProduct[key];
+              console.log(`🧹 PRODUCTS: Removed undefined/null field: ${key}`);
+            }
+          });
 
           const result = await addProduct(newProduct);
           if (result.success) {
             syncStats.created++;
             console.log(`✅ Created product: ${newProduct.name}`);
+          } else {
+            console.error(`❌ Failed to create product: ${newProduct.name}`, result.error);
           }
         }
         
@@ -240,10 +298,17 @@ const ProformaInvoices = ({ showNotification }) => {
         `Products synced: ${syncStats.created} created, ${syncStats.updated} updated`, 
         'success'
       );
+    } else if (syncStats.synced > 0) {
+      showNotification(`${syncStats.synced} products processed (no changes needed)`, 'info');
     }
     
     return syncStats;
-  };
+  } catch (error) {
+    console.error('Error syncing PI products:', error);
+    showNotification(`Error syncing products: ${error.message}`, 'error');
+    return { synced: 0, created: 0, updated: 0, error: error.message };
+  }
+};
 
   // Helper function to detect product category (PRESERVED)
   const detectProductCategory = (productName) => {
