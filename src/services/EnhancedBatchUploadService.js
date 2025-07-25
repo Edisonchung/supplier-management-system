@@ -22,40 +22,49 @@ class EnhancedBatchUploadService {
    * ✅ NEW: Initialize document storage service
    */
   async initializeDocumentStorage() {
-    if (!this.documentStorageService && typeof window !== 'undefined') {
-      try {
-        // Try different import patterns to handle various module exports
-        let DocumentStorageService;
+  if (!this.documentStorageService && typeof window !== 'undefined') {
+    try {
+      // ✅ UPDATED: Import from the correct path and handle new export structure
+      const module = await import('./DocumentStorageService.js');
+      
+      // Try different export patterns
+      let DocumentStorageService;
+      
+      if (module.DocumentStorageService) {
+        // Named export
+        DocumentStorageService = module.DocumentStorageService;
+      } else if (module.default) {
+        // Default export
+        DocumentStorageService = module.default;
         
-        try {
-          // Try default export
-          const module = await import('./DocumentStorageService');
-          DocumentStorageService = module.default;
-        } catch (e1) {
-          try {
-            // Try named export
-            const module = await import('./DocumentStorageService');
-            DocumentStorageService = module.DocumentStorageService;
-          } catch (e2) {
-            // Try direct import
-            DocumentStorageService = (await import('./DocumentStorageService')).default || 
-                                   (await import('./DocumentStorageService'));
-          }
+        // Check if default export is an instance, not a class
+        if (typeof DocumentStorageService === 'object' && DocumentStorageService.constructor) {
+          // It's already an instance, use it directly
+          this.documentStorageService = DocumentStorageService;
+          console.log('📁 DocumentStorageService instance imported for batch uploads');
+          return;
         }
-        
-        if (DocumentStorageService && typeof DocumentStorageService === 'function') {
-          this.documentStorageService = new DocumentStorageService();
-          console.log('📁 DocumentStorageService initialized for batch uploads');
-        } else {
-          console.warn('⚠️ DocumentStorageService not found or not a constructor');
-        }
-      } catch (error) {
-        console.warn('⚠️ Could not initialize DocumentStorageService:', error);
-        // Fallback: disable document storage for batch uploads
+      }
+      
+      // If we have a constructor, create new instance
+      if (DocumentStorageService && typeof DocumentStorageService === 'function') {
+        this.documentStorageService = new DocumentStorageService();
+        console.log('📁 DocumentStorageService initialized for batch uploads');
+      } else if (DocumentStorageService && typeof DocumentStorageService === 'object') {
+        // It's already an instance
+        this.documentStorageService = DocumentStorageService;
+        console.log('📁 DocumentStorageService instance loaded for batch uploads');
+      } else {
+        console.warn('⚠️ DocumentStorageService not found or not a constructor');
         this.documentStorageService = null;
       }
+    } catch (error) {
+      console.warn('⚠️ Could not initialize DocumentStorageService:', error.message);
+      // Fallback: disable document storage for batch uploads
+      this.documentStorageService = null;
     }
   }
+}
 
   /**
    * Set notification function from component
