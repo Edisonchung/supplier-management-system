@@ -364,37 +364,43 @@ console.log('=== END PRODUCT DEBUG ===');
     return mappedProducts;
   }
   
-  /**
-   * Map Chinese product data
-   */
-  static mapChineseProduct(item, index) {
-    console.log(`Mapping product ${index + 1}:`, item);
+ /**
+ * Map Chinese product data - FIXED VERSION
+ */
+static mapChineseProduct(item, index) {
+  console.log(`Mapping product ${index + 1}:`, item);
+  
+  const mappedItem = {
+    id: `item_${index + 1}`,
     
-    const mappedItem = {
-      id: `item_${index + 1}`,
-      productCode: item.model || item.part_number || item.product_code || item.code || item.item_code || '',
-      partNumber: item.model || item.part_number || item.product_code || item.code || '',
-      productName: item.description || item.product_name || item.name || item.specification || item.item_name || item.title || '',
-      brand: item.brand || item.manufacturer || '',
-      category: this.categorizeProduct(item.description || item.product_name || item.name || ''),
-      quantity: parseFloat(item.quantity || item.qty || item.amount || item.pieces) || 0,
-      unit: item.unit || item.uom || item.measure || 'pcs',
-      unitPrice: this.parseAmount(item.unit_price || item.price || item.rate || item.cost) || 0,
-      totalPrice: this.parseAmount(item.total_price || item.total || item.amount || item.line_total) || 0,
-      hsCode: item.hs_code || item.hscode || item.harmonized_code || '',
-      leadTime: item.lead_time || item.delivery_time || item.shipping_time || '',
-      warranty: item.warranty || item.guarantee || '',
-      specifications: item.specifications || item.spec || item.notes || item.remarks || item.details || ''
-    };
+    // ✅ FIXED: Use the correct field names from backend response
+    productCode: item.productCode || item.model || item.part_number || item.product_code || item.code || item.item_code || '',
+    partNumber: item.productCode || item.model || item.part_number || item.product_code || item.code || '',
+    productName: item.productName || item.description || item.product_name || item.name || item.specification || item.item_name || item.title || '',
     
-    // If total price is missing, calculate it
-    if (!mappedItem.totalPrice && mappedItem.quantity && mappedItem.unitPrice) {
-      mappedItem.totalPrice = mappedItem.quantity * mappedItem.unitPrice;
-    }
+    brand: item.brand || item.manufacturer || '',
+    category: this.categorizeProduct(item.productName || item.description || item.product_name || item.name || ''),
     
-    console.log(`Mapped item ${index + 1}:`, mappedItem);
-    return mappedItem;
+    // ✅ FIXED: Use correct quantity and price fields  
+    quantity: parseFloat(item.quantity || item.qty || item.amount || item.pieces) || 0,
+    unit: item.unit || item.uom || item.measure || 'PCS',
+    unitPrice: this.parseAmount(item.unitPrice || item.unit_price || item.price || item.rate || item.cost) || 0,
+    totalPrice: this.parseAmount(item.totalPrice || item.total_price || item.total || item.amount || item.line_total) || 0,
+    
+    hsCode: item.hs_code || item.hscode || item.harmonized_code || '',
+    leadTime: item.lead_time || item.delivery_time || item.shipping_time || '',
+    warranty: item.warranty || item.guarantee || '',
+    specifications: item.specifications || item.spec || item.notes || item.remarks || item.details || ''
+  };
+  
+  // If total price is missing, calculate it
+  if (!mappedItem.totalPrice && mappedItem.quantity && mappedItem.unitPrice) {
+    mappedItem.totalPrice = mappedItem.quantity * mappedItem.unitPrice;
   }
+  
+  console.log(`✅ Fixed mapped item ${index + 1}:`, mappedItem);
+  return mappedItem;
+}
   
   /**
    * Categorize products based on Chinese supplier types
