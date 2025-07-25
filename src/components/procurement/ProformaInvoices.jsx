@@ -1296,6 +1296,17 @@ const ProformaInvoices = ({ showNotification }) => {
                       onViewDocuments={() => handleViewDocuments(pi)}
                       canEdit={canEdit}
                       canDelete={canDelete}
+                      bulkMode={bulkMode}
+  isSelected={selectedPIs.has(pi.id)}
+  onSelectionChange={(id, selected) => {
+    const newSelection = new Set(selectedPIs);
+    if (selected) {
+      newSelection.add(id);
+    } else {
+      newSelection.delete(id);
+    }
+    setSelectedPIs(newSelection);
+  }}
                     />
                   ))}
               </div>
