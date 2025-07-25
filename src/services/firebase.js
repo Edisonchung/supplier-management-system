@@ -57,6 +57,45 @@ export const storage = getStorage(app);
 
 console.log('🔥 Firebase initialized with Firestore and Storage');
 
+// ✅ ADD: Enhanced connection handling and debugging
+console.log('🔥 Firebase initialized with Firestore and Storage');
+console.log('🔧 Environment:', import.meta.env.VITE_APP_ENV);
+console.log('🔧 Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
+
+// ✅ ADD: Connection retry logic
+const connectWithRetry = async () => {
+  try {
+    // Test Firestore connection with a simple read
+    const testDoc = doc(db, 'test', 'connection');
+    await getDoc(testDoc);
+    console.log('✅ Firestore connection successful');
+  } catch (error) {
+    console.warn('⚠️ Firestore connection issue:', error.code);
+    
+    if (error.code === 'unavailable') {
+      console.log('🔄 Retrying Firestore connection in 5 seconds...');
+      setTimeout(connectWithRetry, 5000);
+    }
+  }
+};
+
+// Test connection after a short delay
+setTimeout(connectWithRetry, 2000);
+
+// ✅ ADD: Enhanced error handling for offline mode
+const handleOfflineMode = () => {
+  window.addEventListener('online', () => {
+    console.log('🌐 Back online - reconnecting to Firestore');
+    connectWithRetry();
+  });
+  
+  window.addEventListener('offline', () => {
+    console.log('📴 Offline mode - Firestore will cache changes');
+  });
+};
+
+handleOfflineMode();
+
 // Real Firestore service functions
 export const getProformaInvoices = async () => {
   try {
