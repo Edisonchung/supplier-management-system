@@ -888,6 +888,90 @@ const ProformaInvoices = ({ showNotification }) => {
     showNotification('Share link copied to clipboard', 'success');
   };
 
+  const handlePaymentProcessed = async (paymentData) => {
+  try {
+    console.log('Processing batch payment data:', paymentData);
+    
+    // Update PIs with payment information
+    let updatedCount = 0;
+    let errorCount = 0;
+    
+    for (const payment of paymentData.payments) {
+      try {
+        const pi = proformaInvoices.find(p => p.id === payment.piId);
+        if (pi) {
+          const newPayment = {
+            id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            amount: parseFloat(payment.amount),
+            date: paymentData.paymentDate,
+            type: 'bank-transfer',
+            reference: paymentData.referenceNumber,
+            bankSlip: paymentData.bankSlip || null,
+            remark: `Bank payment processed from ${paymentData.bankName || 'Bank'}`,
+            createdAt: new Date().toISOString(),
+            // Additional bank payment details
+            exchangeRate: paymentData.exchangeRate || 1,
+            originalCurrency: paymentData.paidCurrency || 'USD',
+            localAmount: paymentData.debitAmount || payment.amount,
+            localCurrency: paymentData.debitCurrency || 'MYR',
+            beneficiaryName: paymentData.beneficiaryName || '',
+            swiftCode: paymentData.swiftCode || ''
+          };
+          
+          const updatedPI = {
+            ...pi,
+            payments: [...(pi.payments || []), newPayment],
+            updatedAt: new Date().toISOString()
+          };
+          
+          // Calculate payment status
+          const totalPaid = updatedPI.payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+          const totalAmount = parseFloat(pi.totalAmount || 0);
+          
+          if (totalPaid >= totalAmount) {
+            updatedPI.paymentStatus = 'paid';
+          } else if (totalPaid > 0) {
+            updatedPI.paymentStatus = 'partial';
+          } else {
+            updatedPI.paymentStatus = 'pending';
+          }
+          
+          const result = await updateProformaInvoice(pi.id, updatedPI);
+          if (result.success) {
+            updatedCount++;
+            console.log(`✅ Updated PI ${pi.piNumber} with payment`);
+          } else {
+            throw new Error(result.error || 'Failed to update PI');
+          }
+        } else {
+          console.warn(`PI not found for payment: ${payment.piId}`);
+          errorCount++;
+        }
+      } catch (error) {
+        console.error(`Error updating PI ${payment.piId}:`, error);
+        errorCount++;
+      }
+    }
+    
+    // Show success notification
+    if (updatedCount > 0) {
+      showNotification(
+        `Batch payment processed successfully! Updated ${updatedCount} PI${updatedCount > 1 ? 's' : ''}${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+        errorCount > 0 ? 'warning' : 'success'
+      );
+    } else {
+      showNotification('No PIs were updated', 'warning');
+    }
+    
+    // Close the modal
+    setShowBatchPaymentModal(false);
+    
+  } catch (error) {
+    console.error('Error processing batch payment:', error);
+    showNotification('Failed to process batch payment', 'error');
+  }
+};
+
   const handleViewDocuments = (pi) => {
     setDocumentsModal({ open: true, pi });
   };
