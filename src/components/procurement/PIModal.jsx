@@ -1,5 +1,5 @@
 // src/components/procurement/PIModal.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
@@ -671,53 +671,53 @@ useEffect(() => {
     }
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-    
-    if (!formData.piNumber) newErrors.piNumber = 'PI Number is required';
-    if (!formData.supplierId && !formData.supplierName) {
-      newErrors.supplierId = 'Supplier is required';
+  const validateForm = useCallback(() => {
+  const newErrors = {};
+  
+  if (!formData.piNumber) newErrors.piNumber = 'PI Number is required';
+  if (!formData.supplierId && !formData.supplierName) {
+    newErrors.supplierId = 'Supplier is required';
+  }
+  if (!formData.date) newErrors.date = 'Date is required';
+  if (selectedProducts.length === 0) newErrors.items = 'At least one item is required';
+  
+  selectedProducts.forEach((item, index) => {
+    if (!item.quantity || item.quantity <= 0) {
+      newErrors[`quantity-${index}`] = 'Valid quantity required';
     }
-    if (!formData.date) newErrors.date = 'Date is required';
-    if (selectedProducts.length === 0) newErrors.items = 'At least one item is required';
-    
-    selectedProducts.forEach((item, index) => {
-      if (!item.quantity || item.quantity <= 0) {
-        newErrors[`quantity-${index}`] = 'Valid quantity required';
-      }
-      if (!item.unitPrice || item.unitPrice <= 0) {
-        newErrors[`price-${index}`] = 'Valid price required';
-      }
-    });
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+    if (!item.unitPrice || item.unitPrice <= 0) {
+      newErrors[`price-${index}`] = 'Valid price required';
+    }
+  });
+  
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+}, [formData.piNumber, formData.supplierId, formData.supplierName, formData.date, selectedProducts]);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) return;
-    
-    // Calculate total if not already set (for manually added items)
-    const calculatedTotal = selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
-    const totalAmount = formData.totalAmount || calculatedTotal;
-    
-    // Check for discrepancies
-    const hasDiscrepancy = selectedProducts.some(item => 
-      item.receivedQty > 0 && item.receivedQty !== item.quantity
-    );
-    
-    // Calculate payment status
-    const totalPaid = formData.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
-    let paymentStatus = 'pending';
-    if (totalPaid >= totalAmount) {
-      paymentStatus = 'paid';
-    } else if (totalPaid > 0) {
-      paymentStatus = 'partial';
-    }
-    
-     // CRITICAL FIX: Preserve ALL document storage fields
+const handleSubmit = useCallback((e) => {
+  e.preventDefault();
+  
+  if (!validateForm()) return;
+  
+  // Calculate total if not already set (for manually added items)
+  const calculatedTotal = selectedProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+  const totalAmount = formData.totalAmount || calculatedTotal;
+  
+  // Check for discrepancies
+  const hasDiscrepancy = selectedProducts.some(item => 
+    item.receivedQty > 0 && item.receivedQty !== item.quantity
+  );
+  
+  // Calculate payment status
+  const totalPaid = formData.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+  let paymentStatus = 'pending';
+  if (totalPaid >= totalAmount) {
+    paymentStatus = 'paid';
+  } else if (totalPaid > 0) {
+    paymentStatus = 'partial';
+  }
+  
+  // CRITICAL FIX: Preserve ALL document storage fields
   const piDataToSave = {
     ...formData,  // This now includes documentId and all storage fields
     items: selectedProducts,
@@ -749,7 +749,7 @@ useEffect(() => {
   });
   
   onSave(piDataToSave);
-  };
+}, [formData, selectedProducts, selectedSupplier, onSave, validateForm]);
 
   const handleAddPayment = () => {
     setShowPaymentModal(true);
@@ -2259,18 +2259,20 @@ const StockReceivingTab = ({
     }
   };
 
-  const openAllocationModal = (item) => {
+  const openAllocationModal = (item, event) => {
+  // Prevent form submission
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   if (!item.receivedQty || item.receivedQty <= 0) {
     showNotification('Please receive items before allocating stock', 'warning');
     return;
   }
 
-  // ✅ Use selectedPI from the broader scope (where you see it in logs)
-  // You'll need to pass selectedPI down to StockReceivingTab or access it differently
-  const actualPiId = "pi-1752515534915"; // ✅ TEMPORARY HARDCODE for testing
-  
-  // ✅ OR find where selectedPI is available and use:
-  // const actualPiId = selectedPI?.id || pi.piNumber;
+  // ✅ FIXED: Use the correct PI ID from props
+  const actualPiId = pi.id || pi.piNumber || `temp-${Date.now()}`;
   
   console.log('🎯 Opening allocation modal with PI ID:', actualPiId);
   
