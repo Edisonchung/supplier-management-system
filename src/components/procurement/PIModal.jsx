@@ -450,33 +450,31 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   }, [proformaInvoice]);
 
   // ✅ ENHANCED useEffect for Real-time Total Calculation with Validation
-  useEffect(() => {
-    if (selectedProducts && selectedProducts.length > 0) {
-      const validatedData = validatePITotals(formData, selectedProducts, false);
-      
-      // Only update if there's a meaningful change
-      if (Math.abs(validatedData.totalAmount - (formData.totalAmount || 0)) > 0.01) {
-        setFormData(prev => ({
-          ...prev,
-          subtotal: validatedData.subtotal,
-          totalAmount: validatedData.totalAmount
-        }));
-      }
-    }
-  }, [selectedProducts, formData.discount, formData.shipping, formData.tax]);
+  const calculatedTotals = useMemo(() => {
+  if (selectedProducts && selectedProducts.length > 0) {
+    return validatePITotals(formData, selectedProducts, false);
+  }
+  return { subtotal: 0, totalAmount: 0 };
+}, [selectedProducts, formData.discount, formData.shipping, formData.tax]);
+
+// Update totals only when calculated values actually change
+useEffect(() => {
+  if (Math.abs(calculatedTotals.totalAmount - (formData.totalAmount || 0)) > 0.01) {
+    setFormData(prev => ({
+      ...prev,
+      subtotal: calculatedTotals.subtotal,
+      totalAmount: calculatedTotals.totalAmount
+    }));
+  }
+}, [calculatedTotals.subtotal, calculatedTotals.totalAmount]);
 
   // ✅ Debug useEffect to monitor document storage fields
   useEffect(() => {
-    if (formData.documentId) {
-      console.log('🎯 PIModal: FormData document storage fields updated:', {
-        documentId: formData.documentId,
-        hasStoredDocuments: formData.hasStoredDocuments,
-        originalFileName: formData.originalFileName,
-        documentType: formData.documentType,
-        storageInfo: !!formData.storageInfo
-      });
-    }
-  }, [formData.documentId, formData.hasStoredDocuments, formData.originalFileName]);
+  console.log('🎯 PIModal: Document storage debug:', {
+    documentId: formData.documentId,
+    hasStoredDocuments: formData.hasStoredDocuments
+  });
+}, [formData.documentId]); // Only trigger when documentId actually changes
 
   // ✅ Debug useEffect to monitor props changes
   useEffect(() => {
@@ -2188,7 +2186,9 @@ const StockReceivingTab = ({
   });
 
   // Log the actual PI structure
-  console.log('🔍 PI Object Structure:', pi);
+  useEffect(() => {
+  console.log('🔍 PI Object Structure:', pi?.id, pi?.piNumber);
+}, [pi?.id]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [receivingForm, setReceivingForm] = useState({});
