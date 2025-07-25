@@ -119,25 +119,25 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Get or create user document in Firestore
+  // Get or create user document in Firestore - FIXED VERSION
   const getUserDocument = async (firebaseUser) => {
     const userRef = doc(db, 'users', firebaseUser.uid);
     const userSnap = await getDoc(userRef);
     
     if (userSnap.exists()) {
-      // Update last login
+      // Update last login - FIXED: Handle undefined photoURL properly
       const updateData = {
-  lastLogin: serverTimestamp(),
-  displayName: firebaseUser.displayName || userSnap.data().displayName
-};
+        lastLogin: serverTimestamp(),
+        displayName: firebaseUser.displayName || userSnap.data().displayName
+      };
 
-// Only include photoURL if it has a valid value (not null or undefined)
-const photoURL = firebaseUser.photoURL || userSnap.data().photoURL;
-if (photoURL !== null && photoURL !== undefined) {
-  updateData.photoURL = photoURL;
-}
+      // Only include photoURL if it has a valid value (not null or undefined)
+      const photoURL = firebaseUser.photoURL || userSnap.data().photoURL;
+      if (photoURL !== null && photoURL !== undefined) {
+        updateData.photoURL = photoURL;
+      }
 
-await updateDoc(userRef, updateData);
+      await updateDoc(userRef, updateData);
       return { ...userSnap.data(), lastLogin: new Date() };
     } else {
       // Create new user document
