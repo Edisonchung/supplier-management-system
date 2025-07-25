@@ -451,6 +451,20 @@ class EnhancedBatchUploadService {
           fileItem.result = result;
           fileItem.progress = 100;
           fileItem.completedAt = new Date().toISOString();
+          
+          // ✅ CRITICAL FIX: Store extracted data including document storage
+          if (result.data) {
+            fileItem.extractedData = result.data;
+            
+            // Store document storage information if available
+            if (result.data.documentStorage) {
+              fileItem.documentStorage = result.data.documentStorage;
+            }
+            if (result.data.extractionMetadata) {
+              fileItem.extractionMetadata = result.data.extractionMetadata;
+            }
+          }
+          
           batch.successfulFiles++;
           batch.results.push(result);
 
@@ -491,7 +505,7 @@ class EnhancedBatchUploadService {
   }
 
   /**
-   * Handle messages from Web Worker
+   * ✅ FIXED: Handle messages from Web Worker with proper document storage preservation
    */
   handleWorkerMessage(queueKey, message) {
     const { type, payload } = message;
@@ -521,9 +535,27 @@ class EnhancedBatchUploadService {
         const completedFile = batch.files[payload.fileIndex];
         if (completedFile) {
           completedFile.status = 'completed';
-          completedFile.result = payload.result;
           completedFile.progress = 100;
           completedFile.completedAt = new Date().toISOString();
+          
+          // ✅ CRITICAL FIX: Store the complete result including document storage info
+          completedFile.result = payload.result;
+          
+          // ✅ FIX: Ensure extracted data includes document storage information
+          if (payload.result && payload.result.success && payload.result.data) {
+            // Store the raw extracted data for batch completion processing
+            completedFile.extractedData = payload.result.data;
+            
+            // ✅ CRITICAL: Preserve document storage metadata if it exists
+            if (payload.result.data.documentStorage) {
+              completedFile.documentStorage = payload.result.data.documentStorage;
+            }
+            
+            if (payload.result.data.extractionMetadata) {
+              completedFile.extractionMetadata = payload.result.data.extractionMetadata;
+            }
+          }
+          
           batch.successfulFiles++;
           batch.results.push(payload.result);
           
@@ -919,7 +951,7 @@ class EnhancedBatchUploadService {
   }
 
   /**
-   * Get all active batches (compatible with existing components)
+   * ✅ FIXED: Get all active batches with proper document storage information
    */
   getActiveBatches() {
     const batches = [];
@@ -936,12 +968,18 @@ class EnhancedBatchUploadService {
         files: batch.files.map(f => ({
           id: f.id,
           name: f.name,
-          fileName: f.name, // ✅ NEW: Add fileName for compatibility
+          fileName: f.name, // For compatibility
           status: f.status,
           progress: f.progress,
           error: f.error,
-          extractedData: f.result?.data
+          // ✅ CRITICAL FIX: Include complete extracted data with document storage
+          extractedData: f.extractedData || f.result?.data,
+          documentStorage: f.documentStorage,
+          extractionMetadata: f.extractionMetadata,
+          result: f.result
         })),
+        progress: batch.totalFiles > 0 ? 
+          Math.round((batch.processedFiles / batch.totalFiles) * 100) : 0,
         processingMethod: batch.processingMethod,
         createdAt: batch.createdAt,
         startedAt: batch.startedAt,
