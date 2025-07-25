@@ -11,6 +11,8 @@ import { CacheService } from './CacheService';
 // Import processors
 import { ClientPOProcessor } from './processors/ClientPOProcessor';
 import { SupplierPIProcessor } from './processors/SupplierPIProcessor';
+import { BankPaymentSlipProcessor } from './processors/BankPaymentSlipProcessor'; 
+
 
 // Import utilities
 import { EXTRACTION_SETTINGS } from './config';
@@ -971,6 +973,7 @@ export class AIExtractionService {
       //supplier_proforma: SupplierPIProcessor,
       //supplier_invoice: SupplierPIProcessor, // Using same processor for now
       //supplier_quotation: SupplierPIProcessor,
+      bank_payment_slip: BankPaymentSlipProcessor,
       unknown: null
     };
     
@@ -1241,6 +1244,34 @@ async extractPIWithStorage(file) {
       let preDetectedType = null;
 let confidence = 0.9;
 
+      // NEW: Bank Payment Slip Detection - ADD THIS BLOCK
+const textContent = JSON.stringify(rawData).toLowerCase();
+const bankIndicators = [
+  'cross border payment',
+  'payment advice', 
+  'remittance advice',
+  'wire transfer',
+  'international transfer',
+  'hong leong bank',
+  'maybank',
+  'cimb bank',
+  'rhb bank',
+  'public bank',
+  'reference number',
+  'beneficiary bank',
+  'swift code',
+  'debit amount',
+  'payment amount',
+  'exchange rate'
+];
+
+const bankScore = bankIndicators.filter(indicator => textContent.includes(indicator)).length;
+if (bankScore >= 3) {
+  preDetectedType = 'bank_payment_slip';
+  confidence = Math.min(0.6 + (bankScore * 0.1), 0.95);
+  console.log(`✅ PRE-DETECTED: Bank Payment Slip (score: ${bankScore})`);
+}
+
 // PRIORITY CHECK: PTP Client Purchase Order Detection
 const ptpDetection = PTPClientPODetector.detectPTPClientPO(rawData);
 if (ptpDetection.isClientPO) {
@@ -1436,7 +1467,22 @@ if (ptpDetection.isClientPO) {
       // Step 5: Enhanced processing based on document type
       let processedData;
 
-if (docType.type === 'client_purchase_order') {
+if (docType.type === 'bank_payment_slip') {
+  // 🏦 NEW: Process Bank Payment Slip
+  console.log('Processing Bank Payment Slip from:', 
+    rawData.data?.bank_name || rawData.bank_name || 'Unknown Bank');
+  
+  try {
+    processedData = await BankPaymentSlipProcessor.process(rawData, file);
+    console.log('✅ Successfully processed Bank Payment Slip:', processedData.referenceNumber);
+  } catch (error) {
+    console.error('❌ Bank payment slip processing failed:', error);
+    throw new Error(`Bank payment slip processing failed: ${error.message}`);
+  }
+  
+} else if (docType.type === 'client_purchase_order') {
+
+  
   // NEW: Process Client Purchase Order (like PTP)
   console.log('Processing Client Purchase Order from:', 
     rawData.data?.purchase_order?.supplier?.name || 'Unknown Client');
@@ -2501,6 +2547,163 @@ parsePrice(priceValue) {
     return instance.extractPIWithStorage(file);
   }
 
+  // 🏦 ADD THESE NEW BANK PAYMENT METHODS HERE:
+  /**
+   * Extract bank payment slip - NEW METHOD
+   */
+  static async extractBankPaymentSlip(file) {
+    const instance = new AIExtractionService();
+    
+    try {
+      console.log('🏦 Extracting bank payment slip:', file.name);
+      
+      // Validate file first
+      const validation = instance.validateFile(file);
+      if (!validation.isValid) {
+        throw new Error(validation.error);
+      }
+      
+      // Use the main extraction method
+      const result = await instance.extractFromFile(file);
+      
+      if (result.success && result.data.documentType === 'bank_payment_slip') {
+        return result;
+      } else {
+        // Force bank payment processing if auto-detection failed
+        console.log('🔄 Auto-detection failed, forcing bank payment slip processing...');
+        
+        const rawData = await instance.extractRawData(file);
+        const processedData = await BankPaymentSlipProcessor.process(rawData, file);
+        
+        return {
+          success: true,
+          data: processedData,
+          confidence: 0.8,
+          metadata: {
+            fileName: file.name,
+            fileSize: file.size,
+            documentType: 'bank_payment_slip',
+            forcedProcessing: true,
+            extractedAt: new Date().toISOString()
+          }
+        };
+      }
+    } catch (error) {
+      console.error('❌ Bank payment slip extraction failed:', error);
+      
+      // Development fallback with mock data
+      if (import.meta.env.MODE === 'development' || import.meta.env.VITE_USE_MOCK_DATA === 'true') {
+        console.log('🔄 Using mock bank payment data for development');
+        return {
+          success: true,
+          data: AIExtractionService.getMockBankPaymentData(file),
+          confidence: 0.9,
+          metadata: {
+            fileName: file.name,
+            fileSize: file.size,
+            documentType: 'bank_payment_slip',
+            mockData: true,
+            extractedAt: new Date().toISOString()
+          }
+        };
+      }
+      
+      return {
+        success: false,
+        error: error.message,
+        data: null,
+        metadata: {
+          fileName: file.name,
+          fileSize: file.size,
+          errorType: 'bank_payment_extraction_failed'
+        }
+      };
+    }
+  }
+
+  /**
+   * Generate mock bank payment data for development
+   */
+  static getMockBankPaymentData(file) {
+    // Array of different mock scenarios for testing
+    const scenarios = [
+      {
+        referenceNumber: 'C776010725152519',
+        paidAmount: 5796.00,
+        debitAmount: 25757.42,
+        exchangeRate: 4.4449,
+        beneficiaryName: 'HENGSHUI ANZHISHUN TECHNOLOGY CO.,LTD'
+      },
+      {
+        referenceNumber: 'C887021025163428',
+        paidAmount: 3200.00,
+        debitAmount: 14208.00,
+        exchangeRate: 4.44,
+        beneficiaryName: 'BEIJING ELECTRONICS CO LTD'
+      },
+      {
+        referenceNumber: 'C998031125174537',
+        paidAmount: 8750.00,
+        debitAmount: 38875.00,
+        exchangeRate: 4.44,
+        beneficiaryName: 'SHENZHEN TECH SOLUTIONS LIMITED'
+      }
+    ];
+
+    // Randomly pick a scenario
+    const scenario = scenarios[Math.floor(Math.random() * scenarios.length)];
+
+    return {
+      documentType: 'bank_payment_slip',
+      fileName: file.name,
+      extractedAt: new Date().toISOString(),
+      
+      // Transaction details
+      referenceNumber: scenario.referenceNumber,
+      transactionId: `TXN${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+      paymentDate: new Date().toISOString().split('T')[0],
+      makerDate: new Date().toISOString().split('T')[0],
+      
+      // Bank information
+      bankName: 'Hong Leong Bank',
+      branchName: 'KEPALA BATAS BRANCH',
+      accountNumber: '17301010259',
+      accountName: 'FLOW SOLUTION SDN BH',
+      
+      // Payment amounts
+      paidCurrency: 'USD',
+      paidAmount: scenario.paidAmount,
+      debitCurrency: 'MYR',
+      debitAmount: scenario.debitAmount,
+      exchangeRate: scenario.exchangeRate,
+      
+      // Beneficiary details
+      beneficiaryName: scenario.beneficiaryName,
+      beneficiaryBank: 'JPMorgan Chase Bank NA',
+      beneficiaryAccount: '63001397989',
+      beneficiaryCountry: 'HONG KONG',
+      beneficiaryAddress: 'HENGSHUI CITY, HEBEI PROVINCE, CHINA (MAINLAND)',
+      
+      // Additional details
+      bankCharges: 50.00,
+      totalCost: scenario.debitAmount + 50.00,
+      swiftCode: 'CHASHKHHXXX',
+      status: 'Sent to Bank',
+      paymentPurpose: '300-Goods',
+      chargeBearer: 'OUR',
+      createdBy: 'CHUNG YOOK FONG',
+      
+      // Validation results
+      validation: {
+        isValid: true,
+        errors: [],
+        warnings: []
+      },
+      confidence: 0.92
+    };
+  }
+
+
   static async getStoredDocuments(documentId, documentType) {
     const instance = new AIExtractionService();
     return instance.getStoredDocuments(documentId, documentType);
@@ -2518,12 +2721,18 @@ parsePrice(priceValue) {
     return {
       supportedFormats: EXTRACTION_SETTINGS.supportedFormats,
       maxFileSize: EXTRACTION_SETTINGS.maxFileSize,
-      documentTypes: Object.keys(new AIExtractionService().processors),
+      documentTypes: [
+      'client_purchase_order',
+      'supplier_proforma', 
+      'bank_payment_slip', // ← ADD THIS LINE
+      'unknown'
+    ],
       features: [
         'OCR support for scanned documents',
         'Multi-format extraction (PDF, Images, Excel, Email)',
         'Automatic document type detection',
         'Enhanced Chinese supplier PI optimization',
+        'Bank payment slip processing',
         'Smart document type correction',
         'Pre-detection for common structures',
         'Duplicate detection',
