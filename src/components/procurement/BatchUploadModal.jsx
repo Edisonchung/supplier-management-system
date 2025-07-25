@@ -217,6 +217,24 @@ const BatchUploadModal = ({
     }
   };
 
+  // ✅ NEW: Clear processed files (for debugging/admin)
+  const clearProcessedFiles = () => {
+    if (window.confirm('This will allow the same files to be processed again. Continue?')) {
+      enhancedBatchUploadService.clearProcessedFiles();
+      showNotification('Processed files cleared - you can now reprocess the same files', 'info');
+    }
+  };
+
+  // ✅ NEW: Clear everything (for debugging/admin)
+  const clearAll = () => {
+    if (window.confirm('This will clear all processing history. Continue?')) {
+      setProcessedBatches(new Set());
+      localStorage.removeItem('processedBatches');
+      enhancedBatchUploadService.clearProcessedFiles();
+      showNotification('All processing history cleared', 'info');
+    }
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
@@ -292,13 +310,27 @@ const BatchUploadModal = ({
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">Batch Upload - PROFORMA INVOICE</h2>
           <div className="flex items-center space-x-2">
-            {/* ✅ DEBUG: Add button to clear processed batches */}
+            {/* ✅ DEBUG: Add buttons to clear processed data */}
             <button
               onClick={clearProcessedBatches}
               className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300"
-              title="Clear processed batches (Debug)"
+              title="Clear processed batches (allows re-saving to database)"
             >
-              Clear Processed
+              Clear Batches
+            </button>
+            <button
+              onClick={clearProcessedFiles}
+              className="text-xs bg-yellow-200 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-300"
+              title="Clear processed files (allows reprocessing same files)"
+            >
+              Clear Files
+            </button>
+            <button
+              onClick={clearAll}
+              className="text-xs bg-red-200 text-red-700 px-2 py-1 rounded hover:bg-red-300"
+              title="Clear all processing history"
+            >
+              Clear All
             </button>
             <button
               onClick={onClose}
