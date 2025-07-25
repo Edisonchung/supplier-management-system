@@ -24,11 +24,35 @@ class EnhancedBatchUploadService {
   async initializeDocumentStorage() {
     if (!this.documentStorageService && typeof window !== 'undefined') {
       try {
-        const { default: DocumentStorageService } = await import('./DocumentStorageService');
-        this.documentStorageService = new DocumentStorageService();
-        console.log('📁 DocumentStorageService initialized for batch uploads');
+        // Try different import patterns to handle various module exports
+        let DocumentStorageService;
+        
+        try {
+          // Try default export
+          const module = await import('./DocumentStorageService');
+          DocumentStorageService = module.default;
+        } catch (e1) {
+          try {
+            // Try named export
+            const module = await import('./DocumentStorageService');
+            DocumentStorageService = module.DocumentStorageService;
+          } catch (e2) {
+            // Try direct import
+            DocumentStorageService = (await import('./DocumentStorageService')).default || 
+                                   (await import('./DocumentStorageService'));
+          }
+        }
+        
+        if (DocumentStorageService && typeof DocumentStorageService === 'function') {
+          this.documentStorageService = new DocumentStorageService();
+          console.log('📁 DocumentStorageService initialized for batch uploads');
+        } else {
+          console.warn('⚠️ DocumentStorageService not found or not a constructor');
+        }
       } catch (error) {
         console.warn('⚠️ Could not initialize DocumentStorageService:', error);
+        // Fallback: disable document storage for batch uploads
+        this.documentStorageService = null;
       }
     }
   }
@@ -598,7 +622,7 @@ class EnhancedBatchUploadService {
           data, 
           fileName, 
           originalFile, 
-          storeDocuments
+          storeDocuments && this.documentStorageService // Only if service is available
         );
         
         // Get existing PIs from localStorage
@@ -693,7 +717,7 @@ class EnhancedBatchUploadService {
           documentId
         );
         
-        if (storageResult.success) {
+        if (storageResult && storageResult.success) {
           documentStorageFields = {
             documentId: documentId,
             documentNumber: piNumber,
@@ -709,10 +733,11 @@ class EnhancedBatchUploadService {
           
           console.log('✅ Document stored successfully for batch upload:', documentId);
         } else {
-          console.warn('⚠️ Document storage failed for batch upload:', storageResult.error);
+          console.warn('⚠️ Document storage failed for batch upload:', storageResult?.error || 'Unknown error');
         }
       } catch (error) {
         console.error('❌ Error storing document for batch upload:', error);
+        // Continue without document storage
       }
     }
     
@@ -721,7 +746,8 @@ class EnhancedBatchUploadService {
       documentStorageFields = {
         extractedFrom: fileName,
         extractedAt: new Date().toISOString(),
-        hasExtractedData: true
+        hasExtractedData: true,
+        hasStoredDocuments: false // Explicitly set to false when no documents stored
       };
     }
     
