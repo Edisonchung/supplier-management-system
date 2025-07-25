@@ -1,5 +1,5 @@
 // src/components/procurement/BatchUploadModal.jsx
-// FINAL FIX - Properly prevent multiple batch processing with DocumentId fix
+// ENHANCED VERSION - With comprehensive debug logging and document storage support
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
@@ -51,10 +51,9 @@ const BatchUploadModal = ({
     }
   }, []);
 
-  // ✅ CRITICAL FIX: Updated batch completion handler with document storage support
+  // ✅ ENHANCED: Batch completion handler with extensive debugging
   useEffect(() => {
     const handleBatchComplete = async (batchId) => {
-      // ✅ Check if this batch has already been processed using ref
       if (processedBatchesRef.current.has(batchId)) {
         console.log('⚠️ Batch already processed, skipping:', batchId);
         return;
@@ -62,12 +61,9 @@ const BatchUploadModal = ({
 
       console.log('🎉 Processing completed batch for first time:', batchId);
       
-      // ✅ IMMEDIATELY mark as processed to prevent re-entry
       processedBatchesRef.current.add(batchId);
       const newProcessedBatches = new Set(processedBatchesRef.current);
       setProcessedBatchesDisplay(newProcessedBatches);
-      
-      // Persist to localStorage immediately
       localStorage.setItem('processedBatches', JSON.stringify([...newProcessedBatches]));
       
       try {
@@ -77,7 +73,6 @@ const BatchUploadModal = ({
           return;
         }
 
-        // Get all successful extractions
         const successfulFiles = batch.files.filter(f => 
           f.status === 'completed' && f.extractedData
         );
@@ -94,26 +89,57 @@ const BatchUploadModal = ({
 
         for (const file of successfulFiles) {
           try {
-            // ✅ DEBUG: Log the file data structure
-            console.log('🔍 Processing file for PI conversion:', {
+            // ✅ CRITICAL DEBUG: Log the complete file structure
+            console.log('🔍 COMPLETE FILE STRUCTURE:', {
               fileName: file.fileName,
+              status: file.status,
               hasExtractedData: !!file.extractedData,
               hasDocumentStorage: !!file.documentStorage,
               hasExtractionMetadata: !!file.extractionMetadata,
-              extractedDataKeys: file.extractedData ? Object.keys(file.extractedData) : []
+              hasResult: !!file.result,
+              fileKeys: Object.keys(file),
+              extractedDataKeys: file.extractedData ? Object.keys(file.extractedData) : [],
+              documentStorageData: file.documentStorage,
+              extractionMetadataData: file.extractionMetadata,
+              resultData: file.result?.data ? Object.keys(file.result.data) : []
             });
             
-            // ✅ CRITICAL FIX: Merge document storage information into extracted data
+            // ✅ CRITICAL DEBUG: Check what's in the extracted data
+            if (file.extractedData) {
+              console.log('🔍 EXTRACTED DATA DETAILS:', {
+                hasDocumentStorage: !!file.extractedData.documentStorage,
+                hasExtractionMetadata: !!file.extractedData.extractionMetadata,
+                documentId: file.extractedData.documentId,
+                rootKeys: Object.keys(file.extractedData)
+              });
+            }
+            
+            // ✅ Build enhanced data with all possible sources
             const enhancedExtractedData = {
               ...file.extractedData,
-              // Include document storage information if available
               ...(file.documentStorage && { documentStorage: file.documentStorage }),
-              ...(file.extractionMetadata && { extractionMetadata: file.extractionMetadata })
+              ...(file.extractionMetadata && { extractionMetadata: file.extractionMetadata }),
+              ...(file.result?.data?.documentStorage && { documentStorage: file.result.data.documentStorage }),
+              ...(file.result?.data?.extractionMetadata && { extractionMetadata: file.result.data.extractionMetadata })
             };
+            
+            console.log('🔍 ENHANCED DATA STRUCTURE:', {
+              hasDocumentStorage: !!enhancedExtractedData.documentStorage,
+              hasExtractionMetadata: !!enhancedExtractedData.extractionMetadata,
+              documentId: enhancedExtractedData.documentId,
+              documentStorageDocumentId: enhancedExtractedData.documentStorage?.documentId,
+              extractionMetadataDocumentId: enhancedExtractedData.extractionMetadata?.documentId
+            });
             
             const piData = await convertExtractedDataToPI(enhancedExtractedData, file.fileName);
             
-            // ✅ Save to database
+            console.log('🔍 FINAL PI DATA BEFORE SAVE:', {
+              piNumber: piData.piNumber,
+              documentId: piData.documentId,
+              hasStoredDocuments: piData.hasStoredDocuments,
+              documentType: piData.documentType
+            });
+            
             const result = await addProformaInvoice(piData);
             
             if (result && result.success !== false) {
@@ -128,7 +154,6 @@ const BatchUploadModal = ({
           }
         }
 
-        // Show final notification
         if (savedCount > 0) {
           showNotification(
             `Successfully imported ${savedCount} proforma invoice(s) to your database!`,
@@ -149,23 +174,37 @@ const BatchUploadModal = ({
       }
     };
 
-    // ✅ FIXED: Only check for newly completed batches
     for (const batch of activeBatches) {
       if (batch.status === 'completed' && !processedBatchesRef.current.has(batch.id)) {
-        // Use setTimeout to prevent multiple rapid calls
         setTimeout(() => handleBatchComplete(batch.id), 100);
       }
     }
 
-  }, [activeBatches.map(b => `${b.id}-${b.status}`).join(',')]); // ✅ Only trigger when completion status changes
+  }, [activeBatches.map(b => `${b.id}-${b.status}`).join(',')]);
 
-  // ✅ CRITICAL FIX: Enhanced convertExtractedDataToPI with document storage support
+  // ✅ ENHANCED: convertExtractedDataToPI with extensive debugging
   const convertExtractedDataToPI = async (extractedData, fileName) => {
+    console.log('🔧 convertExtractedDataToPI called with:', {
+      fileName,
+      hasExtractedData: !!extractedData,
+      extractedDataKeys: extractedData ? Object.keys(extractedData) : [],
+      hasDocumentStorage: !!extractedData?.documentStorage,
+      hasExtractionMetadata: !!extractedData?.extractionMetadata,
+      documentId: extractedData?.documentId,
+      documentStorageDocumentId: extractedData?.documentStorage?.documentId
+    });
+
     const data = extractedData.proforma_invoice || extractedData;
     
-    // Find or create supplier
+    // Find or create supplier with debugging
     let supplierId = '';
     let supplierName = data.supplier?.name || data.supplierName || 'Unknown Supplier';
+    
+    console.log('🔍 Supplier processing:', {
+      originalSupplierName: supplierName,
+      hasSuppliers: !!suppliers,
+      supplierCount: suppliers?.length || 0
+    });
     
     if (supplierName && supplierName !== 'Unknown Supplier') {
       const existingSupplier = suppliers.find(s => 
@@ -176,6 +215,7 @@ const BatchUploadModal = ({
       if (existingSupplier) {
         supplierId = existingSupplier.id;
         supplierName = existingSupplier.name;
+        console.log('✅ Found existing supplier:', supplierName);
       } else if (addSupplier) {
         try {
           const newSupplierData = {
@@ -187,10 +227,12 @@ const BatchUploadModal = ({
             createdAt: new Date().toISOString()
           };
           
+          console.log('🔧 Creating new supplier:', newSupplierData);
+          
           const result = await addSupplier(newSupplierData);
           if (result && (result.success !== false)) {
             supplierId = result.data?.id || result.id || result;
-            console.log('✅ Created new supplier:', supplierName);
+            console.log('✅ Created new supplier:', supplierName, 'with ID:', supplierId);
           }
         } catch (error) {
           console.warn('Failed to create supplier, proceeding without:', error);
@@ -198,7 +240,6 @@ const BatchUploadModal = ({
       }
     }
 
-    // ✅ CRITICAL FIX: Build the PI data with proper document storage mapping
     const piData = {
       piNumber: data.pi_number || data.piNumber || `PI-${Date.now()}`,
       date: data.date || new Date().toISOString().split('T')[0],
@@ -229,10 +270,11 @@ const BatchUploadModal = ({
       }
     };
 
-    // ✅ CRITICAL FIX: Map document storage information from multiple possible sources
+    // ✅ ENHANCED DOCUMENT STORAGE MAPPING WITH EXTENSIVE DEBUGGING
+    console.log('🔧 Checking for document storage sources:');
     
-    // Priority 1: Check for documentStorage (newer format)
     if (extractedData.documentStorage) {
+      console.log('✅ Found documentStorage:', extractedData.documentStorage);
       piData.documentId = extractedData.documentStorage.documentId;
       piData.documentNumber = extractedData.documentStorage.documentNumber;
       piData.documentType = 'pi';
@@ -242,43 +284,47 @@ const BatchUploadModal = ({
       piData.contentType = extractedData.documentStorage.originalFile?.contentType;
       piData.extractedAt = extractedData.documentStorage.storedAt;
       piData.storageInfo = extractedData.documentStorage;
-      
       console.log('✅ Mapped document storage from documentStorage:', piData.documentId);
     }
-    // Priority 2: Check for extractionMetadata (fallback)
     else if (extractedData.extractionMetadata) {
+      console.log('✅ Found extractionMetadata:', extractedData.extractionMetadata);
       piData.documentId = extractedData.extractionMetadata.documentId;
       piData.documentNumber = extractedData.extractionMetadata.documentNumber;
       piData.documentType = 'pi';
-      piData.hasStoredDocuments = false; // Metadata only, no stored documents
+      piData.hasStoredDocuments = false;
       piData.originalFileName = extractedData.extractionMetadata.originalFileName;
       piData.fileSize = extractedData.extractionMetadata.fileSize;
       piData.contentType = extractedData.extractionMetadata.contentType;
       piData.extractedAt = extractedData.extractionMetadata.extractedAt;
-      
       console.log('✅ Mapped document storage from extractionMetadata:', piData.documentId);
     }
-    // Priority 3: Check root level for documentId (legacy support)
     else if (extractedData.documentId) {
+      console.log('✅ Found root documentId:', extractedData.documentId);
       piData.documentId = extractedData.documentId;
       piData.hasStoredDocuments = false;
-      
       console.log('✅ Mapped document storage from root level:', piData.documentId);
     }
+    else {
+      console.log('❌ No document storage information found in any location');
+    }
     
-    // ✅ VALIDATION: Ensure documentId is never undefined
     if (!piData.documentId || piData.documentId === undefined) {
       console.warn('⚠️ DocumentId is undefined, generating fallback for:', piData.piNumber);
       piData.documentId = `doc-fallback-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       piData.hasStoredDocuments = false;
-      
       console.log('🔧 Generated fallback documentId:', piData.documentId);
     }
 
     console.log('📋 Final PI data with documentId:', {
       piNumber: piData.piNumber,
       documentId: piData.documentId,
-      hasStoredDocuments: piData.hasStoredDocuments
+      hasStoredDocuments: piData.hasStoredDocuments,
+      supplierInfo: {
+        supplierId: piData.supplierId,
+        supplierName: piData.supplierName
+      },
+      itemCount: piData.items.length,
+      totalAmount: piData.totalAmount
     });
 
     return piData;
@@ -316,7 +362,6 @@ const BatchUploadModal = ({
   // ✅ NEW: Clear completed batches from UI
   const clearCompletedBatches = () => {
     if (window.confirm('This will remove completed batches from the UI. Continue?')) {
-      // Get all completed batches and remove them
       const completedBatches = activeBatches.filter(batch => batch.status === 'completed');
       completedBatches.forEach(batch => {
         enhancedBatchUploadService.cleanupCompletedBatch(`proforma_invoice_${batch.id}`);
@@ -399,7 +444,7 @@ const BatchUploadModal = ({
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">Batch Upload - PROFORMA INVOICE</h2>
           <div className="flex items-center space-x-2">
-            {/* Debug buttons */}
+            {/* Enhanced debug buttons */}
             <button
               onClick={clearProcessedBatches}
               className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300"
