@@ -665,6 +665,43 @@ class EnhancedBatchUploadService {
           originalFile, 
           storeDocuments && this.documentStorageService // Only if service is available
         );
+
+        // ✅ CRITICAL FIX: Update the batch file object with document storage info
+if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentId.includes('fallback')) {
+  // Find the corresponding batch file and update it with document storage info
+  for (const [queueKey, batch] of this.queues.entries()) {
+    const fileIndex = batch.files.findIndex(f => f.name === fileName);
+    if (fileIndex !== -1) {
+      const file = batch.files[fileIndex];
+      
+      // Update the file's extracted data with document storage information
+      if (file.extractedData) {
+        console.log(`📋 Updating batch file ${fileName} with document storage info:`, piData.documentId);
+        
+        // Add document storage to extracted data
+        file.extractedData.documentStorage = {
+          documentId: piData.documentId,
+          documentNumber: piData.documentNumber,
+          originalFileName: piData.originalFileName,
+          fileSize: piData.fileSize,
+          contentType: piData.contentType,
+          storedAt: piData.extractedAt,
+          hasStoredDocuments: piData.hasStoredDocuments,
+          storageInfo: piData.storageInfo
+        };
+        
+        // Also set it at the file level for batch completion
+        file.documentStorage = file.extractedData.documentStorage;
+        
+        // Persist the updated batch
+        this.persistQueue(queueKey, batch);
+        
+        console.log(`✅ Updated batch file ${fileName} with document storage:`, file.extractedData.documentStorage.documentId);
+        break;
+      }
+    }
+  }
+}
         
         // Get existing PIs from localStorage
         const existingPIs = JSON.parse(localStorage.getItem('proforma_invoices') || '[]');
