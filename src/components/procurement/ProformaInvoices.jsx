@@ -22,6 +22,8 @@ import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
 import BatchUploadModal from './BatchUploadModal';
+import BatchPaymentProcessor from './BatchPaymentProcessor';
+
 
 const ProformaInvoices = ({ showNotification }) => {
   const permissions = usePermissions();
@@ -54,6 +56,8 @@ const ProformaInvoices = ({ showNotification }) => {
   
   const [showModal, setShowModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false); // NEW: Batch upload modal
+  const [showBatchPaymentModal, setShowBatchPaymentModal] = useState(false);
+
   const [selectedPI, setSelectedPI] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -1117,6 +1121,17 @@ const ProformaInvoices = ({ showNotification }) => {
             </button>
           )}
 
+          {canEdit && proformaInvoices.some(pi => pi.status !== 'paid') && (
+  <button
+    onClick={() => setShowBatchPaymentModal(true)}
+    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 inline-flex items-center gap-2"
+  >
+    <CreditCard className="w-4 h-4" />
+    Process Payments
+  </button>
+)}
+
+
           {canEdit && (
             <>
               <input
@@ -1570,6 +1585,18 @@ const ProformaInvoices = ({ showNotification }) => {
     addSupplier={hookAddSupplier}           // Pass supplier creation function
         />
       )}
+
+      {showBatchPaymentModal && (
+  <BatchPaymentProcessor
+    onClose={() => setShowBatchPaymentModal(false)}
+    onSave={handlePaymentProcessed}
+    availablePIs={proformaInvoices.filter(pi => {
+      const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      const totalAmount = parseFloat(pi.totalAmount || 0);
+      return totalPaid < totalAmount; // Only show PIs that aren't fully paid
+    })}
+  />
+)}
 
       {/* Documents Modal (PRESERVED) */}
       {documentsModal.open && (
