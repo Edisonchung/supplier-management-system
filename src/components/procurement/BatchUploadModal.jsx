@@ -1,5 +1,5 @@
 // src/components/procurement/BatchUploadModal.jsx
-// Fixed version to prevent duplicate PI generation
+// Fixed version with proper PI integration and duplicate prevention
 
 import React, { useState, useEffect } from 'react';
 import { X, Upload, FileText, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
@@ -9,9 +9,9 @@ const BatchUploadModal = ({
   isOpen, 
   onClose, 
   showNotification,
-  addProformaInvoice,
-  suppliers,
-  addSupplier
+  addProformaInvoice, // NEW: Function to save PIs to database
+  suppliers,          // NEW: For supplier matching
+  addSupplier        // NEW: For creating new suppliers
 }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeBatches, setActiveBatches] = useState([]);
@@ -19,7 +19,7 @@ const BatchUploadModal = ({
   const [priority, setPriority] = useState('normal');
   const [autoSave, setAutoSave] = useState(true);
   const [notifyComplete, setNotifyComplete] = useState(true);
-  
+
   // ✅ NEW: Track processed batches to prevent duplicates
   const [processedBatches, setProcessedBatches] = useState(new Set());
 
@@ -80,15 +80,14 @@ const BatchUploadModal = ({
           try {
             const piData = await convertExtractedDataToPI(file.extractedData, file.fileName);
             
-            // ✅ Additional check: verify PI doesn't already exist in database
-            // You should implement this check in your addProformaInvoice function
+            // ✅ Save to database
             const result = await addProformaInvoice(piData);
             
-            if (result.success) {
+            if (result && result.success !== false) {
               savedCount++;
               console.log('✅ Saved PI:', piData.piNumber);
             } else {
-              throw new Error(result.error || 'Failed to save PI');
+              throw new Error(result?.error || 'Failed to save PI');
             }
           } catch (error) {
             console.error('❌ Failed to save PI:', error);
@@ -130,10 +129,11 @@ const BatchUploadModal = ({
         handleBatchComplete(batch.id);
       }
     });
-  }, [activeBatches, processedBatches, addProformaInvoice, showNotification]);
+  }, [activeBatches, processedBatches, addProformaInvoice, showNotification, suppliers, addSupplier]);
 
-  // Convert extracted data to PI format
+  // NEW: Convert extracted data to PI format
   const convertExtractedDataToPI = async (extractedData, fileName) => {
+    // Handle nested structure from AI extraction
     const data = extractedData.proforma_invoice || extractedData;
     
     // Find or create supplier
@@ -141,6 +141,7 @@ const BatchUploadModal = ({
     let supplierName = data.supplier?.name || data.supplierName || 'Unknown Supplier';
     
     if (supplierName && supplierName !== 'Unknown Supplier') {
+      // Try to find existing supplier
       const existingSupplier = suppliers.find(s => 
         s.name.toLowerCase().includes(supplierName.toLowerCase()) ||
         supplierName.toLowerCase().includes(s.name.toLowerCase())
@@ -150,6 +151,7 @@ const BatchUploadModal = ({
         supplierId = existingSupplier.id;
         supplierName = existingSupplier.name;
       } else if (addSupplier) {
+        // Create new supplier
         try {
           const newSupplierData = {
             name: supplierName,
@@ -157,94 +159,53 @@ const BatchUploadModal = ({
             phone: data.supplier?.phone || '',
             address: data.supplier?.address || '',
             status: 'active',
-            dateAdded: new Date().toISOString()
+            createdAt: new Date().toISOString()
           };
           
           const result = await addSupplier(newSupplierData);
-          if (result.success) {
-            supplierId = result.data.id;
+          if (result && (result.success !== false)) {
+            supplierId = result.data?.id || result.id || result;
             console.log('✅ Created new supplier:', supplierName);
           }
         } catch (error) {
-          console.error('Failed to create supplier:', error);
+          console.warn('Failed to create supplier, proceeding without:', error);
         }
       }
     }
 
-    // Generate consistent PI number based on extracted data or filename
-    const piNumber = data.piNumber || 
-                    data.invoiceNumber || 
-                    `PI-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-    // Map products
-    const products = (data.products || data.items || []).map(item => ({
-      productCode: item.productCode || item.partNumber || item.code || '',
-      productName: item.productName || item.description || item.name || '',
-      quantity: item.quantity || 1,
-      unitPrice: item.unitPrice || item.price || 0,
-      totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-      leadTime: item.leadTime || '',
-      warranty: item.warranty || ''
-    }));
-
-    // Calculate totals
-    const subtotal = products.reduce((sum, p) => sum + (p.totalPrice || 0), 0);
-    const totalAmount = data.grandTotal || data.totalAmount || subtotal;
-
-    return {
-      piNumber,
+    // Convert to PI format
+    const piData = {
+      piNumber: data.pi_number || data.piNumber || `PI-${Date.now()}`,
       date: data.date || new Date().toISOString().split('T')[0],
-      supplierId,
-      supplierName,
+      supplierId: supplierId,
+      supplierName: supplierName,
       currency: data.currency || 'USD',
-      purpose: data.purpose || 'Stock',
-      priority: 'normal',
+      totalAmount: parseFloat(data.total_amount || data.grandTotal || data.totalAmount || 0),
+      items: (data.items || data.products || []).map((item, index) => ({
+        id: `item-${Date.now()}-${index}`,
+        productCode: item.product_code || item.productCode || item.sku || '',
+        productName: item.product_name || item.productName || item.description || item.name || '',
+        quantity: parseInt(item.quantity) || 1,
+        unitPrice: parseFloat(item.unit_price || item.unitPrice || item.price || 0),
+        totalPrice: parseFloat(item.total_price || item.totalPrice || item.total || 0),
+        receivedQuantity: 0,
+        deliveredQuantity: 0
+      })),
       status: 'pending',
-      paymentStatus: 'unpaid',
       deliveryStatus: 'pending',
-      totalAmount,
-      products,
-      terms: {
-        payment: data.terms?.payment || data.paymentTerms || '',
-        delivery: data.terms?.delivery || data.deliveryTerms || '',
-        leadTime: data.terms?.leadTime || data.leadTime || '',
-        warranty: data.terms?.warranty || data.warranty || '',
-        validity: data.terms?.validity || data.validity || ''
-      },
-      extractedFrom: fileName,
-      extractedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString()
+      priority: 'normal',
+      notes: `Imported from ${fileName}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      // Document storage
+      documents: {
+        originalFile: fileName,
+        extractedAt: new Date().toISOString(),
+        extractionSource: 'batch_upload'
+      }
     };
-  };
 
-  // Handle file upload
-  const handleFileUpload = async () => {
-    if (selectedFiles.length === 0) {
-      showNotification('Please select files to upload', 'warning');
-      return;
-    }
-
-    try {
-      const batchId = await enhancedBatchUploadService.startBatch(
-        selectedFiles,
-        'proforma_invoice',
-        {
-          priority,
-          autoSave,
-          notifyComplete
-        }
-      );
-
-      showNotification(
-        `Batch upload started! Processing ${selectedFiles.length} file(s)...`,
-        'info'
-      );
-
-      setSelectedFiles([]);
-    } catch (error) {
-      console.error('Failed to start batch upload:', error);
-      showNotification('Failed to start batch upload', 'error');
-    }
+    return piData;
   };
 
   // ✅ NEW: Clear processed batches (for debugging/admin)
@@ -256,29 +217,18 @@ const BatchUploadModal = ({
     }
   };
 
-  // File drag and drop handlers
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragOver(true);
-    } else if (e.type === 'dragleave') {
-      setDragOver(false);
-    }
-  };
-
   const handleDrop = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     setDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    const validFiles = files.filter(file => {
-      const extension = file.name.split('.').pop().toLowerCase();
-      return ['pdf', 'jpg', 'jpeg', 'png', 'xlsx', 'xls'].includes(extension);
-    });
-
-    setSelectedFiles(prev => [...prev, ...validFiles]);
+    
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type === 'application/pdf' || 
+      file.type.startsWith('image/') ||
+      file.name.toLowerCase().endsWith('.xlsx') ||
+      file.name.toLowerCase().endsWith('.xls')
+    );
+    
+    setSelectedFiles(prev => [...prev, ...files]);
   };
 
   const handleFileSelect = (e) => {
@@ -286,65 +236,119 @@ const BatchUploadModal = ({
     setSelectedFiles(prev => [...prev, ...files]);
   };
 
-  const removeFile = (index) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  const handleStartBatch = async () => {
+    if (selectedFiles.length === 0) return;
+
+    try {
+      const batchId = await enhancedBatchUploadService.startBatch(selectedFiles, {
+        type: 'proforma_invoice',
+        priority,
+        autoSave,
+        notifyWhenComplete: notifyComplete
+      });
+
+      showNotification(`Started batch processing ${selectedFiles.length} files`, 'success');
+      setSelectedFiles([]);
+      
+      // Don't close modal immediately - let user see progress
+    } catch (error) {
+      showNotification('Failed to start batch processing', 'error');
+      console.error('Batch start error:', error);
+    }
+  };
+
+  const handleCancelBatch = (batchId) => {
+    enhancedBatchUploadService.cancelBatch(batchId);
+    showNotification('Batch processing cancelled', 'info');
+  };
+
+  const handleDownloadResults = (batchId) => {
+    const batch = activeBatches.find(b => b.id === batchId);
+    if (!batch) return;
+
+    // Create downloadable results
+    const results = batch.files.map(file => ({
+      fileName: file.name,
+      status: file.status,
+      extractedData: file.extractedData,
+      error: file.error
+    }));
+
+    const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `batch_results_${batchId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b">
-          <h2 className="text-xl font-semibold">Batch Upload - PROFORMA INVOICE</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-6 h-6" />
-          </button>
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-gray-900">Batch Upload - PROFORMA INVOICE</h2>
+          <div className="flex items-center space-x-2">
+            {/* ✅ DEBUG: Add button to clear processed batches */}
+            <button
+              onClick={clearProcessedBatches}
+              className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300"
+              title="Clear processed batches (Debug)"
+            >
+              Clear Processed
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 max-h-[calc(90vh-140px)] overflow-y-auto">
+        <div className="p-6 max-h-[calc(90vh-80px)] overflow-y-auto">
           {/* Upload Section */}
           <div className="mb-6">
             <h3 className="text-lg font-medium mb-4">Upload Files</h3>
             
-            {/* Options */}
+            {/* Settings */}
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Priority</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="low">Low</option>
                   <option value="normal">Normal</option>
                   <option value="high">High</option>
+                  <option value="low">Low</option>
                 </select>
               </div>
               <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="autoSave"
-                  checked={autoSave}
-                  onChange={(e) => setAutoSave(e.target.checked)}
-                  className="mr-2"
-                />
-                <label htmlFor="autoSave" className="text-sm">Auto-save to database</label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={autoSave}
+                    onChange={(e) => setAutoSave(e.target.checked)}
+                    className="mr-2 h-4 w-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700">Auto-save to database</span>
+                </label>
               </div>
               <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="notifyComplete"
-                  checked={notifyComplete}
-                  onChange={(e) => setNotifyComplete(e.target.checked)}
-                  className="mr-2"
-                />
-                <label htmlFor="notifyComplete" className="text-sm">Notify when complete</label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={notifyComplete}
+                    onChange={(e) => setNotifyComplete(e.target.checked)}
+                    className="mr-2 h-4 w-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700">Notify when complete</span>
+                </label>
               </div>
             </div>
 
@@ -353,138 +357,176 @@ const BatchUploadModal = ({
               className={`border-2 border-dashed rounded-lg p-8 text-center ${
                 dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
               }`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
               onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
             >
-              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 mb-2">Drop files here or click to browse</p>
-              <p className="text-sm text-gray-500">Supports PDF, images (JPG, PNG), Excel (XLSX, XLS)</p>
+              <p className="text-sm text-gray-500">Supports PDF, Images (JPG, PNG), Excel (XLSX, XLS)</p>
+              
               <input
                 type="file"
                 multiple
                 accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
                 onChange={handleFileSelect}
                 className="hidden"
-                ref={(input) => {
-                  if (input) {
-                    input.onclick = () => input.click();
-                  }
-                }}
+                id="batch-file-input"
               />
-              <button
-                onClick={() => document.querySelector('input[type="file"]').click()}
-                className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+              <label
+                htmlFor="batch-file-input"
+                className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer"
               >
                 Browse Files
-              </button>
+              </label>
             </div>
 
             {/* Selected Files */}
             {selectedFiles.length > 0 && (
               <div className="mt-4">
                 <h4 className="font-medium mb-2">Selected Files ({selectedFiles.length})</h4>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-32 overflow-y-auto">
                   {selectedFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded">
-                      <div className="flex items-center">
-                        <FileText className="w-5 h-5 text-gray-500 mr-2" />
-                        <span className="text-sm">{file.name}</span>
-                        <span className="text-xs text-gray-500 ml-2">
-                          ({(file.size / 1024).toFixed(1)} KB)
-                        </span>
-                      </div>
+                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span className="text-sm text-gray-700">{file.name}</span>
                       <button
-                        onClick={() => removeFile(index)}
-                        className="text-red-500 hover:text-red-700"
+                        onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== index))}
+                        className="text-red-600 hover:text-red-800 text-sm"
                       >
-                        <X className="w-4 h-4" />
+                        Remove
                       </button>
                     </div>
                   ))}
                 </div>
+                
                 <button
-                  onClick={handleFileUpload}
-                  className="mt-4 bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600"
+                  onClick={handleStartBatch}
+                  className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
                 >
-                  Start Upload
+                  Start Batch Processing
                 </button>
               </div>
             )}
           </div>
 
           {/* Active Batches */}
-          {activeBatches.length > 0 && (
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium">Active Batches</h3>
-                {/* ✅ DEBUG: Add button to clear processed batches */}
-                <button
-                  onClick={clearProcessedBatches}
-                  className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded hover:bg-gray-300"
-                >
-                  Clear Processed (Debug)
-                </button>
-              </div>
-              
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Active Batches</h3>
+              {processedBatches.size > 0 && (
+                <span className="text-xs text-gray-500">
+                  {processedBatches.size} batch(es) processed
+                </span>
+              )}
+            </div>
+            
+            {activeBatches.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No active batches</p>
+            ) : (
               <div className="space-y-4">
-                {activeBatches.map((batch) => (
-                  <div key={batch.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center">
-                        <span className="font-medium">Batch {batch.id.split('_')[2]}</span>
-                        <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                {activeBatches.map(batch => (
+                  <div key={batch.id} className="border border-gray-200 rounded-lg p-4">
+                    {/* Batch Header */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-medium">Batch {batch.id}</h4>
+                        <p className="text-sm text-gray-500">
+                          Progress: {batch.completedFiles}/{batch.totalFiles} files
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                           batch.status === 'completed' ? 'bg-green-100 text-green-800' :
                           batch.status === 'processing' ? 'bg-blue-100 text-blue-800' :
-                          batch.status === 'failed' ? 'bg-red-100 text-red-800' :
+                          batch.status === 'cancelled' ? 'bg-red-100 text-red-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
                           {batch.status}
                         </span>
+                        
                         {/* ✅ Show if batch was processed */}
                         {processedBatches.has(batch.id) && (
-                          <span className="ml-2 px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                             Saved to DB
                           </span>
                         )}
+                        
+                        {batch.status === 'processing' && (
+                          <button
+                            onClick={() => handleCancelBatch(batch.id)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        
+                        {batch.status === 'completed' && (
+                          <button
+                            onClick={() => handleDownloadResults(batch.id)}
+                            className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </button>
+                        )}
                       </div>
-                      <span className="text-sm text-gray-500">
-                        Progress: {batch.processedFiles}/{batch.totalFiles} files
-                      </span>
                     </div>
 
-                    {/* Files */}
-                    <div className="space-y-2">
+                    {/* Progress Bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${(batch.completedFiles / batch.totalFiles) * 100}%` }}
+                      ></div>
+                    </div>
+
+                    {/* File Status */}
+                    <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
                       {batch.files.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                          <div className="flex items-center">
-                            {file.status === 'completed' && <CheckCircle className="w-4 h-4 text-green-500 mr-2" />}
-                            {file.status === 'processing' && <Clock className="w-4 h-4 text-blue-500 mr-2 animate-spin" />}
-                            {file.status === 'failed' && <AlertCircle className="w-4 h-4 text-red-500 mr-2" />}
-                            <span className="text-sm">{file.fileName}</span>
+                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center space-x-2">
+                            {file.status === 'completed' ? (
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            ) : file.status === 'failed' ? (
+                              <AlertCircle className="h-4 w-4 text-red-600" />
+                            ) : (
+                              <Clock className="h-4 w-4 text-blue-600" />
+                            )}
+                            <span className="text-sm text-gray-700">{file.name}</span>
                           </div>
-                          {file.status === 'completed' && (
-                            <span className="text-xs text-green-600">✅ Saved to Database</span>
+                          
+                          {file.status === 'completed' && processedBatches.has(batch.id) && (
+                            <span className="text-xs text-green-600">
+                              ✅ Saved to Database
+                            </span>
+                          )}
+                          
+                          {file.status === 'failed' && file.error && (
+                            <span className="text-xs text-red-600 max-w-xs truncate">
+                              {file.error}
+                            </span>
                           )}
                         </div>
                       ))}
                     </div>
 
-                    {/* Batch completion message */}
+                    {/* Batch Summary */}
                     {batch.status === 'completed' && (
-                      <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
+                      <div className="mt-3 p-2 bg-green-50 rounded">
                         <p className="text-sm text-green-800">
-                          ✅ Batch completed! {batch.files.filter(f => f.status === 'completed').length} of {batch.totalFiles} files processed successfully. 
-                          {processedBatches.has(batch.id) ? ' All proforma invoices have been added to your database.' : ' Processing for database save...'}
+                          ✅ Batch completed! {batch.successfulFiles} of {batch.totalFiles} files processed successfully.
+                          {processedBatches.has(batch.id) ? 
+                            " All proforma invoices have been added to your database." : 
+                            " Processing for database save..."
+                          }
                         </p>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
