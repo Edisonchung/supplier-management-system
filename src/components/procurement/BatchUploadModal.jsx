@@ -244,6 +244,18 @@ const BatchUploadModal = ({
     }
   };
 
+  // ✅ NEW: Clear completed batches from UI
+  const clearCompletedBatches = () => {
+    if (window.confirm('This will remove completed batches from the UI. Continue?')) {
+      // Get all completed batches and remove them
+      const completedBatches = activeBatches.filter(batch => batch.status === 'completed');
+      completedBatches.forEach(batch => {
+        enhancedBatchUploadService.cleanupCompletedBatch(`proforma_invoice_${batch.id}`);
+      });
+      showNotification(`Removed ${completedBatches.length} completed batch(es) from UI`, 'info');
+    }
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
@@ -338,6 +350,13 @@ const BatchUploadModal = ({
               title="Clear all processing history"
             >
               Clear All
+            </button>
+            <button
+              onClick={clearCompletedBatches}
+              className="text-xs bg-green-200 text-green-700 px-2 py-1 rounded hover:bg-green-300"
+              title="Remove completed batches from UI"
+            >
+              Hide Completed
             </button>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
               <X className="h-6 w-6" />
