@@ -272,42 +272,77 @@ const BatchUploadModal = ({
 
     // ✅ ENHANCED DOCUMENT STORAGE MAPPING WITH EXTENSIVE DEBUGGING
     console.log('🔧 Checking for document storage sources:');
-    
-    if (extractedData.documentStorage) {
-      console.log('✅ Found documentStorage:', extractedData.documentStorage);
-      piData.documentId = extractedData.documentStorage.documentId;
-      piData.documentNumber = extractedData.documentStorage.documentNumber || piData.piNumber; // ✅ FALLBACK FIX
-      piData.documentType = 'pi';
-      piData.hasStoredDocuments = true;
-      piData.originalFileName = extractedData.documentStorage.originalFile?.originalFileName;
-      piData.fileSize = extractedData.documentStorage.originalFile?.fileSize;
-      piData.contentType = extractedData.documentStorage.originalFile?.contentType;
-      piData.extractedAt = extractedData.documentStorage.storedAt;
-      piData.storageInfo = extractedData.documentStorage;
-      console.log('✅ Mapped document storage from documentStorage:', piData.documentId);
-    }
-    else if (extractedData.extractionMetadata) {
-      console.log('✅ Found extractionMetadata:', extractedData.extractionMetadata);
-      piData.documentId = extractedData.extractionMetadata.documentId;
-      piData.documentNumber = extractedData.extractionMetadata.documentNumber || piData.piNumber; // ✅ FALLBACK FIX
-      piData.documentType = 'pi';
-      piData.hasStoredDocuments = false;
-      piData.originalFileName = extractedData.extractionMetadata.originalFileName;
-      piData.fileSize = extractedData.extractionMetadata.fileSize;
-      piData.contentType = extractedData.extractionMetadata.contentType;
-      piData.extractedAt = extractedData.extractionMetadata.extractedAt;
-      console.log('✅ Mapped document storage from extractionMetadata:', piData.documentId);
-    }
-    else if (extractedData.documentId) {
-      console.log('✅ Found root documentId:', extractedData.documentId);
-      piData.documentId = extractedData.documentId;
-      piData.documentNumber = piData.piNumber; // ✅ USE PI NUMBER AS FALLBACK
-      piData.hasStoredDocuments = false;
-      console.log('✅ Mapped document storage from root level:', piData.documentId);
-    }
-    else {
-      console.log('❌ No document storage information found in any location');
-    }
+
+// Priority order: direct file properties > extractedData properties > result data
+let documentStorageInfo = null;
+let documentId = null;
+let hasStoredDocuments = false;
+
+// Check if we have stored document info from the auto-save process
+if (extractedData.documentStorage) {
+  console.log('✅ Found documentStorage in extractedData:', extractedData.documentStorage);
+  documentStorageInfo = extractedData.documentStorage;
+  documentId = extractedData.documentStorage.documentId;
+  hasStoredDocuments = true;
+}
+// Check if there's a direct documentId that looks real (not fallback)
+else if (extractedData.documentId && 
+         extractedData.documentId.includes('doc-') && 
+         !extractedData.documentId.includes('fallback')) {
+  console.log('✅ Found real documentId in extractedData:', extractedData.documentId);
+  documentId = extractedData.documentId;
+  hasStoredDocuments = extractedData.hasStoredDocuments || false;
+  // Try to reconstruct document info from available data
+  documentStorageInfo = {
+    documentId: extractedData.documentId,
+    documentNumber: extractedData.documentNumber || piData.piNumber,
+    originalFileName: extractedData.originalFileName || fileName,
+    fileSize: extractedData.fileSize,
+    contentType: extractedData.contentType,
+    storedAt: extractedData.extractedAt || extractedData.storedAt
+  };
+}
+else if (extractedData.extractionMetadata) {
+  console.log('✅ Found extractionMetadata:', extractedData.extractionMetadata);
+  documentId = extractedData.extractionMetadata.documentId;
+  hasStoredDocuments = false;
+  documentStorageInfo = {
+    documentId: extractedData.extractionMetadata.documentId,
+    documentNumber: extractedData.extractionMetadata.documentNumber || piData.piNumber,
+    originalFileName: extractedData.extractionMetadata.originalFileName || fileName,
+    fileSize: extractedData.extractionMetadata.fileSize,
+    contentType: extractedData.extractionMetadata.contentType,
+    extractedAt: extractedData.extractionMetadata.extractedAt
+  };
+}
+
+// Apply the document storage information if found
+if (documentId && hasStoredDocuments) {
+  console.log('✅ Using real document storage:', documentId);
+  piData.documentId = documentId;
+  piData.documentNumber = documentStorageInfo?.documentNumber || piData.piNumber;
+  piData.documentType = 'pi';
+  piData.hasStoredDocuments = true;
+  piData.originalFileName = documentStorageInfo?.originalFileName || fileName;
+  piData.fileSize = documentStorageInfo?.fileSize;
+  piData.contentType = documentStorageInfo?.contentType;
+  piData.extractedAt = documentStorageInfo?.storedAt || documentStorageInfo?.extractedAt || new Date().toISOString();
+  piData.storageInfo = documentStorageInfo;
+  console.log('✅ Document storage fields applied successfully');
+} else if (documentId) {
+  console.log('✅ Using document metadata without storage:', documentId);
+  piData.documentId = documentId;
+  piData.documentNumber = documentStorageInfo?.documentNumber || piData.piNumber;
+  piData.documentType = 'pi';
+  piData.hasStoredDocuments = false;
+  piData.originalFileName = documentStorageInfo?.originalFileName || fileName;
+  piData.fileSize = documentStorageInfo?.fileSize;
+  piData.contentType = documentStorageInfo?.contentType;
+  piData.extractedAt = documentStorageInfo?.extractedAt || new Date().toISOString();
+  console.log('✅ Document metadata fields applied successfully');
+} else {
+  console.log('❌ No document storage information found in any location');
+}
     
     // ✅ CRITICAL FIX: Ensure documentId and documentNumber are never undefined
     if (!piData.documentId || piData.documentId === undefined) {
