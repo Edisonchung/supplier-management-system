@@ -284,6 +284,7 @@ const BatchUploadModal = ({
         priority,
         autoSave,
         notifyWhenComplete: notifyComplete
+        storeDocuments: true
       });
 
       showNotification(`Started batch processing ${selectedFiles.length} files`, 'success');
