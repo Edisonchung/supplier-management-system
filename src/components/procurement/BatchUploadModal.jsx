@@ -283,7 +283,7 @@ const BatchUploadModal = ({
         type: 'proforma_invoice',
         priority,
         autoSave,
-        notifyWhenComplete: notifyComplete
+        notifyWhenComplete: notifyComplete,
         storeDocuments: true
       });
 
