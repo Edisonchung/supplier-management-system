@@ -1,5 +1,5 @@
 // src/components/procurement/PIModal.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
