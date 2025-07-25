@@ -329,19 +329,42 @@ const BatchUploadModal = ({
       console.log('🔧 Set default documentType:', piData.documentType);
     }
 
-    console.log('📋 Final PI data with documentId:', {
-      piNumber: piData.piNumber,
-      documentId: piData.documentId,
-      hasStoredDocuments: piData.hasStoredDocuments,
-      supplierInfo: {
-        supplierId: piData.supplierId,
-        supplierName: piData.supplierName
-      },
-      itemCount: piData.items.length,
-      totalAmount: piData.totalAmount
+    // ✅ CRITICAL FIX: Clean up all undefined fields that Firestore rejects
+    const cleanedPIData = {
+      ...piData,
+      // Remove undefined fields completely rather than setting them to undefined
+      ...(piData.storageInfo !== undefined && { storageInfo: piData.storageInfo }),
+      ...(piData.originalFileName !== undefined && { originalFileName: piData.originalFileName }),
+      ...(piData.fileSize !== undefined && { fileSize: piData.fileSize }),
+      ...(piData.contentType !== undefined && { contentType: piData.contentType }),
+      ...(piData.extractedAt !== undefined && { extractedAt: piData.extractedAt }),
+      ...(piData.storedAt !== undefined && { storedAt: piData.storedAt })
+    };
+
+    // ✅ Remove any remaining undefined fields
+    Object.keys(cleanedPIData).forEach(key => {
+      if (cleanedPIData[key] === undefined) {
+        delete cleanedPIData[key];
+        console.log('🧹 Removed undefined field:', key);
+      }
     });
 
-    return piData;
+    console.log('📋 Final cleaned PI data with documentId:', {
+      piNumber: cleanedPIData.piNumber,
+      documentId: cleanedPIData.documentId,
+      documentNumber: cleanedPIData.documentNumber,
+      documentType: cleanedPIData.documentType,
+      hasStoredDocuments: cleanedPIData.hasStoredDocuments,
+      supplierInfo: {
+        supplierId: cleanedPIData.supplierId,
+        supplierName: cleanedPIData.supplierName
+      },
+      itemCount: cleanedPIData.items.length,
+      totalAmount: cleanedPIData.totalAmount,
+      hasStorageInfo: !!cleanedPIData.storageInfo
+    });
+
+    return cleanedPIData;
   };
 
   // ✅ FIXED: Clear processed batches
