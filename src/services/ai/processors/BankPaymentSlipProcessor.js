@@ -4,7 +4,7 @@
 import { parseNumber, parseAmount, formatCurrency } from './utils/numberParser';
 import { normalizeDate } from './utils/dateUtils';
 
-export class BankPaymentSlipProcessor {
+class BankPaymentSlipProcessor {
   /**
    * Process bank payment slip data (like HongLeong Bank payment advice)
    */
