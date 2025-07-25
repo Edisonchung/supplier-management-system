@@ -1,5 +1,5 @@
 // Bank Payment Slip AI Extraction Service
-// src/services/ai/BankPaymentSlipProcessor.js
+// src/services/ai/processors/BankPaymentSlipProcessor.js
 
 import { parseNumber, parseAmount, formatCurrency } from './utils/numberParser';
 import { normalizeDate } from './utils/dateUtils';
