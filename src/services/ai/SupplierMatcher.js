@@ -16,9 +16,22 @@ export class SupplierMatcher {
     'connector': ['plug', 'socket', 'terminal'],
     'cable': ['wire', 'cord', 'harness'],
     'relay': ['contactor', 'switch relay'],
-    'bearing': ['ball bearing', 'roller bearing'],
+    'bearing': ['ball bearing', 'roller bearing', 'brg'],
     'bolt': ['screw', 'fastener', 'hex bolt'],
     'seal': ['gasket', 'o-ring', 'sealing'],
+    'valve': ['valve', 'vlv'],
+    'pump': ['pump', 'pmp'],
+    'motor': ['motor', 'mtr'],
+    'sensor': ['sensor', 'sens'],
+    'filter': ['filter', 'fltr'],
+    'coupling': ['coupling', 'cplg'],
+    'fitting': ['fitting', 'fttg'],
+    // Brands
+    'mcgill': ['mcgill', 'mcgil'],
+    'mcgril': ['mcgrill', 'mcgril'],
+    'spherical': ['spherical', 'spher'],
+    'radial': ['radial', 'rad'],
+    'plain': ['plain', 'pln'],
     // Add more as needed
   };
 
@@ -474,22 +487,10 @@ export class SupplierMatcher {
     console.log('🎓 Recorded supplier selection for learning');
   }
 
-  // Keep all your existing methods unchanged:
-  // - calculateProductMatchScore (your existing logic)
-  // - containsKeywords
-  // - matchCategory  
-  // - rankSupplierMatches (now has enhanced version)
-  // - calculateReliability
-  // - aggregateSupplierRecommendations
-  // - calculateAverageLeadTime
-  // - calculateSourcingMetrics
-  // - getAllSuppliers
-  // - getAllProducts
-  // - saveSupplierPreference
-  // - getMatchingHistory
+  // ==========================================
+  // YOUR EXISTING METHODS (UNCHANGED)
+  // ==========================================
 
-  // [Keep all your existing methods here - they remain unchanged]
-  
   /**
    * Your existing calculateProductMatchScore method (unchanged)
    */
