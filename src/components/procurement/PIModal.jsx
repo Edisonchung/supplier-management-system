@@ -2397,6 +2397,29 @@ const StockReceivingTab = ({
     setShowAllocationModal(false);
     setSelectedItem(null);
     
+    // 🎯 CRITICAL FIX: Calculate the correct totalAllocated for the specific item
+    const currentItem = pi.items.find(item => item.id === selectedItem?.id);
+    if (!currentItem) {
+      console.error('❌ Could not find current item for allocation update');
+      showNotification('Allocation completed but UI update failed', 'warning');
+      return;
+    }
+
+    // Calculate new total allocated including previous allocations
+    const existingAllocations = currentItem.allocations || [];
+    const allAllocations = [...existingAllocations, ...allocations];
+    const newTotalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+
+    console.log('🔍 Allocation calculation details:', {
+      itemId: currentItem.id,
+      previousAllocations: existingAllocations.length,
+      newAllocations: allocations.length,
+      previousTotalAllocated: currentItem.totalAllocated || 0,
+      newTotalAllocated: newTotalAllocated,
+      receivedQty: currentItem.receivedQty || 0,
+      willBeFullyAllocated: newTotalAllocated >= (currentItem.receivedQty || 0)
+    });
+    
     // ✅ CRITICAL: Force re-fetch the PI data from Firestore to get latest allocations
     if (pi.id || pi.piNumber) {
       try {
@@ -2411,6 +2434,19 @@ const StockReceivingTab = ({
           
           if (updatedPI) {
             console.log('🔄 Refreshed PI data with latest allocations');
+            
+            // 🎯 DOUBLE-CHECK: Ensure the item has the correct allocation data
+            const refreshedItem = updatedPI.items.find(item => item.id === selectedItem?.id);
+            if (refreshedItem) {
+              console.log('📊 Refreshed item allocation status:', {
+                itemId: refreshedItem.id,
+                receivedQty: refreshedItem.receivedQty || 0,
+                totalAllocated: refreshedItem.totalAllocated || 0,
+                unallocatedQty: refreshedItem.unallocatedQty || 0,
+                allocationCount: (refreshedItem.allocations || []).length
+              });
+            }
+            
             // Update the parent component with fresh data
             await onUpdatePI(updatedPI);
             showNotification('Stock allocated successfully', 'success');
@@ -2422,15 +2458,31 @@ const StockReceivingTab = ({
       }
     }
     
-    // Fallback: Update local state if Firestore refresh fails
+    // 🎯 ENHANCED FALLBACK: Update local state with correct calculations
     const updatedItems = pi.items.map(item => {
-      if (item.id === selectedItem.id) {
-        const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
+      if (item.id === selectedItem?.id) {
+        // Merge all allocations (existing + new)
+        const existingAllocations = item.allocations || [];
+        const allAllocations = [...existingAllocations, ...allocations];
+        const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+        const receivedQty = item.receivedQty || 0;
+        const unallocatedQty = receivedQty - totalAllocated;
+
+        console.log('🔄 Local state update for item:', {
+          itemId: item.id,
+          receivedQty,
+          previousTotalAllocated: item.totalAllocated || 0,
+          newTotalAllocated: totalAllocated,
+          unallocatedQty,
+          isFullyAllocated: totalAllocated >= receivedQty
+        });
+
         return {
           ...item,
-          allocations: allocations,
+          allocations: allAllocations,
           totalAllocated: totalAllocated,
-          unallocatedQty: (item.receivedQty || 0) - totalAllocated
+          unallocatedQty: unallocatedQty,
+          lastAllocationUpdate: new Date().toISOString()
         };
       }
       return item;
@@ -2439,29 +2491,80 @@ const StockReceivingTab = ({
     const updatedPI = {
       ...pi,
       items: updatedItems,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      lastAllocationUpdate: new Date().toISOString()
     };
+
+    console.log('💾 Updating PI with allocation data:', {
+      piId: updatedPI.id,
+      updatedItemsCount: updatedItems.length,
+      targetItem: updatedItems.find(item => item.id === selectedItem?.id)
+    });
 
     await onUpdatePI(updatedPI);
     showNotification('Stock allocated successfully', 'success');
+    
+    // 🎯 FORCE UI REFRESH: Trigger a small delay and re-render
+    setTimeout(() => {
+      console.log('🔄 PIModal: Triggering UI refresh after allocation');
+      // Force a re-render by updating the receiving form state
+      setReceivingForm(prev => ({ ...prev, lastUpdate: Date.now() }));
+    }, 100);
     
   } catch (error) {
     console.error('❌ Error handling allocation completion:', error);
     showNotification('Allocation completed but UI update failed', 'warning');
   }
 };
-
   const getItemStatus = (item) => {
-    const received = item.receivedQty || 0;
-    const ordered = item.quantity || 0;
-    const allocated = item.totalAllocated || 0;
+  const received = item.receivedQty || 0;
+  const ordered = item.quantity || 0;
+  
+  // 🎯 ENHANCED: Calculate totalAllocated from multiple sources
+  let allocated = 0;
+  
+  // Strategy 1: Use totalAllocated field if available
+  if (item.totalAllocated !== undefined && item.totalAllocated !== null) {
+    allocated = item.totalAllocated;
+  }
+  // Strategy 2: Calculate from allocations array
+  else if (item.allocations && Array.isArray(item.allocations)) {
+    allocated = item.allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+  }
+  // Strategy 3: Use 0 as fallback
+  else {
+    allocated = 0;
+  }
 
-    if (received === 0) return { status: 'pending', color: 'gray', icon: Clock };
-    if (received !== ordered) return { status: 'discrepancy', color: 'yellow', icon: AlertTriangle };
-    if (allocated < received) return { status: 'partial-allocation', color: 'orange', icon: Package };
-    return { status: 'complete', color: 'green', icon: CheckCircle };
-  };
+  console.log(`🔍 Status calculation for item ${item.id || item.productCode}:`, {
+    received,
+    ordered,
+    allocated,
+    totalAllocatedField: item.totalAllocated,
+    allocationsArray: item.allocations?.length || 0,
+    allocationsSum: item.allocations?.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0) || 0
+  });
 
+  // Status logic with enhanced debugging
+  if (received === 0) {
+    console.log(`   → Status: PENDING (no items received)`);
+    return { status: 'pending', color: 'gray', icon: Clock };
+  }
+  
+  if (received !== ordered) {
+    console.log(`   → Status: DISCREPANCY (received ${received} ≠ ordered ${ordered})`);
+    return { status: 'discrepancy', color: 'yellow', icon: AlertTriangle };
+  }
+  
+  if (allocated < received) {
+    console.log(`   → Status: PARTIAL ALLOCATION (allocated ${allocated} < received ${received})`);
+    return { status: 'partial-allocation', color: 'orange', icon: Package };
+  }
+  
+  console.log(`   → Status: COMPLETE (allocated ${allocated} >= received ${received})`);
+  return { status: 'complete', color: 'green', icon: CheckCircle };
+};
+  
   return (
     <div className="space-y-6">
       {/* Stock Allocation Feature Notice */}
