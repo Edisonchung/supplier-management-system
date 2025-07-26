@@ -86,6 +86,45 @@ const PurchaseOrders = () => {
     setSyncStatus('synced');
   }, [purchaseOrders]);
 
+  // 🔍 DEBUG: Add this debug useEffect to track PO visibility
+  useEffect(() => {
+    console.log('🔍 DEBUG - PO Visibility Check:', {
+      userAuthenticated: !!user,
+      userId: user?.uid,
+      userEmail: user?.email,
+      purchaseOrdersCount: purchaseOrders.length,
+      purchaseOrdersData: purchaseOrders,
+      loading: loading,
+      error: error,
+      searchTerm: searchTerm,
+      statusFilter: statusFilter
+    });
+
+    // Check if POs exist but aren't showing
+    if (purchaseOrders.length > 0) {
+      purchaseOrders.forEach((po, index) => {
+        console.log(`📋 PO ${index + 1}:`, {
+          id: po.id,
+          poNumber: po.poNumber,
+          clientPoNumber: po.clientPoNumber,
+          createdBy: po.createdBy,
+          status: po.status,
+          createdAt: po.createdAt,
+          userMatches: po.createdBy === user?.uid
+        });
+      });
+    }
+
+    // Check filtered results
+    console.log('🔍 Filtered POs:', {
+      originalCount: purchaseOrders.length,
+      filteredCount: filteredPOs.length,
+      searchTerm: searchTerm,
+      statusFilter: statusFilter
+    });
+
+  }, [user, purchaseOrders, loading, error, filteredPOs, searchTerm, statusFilter]);
+
   // ✅ FIXED: Handle file upload with document storage
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -550,6 +589,26 @@ const PurchaseOrders = () => {
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create PO
+              </button>
+              {/* 🔍 DEBUG: Temporary debug button */}
+              <button
+                onClick={() => {
+                  console.log('🔍 MANUAL DEBUG CHECK:');
+                  console.log('User:', user);
+                  console.log('Purchase Orders:', purchaseOrders);
+                  console.log('Filtered POs:', filteredPOs);
+                  console.log('Loading:', loading);
+                  console.log('Error:', error);
+                  console.log('Search Term:', searchTerm);
+                  console.log('Status Filter:', statusFilter);
+                  
+                  // Force refresh
+                  refetch();
+                  toast.success('Debug info logged to console & refreshed data');
+                }}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+              >
+                🔍 Debug & Refresh
               </button>
               <input
                 ref={fileInputRef}
