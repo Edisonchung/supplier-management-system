@@ -4,11 +4,15 @@ import {
   updateProformaInvoice,
   getPurchaseOrders,
   getProducts,
-  addDocument,
-  updateDocument 
-} from './firebase';
+  addSupplier,
+  updateSupplier,
+  safeAddDocument,
+  safeUpdateDocument,
+  safeGetCollection,
+  safeGetDocument
+} from '../config/firebase';
 
-// Import additional Firestore functions if needed
+// Import additional Firestore functions from your Firebase config
 import { 
   collection, 
   doc, 
@@ -19,9 +23,9 @@ import {
   query, 
   where, 
   orderBy,
-  serverTimestamp 
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+  serverTimestamp,
+  db
+} from '../config/firebase';
 
 export class StockAllocationService {
   static ALLOCATION_TYPES = {
@@ -61,7 +65,7 @@ export class StockAllocationService {
       // Update PI item with allocations in Firestore
       await this.updatePIItemAllocations(piId, itemId, allocationRecords);
 
-      // Update product stock levels in Firestore
+      // Update product stock levels in Firestore using your safe functions
       await this.updateProductStock(itemId, allocations);
 
       // Update target documents (PO fulfillment, project tracking)
@@ -222,24 +226,15 @@ export class StockAllocationService {
    */
   static async getActiveProjectCodes() {
     try {
-      // Check if we have a projects collection in Firestore
-      const projectsQuery = query(
-        collection(db, 'projects'),
-        where('status', '==', 'active'),
-        orderBy('createdAt', 'desc')
-      );
+      // Check if we have a projects collection in Firestore using your safe functions
+      const result = await safeGetCollection('projects', [where('status', '==', 'active')]);
       
-      const projectsSnapshot = await getDocs(projectsQuery);
-      
-      if (!projectsSnapshot.empty) {
-        return projectsSnapshot.docs.map(doc => {
-          const project = doc.data();
-          return {
-            id: doc.id,
-            name: project.code || project.name,
-            info: project.description || project.client || 'Project allocation'
-          };
-        });
+      if (result.success && result.data.length > 0) {
+        return result.data.map(project => ({
+          id: project.id,
+          name: project.code || project.name,
+          info: project.description || project.client || 'Project allocation'
+        }));
       }
 
       // Return default project codes if no Firestore projects
@@ -264,24 +259,15 @@ export class StockAllocationService {
    */
   static async getWarehouseLocations() {
     try {
-      // Check if we have a warehouses collection in Firestore
-      const warehousesQuery = query(
-        collection(db, 'warehouses'),
-        where('status', '==', 'active'),
-        orderBy('name', 'asc')
-      );
+      // Check if we have a warehouses collection in Firestore using your safe functions
+      const result = await safeGetCollection('warehouses', [where('status', '==', 'active')]);
       
-      const warehousesSnapshot = await getDocs(warehousesQuery);
-      
-      if (!warehousesSnapshot.empty) {
-        return warehousesSnapshot.docs.map(doc => {
-          const warehouse = doc.data();
-          return {
-            id: doc.id,
-            name: warehouse.name,
-            info: warehouse.location || warehouse.address || 'Warehouse location'
-          };
-        });
+      if (result.success && result.data.length > 0) {
+        return result.data.map(warehouse => ({
+          id: warehouse.id,
+          name: warehouse.name,
+          info: warehouse.location || warehouse.address || 'Warehouse location'
+        }));
       }
 
       // Return default warehouse locations if no Firestore warehouses
@@ -519,12 +505,16 @@ export class StockAllocationService {
     };
 
     try {
-      // Save allocation record to Firestore
-      const docRef = await addDoc(collection(db, 'stockAllocations'), record);
-      const recordWithId = { id: docRef.id, ...record };
-
-      console.log('✅ Allocation record created in Firestore:', docRef.id);
-      return recordWithId;
+      // Save allocation record to Firestore using your safe functions
+      const result = await safeAddDocument('stockAllocations', record);
+      
+      if (result.success) {
+        const recordWithId = { id: result.data.id, ...record };
+        console.log('✅ Allocation record created in Firestore:', result.data.id);
+        return recordWithId;
+      } else {
+        throw new Error('Failed to create allocation record: ' + result.error);
+      }
     } catch (error) {
       console.error('❌ Error creating allocation record in Firestore:', error);
       throw error;
@@ -764,10 +754,14 @@ export class StockAllocationService {
       
       updates.availableStock = updates.stock - updates.allocatedStock;
 
-      // Update in Firestore using the product service
-      await updateDocument('products', product.id, updates);
-
-      console.log('✅ Product stock levels updated in Firestore');
+      // Update in Firestore using your safe update function
+      const result = await safeUpdateDocument('products', product.id, updates);
+      
+      if (result.success) {
+        console.log('✅ Product stock levels updated in Firestore');
+      } else {
+        console.error('❌ Failed to update product stock:', result.error);
+      }
     } catch (error) {
       console.error('❌ Error updating product stock in Firestore:', error);
       // Don't throw - this is not critical for allocation
@@ -837,9 +831,13 @@ export class StockAllocationService {
         updatedAt: serverTimestamp()
       };
 
-      await updateDocument('purchaseOrders', po.id, updates);
-
-      console.log('✅ PO fulfillment updated in Firestore');
+      const result = await safeUpdateDocument('purchaseOrders', po.id, updates);
+      
+      if (result.success) {
+        console.log('✅ PO fulfillment updated in Firestore');
+      } else {
+        console.error('❌ Failed to update PO fulfillment:', result.error);
+      }
     } catch (error) {
       console.error('❌ Error updating PO fulfillment in Firestore:', error);
     }
@@ -971,12 +969,9 @@ export class StockAllocationService {
    */
   static async getAllocationAnalytics() {
     try {
-      // Get allocations from Firestore
-      const allocationsSnapshot = await getDocs(collection(db, 'stockAllocations'));
-      const allocations = allocationsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      // Get allocations from Firestore using your safe functions
+      const allocationsResult = await safeGetCollection('stockAllocations');
+      const allocations = allocationsResult.success ? allocationsResult.data : [];
 
       const proformaInvoicesResult = await getProformaInvoices();
       const proformaInvoices = proformaInvoicesResult.success ? proformaInvoicesResult.data : [];
@@ -1019,11 +1014,8 @@ export class StockAllocationService {
    */
   static async getAllAllocationData() {
     try {
-      const allocationsSnapshot = await getDocs(collection(db, 'stockAllocations'));
-      const allocations = allocationsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const allocationsResult = await safeGetCollection('stockAllocations');
+      const allocations = allocationsResult.success ? allocationsResult.data : [];
 
       const proformaInvoicesResult = await getProformaInvoices();
       const purchaseOrdersResult = await getPurchaseOrders();
