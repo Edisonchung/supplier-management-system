@@ -2388,194 +2388,55 @@ const StockReceivingTab = ({
   />
 )}
 
-    const handleAllocationComplete = async (allocations) => {
+    const resetItemAllocations = async (itemId) => {
   try {
-    console.log('✅ ALLOCATION COMPLETE: Starting update process...');
-    console.log('📋 Allocations received:', allocations);
-    console.log('🎯 Selected item:', selectedItem);
-    console.log('📄 Current PI:', pi);
+    console.log('🔄 Resetting allocations for item:', itemId);
     
-    // Close the modal first
-    setShowAllocationModal(false);
-    setSelectedItem(null);
-    
-    if (!selectedItem || !allocations || allocations.length === 0) {
-      console.error('❌ Missing required data for allocation update');
-      showNotification('Allocation data is incomplete', 'error');
-      return;
-    }
-
-    // 🎯 CRITICAL: Calculate the total allocated from new allocations
-    const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-    console.log('🔢 New total allocated:', newTotalAllocated);
-
-    // 🎯 IMMEDIATE LOCAL UPDATE: Update the PI items immediately
+    // Find the item and reset its allocations
     const updatedItems = pi.items.map(item => {
-      if (item.id === selectedItem.id) {
-        console.log('🔄 Updating item:', item.id);
-        console.log('   Before:', {
-          receivedQty: item.receivedQty,
-          totalAllocated: item.totalAllocated,
-          allocations: item.allocations?.length || 0
+      if (item.id === itemId) {
+        console.log('🧹 Clearing allocations for:', {
+          itemId: item.id,
+          productCode: item.productCode,
+          previousAllocations: item.allocations?.length || 0,
+          previousTotalAllocated: item.totalAllocated || 0
         });
 
-        // Merge existing allocations with new ones
-        const existingAllocations = item.allocations || [];
-        const allAllocations = [...existingAllocations, ...allocations];
-        const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-        const receivedQty = item.receivedQty || 0;
-        const unallocatedQty = receivedQty - totalAllocated;
-
-        const updatedItem = {
+        return {
           ...item,
-          allocations: allAllocations,
-          totalAllocated: totalAllocated,
-          unallocatedQty: unallocatedQty,
-          lastAllocationUpdate: new Date().toISOString(),
-          // Add allocation status for debugging
-          allocationStatus: totalAllocated >= receivedQty ? 'complete' : 'partial'
+          allocations: [], // Clear all allocations
+          totalAllocated: 0, // Reset total
+          unallocatedQty: item.receivedQty || 0, // Reset to full received quantity
+          lastAllocationReset: new Date().toISOString()
         };
-
-        console.log('   After:', {
-          receivedQty: updatedItem.receivedQty,
-          totalAllocated: updatedItem.totalAllocated,
-          allocations: updatedItem.allocations?.length || 0,
-          unallocatedQty: updatedItem.unallocatedQty,
-          allocationStatus: updatedItem.allocationStatus
-        });
-
-        return updatedItem;
       }
       return item;
     });
 
-    // Create updated PI object
+    // Update the PI with reset allocations
     const updatedPI = {
       ...pi,
       items: updatedItems,
       updatedAt: new Date().toISOString(),
-      lastAllocationUpdate: new Date().toISOString()
+      lastAllocationReset: new Date().toISOString()
     };
 
-    console.log('💾 Updating PI with new allocation data...');
+    console.log('💾 Updating PI with reset allocations...');
+    await onUpdatePI(updatedPI);
     
-    // 🎯 CRITICAL: Update the parent component immediately
-    try {
-      await onUpdatePI(updatedPI);
-      console.log('✅ PI updated successfully with allocations');
-      showNotification('Stock allocated successfully', 'success');
-
-      // 🎯 FORCE UI REFRESH: Multiple strategies to ensure re-render
-      setTimeout(() => {
-        console.log('🔄 Forcing UI refresh...');
-        
-        // Strategy 1: Update receiving form state
-        setReceivingForm(prev => ({ 
-          ...prev, 
-          lastUpdate: Date.now(),
-          [`${selectedItem.id}_allocated`]: true 
-        }));
-
-        // Strategy 2: Force component re-render by updating a dummy state
-        // This will trigger the getItemStatus function to run again
-        console.log('🔄 UI refresh completed');
-      }, 50);
-
-    } catch (updateError) {
-      console.error('❌ Error updating PI:', updateError);
-      showNotification('Failed to save allocation data', 'error');
-    }
-
-    // 🎯 BACKUP: Also try to refresh from Firestore as secondary measure
-    try {
-      if (pi.id || pi.piNumber) {
-        const { getProformaInvoices } = await import('../../services/firebase');
-        const result = await getProformaInvoices();
-        
-        if (result.success) {
-          const refreshedPI = result.data.find(p => 
-            p.id === pi.id || p.piNumber === pi.piNumber
-          );
-          
-          if (refreshedPI) {
-            console.log('🔄 Secondary refresh from Firestore successful');
-            await onUpdatePI(refreshedPI);
-          }
-        }
-      }
-    } catch (refreshError) {
-      console.warn('⚠️ Secondary Firestore refresh failed:', refreshError);
-      // Don't throw - the primary update already succeeded
-    }
+    showNotification('Allocations reset successfully', 'success');
     
+    // Force UI refresh
+    setTimeout(() => {
+      setReceivingForm(prev => ({ 
+        ...prev, 
+        [`${itemId}_reset`]: Date.now()
+      }));
+    }, 100);
+
   } catch (error) {
-    console.error('❌ Critical error in allocation completion:', error);
-    showNotification('Allocation failed: ' + error.message, 'error');
-  
-    });
-
-    // Create updated PI object
-    const updatedPI = {
-      ...pi,
-      items: updatedItems,
-      updatedAt: new Date().toISOString(),
-      lastAllocationUpdate: new Date().toISOString()
-    };
-
-    console.log('💾 Updating PI with new allocation data...');
-    
-    // 🎯 CRITICAL: Update the parent component immediately
-    try {
-      await onUpdatePI(updatedPI);
-      console.log('✅ PI updated successfully with allocations');
-      showNotification('Stock allocated successfully', 'success');
-
-      // 🎯 FORCE UI REFRESH: Multiple strategies to ensure re-render
-      setTimeout(() => {
-        console.log('🔄 Forcing UI refresh...');
-        
-        // Strategy 1: Update receiving form state
-        setReceivingForm(prev => ({ 
-          ...prev, 
-          lastUpdate: Date.now(),
-          [`${selectedItem.id}_allocated`]: true 
-        }));
-
-        // Strategy 2: Force component re-render by updating a dummy state
-        // This will trigger the getItemStatus function to run again
-        console.log('🔄 UI refresh completed');
-      }, 50);
-
-    } catch (updateError) {
-      console.error('❌ Error updating PI:', updateError);
-      showNotification('Failed to save allocation data', 'error');
-    }
-
-    // 🎯 BACKUP: Also try to refresh from Firestore as secondary measure
-    try {
-      if (pi.id || pi.piNumber) {
-        const { getProformaInvoices } = await import('../../services/firebase');
-        const result = await getProformaInvoices();
-        
-        if (result.success) {
-          const refreshedPI = result.data.find(p => 
-            p.id === pi.id || p.piNumber === pi.piNumber
-          );
-          
-          if (refreshedPI) {
-            console.log('🔄 Secondary refresh from Firestore successful');
-            await onUpdatePI(refreshedPI);
-          }
-        }
-      }
-    } catch (refreshError) {
-      console.warn('⚠️ Secondary Firestore refresh failed:', refreshError);
-      // Don't throw - the primary update already succeeded
-    }
-    
-  } catch (error) {
-    console.error('❌ Critical error in allocation completion:', error);
-    showNotification('Allocation failed: ' + error.message, 'error');
+    console.error('❌ Error resetting allocations:', error);
+    showNotification('Failed to reset allocations', 'error');
   }
 };
 
@@ -2763,37 +2624,52 @@ const StockReceivingTab = ({
               )}
 
               {/* Action Buttons */}
-              <div className="flex justify-between items-center">
-                <button
-                  onClick={() => saveReceivingData(item.id)}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center"
-                >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Save Receiving Data
-                </button>
+<div className="flex justify-between items-center">
+  <button
+    onClick={() => saveReceivingData(item.id)}
+    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center"
+  >
+    <CheckCircle className="mr-2 h-4 w-4" />
+    Save Receiving Data
+  </button>
 
-                {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
-                 <button
-  onClick={(event) => {
-    console.log('🎯 Allocate Stock button clicked');
-    openAllocationModal({
-      ...item,
-      receivedQty: itemForm.receivedQty || item.receivedQty || 0,
-      unallocatedQty: (itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)
-    }, event); // ← Pass the event
-  }}
-  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-  type="button" // ← ADD THIS TO PREVENT FORM SUBMISSION
->
-                    <Package className="mr-2 h-4 w-4" />
-                    Allocate Stock ({(itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)} available)
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+  <div className="flex items-center gap-2">
+    {/* Reset Allocations Button - Show if item has allocations */}
+    {(item.totalAllocated > 0 || (item.allocations && item.allocations.length > 0)) && (
+      <button
+        onClick={() => {
+          if (window.confirm(`Reset all allocations for ${item.productName}? This cannot be undone.`)) {
+            resetItemAllocations(item.id);
+          }
+        }}
+        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center text-sm"
+        type="button"
+      >
+        <X className="mr-1 h-3 w-3" />
+        Reset
+      </button>
+    )}
+
+    {/* Allocate Stock Button */}
+    {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
+      <button
+        onClick={(event) => {
+          console.log('🎯 Allocate Stock button clicked');
+          openAllocationModal({
+            ...item,
+            receivedQty: itemForm.receivedQty || item.receivedQty || 0,
+            unallocatedQty: (itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)
+          }, event);
+        }}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+        type="button"
+      >
+        <Package className="mr-2 h-4 w-4" />
+        Allocate Stock ({(itemForm.receivedQty || item.receivedQty || 0) - (item.totalAllocated || 0)} available)
+      </button>
+    )}
+  </div>
+</div>
 
       {/* Stock Allocation Modal */}
       {showAllocationModal && selectedItem && (
