@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import SupplierMatchingDisplay from './SupplierMatchingDisplay';
-import { purchaseOrderService } from '../../services/purchaseOrderService';
+import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
 import { AIExtractionService } from '../../services/ai';
 
 // 🔧 CRITICAL FIX: Import tracking services properly
@@ -37,6 +37,8 @@ const SupplierMatchingPage = () => {
   // 🔧 CRITICAL FIX: Use tracking hooks directly
   const { updateDeliveryStatus } = useDeliveryTracking();
   const { updatePaymentStatus } = usePaymentTracking();
+  const { getPurchaseOrderById, updatePurchaseOrder } = usePurchaseOrders();
+
   
   // Log tracking availability
   useEffect(() => {
@@ -89,7 +91,8 @@ const SupplierMatchingPage = () => {
       
       console.log('🔍 Loading PO with enhanced AI features:', poId);
       
-      const po = await purchaseOrderService.getById(poId);
+      const po = getPurchaseOrderById(poId);
+
       
       if (!po) {
         throw new Error('Purchase order not found');
@@ -270,18 +273,22 @@ const SupplierMatchingPage = () => {
         setPurchaseOrder(updatedPO);
         
         // 🔧 FIXED: Safe save operation
-        try {
-          await purchaseOrderService.update(poId, {
-            items: updatedPO.items,
-            sourcingPlan: result.data.sourcingPlan,
-            matchingMetrics: result.data.metrics || result.data.matchingMetrics,
-            supplierMatching: result.data,
-            lastMatchingUpdate: new Date().toISOString()
-          });
-          console.log('💾 Saved enhanced matching results');
-        } catch (saveError) {
-          console.warn('⚠️ Failed to save matching results:', saveError.message);
-        }
+       try {
+  const result = await updatePurchaseOrder(poId, {
+    items: updatedPO.items,
+    sourcingPlan: result.data.sourcingPlan,
+    matchingMetrics: result.data.metrics || result.data.matchingMetrics,
+    supplierMatching: result.data,
+    lastMatchingUpdate: new Date().toISOString()
+  });
+  if (result.success) {
+    console.log('💾 Saved enhanced matching results');
+  } else {
+    throw new Error(result.error || 'Failed to save');
+  }
+} catch (saveError) {
+  console.warn('⚠️ Failed to save matching results:', saveError.message);
+}
         
         if (showToast) {
           // Enhanced success message with metrics
@@ -480,7 +487,8 @@ const SupplierMatchingPage = () => {
         
         console.log('🔧 Save data prepared:', saveData);
         
-        updateResult = await purchaseOrderService.update(poId, saveData);
+        updateResult = await updatePurchaseOrder(poId, saveData);
+
         
         console.log('💾 Save result:', updateResult);
       } catch (saveError) {
