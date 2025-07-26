@@ -122,21 +122,40 @@ export const usePurchaseOrders = () => {
     );
 
     const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const orders = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-          };
-        });
-        
-        setPurchaseOrders(orders);
-        setLoading(false);
-        console.log(`📋 Loaded ${orders.length} purchase orders from Firestore`);
-      },
+  (snapshot) => {
+    console.log('🔍 Firestore snapshot received:', {
+      docsCount: snapshot.docs.length,
+      currentUser: user?.uid,
+      query: 'purchaseOrders where createdBy == user.uid'
+    });
+
+    snapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`📋 Firestore Doc ${index}:`, {
+        id: doc.id,
+        poNumber: data.poNumber,
+        clientPoNumber: data.clientPoNumber,
+        createdBy: data.createdBy,
+        userMatches: data.createdBy === user?.uid,
+        status: data.status,
+        createdAt: data.createdAt
+      });
+    });
+
+    const orders = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+      };
+    }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort in memory instead
+    
+    setPurchaseOrders(orders);
+    setLoading(false);
+    console.log(`📋 Loaded ${orders.length} purchase orders from Firestore`);
+  },
       (err) => {
         console.error('Firestore subscription error:', err);
         setError(err.message);
