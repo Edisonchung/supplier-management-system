@@ -1,9 +1,5 @@
 // src/services/StockAllocationService.js
-import { 
-  getProformaInvoices, 
-  updateProformaInvoice,
-  db
-} from '../config/firebase';
+import { db } from '../config/firebase';
 
 // Import Firestore functions directly from Firebase SDK
 import { 
@@ -90,6 +86,35 @@ const getProducts = async () => {
     data: result.success ? result.data : [],
     error: result.error
   };
+};
+
+// Get proforma invoices from Firestore
+const getProformaInvoices = async () => {
+  const result = await safeGetCollection('proformaInvoices');
+  return {
+    success: result.success,
+    data: result.success ? result.data : [],
+    error: result.error
+  };
+};
+
+// Update proforma invoice in Firestore
+const updateProformaInvoice = async (id, updates) => {
+  try {
+    const result = await safeUpdateDocument('proformaInvoices', id, updates);
+    
+    if (result.success) {
+      return {
+        success: true,
+        data: { id, ...updates, updatedAt: new Date() }
+      };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('Error updating proforma invoice:', error);
+    return { success: false, error: error.message };
+  }
 };
 
 export class StockAllocationService {
