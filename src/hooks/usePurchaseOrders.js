@@ -1,218 +1,266 @@
-// src/hooks/usePurchaseOrders.js
+// src/hooks/usePurchaseOrders.js - Updated with Firestore
 import { useState, useEffect, useCallback } from 'react';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  doc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  serverTimestamp, 
+  where,
+  getDocs 
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'react-hot-toast';
 
 export const usePurchaseOrders = () => {
+  const { user } = useAuth();
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Load purchase orders from localStorage
-  const loadPurchaseOrders = useCallback(() => {
-    try {
-      setLoading(true);
-      const stored = localStorage.getItem('purchaseOrders');
-      
-      if (stored) {
-        const orders = JSON.parse(stored);
-        
-        // Ensure each PO has required fields and unique ID
-        const validatedOrders = orders.map((order, index) => ({
-          // Core fields
-          id: order.id || `po-${Date.now()}-${index}`,
-          poNumber: order.poNumber || generatePONumber(),
-          
-          // Client information
-          clientPoNumber: order.clientPoNumber || '',
-          projectCode: order.projectCode || '',
-          clientName: order.clientName || '',
-          clientContact: order.clientContact || '',
-          clientEmail: order.clientEmail || '',
-          clientPhone: order.clientPhone || '',
-          
-          // Dates
-          orderDate: order.orderDate || new Date().toISOString().split('T')[0],
-          requiredDate: order.requiredDate || '',
-          
-          // Items with validation
-          items: Array.isArray(order.items) ? order.items.map(item => ({
-            id: item.id || `item-${Date.now()}-${Math.random()}`,
-            productName: item.productName || '',
-            productCode: item.productCode || '',
-            quantity: Number(item.quantity) || 1,
-            unitPrice: Number(item.unitPrice) || 0,
-            totalPrice: Number(item.totalPrice) || (Number(item.quantity || 1) * Number(item.unitPrice || 0)),
-            stockAvailable: Number(item.stockAvailable) || 0,
-            category: item.category || ''
-          })) : [],
-          
-          // Financial
-          subtotal: Number(order.subtotal) || calculateSubtotal(order.items || []),
-          tax: Number(order.tax) || 0,
-          totalAmount: Number(order.totalAmount) || calculateTotal(order.items || []),
-          
-          // Terms and status
-          paymentTerms: order.paymentTerms || 'Net 30',
-          deliveryTerms: order.deliveryTerms || 'FOB',
-          status: order.status || 'draft',
-          fulfillmentProgress: Number(order.fulfillmentProgress) || 0,
-          
-          // Additional fields
-          notes: order.notes || '',
-          piAllocations: order.piAllocations || [],
-          
-          // Metadata
-          createdAt: order.createdAt || new Date().toISOString(),
-          updatedAt: order.updatedAt || order.createdAt || new Date().toISOString(),
-          createdBy: order.createdBy || 'system',
-          
-          // AI extraction metadata (if applicable)
-          extractionConfidence: order.extractionConfidence || null,
-          extractionModel: order.extractionModel || null,
-          warnings: order.warnings || [],
-          recommendations: order.recommendations || []
-        }));
-        
-        setPurchaseOrders(validatedOrders);
-      } else {
-        // Initialize with empty array if no data exists
-        setPurchaseOrders([]);
-      }
-      
-      setError(null);
-    } catch (err) {
-      console.error('Error loading purchase orders:', err);
-      setError('Failed to load purchase orders');
-      setPurchaseOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Save purchase orders to localStorage
-  const savePurchaseOrders = useCallback((orders) => {
-    try {
-      localStorage.setItem('purchaseOrders', JSON.stringify(orders));
-      return true;
-    } catch (err) {
-      console.error('Error saving purchase orders:', err);
-      setError('Failed to save purchase orders');
-      return false;
-    }
-  }, []);
-
   // Generate unique PO number
-  const generatePONumber = () => {
+  const generatePONumber = useCallback(() => {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const random = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
     return `PO-${year}${month}${day}-${random}`;
-  };
+  }, []);
 
   // Calculate subtotal from items
-  const calculateSubtotal = (items) => {
+  const calculateSubtotal = useCallback((items) => {
+    if (!Array.isArray(items)) return 0;
     return items.reduce((sum, item) => {
       const itemTotal = Number(item.totalPrice) || (Number(item.quantity || 0) * Number(item.unitPrice || 0));
       return sum + itemTotal;
     }, 0);
-  };
+  }, []);
 
   // Calculate total with tax
-  const calculateTotal = (items, taxRate = 0.1) => {
+  const calculateTotal = useCallback((items, taxRate = 0.1) => {
     const subtotal = calculateSubtotal(items);
     const tax = subtotal * taxRate;
     return subtotal + tax;
-  };
+  }, [calculateSubtotal]);
+
+  // Validate and normalize PO data
+  const validatePOData = useCallback((poData) => {
+    const items = Array.isArray(poData.items) ? poData.items.map(item => ({
+      id: item.id || `item-${Date.now()}-${Math.random()}`,
+      productName: item.productName || '',
+      productCode: item.productCode || '',
+      quantity: Number(item.quantity) || 1,
+      unitPrice: Number(item.unitPrice) || 0,
+      totalPrice: Number(item.totalPrice) || (Number(item.quantity || 1) * Number(item.unitPrice || 0)),
+      stockAvailable: Number(item.stockAvailable) || 0,
+      category: item.category || ''
+    })) : [];
+
+    return {
+      // Core fields
+      poNumber: poData.poNumber || generatePONumber(),
+      
+      // Client information
+      clientPoNumber: poData.clientPoNumber || '',
+      projectCode: poData.projectCode || '',
+      clientName: poData.clientName || '',
+      clientContact: poData.clientContact || '',
+      clientEmail: poData.clientEmail || '',
+      clientPhone: poData.clientPhone || '',
+      
+      // Dates
+      orderDate: poData.orderDate || new Date().toISOString().split('T')[0],
+      requiredDate: poData.requiredDate || '',
+      
+      // Items
+      items: items,
+      
+      // Financial
+      subtotal: calculateSubtotal(items),
+      tax: poData.tax || calculateSubtotal(items) * 0.1,
+      totalAmount: poData.totalAmount || calculateTotal(items),
+      
+      // Terms and status
+      paymentTerms: poData.paymentTerms || 'Net 30',
+      deliveryTerms: poData.deliveryTerms || 'FOB',
+      status: poData.status || 'draft',
+      fulfillmentProgress: Number(poData.fulfillmentProgress) || 0,
+      
+      // Additional fields
+      notes: poData.notes || '',
+      piAllocations: poData.piAllocations || [],
+      
+      // AI extraction metadata (if applicable)
+      extractionConfidence: poData.extractionConfidence || null,
+      extractionModel: poData.extractionModel || null,
+      warnings: poData.warnings || [],
+      recommendations: poData.recommendations || []
+    };
+  }, [generatePONumber, calculateSubtotal, calculateTotal]);
+
+  // Set up real-time listener for Firestore
+  useEffect(() => {
+    if (!user) {
+      setPurchaseOrders([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    
+    const q = query(
+      collection(db, 'purchaseOrders'),
+      where('createdBy', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        const orders = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+          };
+        });
+        
+        setPurchaseOrders(orders);
+        setLoading(false);
+        console.log(`📋 Loaded ${orders.length} purchase orders from Firestore`);
+      },
+      (err) => {
+        console.error('Firestore subscription error:', err);
+        setError(err.message);
+        setLoading(false);
+        toast.error('Failed to sync with database');
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
 
   // Add new purchase order
   const addPurchaseOrder = useCallback(async (poData) => {
+    if (!user) {
+      toast.error('Please sign in to create purchase orders');
+      return { success: false, error: 'Not authenticated' };
+    }
+
     try {
-      // Ensure all required fields
-      const newPO = {
-        ...poData,
-        id: poData.id || `po-${Date.now()}`,
-        poNumber: poData.poNumber || generatePONumber(),
-        status: poData.status || 'draft',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: poData.createdBy || 'current-user',
-        
-        // Calculate financial totals
-        subtotal: calculateSubtotal(poData.items || []),
-        tax: poData.tax || calculateSubtotal(poData.items || []) * 0.1,
-        totalAmount: poData.totalAmount || calculateTotal(poData.items || [])
+      setLoading(true);
+      
+      // Validate and normalize data
+      const validatedData = validatePOData(poData);
+      
+      const docData = {
+        ...validatedData,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       };
       
-      const updatedOrders = [...purchaseOrders, newPO];
-      setPurchaseOrders(updatedOrders);
+      const docRef = await addDoc(collection(db, 'purchaseOrders'), docData);
       
-      if (savePurchaseOrders(updatedOrders)) {
-        return { success: true, data: newPO };
-      } else {
-        throw new Error('Failed to save');
-      }
+      console.log(`📋 Added purchase order to Firestore: ${validatedData.poNumber}`);
+      toast.success('Purchase order created successfully');
+      
+      return { 
+        success: true, 
+        data: {
+          id: docRef.id,
+          ...validatedData,
+          createdBy: user.uid,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      };
     } catch (err) {
       console.error('Error adding purchase order:', err);
       setError('Failed to add purchase order');
+      toast.error(`Failed to create purchase order: ${err.message}`);
       return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
     }
-  }, [purchaseOrders, savePurchaseOrders]);
+  }, [user, validatePOData]);
 
   // Update existing purchase order
   const updatePurchaseOrder = useCallback(async (id, updates) => {
+    if (!user) {
+      toast.error('Please sign in to update purchase orders');
+      return { success: false, error: 'Not authenticated' };
+    }
+
     try {
-      const updatedOrders = purchaseOrders.map(po => {
-        if (po.id === id) {
-          // Recalculate totals if items changed
-          const updatedPO = {
-            ...po,
-            ...updates,
-            updatedAt: new Date().toISOString()
-          };
-          
-          if (updates.items) {
-            updatedPO.subtotal = calculateSubtotal(updates.items);
-            updatedPO.tax = updatedPO.subtotal * 0.1;
-            updatedPO.totalAmount = updatedPO.subtotal + updatedPO.tax;
-          }
-          
-          return updatedPO;
-        }
-        return po;
-      });
+      setLoading(true);
       
-      setPurchaseOrders(updatedOrders);
-      
-      if (savePurchaseOrders(updatedOrders)) {
-        return { success: true };
-      } else {
-        throw new Error('Failed to save');
+      // Recalculate totals if items changed
+      let processedUpdates = { ...updates };
+      if (updates.items) {
+        processedUpdates.subtotal = calculateSubtotal(updates.items);
+        processedUpdates.tax = processedUpdates.subtotal * 0.1;
+        processedUpdates.totalAmount = processedUpdates.subtotal + processedUpdates.tax;
       }
+      
+      const updateData = {
+        ...processedUpdates,
+        updatedAt: serverTimestamp()
+      };
+      
+      await updateDoc(doc(db, 'purchaseOrders', id), updateData);
+      
+      console.log(`📋 Updated purchase order in Firestore: ${id}`);
+      toast.success('Purchase order updated successfully');
+      
+      return { success: true };
     } catch (err) {
       console.error('Error updating purchase order:', err);
       setError('Failed to update purchase order');
+      toast.error(`Failed to update purchase order: ${err.message}`);
       return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
     }
-  }, [purchaseOrders, savePurchaseOrders]);
+  }, [user, calculateSubtotal]);
 
   // Delete purchase order
   const deletePurchaseOrder = useCallback(async (id) => {
+    if (!user) {
+      toast.error('Please sign in to delete purchase orders');
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    if (!window.confirm('Are you sure you want to delete this purchase order?')) {
+      return { success: false };
+    }
+
     try {
-      const updatedOrders = purchaseOrders.filter(po => po.id !== id);
-      setPurchaseOrders(updatedOrders);
+      setLoading(true);
       
-      if (savePurchaseOrders(updatedOrders)) {
-        return { success: true };
-      } else {
-        throw new Error('Failed to save');
-      }
+      await deleteDoc(doc(db, 'purchaseOrders', id));
+      
+      console.log(`🗑️ Deleted purchase order from Firestore: ${id}`);
+      toast.success('Purchase order deleted successfully');
+      
+      return { success: true };
     } catch (err) {
       console.error('Error deleting purchase order:', err);
       setError('Failed to delete purchase order');
+      toast.error(`Failed to delete purchase order: ${err.message}`);
       return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
     }
-  }, [purchaseOrders, savePurchaseOrders]);
+  }, [user]);
 
   // Get purchase order by ID
   const getPurchaseOrderById = useCallback((id) => {
@@ -227,7 +275,7 @@ export const usePurchaseOrders = () => {
   // Get purchase orders by client
   const getPurchaseOrdersByClient = useCallback((clientName) => {
     return purchaseOrders.filter(po => 
-      po.clientName.toLowerCase().includes(clientName.toLowerCase())
+      po.clientName && po.clientName.toLowerCase().includes(clientName.toLowerCase())
     );
   }, [purchaseOrders]);
 
@@ -238,23 +286,28 @@ export const usePurchaseOrders = () => {
 
   // Update fulfillment progress
   const updateFulfillmentProgress = useCallback(async (id, progress) => {
+    const clampedProgress = Math.min(100, Math.max(0, progress));
+    const status = clampedProgress >= 100 ? 'delivered' : 'processing';
+    
     return updatePurchaseOrder(id, { 
-      fulfillmentProgress: Math.min(100, Math.max(0, progress)),
-      status: progress >= 100 ? 'delivered' : 'processing'
+      fulfillmentProgress: clampedProgress,
+      status
     });
   }, [updatePurchaseOrder]);
 
   // Search purchase orders
   const searchPurchaseOrders = useCallback((searchTerm) => {
+    if (!searchTerm) return purchaseOrders;
+    
     const term = searchTerm.toLowerCase();
     return purchaseOrders.filter(po => 
-      po.poNumber.toLowerCase().includes(term) ||
-      po.clientPoNumber.toLowerCase().includes(term) ||
+      po.poNumber?.toLowerCase().includes(term) ||
+      po.clientPoNumber?.toLowerCase().includes(term) ||
       po.projectCode?.toLowerCase().includes(term) ||
-      po.clientName.toLowerCase().includes(term) ||
-      po.items.some(item => 
-        item.productName.toLowerCase().includes(term) ||
-        item.productCode.toLowerCase().includes(term)
+      po.clientName?.toLowerCase().includes(term) ||
+      po.items?.some(item => 
+        item.productName?.toLowerCase().includes(term) ||
+        item.productCode?.toLowerCase().includes(term)
       )
     );
   }, [purchaseOrders]);
@@ -268,7 +321,11 @@ export const usePurchaseOrders = () => {
         confirmed: 0,
         processing: 0,
         delivered: 0,
-        cancelled: 0
+        cancelled: 0,
+        pending: 0,
+        approved: 0,
+        in_progress: 0,
+        completed: 0
       },
       totalValue: 0,
       averageValue: 0,
@@ -283,18 +340,20 @@ export const usePurchaseOrders = () => {
       }
       
       // Calculate total value
-      stats.totalValue += po.totalAmount || 0;
+      const value = po.totalAmount || po.grandTotal || po.total || 0;
+      stats.totalValue += Number(value);
       
       // Track top clients
-      if (!stats.topClients[po.clientName]) {
-        stats.topClients[po.clientName] = {
-          name: po.clientName,
+      const clientName = po.clientName || 'Unknown Client';
+      if (!stats.topClients[clientName]) {
+        stats.topClients[clientName] = {
+          name: clientName,
           orderCount: 0,
           totalValue: 0
         };
       }
-      stats.topClients[po.clientName].orderCount++;
-      stats.topClients[po.clientName].totalValue += po.totalAmount || 0;
+      stats.topClients[clientName].orderCount++;
+      stats.topClients[clientName].totalValue += Number(value);
     });
     
     // Calculate average
@@ -313,22 +372,58 @@ export const usePurchaseOrders = () => {
     return stats;
   }, [purchaseOrders]);
 
-  // Clear all data (for development/testing)
-  const clearAllPurchaseOrders = useCallback(() => {
-    if (window.confirm('Are you sure you want to clear all purchase orders? This cannot be undone.')) {
-      setPurchaseOrders([]);
-      localStorage.removeItem('purchaseOrders');
-      return { success: true };
-    }
-    return { success: false };
+  // Refresh data (for manual refresh)
+  const refetch = useCallback(() => {
+    // Firestore real-time listener handles this automatically
+    // This is just for UI feedback
+    toast.success('Purchase orders refreshed');
   }, []);
 
-  // Load data on mount
-  useEffect(() => {
-    loadPurchaseOrders();
-  }, [loadPurchaseOrders]);
+  // Clear all purchase orders (for development/testing)
+  const clearAllPurchaseOrders = useCallback(async () => {
+    if (!user) {
+      toast.error('Please sign in to perform this action');
+      return { success: false };
+    }
 
-  // Return all functions and data
+    if (!window.confirm('Are you sure you want to clear all purchase orders? This cannot be undone.')) {
+      return { success: false };
+    }
+    
+    const confirmText = prompt('Type "DELETE ALL" to confirm:');
+    if (confirmText !== 'DELETE ALL') {
+      toast.info('Operation cancelled');
+      return { success: false };
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Delete all purchase orders for this user
+      const q = query(
+        collection(db, 'purchaseOrders'),
+        where('createdBy', '==', user.uid)
+      );
+      
+      const snapshot = await getDocs(q);
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      
+      console.log(`🗑️ Deleted ${snapshot.docs.length} purchase orders`);
+      toast.success(`Deleted ${snapshot.docs.length} purchase orders`);
+      
+      return { success: true, deleted: snapshot.docs.length };
+    } catch (err) {
+      console.error('Error clearing purchase orders:', err);
+      setError('Failed to clear purchase orders');
+      toast.error('Failed to clear purchase orders');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  // Return all functions and data (same interface as before)
   return {
     // Data
     purchaseOrders,
@@ -353,7 +448,7 @@ export const usePurchaseOrders = () => {
     // Utilities
     getStatistics,
     generatePONumber,
-    refetch: loadPurchaseOrders,
+    refetch,
     clearAllPurchaseOrders
   };
 };
