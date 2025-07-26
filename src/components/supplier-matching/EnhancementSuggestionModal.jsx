@@ -103,7 +103,7 @@ const EnhancementSuggestionModal = ({
 
   const updateEnhancement = (itemId, field, value) => {
     setEnhancedItems(prev => prev.map(item => 
-      item.id === itemId 
+      (item.id === itemId || item.itemNumber === itemId)
         ? { 
             ...item, 
             enhancements: { 
@@ -177,7 +177,7 @@ const EnhancementSuggestionModal = ({
         <div className="max-h-[calc(90vh-12rem)] overflow-y-auto">
           <div className="p-6 space-y-6">
             {enhancedItems.map(item => (
-              <div key={item.id} className="bg-gray-50 rounded-lg p-5">
+              <div key={item.id || item.itemNumber} className="bg-gray-50 rounded-lg p-5">
                 {/* Original Item Info */}
                 <div className="mb-4 p-3 bg-white rounded border-l-4 border-gray-300">
                   <h4 className="font-medium text-gray-900 mb-1">
@@ -196,7 +196,7 @@ const EnhancementSuggestionModal = ({
                     <input
                       type="text"
                       value={item.enhancements.modelNumber}
-                      onChange={(e) => updateEnhancement(item.id, 'modelNumber', e.target.value)}
+                      onChange={(e) => updateEnhancement(item.id || item.itemNumber, 'modelNumber', e.target.value)}
                       placeholder="e.g., NJ2214ECP"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
@@ -209,7 +209,7 @@ const EnhancementSuggestionModal = ({
                           <span className="text-blue-500 ml-2">({suggestion.confidence}%)</span>
                         </div>
                         <button
-                          onClick={() => applySuggestion(item.id, suggestion)}
+                          onClick={() => applySuggestion(item.id || item.itemNumber, suggestion)}
                           className="text-blue-600 hover:text-blue-800 font-medium"
                         >
                           Apply
@@ -226,7 +226,7 @@ const EnhancementSuggestionModal = ({
                     <input
                       type="text"
                       value={item.enhancements.brand}
-                      onChange={(e) => updateEnhancement(item.id, 'brand', e.target.value)}
+                      onChange={(e) => updateEnhancement(item.id || item.itemNumber, 'brand', e.target.value)}
                       placeholder="e.g., SKF, NSK"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
@@ -238,7 +238,7 @@ const EnhancementSuggestionModal = ({
                           <span className="text-blue-500 ml-2">({suggestion.confidence}%)</span>
                         </div>
                         <button
-                          onClick={() => applySuggestion(item.id, suggestion)}
+                          onClick={() => applySuggestion(item.id || item.itemNumber, suggestion)}
                           className="text-blue-600 hover:text-blue-800 font-medium"
                         >
                           Apply
@@ -255,7 +255,7 @@ const EnhancementSuggestionModal = ({
                     <input
                       type="text"
                       value={item.enhancements.alternatePartNumber}
-                      onChange={(e) => updateEnhancement(item.id, 'alternatePartNumber', e.target.value)}
+                      onChange={(e) => updateEnhancement(item.id || item.itemNumber, 'alternatePartNumber', e.target.value)}
                       placeholder="Cross-reference code"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
@@ -269,7 +269,7 @@ const EnhancementSuggestionModal = ({
                     <input
                       type="text"
                       value={item.enhancements.technicalSpecs}
-                      onChange={(e) => updateEnhancement(item.id, 'technicalSpecs', e.target.value)}
+                      onChange={(e) => updateEnhancement(item.id || item.itemNumber, 'technicalSpecs', e.target.value)}
                       placeholder="Key specifications"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
@@ -280,7 +280,7 @@ const EnhancementSuggestionModal = ({
                           <span className="text-blue-700">{suggestion.value}</span>
                         </div>
                         <button
-                          onClick={() => applySuggestion(item.id, suggestion)}
+                          onClick={() => applySuggestion(item.id || item.itemNumber, suggestion)}
                           className="text-blue-600 hover:text-blue-800 font-medium"
                         >
                           Apply
