@@ -1,4 +1,4 @@
-// src/components/common/Navigation.jsx - Enhanced with Tracking Integration
+// src/components/common/Navigation.jsx - Enhanced with Multi-Company Admin
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -24,7 +24,12 @@ import {
   BarChart3,
   Clock,
   AlertTriangle,
-  Bell
+  Bell,
+  Crown,
+  MapPin,
+  Globe,
+  TreePine,
+  Factory
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -40,7 +45,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   const [sourcingCount, setSourcingCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [teamOnline, setTeamOnline] = useState(0);
-  // 🆕 ADD: Tracking counters
+  // Tracking counters
   const [trackingCounts, setTrackingCounts] = useState({
     activeDeliveries: 0,
     overdueItems: 0,
@@ -65,7 +70,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         const draftPOs = purchaseOrders.filter(po => po.status === 'draft').length;
         setPendingCount(pendingPIs + draftPOs);
 
-        // 🆕 ADD: Tracking counts
+        // Tracking counts
         const deliveryTracking = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
         const paymentTracking = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
         
@@ -109,7 +114,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     return () => clearInterval(interval);
   }, [location.pathname]); // Update when navigation changes
 
-  // Enhanced navigation structure with tracking
+  // Enhanced navigation structure with multi-company admin
   const navigationItems = [
     // Dashboard (no section)
     {
@@ -186,15 +191,14 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           permission: 'canViewOrders'
         },
         {
-  name: 'Smart Notifications',  // ← ADD THIS ENTIRE OBJECT
-  href: '/notifications',
-  icon: Bell,
-  description: 'AI-powered procurement alerts',
-  permission: 'canViewOrders',
-  badge: trackingCounts.overdueItems > 0 ? trackingCounts.overdueItems : null,
-  badgeColor: 'bg-red-500'
-},
-        // 🆕 ADD: Tracking menu item
+          name: 'Smart Notifications',
+          href: '/notifications',
+          icon: Bell,
+          description: 'AI-powered procurement alerts',
+          permission: 'canViewOrders',
+          badge: trackingCounts.overdueItems > 0 ? trackingCounts.overdueItems : null,
+          badgeColor: 'bg-red-500'
+        },
         {
           name: 'Tracking',
           href: '/tracking',
@@ -226,7 +230,6 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           icon: Truck,
           description: 'Shipment tracking and delivery status',
           permission: 'canViewDeliveries',
-          // 🔄 UPDATE: Add redirect notice
           badge: 'REDIRECTS',
           badgeColor: 'bg-gray-400'
         }
@@ -248,7 +251,35 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // Administration Section
+    // 🆕 NEW: Multi-Company Administration Section
+    {
+      name: 'Multi-Company Admin',
+      section: true,
+      adminOnly: true,
+      multiCompanyOnly: true, // New flag
+      children: [
+        {
+          name: 'Company Structure',
+          href: '/admin/companies',
+          icon: TreePine,
+          description: 'Manage companies, branches, and business structure',
+          permission: 'canManageCompanies',
+          badge: permissions.isGroupAdmin ? `${permissions.totalAccessibleCompanies || 9} Companies` : null,
+          badgeColor: 'bg-purple-500'
+        },
+        {
+          name: 'Company Analytics',
+          href: '/admin/company-analytics',
+          icon: BarChart3,
+          description: 'Cross-company performance analytics',
+          permission: 'canViewCrossCompanyReports',
+          badge: permissions.isGroupAdmin || permissions.isDivisionAdmin ? 'INSIGHTS' : null,
+          badgeColor: 'bg-indigo-500'
+        }
+      ]
+    },
+
+    // Enhanced Administration Section
     {
       name: 'Administration',
       section: true,
@@ -256,47 +287,46 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       children: [
         {
           name: 'Team Management',
-          href: '/team-management',
+          href: '/admin/team',
           icon: UserCheck,
-          description: 'Team member management',
+          description: 'Team member and role management',
           permission: 'canManageUsers',
           badge: teamOnline > 0 ? `${teamOnline} online` : null,
           badgeColor: 'bg-green-500'
         },
         {
           name: 'Settings',
-          href: '/settings',
+          href: '/admin/settings',
           icon: Settings,
           description: 'System configuration',
           permission: 'canManageUsers'
         },
         {
           name: 'Activity Logs',
-          href: '/activity-logs',
+          href: '/admin/activity',
           icon: Activity,
           description: 'System activity and audit logs',
           permission: 'canManageUsers'
-        },
-      
+        }
       ]
     }
   ];
 
   const handleToggleCollapse = () => {
-  const newCollapsedState = !isCollapsed;
-  setIsCollapsed(newCollapsedState);
-  
-  // Save preference to localStorage
-  localStorage.setItem('navigationCollapsed', newCollapsedState);
-  
-  // ✅ Dispatch custom event for Layout to listen to
-  window.dispatchEvent(new CustomEvent('navigationCollapsed', {
-    detail: { collapsed: newCollapsedState }
-  }));
-  
-  // Also dispatch the navToggled event for compatibility
-  window.dispatchEvent(new Event('navToggled'));
-};
+    const newCollapsedState = !isCollapsed;
+    setIsCollapsed(newCollapsedState);
+    
+    // Save preference to localStorage
+    localStorage.setItem('navigationCollapsed', newCollapsedState);
+    
+    // Dispatch custom event for Layout to listen to
+    window.dispatchEvent(new CustomEvent('navigationCollapsed', {
+      detail: { collapsed: newCollapsedState }
+    }));
+    
+    // Also dispatch the navToggled event for compatibility
+    window.dispatchEvent(new Event('navToggled'));
+  };
 
   // Load collapse preference on mount
   useEffect(() => {
@@ -323,6 +353,25 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   const hasPermission = (permission) => {
     if (!permission) return true;
     return permissions[permission] !== false;
+  };
+
+  // Enhanced section visibility check for multi-company admin
+  const shouldShowSection = (section) => {
+    // Basic admin check
+    if (section.adminOnly && !canManageUsers && !isAdmin) {
+      return false;
+    }
+    
+    // Multi-company admin check
+    if (section.multiCompanyOnly) {
+      // Show to Group Admin, Division Admin, or users with company management permissions
+      return permissions.isGroupAdmin || 
+             permissions.isDivisionAdmin || 
+             permissions.canManageCompanies ||
+             permissions.canViewCompanyStructure;
+    }
+    
+    return true;
   };
 
   const renderNavItem = (item, isChild = false, parentName = '') => {
@@ -400,15 +449,20 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   };
 
   const renderSection = (section) => {
-    if (section.adminOnly && !canManageUsers && !isAdmin) return null;
+    if (!shouldShowSection(section)) {
+      return null;
+    }
 
     return (
       <div key={section.name} className="mb-6">
         {!isCollapsed && (
-          <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center">
             {section.name}
             {section.adminOnly && (
               <Shield className="inline-block w-3 h-3 ml-1" />
+            )}
+            {section.multiCompanyOnly && (
+              <Crown className="inline-block w-3 h-3 ml-1 text-purple-500" />
             )}
           </h3>
         )}
@@ -419,6 +473,30 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     );
   };
 
+  // Enhanced user badge display
+  const getUserBadgeDisplay = () => {
+    if (permissions.userBadge) {
+      return permissions.userBadge;
+    }
+    
+    // Fallback to role-based display
+    const roleConfig = {
+      admin: { label: 'Admin', color: 'bg-purple-100 text-purple-800', icon: Shield },
+      manager: { label: 'Manager', color: 'bg-blue-100 text-blue-800', icon: UserCheck },
+      employee: { label: 'Employee', color: 'bg-green-100 text-green-800', icon: Users },
+      viewer: { label: 'Viewer', color: 'bg-gray-100 text-gray-800', icon: null }
+    };
+    
+    const config = roleConfig[user?.role] || roleConfig.viewer;
+    return {
+      text: config.label,
+      color: config.color,
+      icon: config.icon
+    };
+  };
+
+  const userBadge = getUserBadgeDisplay();
+
   return (
     <>
       {/* Desktop Navigation */}
@@ -426,7 +504,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         isCollapsed ? 'w-16' : 'w-64'
       }`}>
         <div className="h-full flex flex-col">
-          {/* Enhanced Header */}
+          {/* Enhanced Header with Multi-Company Indicator */}
           <div className="flex items-center justify-between p-4 border-b h-16 bg-gradient-to-r from-blue-600 to-purple-600">
             {!isCollapsed && (
               <div className="flex items-center">
@@ -435,7 +513,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white">HiggsFlow</h2>
-                  <p className="text-xs text-blue-100">Accelerating Supply Chain</p>
+                  <p className="text-xs text-blue-100">
+                    {permissions.isMultiCompanyUser ? 
+                      `Multi-Company Platform` : 
+                      'Accelerating Supply Chain'
+                    }
+                  </p>
                 </div>
               </div>
             )}
@@ -463,7 +546,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
             )}
           </div>
 
-          {/* Enhanced User Info */}
+          {/* Enhanced User Info with Multi-Company Badge */}
           {user && (
             <div className="p-4 border-t bg-gray-50">
               <div className={`flex items-center ${isCollapsed ? 'justify-center' : ''}`}>
@@ -475,26 +558,42 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                       user.email?.[0]?.toUpperCase() || 'U'
                     )}
                   </div>
-                  {/* Online indicator */}
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full"></div>
+                  {/* Enhanced online indicator with multi-company status */}
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
+                    permissions.isGroupAdmin ? 'bg-purple-400' :
+                    permissions.isDivisionAdmin ? 'bg-blue-400' :
+                    permissions.isCompanyAdmin ? 'bg-green-400' :
+                    'bg-green-400'
+                  }`}></div>
                 </div>
                 {!isCollapsed && (
                   <div className="ml-3 flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-700 truncate">
                       {user.displayName || user.email}
                     </p>
-                    <div className="flex items-center">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        user.role === 'admin' ?
-                        'bg-purple-100 text-purple-800' :
-                        user.role === 'manager' ? 'bg-blue-100 text-blue-800' :
-                        user.role === 'employee' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {user.role === 'admin' && <Shield className="w-3 h-3 mr-1" />}
-                        {user.role || 'User'}
-                      </span>
+                    <div className="flex items-center mt-1">
+                      {typeof userBadge === 'string' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {permissions.isGroupAdmin && <Crown className="w-3 h-3 mr-1" />}
+                          {permissions.isDivisionAdmin && <Building2 className="w-3 h-3 mr-1" />}
+                          {permissions.isCompanyAdmin && <Factory className="w-3 h-3 mr-1" />}
+                          {permissions.isRegionalAdmin && <Globe className="w-3 h-3 mr-1" />}
+                          {userBadge}
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${userBadge.color}`}>
+                          {userBadge.icon && <userBadge.icon className="w-3 h-3 mr-1" />}
+                          {userBadge.text}
+                        </span>
+                      )}
                     </div>
+                    
+                    {/* Multi-Company Access Indicator */}
+                    {permissions.isMultiCompanyUser && !isCollapsed && (
+                      <div className="mt-1 text-xs text-gray-500">
+                        {permissions.totalAccessibleCompanies} companies • {permissions.totalAccessibleBranches} branches
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -517,7 +616,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
               </button>
             </div>
             
-            {/* Mobile Header */}
+            {/* Enhanced Mobile Header */}
             <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-4">
               <div className="flex items-center">
                 <div className="flex items-center justify-center w-8 h-8 bg-white bg-opacity-20 rounded-lg mr-3">
@@ -525,7 +624,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white">HiggsFlow</h2>
-                  <p className="text-xs text-blue-100">Team Dashboard</p>
+                  <p className="text-xs text-blue-100">
+                    {permissions.isMultiCompanyUser ? 
+                      'Multi-Company Dashboard' : 
+                      'Team Dashboard'
+                    }
+                  </p>
                 </div>
               </div>
             </div>
@@ -546,11 +650,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
               </nav>
             </div>
 
-            {/* Mobile User Info */}
+            {/* Enhanced Mobile User Info */}
             {user && (
               <div className="flex-shrink-0 bg-gray-50 p-4">
                 <div className="flex items-center">
-                  <div className="flex-shrink-0">
+                  <div className="flex-shrink-0 relative">
                     <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
                       {user.photoURL ? (
                         <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" />
@@ -558,23 +662,41 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                         user.email?.[0]?.toUpperCase() || 'U'
                       )}
                     </div>
+                    {/* Multi-company status indicator */}
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
+                      permissions.isGroupAdmin ? 'bg-purple-400' :
+                      permissions.isDivisionAdmin ? 'bg-blue-400' :
+                      permissions.isCompanyAdmin ? 'bg-green-400' :
+                      'bg-green-400'
+                    }`}></div>
                   </div>
                   <div className="ml-3">
                     <p className="text-base font-medium text-gray-700">
                       {user.displayName || user.email}
                     </p>
                     <div className="flex items-center mt-1">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        user.role === 'admin' ?
-                        'bg-purple-100 text-purple-800' :
-                        user.role === 'manager' ? 'bg-blue-100 text-blue-800' :
-                        user.role === 'employee' ? 'bg-green-100 text-green-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {user.role === 'admin' && <Shield className="w-3 h-3 mr-1" />}
-                        {user.role || 'User'}
-                      </span>
+                      {typeof userBadge === 'string' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {permissions.isGroupAdmin && <Crown className="w-3 h-3 mr-1" />}
+                          {permissions.isDivisionAdmin && <Building2 className="w-3 h-3 mr-1" />}
+                          {permissions.isCompanyAdmin && <Factory className="w-3 h-3 mr-1" />}
+                          {permissions.isRegionalAdmin && <Globe className="w-3 h-3 mr-1" />}
+                          {userBadge}
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${userBadge.color}`}>
+                          {userBadge.icon && <userBadge.icon className="w-3 h-3 mr-1" />}
+                          {userBadge.text}
+                        </span>
+                      )}
                     </div>
+                    
+                    {/* Multi-Company Access Info on Mobile */}
+                    {permissions.isMultiCompanyUser && (
+                      <div className="mt-1 text-xs text-gray-500">
+                        Access: {permissions.totalAccessibleCompanies} companies
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
