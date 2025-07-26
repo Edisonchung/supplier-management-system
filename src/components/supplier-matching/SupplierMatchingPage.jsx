@@ -20,8 +20,8 @@ import {
   FileText,     
   BarChart3,    
   Truck,
-  ExclamationTriangle,
-  HandRaised,
+  AlertTriangle,
+  Hand,
   Sparkles         
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -1268,7 +1268,7 @@ const SupplierMatchingPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
             <div className="flex items-start">
-              <ExclamationTriangle className="h-6 w-6 text-yellow-600 mr-3 flex-shrink-0 mt-0.5" />
+              <AlertTriangle className="h-6 w-6 text-yellow-600 mr-3 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h3 className="font-medium text-yellow-800 mb-2">
                   No Automatic Matches Found
@@ -1291,7 +1291,7 @@ const SupplierMatchingPage = () => {
                     onClick={() => setShowManualMatching(true)}
                     className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
                   >
-                    <HandRaised className="h-4 w-4 mr-2" />
+                    <Hand className="h-4 w-4 mr-2" />
                     ✋ Manual Matching
                   </button>
                 </div>
@@ -1314,7 +1314,7 @@ const SupplierMatchingPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
             <div className="flex items-center">
-              <ExclamationTriangle className="h-5 w-5 text-orange-600 mr-2" />
+              <AlertTriangle className="h-5 w-5 text-orange-600 mr-2" />
               <div className="flex-1">
                 <p className="text-orange-700">
                   Low match rate detected. {unmatchedItems.length} items still need matching.
