@@ -8,14 +8,10 @@ import {
   updateSupplier,
   getProducts,
   addProduct,
-  updateProduct,
-  safeAddDocument,
-  safeUpdateDocument,
-  safeGetCollection,
-  safeGetDocument
+  updateProduct
 } from '../config/firebase';
 
-// Import additional Firestore functions from your Firebase config
+// Import Firestore functions directly
 import { 
   collection, 
   doc, 
@@ -29,6 +25,69 @@ import {
   serverTimestamp,
   db
 } from '../config/firebase';
+
+// Helper functions to handle Firestore operations safely
+const handleFirestoreOperation = async (operation, operationName) => {
+  try {
+    const result = await operation();
+    return { success: true, data: result };
+  } catch (error) {
+    console.error(`${operationName} failed:`, error);
+    
+    // Handle CORS-specific errors
+    if (error.message?.includes('CORS') || 
+        error.message?.includes('access control') ||
+        error.code === 'unavailable') {
+      console.warn(`🌐 Network/CORS error in ${operationName} - operation failed`);
+      return { success: false, error: 'NETWORK_ERROR', corsIssue: true };
+    }
+    
+    return { success: false, error: error.message };
+  }
+};
+
+// Safe collection getter
+const safeGetCollection = async (collectionName, queryConstraints = []) => {
+  return handleFirestoreOperation(async () => {
+    const collectionRef = collection(db, collectionName);
+    const q = queryConstraints.length > 0 ? query(collectionRef, ...queryConstraints) : collectionRef;
+    const snapshot = await getDocs(q);
+    
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  }, `getCollection(${collectionName})`);
+};
+
+// Safe document adder
+const safeAddDocument = async (collectionName, data) => {
+  return handleFirestoreOperation(async () => {
+    const collectionRef = collection(db, collectionName);
+    const cleanData = {
+      ...data,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    const docRef = await addDoc(collectionRef, cleanData);
+    return { id: docRef.id };
+  }, `addDocument(${collectionName})`);
+};
+
+// Safe document updater
+const safeUpdateDocument = async (collectionName, docId, updates) => {
+  return handleFirestoreOperation(async () => {
+    const docRef = doc(db, collectionName, docId);
+    const cleanUpdates = {
+      ...updates,
+      updatedAt: serverTimestamp()
+    };
+    
+    await updateDoc(docRef, cleanUpdates);
+    return { id: docId };
+  }, `updateDocument(${collectionName}/${docId})`);
+};
 
 export class StockAllocationService {
   static ALLOCATION_TYPES = {
