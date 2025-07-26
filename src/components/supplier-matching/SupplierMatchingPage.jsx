@@ -1,5 +1,5 @@
 // src/components/supplier-matching/SupplierMatchingPage.jsx
-// 🔧 FINAL VERSION with Robust PO Loading & Tracking Integration + Manual Matching
+// 🔧 FINAL VERSION with Robust PO Loading & Tracking Integration + Manual Matching + INVENTORY-DRIVEN MATCHING
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -22,12 +22,16 @@ import {
   Truck,
   AlertTriangle,
   Hand,
-  Sparkles         
+  Sparkles,
+  Warehouse         // NEW: Added for inventory matching
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import SupplierMatchingDisplay from './SupplierMatchingDisplay';
 import ManualMatchingInterface from './ManualMatchingInterface';
 import EnhancementSuggestionModal from './EnhancementSuggestionModal';
+// NEW: Import inventory-driven matching components
+import InventoryDrivenMatching from './InventoryDrivenMatching';
+import { handleStockAllocationComplete } from '../procurement/StockAllocationIntegration';
 import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
 import { AIExtractionService } from '../../services/ai';
 
@@ -59,12 +63,15 @@ const SupplierMatchingPage = () => {
   const [selectedSuppliers, setSelectedSuppliers] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
   
-  // NEW: Manual matching states
+  // Manual matching states
   const [showManualMatching, setShowManualMatching] = useState(false);
   const [showEnhancementModal, setShowEnhancementModal] = useState(false);
   const [isRematching, setIsRematching] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
+  
+  // NEW: Inventory-driven matching state
+  const [showInventoryMatching, setShowInventoryMatching] = useState(false);
   
   // Enhanced tracking state
   const [lastSaveTime, setLastSaveTime] = useState(null);
@@ -104,7 +111,27 @@ const SupplierMatchingPage = () => {
     loadStaticData();
   }, []);
 
-  // NEW: Helper function to get unmatched items
+  // NEW: Make debug functions available for testing
+  useEffect(() => {
+    // Make debug functions available for testing
+    window.testInventoryMatching = async () => {
+      try {
+        const { default: UnifiedProductService } = await import('../../services/UnifiedProductService');
+        const debugInfo = await UnifiedProductService.getDebugInfo();
+        console.log('🎯 Inventory Matching Debug Info:', debugInfo);
+        return debugInfo;
+      } catch (error) {
+        console.error('❌ Debug function error:', error);
+        return null;
+      }
+    };
+    
+    return () => {
+      delete window.testInventoryMatching;
+    };
+  }, []);
+
+  // Helper function to get unmatched items
   const getUnmatchedItems = useCallback(() => {
     if (!purchaseOrder?.items) return [];
     
@@ -117,7 +144,7 @@ const SupplierMatchingPage = () => {
     });
   }, [purchaseOrder]);
 
-  // NEW: Helper function to get matching metrics
+  // Helper function to get matching metrics
   const getMatchingMetrics = useCallback(() => {
     if (!purchaseOrder?.matchingMetrics) {
       // Calculate basic metrics if not available
@@ -305,7 +332,7 @@ const SupplierMatchingPage = () => {
     }
   };
 
-  // NEW: Handle manual matching
+  // Handle manual matching
   const handleManualMatch = async (matchData) => {
     try {
       // Find the PO item and update it with the manual match
@@ -385,7 +412,76 @@ const SupplierMatchingPage = () => {
     }
   };
 
-  // NEW: Handle enhancement and re-matching
+  // NEW: Handle inventory-driven matching
+  const handleInventoryMatch = async (match) => {
+    try {
+      console.log('✅ Creating inventory match:', match);
+      
+      // Save the match to localStorage for persistence
+      const existingMatches = JSON.parse(localStorage.getItem('inventoryMatches') || '{}');
+      existingMatches[match.id] = {
+        ...match,
+        savedAt: new Date().toISOString(),
+        poId: purchaseOrder?.id
+      };
+      localStorage.setItem('inventoryMatches', JSON.stringify(existingMatches));
+      
+      // Update the PO item with the inventory match
+      const updatedItems = purchaseOrder.items.map(item => {
+        if (item.id === match.clientItem.id || item.itemNumber === match.clientItem.itemNumber) {
+          return {
+            ...item,
+            supplierMatches: [
+              ...(item.supplierMatches || []),
+              {
+                supplierId: 'inventory',
+                supplierName: 'Available Inventory',
+                product: match.product,
+                productId: match.product.id,
+                productName: match.product.name,
+                pricing: {
+                  unitPrice: match.product.price || 0,
+                  leadTime: 'Available Now'
+                },
+                confidence: match.confidence || 95,
+                matchType: 'inventory',
+                matchedAt: match.createdAt,
+                isSelected: true,
+                inventorySource: true,
+                availableQty: match.product.availableQty
+              }
+            ],
+            hasInventoryMatch: true
+          };
+        }
+        return item;
+      });
+
+      // Update the purchase order
+      const updatedPO = {
+        ...purchaseOrder,
+        items: updatedItems,
+        lastUpdated: new Date().toISOString()
+      };
+
+      setPurchaseOrder(updatedPO);
+      
+      // Show success notification
+      toast.success(
+        `✅ Matched ${match.clientItem.productCode || 'item'} with ${match.product.code} from inventory`, 
+        { duration: 4000 }
+      );
+      
+      // Update any matching state if you have it
+      setHasChanges(true);
+      
+    } catch (error) {
+      console.error('❌ Error saving inventory match:', error);
+      toast.error('Error saving inventory match: ' + error.message);
+    }
+  };
+
+  // Handle enhancement and re-matching
   const handleEnhanceAndRematch = async (enhancedItems) => {
     try {
       setIsRematching(true);
@@ -1263,7 +1359,7 @@ const SupplierMatchingPage = () => {
         </nav>
       </div>
 
-      {/* NEW: Zero Match Warning */}
+      {/* Zero Match Warning */}
       {matchingMetrics.matchRate === 0 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
@@ -1287,6 +1383,15 @@ const SupplierMatchingPage = () => {
                     🧠 Enhance with AI Suggestions
                   </button>
                   
+                  {/* NEW: Inventory matching button */}
+                  <button 
+                    onClick={() => setShowInventoryMatching(true)}
+                    className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Warehouse className="h-4 w-4 mr-2" />
+                    📦 Match from Inventory
+                  </button>
+                  
                   <button 
                     onClick={() => setShowManualMatching(true)}
                     className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
@@ -1300,6 +1405,7 @@ const SupplierMatchingPage = () => {
                   <h4 className="font-medium text-yellow-800 mb-2">What these options do:</h4>
                   <ul className="text-sm text-yellow-700 space-y-1">
                     <li><strong>🧠 AI Enhancement:</strong> Add missing model numbers, brands, etc. to improve matching</li>
+                    <li><strong>📦 Inventory Matching:</strong> Match with recently allocated inventory items</li>
                     <li><strong>✋ Manual Matching:</strong> Drag and drop PO items to matching products</li>
                   </ul>
                 </div>
@@ -1309,7 +1415,7 @@ const SupplierMatchingPage = () => {
         </div>
       )}
 
-      {/* NEW: Low Match Warning */}
+      {/* Low Match Warning */}
       {matchingMetrics.matchRate > 0 && matchingMetrics.matchRate < 50 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
@@ -1326,6 +1432,13 @@ const SupplierMatchingPage = () => {
                   className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
                 >
                   Enhance
+                </button>
+                {/* NEW: Inventory matching button */}
+                <button 
+                  onClick={() => setShowInventoryMatching(true)}
+                  className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                >
+                  Inventory
                 </button>
                 <button 
                   onClick={() => setShowManualMatching(true)}
@@ -1445,7 +1558,7 @@ const SupplierMatchingPage = () => {
         )}
       </div>
 
-      {/* NEW: Manual Matching Modal */}
+      {/* Manual Matching Modal */}
       {showManualMatching && (
         <ManualMatchingInterface
           unmatchedItems={unmatchedItems}
@@ -1456,7 +1569,17 @@ const SupplierMatchingPage = () => {
         />
       )}
 
-      {/* NEW: Enhancement Modal */}
+      {/* NEW: Inventory-Driven Matching Modal */}
+      {showInventoryMatching && (
+        <InventoryDrivenMatching
+          clientPOItems={unmatchedItems.length > 0 ? unmatchedItems : purchaseOrder.items}
+          suppliers={suppliers}
+          onCreateMatch={handleInventoryMatch}
+          onClose={() => setShowInventoryMatching(false)}
+        />
+      )}
+
+      {/* Enhancement Modal */}
       {showEnhancementModal && (
         <EnhancementSuggestionModal
           items={unmatchedItems.length > 0 ? unmatchedItems : purchaseOrder.items}
@@ -1465,7 +1588,7 @@ const SupplierMatchingPage = () => {
         />
       )}
 
-      {/* NEW: Re-matching Overlay */}
+      {/* Re-matching Overlay */}
       {isRematching && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
