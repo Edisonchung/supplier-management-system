@@ -2,10 +2,13 @@
 import { 
   getProformaInvoices, 
   updateProformaInvoice,
-  getPurchaseOrders,
-  getProducts,
+  addProformaInvoice,
+  getSuppliers,
   addSupplier,
   updateSupplier,
+  getProducts,
+  addProduct,
+  updateProduct,
   safeAddDocument,
   safeUpdateDocument,
   safeGetCollection,
@@ -131,8 +134,8 @@ export class StockAllocationService {
     try {
       console.log('🔍 Searching Firestore POs for product:', productId);
       
-      // Get purchase orders from Firestore
-      const purchaseOrdersResult = await getPurchaseOrders();
+      // Get purchase orders from Firestore using safe collection getter
+      const purchaseOrdersResult = await safeGetCollection('purchaseOrders');
       const purchaseOrders = purchaseOrdersResult.success ? purchaseOrdersResult.data : [];
       
       // Get products from Firestore
@@ -453,7 +456,7 @@ export class StockAllocationService {
    */
   static async validatePOAllocation(allocation) {
     try {
-      const purchaseOrdersResult = await getPurchaseOrders();
+      const purchaseOrdersResult = await safeGetCollection('purchaseOrders');
       const purchaseOrders = purchaseOrdersResult.success ? purchaseOrdersResult.data : [];
       const po = purchaseOrders.find(p => p.id === allocation.allocationTarget);
       
@@ -792,7 +795,7 @@ export class StockAllocationService {
    */
   static async updatePOFulfillment(allocation) {
     try {
-      const purchaseOrdersResult = await getPurchaseOrders();
+      const purchaseOrdersResult = await safeGetCollection('purchaseOrders');
       if (!purchaseOrdersResult.success) {
         console.log('⚠️ Failed to get POs from Firestore for fulfillment update');
         return;
@@ -1018,7 +1021,7 @@ export class StockAllocationService {
       const allocations = allocationsResult.success ? allocationsResult.data : [];
 
       const proformaInvoicesResult = await getProformaInvoices();
-      const purchaseOrdersResult = await getPurchaseOrders();
+      const purchaseOrdersResult = await safeGetCollection('purchaseOrders');
       const productsResult = await getProducts();
 
       return {
