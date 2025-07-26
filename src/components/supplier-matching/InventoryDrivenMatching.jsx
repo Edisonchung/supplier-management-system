@@ -83,7 +83,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
                     id: `pi-${doc.id}-${item.id}`,
                     code: item.productCode || item.itemNumber || `PI-${item.id}`,
                     name: item.productName || item.itemName || 'Unknown Product',
-                    category: this.categorizeProduct(item.productName || item.itemName || ''),
+                    category: categorizeProduct(item.productName || item.itemName || ''),
                     supplier: piData.supplierName || 'Unknown Supplier',
                     supplierId: piData.supplierId,
                     availableQty: totalAllocated,
@@ -122,7 +122,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
             id: `alloc-${doc.id}`,
             code: allocationData.productCode,
             name: allocationData.productName || `Product ${allocationData.productCode}`,
-            category: this.categorizeProduct(allocationData.productName || ''),
+            category: categorizeProduct(allocationData.productName || ''),
             supplier: allocationData.supplierName || 'Unknown Supplier',
             supplierId: allocationData.supplierId,
             availableQty: allocationData.quantity || 0,
@@ -140,10 +140,10 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
       }
 
       // 4. Deduplicate products (prefer PI allocations over products collection)
-      const uniqueProducts = this.deduplicateProducts(inventoryProducts);
+      const uniqueProducts = deduplicateProducts(inventoryProducts);
 
       // 5. Generate fulfillment analysis
-      const analysis = this.generateFulfillmentAnalysis(uniqueProducts, clientPOItems);
+      const analysis = generateFulfillmentAnalysis(uniqueProducts, clientPOItems);
 
       console.log('✅ Firestore inventory loaded:', {
         totalProducts: uniqueProducts.length,
@@ -228,7 +228,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
     };
 
     clientItems.forEach(clientItem => {
-      const matches = this.findMatchingProducts(products, clientItem);
+      const matches = findMatchingProducts(products, clientItem);
       const totalAvailable = matches.reduce((sum, p) => sum + p.availableForMatching, 0);
       const requestedQty = clientItem.quantity || 1;
 
@@ -273,10 +273,10 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
 
     return products.filter(product => {
       if (!product || product.availableForMatching <= 0) return false;
-      return this.couldMatch(clientItem, product);
+      return couldMatch(clientItem, product);
     }).sort((a, b) => {
-      const aScore = this.calculateMatchScore(clientItem, a);
-      const bScore = this.calculateMatchScore(clientItem, b);
+      const aScore = calculateMatchScore(clientItem, a);
+      const bScore = calculateMatchScore(clientItem, b);
       return bScore - aScore;
     });
   };
@@ -427,7 +427,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
         product,
         quantity: matchQuantity,
         matchType: 'from-inventory',
-        confidence: this.calculateMatchScore(clientItem, product),
+        confidence: calculateMatchScore(clientItem, product),
         fulfilledPercentage: Math.round((matchQuantity / (clientItem.quantity || 1)) * 100),
         createdAt: new Date().toISOString()
       };
@@ -591,7 +591,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
             
             <div className="p-4 space-y-3">
               {clientPOItems.map((item, index) => {
-                const matchingProducts = this.findMatchingProducts(availableInventory, item);
+                const matchingProducts = findMatchingProducts(availableInventory, item);
                 const bestMatch = matchingProducts[0];
                 const canFulfill = bestMatch && bestMatch.availableForMatching >= (item.quantity || 1);
                 
@@ -635,7 +635,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
                           {bestMatch.code}
                         </div>
                         <div className="text-xs text-gray-500">
-                          Available: {bestMatch.availableForMatching} | Confidence: {this.calculateMatchScore(item, bestMatch)}%
+                          Available: {bestMatch.availableForMatching} | Confidence: {calculateMatchScore(item, bestMatch)}%
                         </div>
                         {canFulfill && (
                           <button
@@ -711,7 +711,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
                         <div className="mt-2 pt-2 border-t border-gray-100">
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-gray-600">
-                              Match confidence: {this.calculateMatchScore(selectedClientItem, product)}%
+                              Match confidence: {calculateMatchScore(selectedClientItem, product)}%
                             </span>
                             <button
                               onClick={() => handleCreateMatch(selectedClientItem, product, selectedClientItem.quantity || 1)}
@@ -754,7 +754,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
                     <div className="mt-2 pt-2 border-t border-gray-100">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-600">
-                          Match confidence: {this.calculateMatchScore(selectedClientItem, product)}%
+                          Match confidence: {calculateMatchScore(selectedClientItem, product)}%
                         </span>
                         <button
                           onClick={() => handleCreateMatch(selectedClientItem, product, selectedClientItem.quantity || 1)}
