@@ -222,7 +222,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
       totalItems: clientItems.length,
       fulfillableItems: 0,
       partialFulfillment: 0,
-      needMoreStock: 0,
+      needMoreStockCount: 0,
       fulfillmentPercentage: 0,
       totalFulfillableQty: 0
     };
@@ -256,7 +256,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
           fulfillmentStatus: 'none',
           matches: matches.slice(0, 3) // Top 3 potential matches
         });
-        analysis.needMoreStock++;
+        analysis.needMoreStockCount++;
       }
     });
 
@@ -544,7 +544,7 @@ const InventoryDrivenMatching = ({ clientPOItems = [], suppliers = [], onCreateM
               <div className="bg-red-100 p-3 rounded-lg">
                 <div className="text-red-800 font-semibold">Need More Stock</div>
                 <div className="text-2xl font-bold text-red-600">
-                  {fulfillmentAnalysis.needMoreStock || 0}
+                  {fulfillmentAnalysis.needMoreStockCount || 0}
                 </div>
               </div>
               <div className="bg-blue-100 p-3 rounded-lg">
