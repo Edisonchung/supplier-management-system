@@ -2760,64 +2760,8 @@ const StockReceivingTab = ({
   </button>
 
   <div className="flex items-center gap-2">
-    
-    {/* 🔍 TEMPORARY DEBUG BUTTON - ADD THIS TO SEE DATA VALUES */}
-    <button
-      onClick={() => {
-        console.log('🔍 DEBUG ITEM DATA:', {
-          itemId: item.id,
-          productName: item.productName,
-          itemFormReceivedQty: itemForm.receivedQty,
-          itemReceivedQty: item.receivedQty,
-          itemTotalAllocated: item.totalAllocated,
-          itemAllocations: item.allocations,
-          itemFormData: itemForm,
-          allItemKeys: Object.keys(item),
-          // Test all the conditions
-          condition1: (itemForm.receivedQty || item.receivedQty || 0) > 0,
-          condition2: (item.totalAllocated > 0),
-          condition3: (item.allocations && item.allocations.length > 0),
-          originalCondition: (item.totalAllocated > 0 || (item.allocations && item.allocations.length > 0)),
-          newCondition: (itemForm.receivedQty || item.receivedQty || 0) > 0
-        });
-      }}
-      className="px-2 py-1 bg-purple-500 text-white rounded text-xs"
-      type="button"
-    >
-      DEBUG
-    </button>
-
-    {/* 🔍 ALWAYS VISIBLE RESET BUTTON FOR TESTING */}
-    <button
-      onClick={() => {
-        console.log('🧪 TEST RESET BUTTON CLICKED');
-        if (window.confirm(`Reset all allocations for ${item.productName}? This cannot be undone.`)) {
-          resetItemAllocations(item.id);
-        }
-      }}
-      className="px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center text-sm"
-      type="button"
-      title="TEST - Always visible reset button"
-    >
-      <X className="mr-1 h-3 w-3" />
-      TEST RESET
-    </button>
-
-    {/* Original Reset Button with Enhanced Debug */}
-    {(() => {
-      const condition1 = (itemForm.receivedQty || item.receivedQty || 0) > 0;
-      const condition2 = (item.totalAllocated > 0 || (item.allocations && item.allocations.length > 0));
-      
-      console.log(`🔍 Reset button visibility for ${item.productName}:`, {
-        condition1_receivedQty: condition1,
-        condition2_hasAllocations: condition2,
-        itemFormReceivedQty: itemForm.receivedQty,
-        itemReceivedQty: item.receivedQty,
-        willShow: condition1
-      });
-      
-      return condition1;
-    })() && (
+    {/* Reset Allocations Button - Show for any received items */}
+    {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
       <button
         onClick={() => {
           if (window.confirm(`Reset all allocations for ${item.productName}? This cannot be undone.`)) {
@@ -2826,6 +2770,7 @@ const StockReceivingTab = ({
         }}
         className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center text-sm"
         type="button"
+        title="Reset all allocations for this item"
       >
         <X className="mr-1 h-3 w-3" />
         Reset
