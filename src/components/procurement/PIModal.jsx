@@ -2413,6 +2413,42 @@ const StockReceivingTab = ({
       return item;
     });
 
+    const handleAllocationComplete = async (updatedItem) => {
+  try {
+    console.log('🎯 Allocation completed for item:', updatedItem.id);
+    
+    // Update the PI with the new allocation data
+    const updatedItems = pi.items.map(item => {
+      if (item.id === updatedItem.id) {
+        return {
+          ...item,
+          allocations: updatedItem.allocations || [],
+          totalAllocated: updatedItem.totalAllocated || 0,
+          unallocatedQty: (item.receivedQty || 0) - (updatedItem.totalAllocated || 0)
+        };
+      }
+      return item;
+    });
+
+    const updatedPI = {
+      ...pi,
+      items: updatedItems,
+      updatedAt: new Date().toISOString()
+    };
+
+    await onUpdatePI(updatedPI);
+    showNotification('Stock allocation completed successfully', 'success');
+    
+    // Close the modal
+    setShowAllocationModal(false);
+    setSelectedItem(null);
+    
+  } catch (error) {
+    console.error('❌ Error completing allocation:', error);
+    showNotification('Failed to complete allocation', 'error');
+  }
+};
+
     // Update the PI with reset allocations
     const updatedPI = {
       ...pi,
@@ -2671,7 +2707,7 @@ const StockReceivingTab = ({
   </div>
 </div>
 
-      {/* Stock Allocation Modal */}
+      {/* Stock Allocation Modal - MOVED OUTSIDE THE MAP FUNCTION */}
       {showAllocationModal && selectedItem && (
         <StockAllocationModal
           isOpen={showAllocationModal}
@@ -2679,9 +2715,7 @@ const StockReceivingTab = ({
             setShowAllocationModal(false);
             setSelectedItem(null);
           }}
-          
           piId={pi.id || pi.piNumber || 'temp-pi-id'}
-
           itemData={selectedItem}
           onAllocationComplete={handleAllocationComplete}
         />
