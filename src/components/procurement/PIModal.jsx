@@ -2257,13 +2257,7 @@ const StockReceivingTab = ({
   suppliers, 
   showNotification 
 }) => {
-  console.log('🔍 StockReceivingTab DEBUG:', {
-    pi: pi ? 'Present' : 'Missing',
-    piItems: pi?.items ? 'Array' : 'Missing',
-    itemsLength: pi?.items?.length || 0,
-    piId: pi?.id,
-    suppliers: suppliers?.length || 0
-  });
+  
 
   // Log the actual PI structure
   useEffect(() => {
@@ -2394,17 +2388,6 @@ const StockReceivingTab = ({
   />
 )}
 
-// ✅ DEBUGGING: Add this console log right before the StockAllocationModal render
-console.log('🔍 Modal Props Debug:', {
-  isOpen: showAllocationModal,
-  piId: selectedItem?.piId || pi.id || pi.piNumber,
-  selectedItem: selectedItem ? 'Present' : 'Missing',
-  piObject: {
-    id: pi?.id,
-    piNumber: pi?.piNumber,
-    hasItems: pi?.items?.length > 0
-  }
-});
 
   const handleAllocationComplete = async (allocations) => {
   try {
