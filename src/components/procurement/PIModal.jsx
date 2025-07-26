@@ -2760,8 +2760,13 @@ const StockReceivingTab = ({
   </button>
 
   <div className="flex items-center gap-2">
-    {/* Reset Allocations Button - Show if item has allocations */}
-    {(item.totalAllocated > 0 || (item.allocations && item.allocations.length > 0)) && (
+    {/* 🔧 FIXED Reset Allocations Button - Enhanced condition */}
+    {(
+      (item.totalAllocated > 0) || 
+      (item.allocations && item.allocations.length > 0) ||
+      (item.receivedQty > 0 && item.unallocatedQty < item.receivedQty) ||
+      (itemForm.receivedQty > 0 && (item.totalAllocated || 0) > 0)
+    ) && (
       <button
         onClick={() => {
           if (window.confirm(`Reset all allocations for ${item.productName}? This cannot be undone.`)) {
@@ -2770,9 +2775,32 @@ const StockReceivingTab = ({
         }}
         className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center text-sm"
         type="button"
+        title="Reset all allocations for this item"
       >
         <X className="mr-1 h-3 w-3" />
         Reset
+      </button>
+    )}
+
+    {/* 🔧 ALSO ADD: Debug info button for troubleshooting (temporary) */}
+    {process.env.NODE_ENV === 'development' && (
+      <button
+        onClick={() => {
+          console.log('🔍 Item Debug Info:', {
+            id: item.id,
+            productName: item.productName,
+            receivedQty: item.receivedQty,
+            totalAllocated: item.totalAllocated,
+            allocations: item.allocations,
+            unallocatedQty: item.unallocatedQty,
+            itemFormData: itemForm
+          });
+        }}
+        className="px-2 py-1 bg-gray-400 text-white rounded text-xs"
+        type="button"
+        title="Debug item data"
+      >
+        Debug
       </button>
     )}
 
