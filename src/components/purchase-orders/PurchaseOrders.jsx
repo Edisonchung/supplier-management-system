@@ -445,16 +445,7 @@ const PurchaseOrders = () => {
     navigate(`/purchase-orders/${po.id}/supplier-matching`);
   };
 
-  // Filter purchase orders using the hook's search function
-  const filteredPOs = React.useMemo(() => {
-    let result = searchTerm ? searchPurchaseOrders(searchTerm) : purchaseOrders;
-    
-    if (statusFilter !== 'all') {
-      result = result.filter(po => po.status === statusFilter);
-    }
-    
-    return result;
-  }, [purchaseOrders, searchTerm, statusFilter, searchPurchaseOrders]);
+  
 
   // Calculate statistics using the hook
   const stats = React.useMemo(() => {
@@ -488,7 +479,18 @@ const PurchaseOrders = () => {
     
     const config = statusConfig[status] || statusConfig.draft;
     const Icon = config.icon;
+
+
+    // Filter purchase orders using the hook's search function
+  const filteredPOs = React.useMemo(() => {
+    let result = searchTerm ? searchPurchaseOrders(searchTerm) : purchaseOrders;
     
+    if (statusFilter !== 'all') {
+      result = result.filter(po => po.status === statusFilter);
+    }
+    
+    return result;
+  }, [purchaseOrders, searchTerm, statusFilter, searchPurchaseOrders]);
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
         <Icon className="h-3 w-3 mr-1" />
