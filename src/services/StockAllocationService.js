@@ -552,8 +552,8 @@ export class StockAllocationService {
       notes: allocation.notes || '',
       priority: allocation.priority || 'medium',
       
-      // Audit trail
-      createdAt: serverTimestamp(),
+      // 🔧 CRITICAL FIX: Use regular timestamp, not serverTimestamp() for arrays
+      createdAt: new Date().toISOString(),
       history: [{
         action: 'created',
         timestamp: new Date().toISOString(),
