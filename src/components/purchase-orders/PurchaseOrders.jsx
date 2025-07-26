@@ -1,8 +1,8 @@
-// src/components/purchase-orders/PurchaseOrders.jsx
+// src/components/purchase-orders/PurchaseOrders.jsx - Updated with Firestore
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { purchaseOrderService } from '../../services/purchaseOrderService';
+import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
 import { NotificationManager } from '../common/Notification';
 import AIExtractionService from '../../services/ai/AIExtractionService';
 import { 
@@ -29,7 +29,6 @@ import {
   Building2
 } from 'lucide-react';
 import POModal from './POModal';
-import { generatePONumber } from '../../utils/poHelpers';
 import { toast } from 'react-hot-toast';
 import { 
   useNotifications, 
@@ -50,8 +49,21 @@ const formatDate = (dateString) => {
 const PurchaseOrders = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Use the new Firestore hook
+  const {
+    purchaseOrders,
+    loading,
+    error,
+    addPurchaseOrder,
+    updatePurchaseOrder,
+    deletePurchaseOrder,
+    searchPurchaseOrders,
+    getStatistics,
+    generatePONumber,
+    refetch
+  } = usePurchaseOrders();
+  
   const [extracting, setExtracting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -68,24 +80,11 @@ const PurchaseOrders = () => {
     { id: 2, name: 'Sarah Chen' }
   ]);
 
-  // Load purchase orders
+  // Update sync status when data changes
   useEffect(() => {
-    loadPurchaseOrders();
-  }, [user]);
-
-  const loadPurchaseOrders = async () => {
-    if (!user) return;
-    
-    try {
-      const data = await purchaseOrderService.getAll();
-      setPurchaseOrders(data);
-    } catch (error) {
-      console.error('Error loading purchase orders:', error);
-      toast.error('Failed to load purchase orders');
-    } finally {
-      setLoading(false);
-    }
-  };
+    setLastSyncTime(new Date());
+    setSyncStatus('synced');
+  }, [purchaseOrders]);
 
   // ✅ FIXED: Handle file upload with document storage
   const handleFileUpload = async (event) => {
@@ -294,7 +293,7 @@ const PurchaseOrders = () => {
   // Handle manual PO creation
   const handleCreatePO = () => {
     setCurrentPO({
-      poNumber: `PO-${Date.now().toString().slice(-6)}`,
+      poNumber: generatePONumber(),
       clientPoNumber: '',
       clientName: '',
       clientContact: '',
@@ -311,7 +310,7 @@ const PurchaseOrders = () => {
     setModalOpen(true);
   };
 
-  // ✅ ENHANCED: Handle PO save with document field preservation
+  // ✅ ENHANCED: Handle PO save with document field preservation using Firestore hook
   const handleSavePO = async (poData) => {
     try {
       await withLoading(async () => {
@@ -322,28 +321,30 @@ const PurchaseOrders = () => {
           originalFileName: poData.originalFileName
         });
         
+        let result;
         if (poData.id) {
-          await purchaseOrderService.update(poData.id, poData);
-          showSuccess(
-            'Purchase Order Updated',
-            `PO ${poData.poNumber} has been updated successfully.`
-          );
+          result = await updatePurchaseOrder(poData.id, poData);
         } else {
-          await purchaseOrderService.create(poData);
+          result = await addPurchaseOrder(poData);
+        }
+        
+        if (result.success) {
           showSuccess(
-            'Purchase Order Created', 
-            `PO ${poData.poNumber} has been created successfully with document storage.`
+            poData.id ? 'Purchase Order Updated' : 'Purchase Order Created',
+            `PO ${poData.poNumber} has been ${poData.id ? 'updated' : 'created'} successfully with document storage.`
           );
+          setModalOpen(false);
+          setCurrentPO(null);
+        } else {
+          throw new Error(result.error || 'Failed to save purchase order');
         }
         
         setLastSyncTime(new Date());
-        loadPurchaseOrders();
       }, {
         title: poData.id ? 'Updating Purchase Order...' : 'Creating Purchase Order...',
         message: 'Please wait while we save your changes.'
       });
       
-      setModalOpen(false);
     } catch (error) {
       console.error('Error saving PO:', error);
       showError(
@@ -361,7 +362,7 @@ const PurchaseOrders = () => {
     }
   };
 
-  // Handle PO deletion
+  // Handle PO deletion using Firestore hook
   const handleDeletePO = async (poId) => {
     const po = purchaseOrders.find(p => p.id === poId);
     
@@ -376,9 +377,12 @@ const PurchaseOrders = () => {
             onClick: async () => {
               try {
                 await withLoading(async () => {
-                  await purchaseOrderService.delete(poId);
-                  loadPurchaseOrders();
-                  showSuccess('Deleted', `PO ${po?.poNumber || po?.orderNumber} has been deleted.`);
+                  const result = await deletePurchaseOrder(poId);
+                  if (result.success) {
+                    showSuccess('Deleted', `PO ${po?.poNumber || po?.orderNumber} has been deleted.`);
+                  } else {
+                    throw new Error(result.error || 'Failed to delete purchase order');
+                  }
                 }, {
                   title: 'Deleting Purchase Order...'
                 });
@@ -402,35 +406,44 @@ const PurchaseOrders = () => {
     navigate(`/purchase-orders/${po.id}/supplier-matching`);
   };
 
-  // Filter purchase orders
-  const filteredPOs = purchaseOrders.filter(po => {
-    const matchesSearch = 
-      po.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.poNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.projectCode?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      po.clientPoNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.clientName?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filter purchase orders using the hook's search function
+  const filteredPOs = React.useMemo(() => {
+    let result = searchTerm ? searchPurchaseOrders(searchTerm) : purchaseOrders;
     
-    const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
+    if (statusFilter !== 'all') {
+      result = result.filter(po => po.status === statusFilter);
+    }
     
-    return matchesSearch && matchesStatus;
-  });
+    return result;
+  }, [purchaseOrders, searchTerm, statusFilter, searchPurchaseOrders]);
 
-  // Calculate statistics
-  const stats = {
-    total: purchaseOrders.length,
-    draft: purchaseOrders.filter(po => po.status === 'draft').length,
-    sent: purchaseOrders.filter(po => po.status === 'sent').length,
-    confirmed: purchaseOrders.filter(po => po.status === 'confirmed').length,
-    totalValue: purchaseOrders.reduce((sum, po) => sum + (po.total || po.totalAmount || 0), 0)
-  };
+  // Calculate statistics using the hook
+  const stats = React.useMemo(() => {
+    const hookStats = getStatistics();
+    return {
+      total: hookStats.total,
+      draft: hookStats.byStatus.draft || hookStats.draft || 0,
+      sent: hookStats.byStatus.sent || 0,
+      confirmed: hookStats.byStatus.confirmed || hookStats.confirmed || 0,
+      pending: hookStats.byStatus.pending || 0,
+      approved: hookStats.byStatus.approved || 0,
+      in_progress: hookStats.byStatus.in_progress || 0,
+      completed: hookStats.byStatus.completed || 0,
+      cancelled: hookStats.byStatus.cancelled || 0,
+      totalValue: hookStats.totalValue || 0
+    };
+  }, [getStatistics]);
 
   const getStatusBadge = (status) => {
     const statusConfig = {
       draft: { color: 'bg-gray-100 text-gray-800', icon: Clock },
+      pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
       sent: { color: 'bg-blue-100 text-blue-800', icon: Send },
+      approved: { color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
       confirmed: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
+      in_progress: { color: 'bg-blue-100 text-blue-800', icon: Clock },
+      completed: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
+      delivered: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
       cancelled: { color: 'bg-red-100 text-red-800', icon: X }
     };
     
@@ -449,6 +462,35 @@ const PurchaseOrders = () => {
   useEffect(() => {
     console.log('Modal state changed:', { modalOpen, currentPO });
   }, [modalOpen, currentPO]);
+
+  // Show authentication required message
+  if (!user) {
+    return (
+      <div className="text-center py-12">
+        <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Sign In Required</h3>
+        <p className="text-gray-500">Please sign in to view and manage purchase orders.</p>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="mx-auto h-12 w-12 text-red-400 mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Purchase Orders</h3>
+        <p className="text-gray-500 mb-4">{error}</p>
+        <button
+          onClick={refetch}
+          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Loader2 className="w-4 h-4 mr-2" />
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -627,8 +669,12 @@ const PurchaseOrders = () => {
               >
                 <option value="all">All Status</option>
                 <option value="draft">Draft</option>
+                <option value="pending">Pending</option>
                 <option value="sent">Sent</option>
+                <option value="approved">Approved</option>
                 <option value="confirmed">Confirmed</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
@@ -708,7 +754,7 @@ const PurchaseOrders = () => {
                     {/* PO NUMBER */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       <div className="flex items-center gap-2">
-                           {po.clientPoNumber || po.clientPONumber || po.orderNumber || po.poNumber}
+                        {po.clientPoNumber || po.clientPONumber || po.orderNumber || po.poNumber}
 
                         {/* ✅ NEW: Show document storage indicator */}
                         {po.hasStoredDocuments && (
@@ -815,6 +861,7 @@ const PurchaseOrders = () => {
         onClose={() => {
           console.log('Closing modal');
           setModalOpen(false);
+          setCurrentPO(null);
         }}
         editingPO={currentPO}
         onSave={handleSavePO}
