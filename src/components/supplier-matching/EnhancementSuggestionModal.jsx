@@ -1,11 +1,11 @@
 // src/components/supplier-matching/EnhancementSuggestionModal.jsx
 import React, { useState, useEffect } from 'react';
 import { 
-  XMarkIcon, 
-  LightBulbIcon, 
-  SparklesIcon,
-  ExclamationTriangleIcon 
-} from '@heroicons/react/24/outline';
+  X, 
+  Lightbulb, 
+  Sparkles,
+  AlertTriangle 
+} from 'lucide-react';
 
 const EnhancementSuggestionModal = ({ 
   items, 
@@ -154,7 +154,7 @@ const EnhancementSuggestionModal = ({
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <SparklesIcon className="h-6 w-6 text-blue-600 mr-3" />
+              <Sparkles className="h-6 w-6 text-blue-600 mr-3" />
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">
                   🧠 AI Enhancement Suggestions
@@ -168,7 +168,7 @@ const EnhancementSuggestionModal = ({
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >
-              <XMarkIcon className="h-6 w-6" />
+              <X className="h-6 w-6" />
             </button>
           </div>
         </div>
@@ -204,7 +204,7 @@ const EnhancementSuggestionModal = ({
                     {item.suggestions.filter(s => s.field === 'modelNumber').map((suggestion, idx) => (
                       <div key={idx} className="flex items-center justify-between p-2 bg-blue-50 rounded text-xs">
                         <div className="flex items-center">
-                          <LightBulbIcon className="h-4 w-4 text-blue-500 mr-1" />
+                          <Lightbulb className="h-4 w-4 text-blue-500 mr-1" />
                           <span className="text-blue-700">{suggestion.value}</span>
                           <span className="text-blue-500 ml-2">({suggestion.confidence}%)</span>
                         </div>
@@ -233,7 +233,7 @@ const EnhancementSuggestionModal = ({
                     {item.suggestions.filter(s => s.field === 'brand').map((suggestion, idx) => (
                       <div key={idx} className="flex items-center justify-between p-2 bg-blue-50 rounded text-xs">
                         <div className="flex items-center">
-                          <LightBulbIcon className="h-4 w-4 text-blue-500 mr-1" />
+                          <Lightbulb className="h-4 w-4 text-blue-500 mr-1" />
                           <span className="text-blue-700">{suggestion.value}</span>
                           <span className="text-blue-500 ml-2">({suggestion.confidence}%)</span>
                         </div>
@@ -276,7 +276,7 @@ const EnhancementSuggestionModal = ({
                     {item.suggestions.filter(s => s.field === 'technicalSpecs').map((suggestion, idx) => (
                       <div key={idx} className="flex items-center justify-between p-2 bg-blue-50 rounded text-xs">
                         <div className="flex items-center">
-                          <LightBulbIcon className="h-4 w-4 text-blue-500 mr-1" />
+                          <Lightbulb className="h-4 w-4 text-blue-500 mr-1" />
                           <span className="text-blue-700">{suggestion.value}</span>
                         </div>
                         <button
@@ -298,7 +298,7 @@ const EnhancementSuggestionModal = ({
         <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center text-sm text-gray-600">
-              <ExclamationTriangleIcon className="h-4 w-4 mr-2" />
+              <AlertTriangle className="h-4 w-4 mr-2" />
               {hasAnyEnhancements 
                 ? "Enhancements will be saved and used to improve future AI matching"
                 : "Add at least one enhancement to proceed"
@@ -323,7 +323,7 @@ const EnhancementSuggestionModal = ({
                   </>
                 ) : (
                   <>
-                    <SparklesIcon className="h-4 w-4 mr-2" />
+                    <Sparkles className="h-4 w-4 mr-2" />
                     Enhance & Re-match
                   </>
                 )}
