@@ -1,7 +1,19 @@
 // src/services/companyManagementService.js
-// Dynamic Company and Branch Management Service
+// Dynamic Company and Branch Management Service - Updated for Real Firebase
 
-import { mockFirebase } from './firebase';
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc,
+  query,
+  where,
+  orderBy 
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { 
   REAL_COMPANIES, 
   COMPANY_BRANCHES, 
@@ -13,8 +25,49 @@ import {
 
 class CompanyManagementService {
   constructor() {
-    this.db = mockFirebase.firestore;
     this.initialized = false;
+  }
+
+  // ✅ FIXED: Safe document existence check
+  async documentExists(collectionName, docId) {
+    try {
+      const docRef = doc(db, collectionName, docId);
+      const docSnap = await getDoc(docRef);
+      return docSnap.exists();
+    } catch (error) {
+      console.error(`Error checking if document exists: ${collectionName}/${docId}`, error);
+      return false;
+    }
+  }
+
+  // ✅ FIXED: Safe document getter
+  async safeGetDocument(collectionName, docId) {
+    try {
+      const docRef = doc(db, collectionName, docId);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        return {
+          exists: true,
+          data: docSnap.data(),
+          id: docSnap.id
+        };
+      } else {
+        return {
+          exists: false,
+          data: null,
+          id: null
+        };
+      }
+    } catch (error) {
+      console.error(`Error getting document: ${collectionName}/${docId}`, error);
+      return {
+        exists: false,
+        data: null,
+        id: null,
+        error: error.message
+      };
+    }
   }
 
   // Initialize all companies and branches in Firestore
@@ -22,73 +75,108 @@ class CompanyManagementService {
     try {
       console.log('🏢 Initializing company structure...');
       
+      let companiesCreated = 0;
+      let branchesCreated = 0;
+      let adminAssignments = 0;
+
       // 1. Initialize Companies
-      const companiesCollection = this.db.collection('companies');
       for (const [companyId, companyData] of Object.entries(REAL_COMPANIES)) {
-        await companiesCollection.doc(companyId).set({
-          ...companyData,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isActive: true
-        });
-        console.log(`✅ Company initialized: ${companyData.name}`);
+        try {
+          const companyRef = doc(db, 'companies', companyId);
+          await setDoc(companyRef, {
+            ...companyData,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isActive: true
+          });
+          companiesCreated++;
+          console.log(`✅ Company initialized: ${companyData.name}`);
+        } catch (error) {
+          console.error(`❌ Failed to initialize company ${companyId}:`, error);
+        }
       }
 
       // 2. Initialize Branches
-      const branchesCollection = this.db.collection('branches');
       for (const [branchId, branchData] of Object.entries(COMPANY_BRANCHES)) {
-        await branchesCollection.doc(branchId).set({
-          ...branchData,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isActive: true
-        });
-        console.log(`✅ Branch initialized: ${branchData.name}`);
+        try {
+          const branchRef = doc(db, 'branches', branchId);
+          await setDoc(branchRef, {
+            ...branchData,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isActive: true
+          });
+          branchesCreated++;
+          console.log(`✅ Branch initialized: ${branchData.name}`);
+        } catch (error) {
+          console.error(`❌ Failed to initialize branch ${branchId}:`, error);
+        }
       }
 
       // 3. Initialize Admin Assignments
-      const adminCollection = this.db.collection('adminAssignments');
       for (const [email, assignment] of Object.entries(DEFAULT_ADMIN_ASSIGNMENTS)) {
-        await adminCollection.doc(email).set({
-          ...assignment,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-        console.log(`✅ Admin assignment created: ${email}`);
+        try {
+          const adminRef = doc(db, 'adminAssignments', email);
+          await setDoc(adminRef, {
+            ...assignment,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+          adminAssignments++;
+          console.log(`✅ Admin assignment created: ${email}`);
+        } catch (error) {
+          console.error(`❌ Failed to create admin assignment for ${email}:`, error);
+        }
       }
 
       // 4. Set initialization flag
-      await this.db.collection('systemConfig').doc('companyStructure').set({
-        initialized: true,
-        initializationDate: new Date().toISOString(),
-        totalCompanies: Object.keys(REAL_COMPANIES).length,
-        totalBranches: Object.keys(COMPANY_BRANCHES).length,
-        version: '1.0.0'
-      });
+      try {
+        const configRef = doc(db, 'systemConfig', 'companyStructure');
+        await setDoc(configRef, {
+          initialized: true,
+          initializationDate: new Date().toISOString(),
+          totalCompanies: companiesCreated,
+          totalBranches: branchesCreated,
+          version: '1.0.0'
+        });
 
-      this.initialized = true;
-      console.log('🎉 Company structure initialization complete!');
-      
-      return {
-        success: true,
-        companiesCreated: Object.keys(REAL_COMPANIES).length,
-        branchesCreated: Object.keys(COMPANY_BRANCHES).length,
-        adminAssignments: Object.keys(DEFAULT_ADMIN_ASSIGNMENTS).length
-      };
+        this.initialized = true;
+        console.log('🎉 Company structure initialization complete!');
+        
+        return {
+          success: true,
+          companiesCreated,
+          branchesCreated,
+          adminAssignments
+        };
+      } catch (error) {
+        console.error('❌ Failed to set initialization flag:', error);
+        return {
+          success: false,
+          error: error.message,
+          companiesCreated,
+          branchesCreated,
+          adminAssignments
+        };
+      }
 
     } catch (error) {
-      console.error('❌ Error initializing company structure:', error);
-      throw error;
+      console.error('❌ Company structure initialization failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 
   // Check if system is initialized
   async isInitialized() {
     try {
-      const config = await this.db.collection('systemConfig').doc('companyStructure').get();
-      return config.exists() && config.data()?.initialized === true;
+      const result = await this.safeGetDocument('systemConfig', 'companyStructure');
+      this.initialized = result.exists && result.data?.initialized === true;
+      return this.initialized;
     } catch (error) {
-      console.error('Error checking initialization status:', error);
+      console.error('Error checking initialization:', error);
       return false;
     }
   }
@@ -96,55 +184,78 @@ class CompanyManagementService {
   // Get all companies
   async getAllCompanies() {
     try {
-      const snapshot = await this.db.collection('companies').get();
-      return snapshot.docs.map(doc => ({
+      const companiesSnapshot = await getDocs(collection(db, 'companies'));
+      const companies = companiesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      
+      console.log(`📥 Loaded ${companies.length} companies from Firestore`);
+      return companies;
     } catch (error) {
-      console.error('Error fetching companies:', error);
-      return [];
+      console.error('Error loading companies from Firestore:', error);
+      // Fallback to static data
+      console.log('📥 Fallback: Using static company data');
+      return Object.entries(REAL_COMPANIES).map(([id, data]) => ({
+        id,
+        ...data
+      }));
     }
   }
 
   // Get all branches
   async getAllBranches() {
     try {
-      const snapshot = await this.db.collection('branches').get();
-      return snapshot.docs.map(doc => ({
+      const branchesSnapshot = await getDocs(collection(db, 'branches'));
+      const branches = branchesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      
+      console.log(`📥 Loaded ${branches.length} branches from Firestore`);
+      return branches;
     } catch (error) {
-      console.error('Error fetching branches:', error);
-      return [];
+      console.error('Error loading branches from Firestore:', error);
+      // Fallback to static data
+      console.log('📥 Fallback: Using static branch data');
+      return Object.entries(COMPANY_BRANCHES).map(([id, data]) => ({
+        id,
+        ...data
+      }));
     }
   }
 
   // Get branches for specific company
   async getBranchesByCompany(companyId) {
     try {
-      const snapshot = await this.db.collection('branches')
-        .where('companyId', '==', companyId)
-        .get();
-      return snapshot.docs.map(doc => ({
+      const q = query(collection(db, 'branches'), where('companyId', '==', companyId));
+      const branchesSnapshot = await getDocs(q);
+      const branches = branchesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      
+      console.log(`📥 Loaded ${branches.length} branches for company ${companyId}`);
+      return branches;
     } catch (error) {
       console.error('Error fetching company branches:', error);
-      return [];
+      // Fallback to static data
+      return getBranchesByCompany(companyId);
     }
   }
 
-  // Get user's admin assignment
+  // ✅ FIXED: Get user's admin assignment with proper error handling
   async getUserAdminAssignment(userEmail) {
     try {
-      const doc = await this.db.collection('adminAssignments').doc(userEmail).get();
-      if (doc.exists()) {
-        return { id: doc.id, ...doc.data() };
+      const result = await this.safeGetDocument('adminAssignments', userEmail);
+      
+      if (result.exists) {
+        console.log(`📋 Admin assignment found for ${userEmail}`);
+        return { id: result.id, ...result.data };
+      } else {
+        console.log(`📋 No admin assignment found for ${userEmail}`);
+        return null;
       }
-      return null;
     } catch (error) {
       console.error('Error fetching admin assignment:', error);
       return null;
@@ -154,11 +265,12 @@ class CompanyManagementService {
   // Update admin assignment
   async updateAdminAssignment(userEmail, assignment) {
     try {
-      await this.db.collection('adminAssignments').doc(userEmail).set({
+      const adminRef = doc(db, 'adminAssignments', userEmail);
+      await setDoc(adminRef, {
         ...assignment,
         updatedAt: new Date().toISOString()
       }, { merge: true });
-
+      
       console.log(`✅ Admin assignment updated for ${userEmail}`);
       return true;
     } catch (error) {
@@ -172,7 +284,8 @@ class CompanyManagementService {
     try {
       const companyId = companyData.id || this.generateCompanyId(companyData.name);
       
-      await this.db.collection('companies').doc(companyId).set({
+      const companyRef = doc(db, 'companies', companyId);
+      await setDoc(companyRef, {
         ...companyData,
         id: companyId,
         createdAt: new Date().toISOString(),
@@ -193,7 +306,8 @@ class CompanyManagementService {
     try {
       const branchId = branchData.id || this.generateBranchId(branchData.name);
       
-      await this.db.collection('branches').doc(branchId).set({
+      const branchRef = doc(db, 'branches', branchId);
+      await setDoc(branchRef, {
         ...branchData,
         id: branchId,
         createdAt: new Date().toISOString(),
@@ -228,9 +342,9 @@ class CompanyManagementService {
       if (adminAssignment.companyIds?.length > 0) {
         const companies = [];
         for (const companyId of adminAssignment.companyIds) {
-          const doc = await this.db.collection('companies').doc(companyId).get();
-          if (doc.exists()) {
-            companies.push({ id: doc.id, ...doc.data() });
+          const result = await this.safeGetDocument('companies', companyId);
+          if (result.exists) {
+            companies.push({ id: result.id, ...result.data });
           }
         }
         return companies;
@@ -334,12 +448,19 @@ class CompanyManagementService {
   // Get company statistics
   async getCompanyStatistics() {
     try {
-      const companies = await this.getAllCompanies();
-      const branches = await this.getAllBranches();
+      const [companies, branches] = await Promise.all([
+        this.getAllCompanies(),
+        this.getAllBranches()
+      ]);
       
       // Get PO counts by company
-      const poSnapshot = await this.db.collection('purchaseOrders').get();
-      const purchaseOrders = poSnapshot.docs.map(doc => doc.data());
+      let purchaseOrders = [];
+      try {
+        const poSnapshot = await getDocs(collection(db, 'purchaseOrders'));
+        purchaseOrders = poSnapshot.docs.map(doc => doc.data());
+      } catch (error) {
+        console.warn('Could not load purchase orders for statistics:', error);
+      }
       
       const stats = {
         totalCompanies: companies.length,
@@ -371,7 +492,14 @@ class CompanyManagementService {
       return stats;
     } catch (error) {
       console.error('Error getting company statistics:', error);
-      return null;
+      return {
+        totalCompanies: 0,
+        totalBranches: 0,
+        totalPurchaseOrders: 0,
+        companiesByCategory: {},
+        branchesByCompany: {},
+        posByCompany: {}
+      };
     }
   }
 
@@ -380,16 +508,17 @@ class CompanyManagementService {
     try {
       console.log('🔄 Migrating existing Purchase Orders...');
       
-      const snapshot = await this.db.collection('purchaseOrders').get();
+      const posSnapshot = await getDocs(collection(db, 'purchaseOrders'));
       const updates = [];
 
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
+      for (const docSnap of posSnapshot.docs) {
+        const data = docSnap.data();
         
         // If PO doesn't have company/branch info, assign to default (Flow Solution)
         if (!data.companyId) {
+          const updateRef = doc(db, 'purchaseOrders', docSnap.id);
           updates.push(
-            doc.ref.update({
+            updateDoc(updateRef, {
               companyId: 'flow-solution',
               branchId: 'flow-solution-kl-hq',
               updatedAt: new Date().toISOString(),
@@ -397,7 +526,7 @@ class CompanyManagementService {
             })
           );
         }
-      });
+      }
 
       await Promise.all(updates);
       console.log(`✅ Migrated ${updates.length} Purchase Orders`);
