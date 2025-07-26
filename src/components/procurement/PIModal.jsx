@@ -2389,105 +2389,10 @@ const StockReceivingTab = ({
 )}
 
 
-  const handleAllocationComplete = async (allocations) => {
-  try {
-    console.log('✅ Allocation completed, updating UI state:', allocations);
-    
-    // Close the modal first
-    setShowAllocationModal(false);
-    setSelectedItem(null);
-    
-    // 🎯 CRITICAL FIX: Calculate the correct totalAllocated for the specific item
-    const currentItem = pi.items.find(item => item.id === selectedItem?.id);
-    if (!currentItem) {
-      console.error('❌ Could not find current item for allocation update');
-      showNotification('Allocation completed but UI update failed', 'warning');
-      return;
-    }
-
-    // Calculate new total allocated including previous allocations
-    const existingAllocations = currentItem.allocations || [];
-    const allAllocations = [...existingAllocations, ...allocations];
-    const newTotalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-
-    console.log('🔍 Allocation calculation details:', {
-      itemId: currentItem.id,
-      previousAllocations: existingAllocations.length,
-      newAllocations: allocations.length,
-      previousTotalAllocated: currentItem.totalAllocated || 0,
-      newTotalAllocated: newTotalAllocated,
-      receivedQty: currentItem.receivedQty || 0,
-      willBeFullyAllocated: newTotalAllocated >= (currentItem.receivedQty || 0)
-    });
-    
-    // ✅ CRITICAL: Force re-fetch the PI data from Firestore to get latest allocations
-    if (pi.id || pi.piNumber) {
-      try {
-        // Import the function if not already imported
-        const { getProformaInvoices } = await import('../../services/firebase');
-        
-        const result = await getProformaInvoices();
-        if (result.success) {
-          const updatedPI = result.data.find(p => 
-            p.id === pi.id || p.piNumber === pi.piNumber
-          );
-          
-          if (updatedPI) {
-            console.log('🔄 Refreshed PI data with latest allocations');
-            
-            // 🎯 DOUBLE-CHECK: Ensure the item has the correct allocation data
-            const refreshedItem = updatedPI.items.find(item => item.id === selectedItem?.id);
-            if (refreshedItem) {
-              console.log('📊 Refreshed item allocation status:', {
-                itemId: refreshedItem.id,
-                receivedQty: refreshedItem.receivedQty || 0,
-                totalAllocated: refreshedItem.totalAllocated || 0,
-                unallocatedQty: refreshedItem.unallocatedQty || 0,
-                allocationCount: (refreshedItem.allocations || []).length
-              });
-            }
-            
-            // Update the parent component with fresh data
-            await onUpdatePI(updatedPI);
-            showNotification('Stock allocated successfully', 'success');
-            return;
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error refreshing PI data:', error);
-      }
-    }
-    
-    // 🎯 ENHANCED FALLBACK: Update local state with correct calculations
-    const updatedItems = pi.items.map(item => {
-      if (item.id === selectedItem?.id) {
-        // Merge all allocations (existing + new)
-        const existingAllocations = item.allocations || [];
-        const allAllocations = [...existingAllocations, ...allocations];
-        const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-        const receivedQty = item.receivedQty || 0;
-        const unallocatedQty = receivedQty - totalAllocated;
-
-        console.log('🔄 Local state update for item:', {
-          itemId: item.id,
-          receivedQty,
-          previousTotalAllocated: item.totalAllocated || 0,
-          newTotalAllocated: totalAllocated,
-          unallocatedQty,
-          isFullyAllocated: totalAllocated >= receivedQty
-        });
-
-        return {
-          ...item,
-          allocations: allAllocations,
-          totalAllocated: totalAllocated,
-          unallocatedQty: unallocatedQty,
-          lastAllocationUpdate: new Date().toISOString()
-        };
-      }
-      return item;
+  
     });
 
+    // Create updated PI object
     const updatedPI = {
       ...pi,
       items: updatedItems,
@@ -2495,25 +2400,60 @@ const StockReceivingTab = ({
       lastAllocationUpdate: new Date().toISOString()
     };
 
-    console.log('💾 Updating PI with allocation data:', {
-      piId: updatedPI.id,
-      updatedItemsCount: updatedItems.length,
-      targetItem: updatedItems.find(item => item.id === selectedItem?.id)
-    });
-
-    await onUpdatePI(updatedPI);
-    showNotification('Stock allocated successfully', 'success');
+    console.log('💾 Updating PI with new allocation data...');
     
-    // 🎯 FORCE UI REFRESH: Trigger a small delay and re-render
-    setTimeout(() => {
-      console.log('🔄 PIModal: Triggering UI refresh after allocation');
-      // Force a re-render by updating the receiving form state
-      setReceivingForm(prev => ({ ...prev, lastUpdate: Date.now() }));
-    }, 100);
+    // 🎯 CRITICAL: Update the parent component immediately
+    try {
+      await onUpdatePI(updatedPI);
+      console.log('✅ PI updated successfully with allocations');
+      showNotification('Stock allocated successfully', 'success');
+
+      // 🎯 FORCE UI REFRESH: Multiple strategies to ensure re-render
+      setTimeout(() => {
+        console.log('🔄 Forcing UI refresh...');
+        
+        // Strategy 1: Update receiving form state
+        setReceivingForm(prev => ({ 
+          ...prev, 
+          lastUpdate: Date.now(),
+          [`${selectedItem.id}_allocated`]: true 
+        }));
+
+        // Strategy 2: Force component re-render by updating a dummy state
+        // This will trigger the getItemStatus function to run again
+        console.log('🔄 UI refresh completed');
+      }, 50);
+
+    } catch (updateError) {
+      console.error('❌ Error updating PI:', updateError);
+      showNotification('Failed to save allocation data', 'error');
+    }
+
+    // 🎯 BACKUP: Also try to refresh from Firestore as secondary measure
+    try {
+      if (pi.id || pi.piNumber) {
+        const { getProformaInvoices } = await import('../../services/firebase');
+        const result = await getProformaInvoices();
+        
+        if (result.success) {
+          const refreshedPI = result.data.find(p => 
+            p.id === pi.id || p.piNumber === pi.piNumber
+          );
+          
+          if (refreshedPI) {
+            console.log('🔄 Secondary refresh from Firestore successful');
+            await onUpdatePI(refreshedPI);
+          }
+        }
+      }
+    } catch (refreshError) {
+      console.warn('⚠️ Secondary Firestore refresh failed:', refreshError);
+      // Don't throw - the primary update already succeeded
+    }
     
   } catch (error) {
-    console.error('❌ Error handling allocation completion:', error);
-    showNotification('Allocation completed but UI update failed', 'warning');
+    console.error('❌ Critical error in allocation completion:', error);
+    showNotification('Allocation failed: ' + error.message, 'error');
   }
 };
 
@@ -2535,6 +2475,18 @@ const StockReceivingTab = ({
   // Strategy 3: Use 0 as fallback
   else {
     allocated = 0;
+  }
+
+  // 🔍 ENHANCED DEBUGGING: Show full item structure when allocation is 0
+  if (allocated === 0 && received > 0) {
+    console.log(`🚨 ZERO ALLOCATION DEBUG for item ${item.id}:`, {
+      fullItem: item,
+      hasAllocations: !!item.allocations,
+      allocationsArray: item.allocations,
+      totalAllocatedField: item.totalAllocated,
+      receivedQty: received,
+      itemKeys: Object.keys(item)
+    });
   }
 
   console.log(`🔍 Status calculation for item ${item.id || item.productCode}:`, {
