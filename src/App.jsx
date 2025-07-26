@@ -1,4 +1,4 @@
-// src/App.jsx - UPDATED VERSION - UserManagement component removed
+// src/App.jsx - UPDATED VERSION - Added missing Company Structure routes
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -38,6 +38,9 @@ const LazySupplierMatchingPage = lazy(() => import('./components/supplier-matchi
 const LazyTeamManagement = lazy(() => import('./components/team/TeamManagement'));
 const LazyUnifiedTrackingDashboard = lazy(() => import('./components/tracking/UnifiedTrackingDashboard'));
 const LazyMigrationPage = lazy(() => import('./components/migration/MigrationPage'));
+
+// ✅ NEW: Add missing Company Structure Manager component
+const LazyCompanyStructureManager = lazy(() => import('./components/admin/CompanyStructureManager'));
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -367,7 +370,32 @@ function AppContent() {
               } 
             />
             
-            {/* Administration Routes - UserManagement route REMOVED */}
+            {/* ✅ FIXED: Administration Routes - Added missing Company Structure routes */}
+            
+            {/* Company Structure Manager Routes - NEWLY ADDED */}
+            <Route 
+              path="/admin/companies" 
+              element={
+                <ProtectedRoute permission="canManageCompanies">
+                  <LazyWrapper componentName="Company Structure Manager">
+                    <LazyCompanyStructureManager showNotification={showNotification} />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/admin/company-structure" 
+              element={
+                <ProtectedRoute permission="canManageCompanies">
+                  <LazyWrapper componentName="Company Structure Manager">
+                    <LazyCompanyStructureManager showNotification={showNotification} />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Team Management Routes */}
             <Route 
               path="/team-management" 
               element={
@@ -375,6 +403,31 @@ function AppContent() {
                   <LazyWrapper componentName="Team Management">
                     <LazyTeamManagement showNotification={showNotification} />
                   </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/admin/team" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <LazyWrapper componentName="Team Management">
+                    <LazyTeamManagement showNotification={showNotification} />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Other Admin Routes */}
+            <Route 
+              path="/admin/settings" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <PlaceholderComponent 
+                    title="System Settings" 
+                    description="Configure system preferences, integrations, and global settings" 
+                    icon={Settings}
+                  />
                 </ProtectedRoute>
               } 
             />
@@ -393,6 +446,19 @@ function AppContent() {
             />
             
             <Route 
+              path="/admin/activity" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <PlaceholderComponent 
+                    title="Activity Logs" 
+                    description="Comprehensive audit trail and team activity monitoring" 
+                    icon={Activity}
+                  />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
               path="/activity-logs" 
               element={
                 <ProtectedRoute permission="canManageUsers">
@@ -405,7 +471,7 @@ function AppContent() {
               } 
             />
             
-            {/* Legacy route redirect for /users -> /team-management */}
+            {/* Legacy route redirects */}
             <Route 
               path="/users" 
               element={<Navigate to="/team-management" replace />}
