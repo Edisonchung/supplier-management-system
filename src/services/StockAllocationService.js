@@ -2,13 +2,6 @@
 import { 
   getProformaInvoices, 
   updateProformaInvoice,
-  addProformaInvoice,
-  getSuppliers,
-  addSupplier,
-  updateSupplier,
-  getProducts,
-  addProduct,
-  updateProduct,
   db
 } from '../config/firebase';
 
@@ -87,6 +80,16 @@ const safeUpdateDocument = async (collectionName, docId, updates) => {
     await updateDoc(docRef, cleanUpdates);
     return { id: docId };
   }, `updateDocument(${collectionName}/${docId})`);
+};
+
+// Get products from Firestore
+const getProducts = async () => {
+  const result = await safeGetCollection('products');
+  return {
+    success: result.success,
+    data: result.success ? result.data : [],
+    error: result.error
+  };
 };
 
 export class StockAllocationService {
