@@ -1,24 +1,27 @@
 // src/services/StockAllocationService.js
-import { mockFirebase } from './firebase';
+import { 
+  getProformaInvoices, 
+  updateProformaInvoice,
+  getPurchaseOrders,
+  getProducts,
+  addDocument,
+  updateDocument 
+} from './firebase';
 
-// Helper functions to work with your existing firebase service
-const getLocalStorageData = (key) => {
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
-  } catch (error) {
-    console.error(`Error getting ${key} from localStorage:`, error);
-    return [];
-  }
-};
-
-const setLocalStorageData = (key, data) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (error) {
-    console.error(`Error setting ${key} to localStorage:`, error);
-  }
-};
+// Import additional Firestore functions if needed
+import { 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  updateDoc, 
+  addDoc, 
+  query, 
+  where, 
+  orderBy,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 export class StockAllocationService {
   static ALLOCATION_TYPES = {
@@ -35,11 +38,11 @@ export class StockAllocationService {
   };
 
   /**
-   * Allocate stock from received items to targets - Enhanced with better error handling
+   * 🚀 FIRESTORE VERSION: Allocate stock from received items to targets
    */
   static async allocateStock(piId, itemId, allocations) {
     try {
-      console.log('🚀 Starting stock allocation with enhanced PI lookup...');
+      console.log('🚀 Starting Firestore stock allocation with enhanced PI lookup...');
       console.log('🔍 Input parameters:', { piId, itemId, allocationsCount: allocations?.length });
 
       // Enhanced validation with better error handling
@@ -48,23 +51,23 @@ export class StockAllocationService {
         throw new Error(validationResult.error);
       }
 
-      // Create allocation records
+      // Create allocation records in Firestore
       const allocationRecords = [];
       for (const allocation of allocations) {
         const record = await this.createAllocationRecord(piId, itemId, allocation);
         allocationRecords.push(record);
       }
 
-      // Update PI item with allocations
+      // Update PI item with allocations in Firestore
       await this.updatePIItemAllocations(piId, itemId, allocationRecords);
 
-      // Update product stock levels
+      // Update product stock levels in Firestore
       await this.updateProductStock(itemId, allocations);
 
       // Update target documents (PO fulfillment, project tracking)
       await this.updateTargetDocuments(allocations);
 
-      console.log('✅ Stock allocation completed successfully');
+      console.log('✅ Firestore stock allocation completed successfully');
       return {
         success: true,
         allocations: allocationRecords,
@@ -72,17 +75,17 @@ export class StockAllocationService {
       };
 
     } catch (error) {
-      console.error('❌ Stock allocation error:', error);
+      console.error('❌ Firestore stock allocation error:', error);
       throw error;
     }
   }
 
   /**
-   * Get available allocation targets - Enhanced with better error handling
+   * 🚀 FIRESTORE VERSION: Get available allocation targets
    */
   static async getAvailableTargets(productId) {
     try {
-      console.log('🎯 Getting available targets for product:', productId);
+      console.log('🎯 Getting available targets for product from Firestore:', productId);
 
       // Get open POs that need this product
       const openPOs = await this.getOpenPOsForProduct(productId);
@@ -99,11 +102,11 @@ export class StockAllocationService {
         warehouses: warehouseLocations
       };
 
-      console.log('✅ Available targets loaded:', targets);
+      console.log('✅ Available targets loaded from Firestore:', targets);
       return targets;
 
     } catch (error) {
-      console.error('❌ Error getting available targets:', error);
+      console.error('❌ Error getting available targets from Firestore:', error);
       // Return safe defaults to prevent crashes
       return {
         purchaseOrders: [],
@@ -118,16 +121,22 @@ export class StockAllocationService {
   }
 
   /**
-   * Get open POs that need a specific product
+   * 🚀 FIRESTORE VERSION: Get open POs that need a specific product
    */
   static async getOpenPOsForProduct(productId) {
     try {
-      const purchaseOrders = getLocalStorageData('purchaseOrders') || [];
-      const products = getLocalStorageData('products') || [];
+      console.log('🔍 Searching Firestore POs for product:', productId);
       
-      console.log('🔍 Searching POs for product:', productId);
-      console.log('📦 Available products:', products.length);
-      console.log('📋 Available POs:', purchaseOrders.length);
+      // Get purchase orders from Firestore
+      const purchaseOrdersResult = await getPurchaseOrders();
+      const purchaseOrders = purchaseOrdersResult.success ? purchaseOrdersResult.data : [];
+      
+      // Get products from Firestore
+      const productsResult = await getProducts();
+      const products = productsResult.success ? productsResult.data : [];
+      
+      console.log('📦 Available products in Firestore:', products.length);
+      console.log('📋 Available POs in Firestore:', purchaseOrders.length);
       
       const product = products.find(p => 
         p.id === productId || 
@@ -136,7 +145,7 @@ export class StockAllocationService {
       );
       
       if (!product) {
-        console.log('⚠️ Product not found in products database');
+        console.log('⚠️ Product not found in Firestore products database');
         return [];
       }
 
@@ -147,7 +156,7 @@ export class StockAllocationService {
         )
       );
 
-      console.log('📋 Found open POs:', openPOs.length);
+      console.log('📋 Found open POs in Firestore:', openPOs.length);
 
       return openPOs.map(po => {
         const matchingItems = po.items.filter(item => this.isProductMatch(item, product));
@@ -167,7 +176,7 @@ export class StockAllocationService {
       }).filter(po => po.neededQuantity > 0);
 
     } catch (error) {
-      console.error('❌ Error getting open POs:', error);
+      console.error('❌ Error getting open POs from Firestore:', error);
       return [];
     }
   }
@@ -209,22 +218,31 @@ export class StockAllocationService {
   }
 
   /**
-   * Get active project codes
+   * 🚀 FIRESTORE VERSION: Get active project codes
    */
   static async getActiveProjectCodes() {
     try {
-      // Get from localStorage first, fallback to defaults
-      const storedProjects = getLocalStorageData('projects') || [];
+      // Check if we have a projects collection in Firestore
+      const projectsQuery = query(
+        collection(db, 'projects'),
+        where('status', '==', 'active'),
+        orderBy('createdAt', 'desc')
+      );
       
-      if (storedProjects.length > 0) {
-        return storedProjects.map(project => ({
-          id: project.id,
-          name: project.code || project.name,
-          info: project.description || project.client || 'Project allocation'
-        }));
+      const projectsSnapshot = await getDocs(projectsQuery);
+      
+      if (!projectsSnapshot.empty) {
+        return projectsSnapshot.docs.map(doc => {
+          const project = doc.data();
+          return {
+            id: doc.id,
+            name: project.code || project.name,
+            info: project.description || project.client || 'Project allocation'
+          };
+        });
       }
 
-      // Return default project codes
+      // Return default project codes if no Firestore projects
       return [
         { id: 'proj-petronas-2025', name: 'PROJ-2025-PETRONAS', info: 'Oil & Gas Division' },
         { id: 'proj-smart-city-2025', name: 'PROJ-2025-SMART-CITY', info: 'Smart Infrastructure' },
@@ -234,7 +252,7 @@ export class StockAllocationService {
         { id: 'proj-general', name: 'GENERAL-PROJECT', info: 'General project allocation' }
       ];
     } catch (error) {
-      console.error('Error getting project codes:', error);
+      console.error('Error getting project codes from Firestore:', error);
       return [
         { id: 'proj-general', name: 'GENERAL-PROJECT', info: 'General project allocation' }
       ];
@@ -242,22 +260,31 @@ export class StockAllocationService {
   }
 
   /**
-   * Get warehouse locations
+   * 🚀 FIRESTORE VERSION: Get warehouse locations
    */
   static async getWarehouseLocations() {
     try {
-      // Get from localStorage first, fallback to defaults
-      const storedWarehouses = getLocalStorageData('warehouses') || [];
+      // Check if we have a warehouses collection in Firestore
+      const warehousesQuery = query(
+        collection(db, 'warehouses'),
+        where('status', '==', 'active'),
+        orderBy('name', 'asc')
+      );
       
-      if (storedWarehouses.length > 0) {
-        return storedWarehouses.map(warehouse => ({
-          id: warehouse.id,
-          name: warehouse.name,
-          info: warehouse.location || warehouse.address || 'Warehouse location'
-        }));
+      const warehousesSnapshot = await getDocs(warehousesQuery);
+      
+      if (!warehousesSnapshot.empty) {
+        return warehousesSnapshot.docs.map(doc => {
+          const warehouse = doc.data();
+          return {
+            id: doc.id,
+            name: warehouse.name,
+            info: warehouse.location || warehouse.address || 'Warehouse location'
+          };
+        });
       }
 
-      // Return default warehouse locations
+      // Return default warehouse locations if no Firestore warehouses
       return [
         { id: 'wh-main', name: 'Main Warehouse', info: 'Bandar Baru Nilai' },
         { id: 'wh-kl', name: 'KL Distribution Center', info: 'Kuala Lumpur' },
@@ -266,7 +293,7 @@ export class StockAllocationService {
         { id: 'wh-backup', name: 'Backup Storage', info: 'Secondary location' }
       ];
     } catch (error) {
-      console.error('Error getting warehouse locations:', error);
+      console.error('Error getting warehouse locations from Firestore:', error);
       return [
         { id: 'wh-main', name: 'Main Warehouse', info: 'Primary storage location' }
       ];
@@ -274,11 +301,11 @@ export class StockAllocationService {
   }
 
   /**
-   * Auto-suggest allocations based on open POs - Enhanced
+   * 🚀 FIRESTORE VERSION: Auto-suggest allocations based on open POs
    */
   static async suggestAllocations(piId, itemId, availableQty) {
     try {
-      console.log('🧠 Generating suggestions for:', { piId, itemId, availableQty });
+      console.log('🧠 Generating suggestions from Firestore for:', { piId, itemId, availableQty });
 
       if (!piId || !itemId || availableQty <= 0) {
         console.log('⚠️ Invalid parameters for suggestions');
@@ -287,13 +314,13 @@ export class StockAllocationService {
 
       const pi = await this.getPIById(piId);
       if (!pi) {
-        console.log('⚠️ PI not found, using default allocation');
+        console.log('⚠️ PI not found in Firestore, using default allocation');
         return this.getDefaultAllocation(availableQty);
       }
 
       const piItem = pi.items?.find(item => item.id === itemId);
       if (!piItem) {
-        console.log('⚠️ PI item not found, using default allocation');
+        console.log('⚠️ PI item not found in Firestore, using default allocation');
         return this.getDefaultAllocation(availableQty);
       }
 
@@ -352,7 +379,7 @@ export class StockAllocationService {
       return suggestions;
 
     } catch (error) {
-      console.error('❌ Error generating suggestions:', error);
+      console.error('❌ Error generating suggestions from Firestore:', error);
       return this.getDefaultAllocation(availableQty);
     }
   }
@@ -374,11 +401,11 @@ export class StockAllocationService {
   }
 
   /**
-   * Validate allocation request - Enhanced
+   * 🚀 FIRESTORE VERSION: Validate allocation request
    */
   static async validateAllocation(piId, itemId, allocations) {
     try {
-      console.log('🔍 Validating allocation:', { piId, itemId, allocations });
+      console.log('🔍 Validating allocation in Firestore:', { piId, itemId, allocations });
 
       if (!piId || !itemId) {
         return { valid: false, error: 'PI ID and Item ID are required' };
@@ -391,7 +418,7 @@ export class StockAllocationService {
       const piItem = await this.getPIItem(piId, itemId);
       
       if (!piItem) {
-        return { valid: false, error: 'PI item not found' };
+        return { valid: false, error: 'PI item not found in Firestore' };
       }
 
       const totalAllocating = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
@@ -426,25 +453,26 @@ export class StockAllocationService {
         }
       }
 
-      console.log('✅ Allocation validation passed');
+      console.log('✅ Allocation validation passed in Firestore');
       return { valid: true };
 
     } catch (error) {
-      console.error('❌ Validation error:', error);
+      console.error('❌ Validation error in Firestore:', error);
       return { valid: false, error: 'Validation failed: ' + error.message };
     }
   }
 
   /**
-   * Validate PO allocation
+   * 🚀 FIRESTORE VERSION: Validate PO allocation
    */
   static async validatePOAllocation(allocation) {
     try {
-      const purchaseOrders = getLocalStorageData('purchaseOrders') || [];
+      const purchaseOrdersResult = await getPurchaseOrders();
+      const purchaseOrders = purchaseOrdersResult.success ? purchaseOrdersResult.data : [];
       const po = purchaseOrders.find(p => p.id === allocation.allocationTarget);
       
       if (!po) {
-        return { valid: false, error: 'Purchase Order not found' };
+        return { valid: false, error: 'Purchase Order not found in Firestore' };
       }
 
       if (!['draft', 'confirmed', 'processing'].includes(po.status)) {
@@ -453,17 +481,16 @@ export class StockAllocationService {
 
       return { valid: true };
     } catch (error) {
-      console.error('Error validating PO allocation:', error);
+      console.error('Error validating PO allocation in Firestore:', error);
       return { valid: false, error: 'PO validation failed' };
     }
   }
 
   /**
-   * Create allocation record
+   * 🚀 FIRESTORE VERSION: Create allocation record
    */
   static async createAllocationRecord(piId, itemId, allocation) {
     const record = {
-      id: `alloc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       piId: piId,
       itemId: itemId,
       productId: allocation.productId,
@@ -482,7 +509,7 @@ export class StockAllocationService {
       priority: allocation.priority || 'medium',
       
       // Audit trail
-      createdAt: new Date().toISOString(),
+      createdAt: serverTimestamp(),
       history: [{
         action: 'created',
         timestamp: new Date().toISOString(),
@@ -491,27 +518,36 @@ export class StockAllocationService {
       }]
     };
 
-    // Save allocation record
-    const allocations = getLocalStorageData('stockAllocations') || [];
-    allocations.push(record);
-    setLocalStorageData('stockAllocations', allocations);
+    try {
+      // Save allocation record to Firestore
+      const docRef = await addDoc(collection(db, 'stockAllocations'), record);
+      const recordWithId = { id: docRef.id, ...record };
 
-    console.log('✅ Allocation record created:', record.id);
-    return record;
+      console.log('✅ Allocation record created in Firestore:', docRef.id);
+      return recordWithId;
+    } catch (error) {
+      console.error('❌ Error creating allocation record in Firestore:', error);
+      throw error;
+    }
   }
 
   /**
-   * 🚀 ENHANCED PI LOOKUP - Multiple strategies for finding PIs
-   * This is the core fix for your "PI item not found" error
+   * 🚀 FIRESTORE VERSION: Update PI item with allocations
    */
   static async updatePIItemAllocations(piId, itemId, allocationRecords) {
     try {
-      console.log('🔍 Enhanced PI lookup - Updating allocations for:', { piId, itemId, allocationRecords });
+      console.log('🔍 Enhanced Firestore PI lookup - Updating allocations for:', { piId, itemId, allocationRecords });
       
-      const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
-      console.log('📋 Found PIs in localStorage:', proformaInvoices.length);
+      // Get all PIs from Firestore
+      const proformaInvoicesResult = await getProformaInvoices();
+      if (!proformaInvoicesResult.success) {
+        throw new Error('Failed to get proforma invoices from Firestore');
+      }
       
-      // 🎯 MULTI-STRATEGY PI SEARCH SYSTEM
+      const proformaInvoices = proformaInvoicesResult.data;
+      console.log('📋 Found PIs in Firestore:', proformaInvoices.length);
+      
+      // 🎯 MULTI-STRATEGY PI SEARCH SYSTEM FOR FIRESTORE
       const searchStrategies = [
         {
           name: 'Direct ID Match',
@@ -520,10 +556,6 @@ export class StockAllocationService {
         {
           name: 'PI Number Match',
           finder: (pis) => pis.find(p => p.piNumber === piId)
-        },
-        {
-          name: 'Firestore ID Match',
-          finder: (pis) => pis.find(p => p.firestoreId === piId)
         },
         {
           name: 'Document ID Match',
@@ -555,14 +587,12 @@ export class StockAllocationService {
       ];
 
       let pi = null;
-      let piIndex = -1;
       let usedStrategy = null;
 
       // Try each strategy until we find a PI
       for (const strategy of searchStrategies) {
         pi = strategy.finder(proformaInvoices);
         if (pi) {
-          piIndex = proformaInvoices.findIndex(p => p.id === pi.id);
           usedStrategy = strategy.name;
           console.log(`✅ PI found using strategy: ${strategy.name}`);
           console.log('📄 Found PI:', { id: pi.id, piNumber: pi.piNumber });
@@ -576,7 +606,7 @@ export class StockAllocationService {
         proformaInvoices.forEach((p, idx) => {
           console.log(`  PI ${idx}: ID="${p.id}", Number="${p.piNumber}", DocumentId="${p.documentId}"`);
         });
-        throw new Error(`PI not found after trying all strategies. Searched for: "${piId}"`);
+        throw new Error(`PI not found in Firestore after trying all strategies. Searched for: "${piId}"`);
       }
 
       // 🎯 ENHANCED ITEM SEARCH SYSTEM
@@ -646,11 +676,11 @@ export class StockAllocationService {
         (pi.items || []).forEach((item, idx) => {
           console.log(`  Item ${idx}: ID="${item.id}", Code="${item.productCode}", Name="${item.productName}"`);
         });
-        throw new Error(`PI item not found after trying all strategies. Searched for: "${itemId}"`);
+        throw new Error(`PI item not found in Firestore after trying all strategies. Searched for: "${itemId}"`);
       }
 
       // 🎯 UPDATE ALLOCATIONS WITH AUDIT TRAIL
-      console.log('✅ Both PI and item found, updating allocations...');
+      console.log('✅ Both PI and item found in Firestore, updating allocations...');
       
       // Merge new allocations with existing ones
       item.allocations = (item.allocations || []).concat(allocationRecords);
@@ -668,15 +698,20 @@ export class StockAllocationService {
         itemStrategy: usedItemStrategy
       });
 
-      // Update PI timestamp
-      pi.updatedAt = new Date().toISOString();
-      pi.lastAllocationUpdate = new Date().toISOString();
-      
-      // Save back to localStorage
-      proformaInvoices[piIndex] = pi;
-      setLocalStorageData('proformaInvoices', proformaInvoices);
+      // Update PI timestamp and save to Firestore
+      const updates = {
+        items: pi.items,
+        updatedAt: serverTimestamp(),
+        lastAllocationUpdate: new Date().toISOString()
+      };
 
-      console.log('✅ PI item allocations updated successfully');
+      const updateResult = await updateProformaInvoice(pi.id, updates);
+      
+      if (!updateResult.success) {
+        throw new Error('Failed to update PI in Firestore: ' + updateResult.error);
+      }
+
+      console.log('✅ PI item allocations updated successfully in Firestore');
       console.log('📊 Updated item stats:', {
         totalAllocated: item.totalAllocated,
         unallocatedQty: item.unallocatedQty,
@@ -686,26 +721,31 @@ export class StockAllocationService {
       });
       
     } catch (error) {
-      console.error('❌ Error updating PI item allocations:', error);
+      console.error('❌ Error updating PI item allocations in Firestore:', error);
       throw error;
     }
   }
 
   /**
-   * Update product stock levels
+   * 🚀 FIRESTORE VERSION: Update product stock levels
    */
   static async updateProductStock(productId, allocations) {
     try {
-      const products = getLocalStorageData('products') || [];
-      const productIndex = products.findIndex(p => p.id === productId);
-      
-      if (productIndex === -1) {
-        console.log('⚠️ Product not found for stock update:', productId);
-        return; // Product not found, skip update
+      // Get products from Firestore
+      const productsResult = await getProducts();
+      if (!productsResult.success) {
+        console.log('⚠️ Failed to get products from Firestore for stock update');
+        return;
       }
 
-      const product = products[productIndex];
+      const products = productsResult.data;
+      const product = products.find(p => p.id === productId);
       
+      if (!product) {
+        console.log('⚠️ Product not found in Firestore for stock update:', productId);
+        return;
+      }
+
       // Calculate allocation breakdown
       const warehouseAllocations = allocations
         .filter(alloc => alloc.allocationType === this.ALLOCATION_TYPES.WAREHOUSE)
@@ -715,26 +755,27 @@ export class StockAllocationService {
         .filter(alloc => alloc.allocationType !== this.ALLOCATION_TYPES.WAREHOUSE)
         .reduce((sum, alloc) => sum + alloc.quantity, 0);
 
-      // Update stock levels
-      product.stock = (product.stock || 0) + warehouseAllocations;
-      product.allocatedStock = (product.allocatedStock || 0) + reservedAllocations;
-      product.availableStock = product.stock - product.allocatedStock;
+      // Prepare updates
+      const updates = {
+        stock: (product.stock || 0) + warehouseAllocations,
+        allocatedStock: (product.allocatedStock || 0) + reservedAllocations,
+        updatedAt: serverTimestamp()
+      };
       
-      // Update timestamp
-      product.updatedAt = new Date().toISOString();
-      
-      products[productIndex] = product;
-      setLocalStorageData('products', products);
+      updates.availableStock = updates.stock - updates.allocatedStock;
 
-      console.log('✅ Product stock levels updated');
+      // Update in Firestore using the product service
+      await updateDocument('products', product.id, updates);
+
+      console.log('✅ Product stock levels updated in Firestore');
     } catch (error) {
-      console.error('❌ Error updating product stock:', error);
+      console.error('❌ Error updating product stock in Firestore:', error);
       // Don't throw - this is not critical for allocation
     }
   }
 
   /**
-   * Update target documents
+   * 🚀 FIRESTORE VERSION: Update target documents
    */
   static async updateTargetDocuments(allocations) {
     try {
@@ -745,57 +786,62 @@ export class StockAllocationService {
           await this.updateProjectAllocation(allocation);
         }
       }
-      console.log('✅ Target documents updated');
+      console.log('✅ Target documents updated in Firestore');
     } catch (error) {
-      console.error('❌ Error updating target documents:', error);
+      console.error('❌ Error updating target documents in Firestore:', error);
       // Don't throw - this is not critical for allocation
     }
   }
 
   /**
-   * Update PO fulfillment status
+   * 🚀 FIRESTORE VERSION: Update PO fulfillment status
    */
   static async updatePOFulfillment(allocation) {
     try {
-      const purchaseOrders = getLocalStorageData('purchaseOrders') || [];
-      const poIndex = purchaseOrders.findIndex(po => po.id === allocation.allocationTarget);
-      
-      if (poIndex === -1) {
-        console.log('⚠️ PO not found for fulfillment update:', allocation.allocationTarget);
+      const purchaseOrdersResult = await getPurchaseOrders();
+      if (!purchaseOrdersResult.success) {
+        console.log('⚠️ Failed to get POs from Firestore for fulfillment update');
         return;
       }
 
-      const po = purchaseOrders[poIndex];
+      const purchaseOrders = purchaseOrdersResult.data;
+      const po = purchaseOrders.find(p => p.id === allocation.allocationTarget);
       
-      // Update fulfillment tracking
-      if (!po.fulfillment) {
-        po.fulfillment = {
-          allocations: [],
-          totalAllocated: 0,
-          fulfillmentRate: 0
-        };
+      if (!po) {
+        console.log('⚠️ PO not found in Firestore for fulfillment update:', allocation.allocationTarget);
+        return;
       }
 
-      po.fulfillment.allocations.push({
+      // Update fulfillment tracking
+      const fulfillment = po.fulfillment || {
+        allocations: [],
+        totalAllocated: 0,
+        fulfillmentRate: 0
+      };
+
+      fulfillment.allocations.push({
         allocationId: allocation.id,
         quantity: allocation.quantity,
         allocatedDate: allocation.allocatedDate,
         productCode: allocation.productCode
       });
 
-      po.fulfillment.totalAllocated += allocation.quantity;
+      fulfillment.totalAllocated += allocation.quantity;
       
       // Calculate fulfillment rate
       const totalOrdered = po.items.reduce((sum, item) => sum + item.quantity, 0);
-      po.fulfillment.fulfillmentRate = totalOrdered > 0 ? (po.fulfillment.totalAllocated / totalOrdered) * 100 : 0;
+      fulfillment.fulfillmentRate = totalOrdered > 0 ? (fulfillment.totalAllocated / totalOrdered) * 100 : 0;
 
-      po.updatedAt = new Date().toISOString();
-      purchaseOrders[poIndex] = po;
-      setLocalStorageData('purchaseOrders', purchaseOrders);
+      const updates = {
+        fulfillment: fulfillment,
+        updatedAt: serverTimestamp()
+      };
 
-      console.log('✅ PO fulfillment updated');
+      await updateDocument('purchaseOrders', po.id, updates);
+
+      console.log('✅ PO fulfillment updated in Firestore');
     } catch (error) {
-      console.error('❌ Error updating PO fulfillment:', error);
+      console.error('❌ Error updating PO fulfillment in Firestore:', error);
     }
   }
 
@@ -804,25 +850,33 @@ export class StockAllocationService {
    */
   static async updateProjectAllocation(allocation) {
     try {
-      // This would update project cost tracking
+      // This would update project cost tracking in Firestore
       // For now, just log the allocation
-      console.log('📊 Project allocation recorded:', {
+      console.log('📊 Project allocation recorded in Firestore:', {
         projectCode: allocation.allocationTarget,
         quantity: allocation.quantity,
         allocatedDate: allocation.allocatedDate
       });
     } catch (error) {
-      console.error('Error updating project allocation:', error);
+      console.error('Error updating project allocation in Firestore:', error);
     }
   }
 
   /**
-   * 🚀 ENHANCED PI LOOKUP HELPER - Core method for finding PIs
+   * 🚀 FIRESTORE VERSION: Enhanced PI lookup helper
    */
   static async getPIById(piIdOrNumber) {
     try {
-      const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
+      console.log('🔍 Firestore PI lookup for:', piIdOrNumber);
       
+      const proformaInvoicesResult = await getProformaInvoices();
+      if (!proformaInvoicesResult.success) {
+        console.log('❌ Failed to get PIs from Firestore');
+        return null;
+      }
+      
+      const proformaInvoices = proformaInvoicesResult.data;
+
       // Multiple search strategies for maximum compatibility
       const strategies = [
         // Strategy 1: Direct ID match
@@ -831,25 +885,22 @@ export class StockAllocationService {
         // Strategy 2: PI Number match
         () => proformaInvoices.find(p => p.piNumber === piIdOrNumber),
         
-        // Strategy 3: Firestore ID match (for future migration)
-        () => proformaInvoices.find(p => p.firestoreId === piIdOrNumber),
-        
-        // Strategy 4: Document ID match
+        // Strategy 3: Document ID match
         () => proformaInvoices.find(p => p.documentId === piIdOrNumber),
         
-        // Strategy 5: Partial match (for ID format differences)
+        // Strategy 4: Partial match (for ID format differences)
         () => proformaInvoices.find(p => 
           p.id && piIdOrNumber && (p.id.includes(piIdOrNumber) || piIdOrNumber.includes(p.id))
         ),
         
-        // Strategy 6: PI Number pattern match (e.g., "TH-202407997")
+        // Strategy 5: PI Number pattern match (e.g., "TH-202407997")
         () => {
           if (!piIdOrNumber) return null;
           const prefix = piIdOrNumber.split('-')[0];
           return proformaInvoices.find(p => p.piNumber && p.piNumber.includes(prefix));
         },
         
-        // Strategy 7: Most recently updated PI with matching pattern
+        // Strategy 6: Most recently updated PI with matching pattern
         () => {
           if (!piIdOrNumber) return null;
           const prefix = piIdOrNumber.split('-')[0];
@@ -863,15 +914,15 @@ export class StockAllocationService {
       for (let i = 0; i < strategies.length; i++) {
         const pi = strategies[i]();
         if (pi) {
-          console.log(`🔍 PI found using strategy ${i + 1}:`, pi.piNumber);
+          console.log(`🔍 PI found in Firestore using strategy ${i + 1}:`, pi.piNumber);
           return pi;
         }
       }
       
-      console.log('🔍 PI found by number: No');
+      console.log('🔍 PI found by number in Firestore: No');
       return null;
     } catch (error) {
-      console.error('Error getting PI by ID:', error);
+      console.error('Error getting PI by ID from Firestore:', error);
       return null;
     }
   }
@@ -880,7 +931,7 @@ export class StockAllocationService {
     try {
       const pi = await this.getPIById(piId);
       if (!pi) {
-        console.log('⚠️ PI not found for item lookup:', { piId, itemId });
+        console.log('⚠️ PI not found in Firestore for item lookup:', { piId, itemId });
         return null;
       }
       
@@ -907,21 +958,28 @@ export class StockAllocationService {
         if (item) return item;
       }
       
-      console.log('⚠️ PI item not found:', { piId, itemId });
+      console.log('⚠️ PI item not found in Firestore:', { piId, itemId });
       return null;
     } catch (error) {
-      console.error('Error getting PI item:', error);
+      console.error('Error getting PI item from Firestore:', error);
       return null;
     }
   }
 
   /**
-   * Get allocation analytics
+   * 🚀 FIRESTORE VERSION: Get allocation analytics
    */
   static async getAllocationAnalytics() {
     try {
-      const allocations = getLocalStorageData('stockAllocations') || [];
-      const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
+      // Get allocations from Firestore
+      const allocationsSnapshot = await getDocs(collection(db, 'stockAllocations'));
+      const allocations = allocationsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      const proformaInvoicesResult = await getProformaInvoices();
+      const proformaInvoices = proformaInvoicesResult.success ? proformaInvoicesResult.data : [];
       
       const totalAllocated = allocations.length;
       const totalValue = allocations.reduce((sum, alloc) => {
@@ -945,7 +1003,7 @@ export class StockAllocationService {
         allocationAccuracy: 95.7 // Mock data
       };
     } catch (error) {
-      console.error('Error getting allocation analytics:', error);
+      console.error('Error getting allocation analytics from Firestore:', error);
       return {
         totalAllocated: 0,
         totalValue: 0,
@@ -957,14 +1015,34 @@ export class StockAllocationService {
   }
 
   /**
-   * Debug helper - Get all allocation data
+   * 🚀 FIRESTORE VERSION: Debug helper - Get all allocation data
    */
   static async getAllAllocationData() {
-    return {
-      allocations: getLocalStorageData('stockAllocations') || [],
-      proformaInvoices: getLocalStorageData('proformaInvoices') || [],
-      purchaseOrders: getLocalStorageData('purchaseOrders') || [],
-      products: getLocalStorageData('products') || []
-    };
+    try {
+      const allocationsSnapshot = await getDocs(collection(db, 'stockAllocations'));
+      const allocations = allocationsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      const proformaInvoicesResult = await getProformaInvoices();
+      const purchaseOrdersResult = await getPurchaseOrders();
+      const productsResult = await getProducts();
+
+      return {
+        allocations,
+        proformaInvoices: proformaInvoicesResult.success ? proformaInvoicesResult.data : [],
+        purchaseOrders: purchaseOrdersResult.success ? purchaseOrdersResult.data : [],
+        products: productsResult.success ? productsResult.data : []
+      };
+    } catch (error) {
+      console.error('Error getting all allocation data from Firestore:', error);
+      return {
+        allocations: [],
+        proformaInvoices: [],
+        purchaseOrders: [],
+        products: []
+      };
+    }
   }
 }
