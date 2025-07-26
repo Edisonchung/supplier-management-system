@@ -118,6 +118,8 @@ const validatePITotals = (formData, selectedProducts, debug = false) => {
 };
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
+  // Only log props debug when component mounts or key props change
+useEffect(() => {
   console.log('=== PIModal Props Debug ===');
   console.log('proformaInvoice:', proformaInvoice ? 'Present' : 'Missing');
   console.log('suppliers:', suppliers ? `Array with ${suppliers.length} items` : 'Missing');
@@ -127,6 +129,11 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
   console.log('addSupplier:', typeof addSupplier, addSupplier ? 'Present' : 'Missing');
   console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
   console.log('=== End Props Debug ===');
+}, [
+  proformaInvoice?.id,  // Only re-log when PI ID changes
+  suppliers?.length,
+  products?.length
+]);
     const [formData, setFormData] = useState({
     piNumber: '',
     supplierId: '',
@@ -997,9 +1004,9 @@ const handleSubmit = useCallback((e) => {
       )}
 
       {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-hidden">
-
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+       <div className="flex-1 overflow-hidden">
+  <form onSubmit={handleSubmit} className="h-full flex flex-col">
+    <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'details' ? (
             <>
               {/* Basic Information */}
