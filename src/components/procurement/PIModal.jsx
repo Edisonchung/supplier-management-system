@@ -904,97 +904,100 @@ const handleSubmit = useCallback((e) => {
   const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden">
-        <div className="p-6 border-b">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">
-              {proformaInvoice ? 'Edit Proforma Invoice' : 'Create Proforma Invoice'}
-            </h2>
-            <div className="flex items-center gap-2">
-              {proformaInvoice && (
-                <button
-                  onClick={copyShareableLink}
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                  title="Copy shareable link"
-                >
-                  <Link size={20} />
-                </button>
-              )}
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-lg max-w-5xl w-full h-[90vh] flex flex-col overflow-hidden">
+      {/* Fixed Header */}
+      <div className="p-6 border-b flex-shrink-0">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold">
+            {proformaInvoice ? 'Edit Proforma Invoice' : 'Create Proforma Invoice'}
+          </h2>
+          <div className="flex items-center gap-2">
+            {proformaInvoice && (
               <button
-                onClick={onClose}
-                className="text-gray-500 hover:text-gray-700"
+                onClick={copyShareableLink}
+                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                title="Copy shareable link"
               >
-                <X size={24} />
+                <Link size={20} />
               </button>
-            </div>
+            )}
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X size={24} />
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Tabs for Edit Mode */}
-        {proformaInvoice && (
-          <div className="border-b">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('details')}
-                className={`px-6 py-3 font-medium ${
-                  activeTab === 'details' 
-                    ? 'border-b-2 border-blue-500 text-blue-600' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                PI Details
-              </button>
-              <button
-                onClick={() => setActiveTab('payment')}
-                className={`px-6 py-3 font-medium ${
-                  activeTab === 'payment' 
-                    ? 'border-b-2 border-blue-500 text-blue-600' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Payment
-                {formData.paymentStatus === 'partial' && (
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                    {paymentProgress.toFixed(0)}%
-                  </span>
-                )}
-                {formData.paymentStatus === 'paid' && (
-                  <CheckSquare className="inline-block ml-2 h-4 w-4 text-green-600" />
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab('receiving')}
-                className={`px-6 py-3 font-medium ${
-                  activeTab === 'receiving' 
-                    ? 'border-b-2 border-blue-500 text-blue-600' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Stock Receiving
-                {formData.hasDiscrepancy && (
-                  <AlertCircle className="inline-block ml-2 h-4 w-4 text-orange-500" />
-                )}
-              </button>
-              {/* ✅ ADD THIS NEW DOCUMENTS TAB */}
-      <button
-        onClick={() => setActiveTab('documents')}
-        className={`px-6 py-3 font-medium ${
-          activeTab === 'documents' 
-            ? 'border-b-2 border-blue-500 text-blue-600' 
-            : 'text-gray-600 hover:text-gray-900'
-        }`}
-      >
-        Documents
-        {proformaInvoice?.id && (
-          <span className="ml-2 bg-blue-100 text-blue-600 text-xs px-1.5 py-0.5 rounded-full">
-            Stored
-          </span>
-        )}
-      </button>
-            </div>
+      {/* Fixed Tabs */}
+      {proformaInvoice && (
+        <div className="border-b flex-shrink-0">
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`px-6 py-3 font-medium ${
+                activeTab === 'details' 
+                  ? 'border-b-2 border-blue-500 text-blue-600' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              PI Details
+            </button>
+            <button
+              onClick={() => setActiveTab('payment')}
+              className={`px-6 py-3 font-medium ${
+                activeTab === 'payment' 
+                  ? 'border-b-2 border-blue-500 text-blue-600' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Payment
+              {formData.paymentStatus === 'partial' && (
+                <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
+                  {paymentProgress.toFixed(0)}%
+                </span>
+              )}
+              {formData.paymentStatus === 'paid' && (
+                <CheckSquare className="inline-block ml-2 h-4 w-4 text-green-600" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('receiving')}
+              className={`px-6 py-3 font-medium ${
+                activeTab === 'receiving' 
+                  ? 'border-b-2 border-blue-500 text-blue-600' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Stock Receiving
+              {formData.hasDiscrepancy && (
+                <AlertCircle className="inline-block ml-2 h-4 w-4 text-orange-500" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('documents')}
+              className={`px-6 py-3 font-medium ${
+                activeTab === 'documents' 
+                  ? 'border-b-2 border-blue-500 text-blue-600' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Documents
+              {proformaInvoice?.id && (
+                <span className="ml-2 bg-blue-100 text-blue-600 text-xs px-1.5 py-0.5 rounded-full">
+                  Stored
+                </span>
+              )}
+            </button>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-hidden">
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
           {activeTab === 'details' ? (
@@ -1965,23 +1968,25 @@ const handleSubmit = useCallback((e) => {
               )}
             </div>
           ) : null}
+       </div>
+
+          {/* Fixed Footer with Action Buttons */}
+          <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              {proformaInvoice ? 'Update' : 'Create'} PI
+            </button>
+          </div>
         </form>
-
-
-        <div className="p-6 border-t flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            {proformaInvoice ? 'Update' : 'Create'} PI
-          </button>
         </div>
       </div>
 
