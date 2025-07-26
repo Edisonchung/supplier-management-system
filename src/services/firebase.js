@@ -1,7 +1,8 @@
-// src/config/firebase.js - Complete Fix for CORS and Initialization Issues
+// src/config/firebase.js - Complete Firebase Implementation with CORS and Admin Fixes
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
+  connectAuthEmulator,
   signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
@@ -12,6 +13,7 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  connectFirestoreEmulator,
   collection, 
   doc, 
   addDoc, 
@@ -28,13 +30,14 @@ import {
   onSnapshot,
   enableNetwork,
   disableNetwork,
+  CACHE_SIZE_UNLIMITED,
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager,
-  CACHE_SIZE_UNLIMITED
+  persistentMultipleTabManager
 } from 'firebase/firestore';
 import { 
   getStorage, 
+  connectStorageEmulator,
   ref, 
   uploadBytes, 
   getDownloadURL, 
@@ -99,6 +102,7 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 export { db };
 
+// ✅ FIXED: Better environment detection
 const isDevelopment = import.meta.env.DEV;
 const isProduction = import.meta.env.PROD;
 
@@ -145,7 +149,19 @@ const cleanFirestoreData = (data) => {
   return cleaned;
 };
 
-// ✅ CORS FIX: Safe document operations
+// ✅ FIXED: Safe document existence check
+export const documentExists = async (collectionName, docId) => {
+  try {
+    const docRef = doc(db, collectionName, docId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists();
+  } catch (error) {
+    console.error('Error checking document existence:', error);
+    return false;
+  }
+};
+
+// ✅ FIXED: Safe document getter with proper error handling
 export const safeGetDocument = async (collectionName, docId) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
@@ -159,6 +175,7 @@ export const safeGetDocument = async (collectionName, docId) => {
   }, `getDocument(${collectionName}/${docId})`);
 };
 
+// ✅ CORS FIX: Enhanced safe set document
 export const safeSetDocument = async (collectionName, docId, data) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
@@ -172,6 +189,7 @@ export const safeSetDocument = async (collectionName, docId, data) => {
   }, `setDocument(${collectionName}/${docId})`);
 };
 
+// ✅ CORS FIX: Enhanced safe add document
 export const safeAddDocument = async (collectionName, data) => {
   return handleFirestoreOperation(async () => {
     const collectionRef = collection(db, collectionName);
@@ -186,6 +204,7 @@ export const safeAddDocument = async (collectionName, data) => {
   }, `addDocument(${collectionName})`);
 };
 
+// ✅ CORS FIX: Enhanced safe update document
 export const safeUpdateDocument = async (collectionName, docId, updates) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
@@ -199,6 +218,7 @@ export const safeUpdateDocument = async (collectionName, docId, updates) => {
   }, `updateDocument(${collectionName}/${docId})`);
 };
 
+// ✅ CORS FIX: Enhanced safe get collection
 export const safeGetCollection = async (collectionName, queryConstraints = []) => {
   return handleFirestoreOperation(async () => {
     const collectionRef = collection(db, collectionName);
@@ -212,7 +232,7 @@ export const safeGetCollection = async (collectionName, queryConstraints = []) =
   }, `getCollection(${collectionName})`);
 };
 
-// ✅ CORS FIX: Connection test without real-time listeners
+// ✅ CORS FIX: Safe connection test without real-time listeners
 const testFirestoreConnection = async (retryCount = 0) => {
   try {
     const testRef = doc(db, 'test', 'connection');
@@ -228,6 +248,49 @@ const testFirestoreConnection = async (retryCount = 0) => {
     return false;
   }
 };
+
+// ✅ CORS FIX: Enhanced network handling with CORS awareness
+const handleNetworkStatus = () => {
+  let isOnline = navigator.onLine;
+  
+  const handleOnline = async () => {
+    if (!isOnline) {
+      console.log('🌐 Network restored');
+      isOnline = true;
+      
+      try {
+        await enableNetwork(db);
+        setTimeout(() => testFirestoreConnection(), 1000);
+      } catch (error) {
+        console.warn('Failed to enable network:', error.message);
+      }
+    }
+  };
+  
+  const handleOffline = async () => {
+    if (isOnline) {
+      console.log('📱 Network lost - enabling offline mode');
+      isOnline = false;
+      
+      try {
+        await disableNetwork(db);
+      } catch (error) {
+        console.warn('Failed to disable network:', error.message);
+      }
+    }
+  };
+  
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+  
+  // Initial network state check
+  if (!navigator.onLine) {
+    handleOffline();
+  }
+};
+
+// Initialize network handling
+handleNetworkStatus();
 
 // ✅ COMPANY DATA FIX: Initialize company structure data
 const initializeCompanyStructure = async () => {
@@ -329,13 +392,14 @@ const initializeCompanyStructure = async () => {
   }
 };
 
-// ✅ ADMIN FIX: Ensure Edison's admin assignment
+// ✅ ADMIN FIX: Create Edison's admin assignment if it doesn't exist
 export const ensureEdisonAdminAccess = async () => {
   const email = 'edisonchung@flowsolution.net';
   
   try {
     console.log('🔍 Checking Edison admin assignment...');
     
+    // Check if assignment already exists
     const result = await safeGetDocument('adminAssignments', email);
     
     if (result.success && result.data?.exists) {
@@ -345,6 +409,7 @@ export const ensureEdisonAdminAccess = async () => {
     
     console.log('➕ Creating Edison admin assignment...');
     
+    // Create the admin assignment
     const adminData = {
       role: 'group_admin',
       companyIds: ['*'],
@@ -471,8 +536,7 @@ setTimeout(runInitialization, 2000);
 // Test connection
 setTimeout(testFirestoreConnection, 1000);
 
-// ✅ BUSINESS FUNCTIONS: Enhanced with error handling
-
+// ✅ ENHANCED: Proforma Invoices with better error handling
 export const getProformaInvoices = async () => {
   const result = await safeGetCollection('proformaInvoices');
   return {
@@ -482,31 +546,63 @@ export const getProformaInvoices = async () => {
   };
 };
 
+// ✅ ENHANCED: Add PI with better data cleaning
 export const addProformaInvoice = async (invoice) => {
-  const cleanData = cleanFirestoreData(invoice);
-  const result = await safeAddDocument('proformaInvoices', cleanData);
-  
-  if (result.success) {
-    return {
-      success: true,
-      data: { id: result.data.id, ...cleanData }
-    };
-  } else {
-    return { success: false, error: result.error };
+  try {
+    console.log('💾 FIRESTORE: Adding PI with data:', invoice);
+    
+    // ✅ FIXED: Build clean document data without undefined fields
+    const docData = cleanFirestoreData({
+      ...invoice,
+      // Core document storage fields
+      documentId: invoice.documentId,
+      documentNumber: invoice.documentNumber,
+      documentType: invoice.documentType || 'pi',
+      hasStoredDocuments: !!invoice.hasStoredDocuments,
+      
+      // Optional storage metadata (only if they have values)
+      ...(invoice.storageInfo && { storageInfo: invoice.storageInfo }),
+      ...(invoice.originalFileName && { originalFileName: invoice.originalFileName }),
+      ...(invoice.fileSize && { fileSize: invoice.fileSize }),
+      ...(invoice.contentType && { contentType: invoice.contentType }),
+      ...(invoice.extractedAt && { extractedAt: invoice.extractedAt }),
+      ...(invoice.storedAt && { storedAt: invoice.storedAt }),
+    });
+
+    const result = await safeAddDocument('proformaInvoices', docData);
+    
+    if (result.success) {
+      return {
+        success: true,
+        data: { id: result.data.id, ...docData, createdAt: new Date(), updatedAt: new Date() }
+      };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('Error adding proforma invoice:', error);
+    return { success: false, error: error.message };
   }
 };
 
+// ✅ ENHANCED: Update PI with proper data cleaning
 export const updateProformaInvoice = async (id, updates) => {
-  const cleanUpdates = cleanFirestoreData(updates);
-  const result = await safeUpdateDocument('proformaInvoices', id, cleanUpdates);
-  
-  if (result.success) {
-    return {
-      success: true,
-      data: { id, ...cleanUpdates }
-    };
-  } else {
-    return { success: false, error: result.error };
+  try {
+    console.log('💾 FIRESTORE: Updating PI:', { id, updates });
+    
+    const result = await safeUpdateDocument('proformaInvoices', id, updates);
+    
+    if (result.success) {
+      return {
+        success: true,
+        data: { id, ...updates, updatedAt: new Date() }
+      };
+    } else {
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('Error updating proforma invoice:', error);
+    return { success: false, error: error.message };
   }
 };
 
@@ -521,8 +617,9 @@ export const updateDeliveryStatus = async (id, status) => {
   return updateProformaInvoice(id, { deliveryStatus: status });
 };
 
-export const getPurchaseOrders = async () => {
-  const result = await safeGetCollection('purchaseOrders');
+// ✅ ENHANCED: Suppliers with error handling
+export const getSuppliers = async () => {
+  const result = await safeGetCollection('suppliers');
   return {
     success: result.success,
     data: result.success ? result.data : [],
@@ -565,6 +662,16 @@ export const deleteSupplier = async (id) => {
   }, `deleteSupplier(${id})`);
 };
 
+// ✅ ENHANCED: Products with error handling
+export const getProducts = async () => {
+  const result = await safeGetCollection('products');
+  return {
+    success: result.success,
+    data: result.success ? result.data : [],
+    error: result.error
+  };
+};
+
 export const addProduct = async (product) => {
   const cleanData = cleanFirestoreData(product);
   const result = await safeAddDocument('products', cleanData);
@@ -598,6 +705,16 @@ export const deleteProduct = async (id) => {
     await deleteDoc(doc(db, 'products', id));
     return { success: true };
   }, `deleteProduct(${id})`);
+};
+
+// ✅ ENHANCED: Purchase Orders with error handling
+export const getPurchaseOrders = async () => {
+  const result = await safeGetCollection('purchaseOrders');
+  return {
+    success: result.success,
+    data: result.success ? result.data : [],
+    error: result.error
+  };
 };
 
 export const addPurchaseOrder = async (order) => {
@@ -635,6 +752,7 @@ export const deletePurchaseOrder = async (id) => {
   }, `deletePurchaseOrder(${id})`);
 };
 
+// ✅ ENHANCED: Client Invoices with error handling
 export const getClientInvoices = async () => {
   const result = await safeGetCollection('clientInvoices');
   return {
@@ -679,6 +797,7 @@ export const deleteClientInvoice = async (id) => {
   }, `deleteClientInvoice(${id})`);
 };
 
+// ✅ ENHANCED: Query functions with error handling
 export const getInvoicesByPOId = async (poId) => {
   const result = await safeGetCollection('clientInvoices', [where('poId', '==', poId)]);
   return {
@@ -699,16 +818,7 @@ export const updateInvoicePaymentStatus = async (id, paymentData) => {
   return updateClientInvoice(id, updateData);
 };
 
-export const getProducts = async () => {
-  const result = await safeGetCollection('products');
-  return {
-    success: result.success,
-    data: result.success ? result.data : [],
-    error: result.error
-  };
-};
-
-// ✅ COMPATIBILITY LAYER: Enhanced mockFirebase
+// ✅ FIXED: Enhanced compatibility layer with proper error handling
 export const mockFirebase = {
   firestore: {
     collection: (collectionName) => ({
@@ -794,6 +904,7 @@ export const mockFirebase = {
 
 // Export all Firebase functions
 export {
+  // Auth functions
   signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
@@ -801,6 +912,8 @@ export {
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  
+  // Firestore functions  
   collection,
   doc,
   addDoc,
@@ -817,6 +930,8 @@ export {
   onSnapshot,
   enableNetwork,
   disableNetwork,
+  
+  // Storage functions
   ref,
   uploadBytes,
   getDownloadURL,
