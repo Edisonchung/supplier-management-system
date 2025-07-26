@@ -8,10 +8,11 @@ import {
   updateSupplier,
   getProducts,
   addProduct,
-  updateProduct
+  updateProduct,
+  db
 } from '../config/firebase';
 
-// Import Firestore functions directly
+// Import Firestore functions directly from Firebase SDK
 import { 
   collection, 
   doc, 
@@ -22,9 +23,8 @@ import {
   query, 
   where, 
   orderBy,
-  serverTimestamp,
-  db
-} from '../config/firebase';
+  serverTimestamp
+} from 'firebase/firestore';
 
 // Helper functions to handle Firestore operations safely
 const handleFirestoreOperation = async (operation, operationName) => {
