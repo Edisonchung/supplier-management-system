@@ -1,4 +1,4 @@
-// src/components/purchase-orders/PurchaseOrders.jsx - Updated with Firestore
+// src/components/purchase-orders/PurchaseOrders.jsx - Updated with Firestore and Fixed ReferenceError
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -50,11 +50,11 @@ const PurchaseOrders = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   
-  // Use the new Firestore hook
+  // 🔧 FIX 1: Properly destructure all hook functions with safe defaults
   const {
-    purchaseOrders,
-    loading,
-    error,
+    purchaseOrders = [],
+    loading = false,
+    error = null,
     addPurchaseOrder,
     updatePurchaseOrder,
     deletePurchaseOrder,
@@ -62,8 +62,9 @@ const PurchaseOrders = () => {
     getStatistics,
     generatePONumber,
     refetch
-  } = usePurchaseOrders();
+  } = usePurchaseOrders() || {};
   
+  // 🔧 FIX 2: Local state declarations AFTER hook
   const [extracting, setExtracting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -71,8 +72,10 @@ const PurchaseOrders = () => {
   const [currentPO, setCurrentPO] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
-  const { showSuccess, showError, showWarning } = useNotifications();
-  const { withLoading } = useLoadingStates();
+  
+  // 🔧 FIX 3: Notification hooks with fallbacks
+  const { showSuccess, showError, showWarning } = useNotifications() || {};
+  const { withLoading } = useLoadingStates() || {};
   const [lastSyncTime, setLastSyncTime] = useState(new Date());
   const [syncStatus, setSyncStatus] = useState('synced');
   const [activeUsers] = useState([
@@ -80,52 +83,133 @@ const PurchaseOrders = () => {
     { id: 2, name: 'Sarah Chen' }
   ]);
 
+  // 🔧 FIX 4: Safe filtering with proper dependencies and null checks
+  const filteredPOs = React.useMemo(() => {
+    console.log('🔍 Filtering POs:', { 
+      purchaseOrdersLength: purchaseOrders?.length, 
+      searchTerm, 
+      statusFilter,
+      searchPurchaseOrdersAvailable: typeof searchPurchaseOrders === 'function'
+    });
+
+    // Ensure we have valid data
+    if (!purchaseOrders || !Array.isArray(purchaseOrders)) {
+      console.log('⚠️ No valid purchase orders array');
+      return [];
+    }
+
+    let result = [...purchaseOrders]; // Create a copy to avoid mutations
+
+    // Apply search filter safely
+    if (searchTerm && searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
+      
+      if (typeof searchPurchaseOrders === 'function') {
+        try {
+          result = searchPurchaseOrders(searchTerm);
+        } catch (error) {
+          console.warn('Error using searchPurchaseOrders:', error);
+          // Fallback to manual search
+          result = purchaseOrders.filter(po => 
+            (po.poNumber && po.poNumber.toLowerCase().includes(term)) ||
+            (po.clientName && po.clientName.toLowerCase().includes(term)) ||
+            (po.projectCode && po.projectCode.toLowerCase().includes(term)) ||
+            (po.clientPoNumber && po.clientPoONumber.toLowerCase().includes(term)) ||
+            (po.clientPONumber && po.clientPONumber.toLowerCase().includes(term)) ||
+            (po.orderNumber && po.orderNumber.toLowerCase().includes(term))
+          );
+        }
+      } else {
+        // Fallback search implementation
+        result = purchaseOrders.filter(po => 
+          (po.poNumber && po.poNumber.toLowerCase().includes(term)) ||
+          (po.clientName && po.clientName.toLowerCase().includes(term)) ||
+          (po.projectCode && po.projectCode.toLowerCase().includes(term)) ||
+          (po.clientPoNumber && po.clientPoNumber.toLowerCase().includes(term)) ||
+          (po.clientPONumber && po.clientPONumber.toLowerCase().includes(term)) ||
+          (po.orderNumber && po.orderNumber.toLowerCase().includes(term))
+        );
+      }
+    }
+    
+    // Apply status filter
+    if (statusFilter && statusFilter !== 'all') {
+      result = result.filter(po => po.status === statusFilter);
+    }
+    
+    console.log('✅ Filtered result:', result?.length);
+    return result || [];
+  }, [purchaseOrders, searchTerm, statusFilter, searchPurchaseOrders]);
+
+  // 🔧 FIX 5: Safe statistics calculation with error handling
+  const stats = React.useMemo(() => {
+    console.log('📊 Calculating stats...');
+    
+    // Use hook statistics if available, otherwise calculate from data
+    if (typeof getStatistics === 'function') {
+      try {
+        const hookStats = getStatistics();
+        console.log('📈 Hook stats:', hookStats);
+        return {
+          total: hookStats.total || filteredPOs.length,
+          draft: hookStats.byStatus?.draft || hookStats.draft || 0,
+          sent: hookStats.byStatus?.sent || 0,
+          confirmed: hookStats.byStatus?.confirmed || hookStats.confirmed || 0,
+          pending: hookStats.byStatus?.pending || 0,
+          approved: hookStats.byStatus?.approved || 0,
+          in_progress: hookStats.byStatus?.in_progress || 0,
+          completed: hookStats.byStatus?.completed || 0,
+          cancelled: hookStats.byStatus?.cancelled || 0,
+          totalValue: hookStats.totalValue || 0
+        };
+      } catch (error) {
+        console.warn('Error getting statistics from hook:', error);
+      }
+    }
+
+    // Fallback calculation from current data
+    if (!Array.isArray(purchaseOrders)) {
+      return {
+        total: 0, draft: 0, sent: 0, confirmed: 0, pending: 0,
+        approved: 0, in_progress: 0, completed: 0, cancelled: 0, totalValue: 0
+      };
+    }
+
+    const statusCounts = purchaseOrders.reduce((acc, po) => {
+      const status = po.status || 'draft';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const totalValue = purchaseOrders.reduce((sum, po) => {
+      const amount = po.totalAmount || po.total || 0;
+      return sum + (typeof amount === 'number' ? amount : 0);
+    }, 0);
+
+    const result = {
+      total: purchaseOrders.length,
+      draft: statusCounts.draft || 0,
+      sent: statusCounts.sent || 0,
+      confirmed: statusCounts.confirmed || 0,
+      pending: statusCounts.pending || 0,
+      approved: statusCounts.approved || 0,
+      in_progress: statusCounts.in_progress || 0,
+      completed: statusCounts.completed || 0,
+      cancelled: statusCounts.cancelled || 0,
+      totalValue
+    };
+
+    console.log('📊 Calculated stats:', result);
+    return result;
+  }, [purchaseOrders, getStatistics, filteredPOs.length]);
+
   // Update sync status when data changes
   useEffect(() => {
     setLastSyncTime(new Date());
     setSyncStatus('synced');
   }, [purchaseOrders]);
 
-  // 🔍 DEBUG: Add this debug useEffect to track PO visibility
-  useEffect(() => {
-    console.log('🔍 DEBUG - PO Visibility Check:', {
-      userAuthenticated: !!user,
-      userId: user?.uid,
-      userEmail: user?.email,
-      purchaseOrdersCount: purchaseOrders.length,
-      purchaseOrdersData: purchaseOrders,
-      loading: loading,
-      error: error,
-      searchTerm: searchTerm,
-      statusFilter: statusFilter
-    });
-
-    // Check if POs exist but aren't showing
-    if (purchaseOrders.length > 0) {
-      purchaseOrders.forEach((po, index) => {
-        console.log(`📋 PO ${index + 1}:`, {
-          id: po.id,
-          poNumber: po.poNumber,
-          clientPoNumber: po.clientPoNumber,
-          createdBy: po.createdBy,
-          status: po.status,
-          createdAt: po.createdAt,
-          userMatches: po.createdBy === user?.uid
-        });
-      });
-    }
-
-    // Check filtered results
-    console.log('🔍 Filtered POs:', {
-      originalCount: purchaseOrders.length,
-      filteredCount: filteredPOs.length,
-      searchTerm: searchTerm,
-      statusFilter: statusFilter
-    });
-
-  }, [user, purchaseOrders, loading, error, filteredPOs, searchTerm, statusFilter]);
-
-  // ✅ FIXED: Handle file upload with document storage
+  // 🔧 FIX 6: Enhanced file upload with better error handling
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -141,19 +225,23 @@ const PurchaseOrders = () => {
     setUploadError(null);
 
     try {
-      // ✅ ENHANCED: Better error handling wrapper
       console.log('🎯 Calling extractPOWithStorage...');
       
       let result;
       try {
-        result = await AIExtractionService.extractPOWithStorage(file);
+        // Use safe function call
+        if (AIExtractionService && typeof AIExtractionService.extractPOWithStorage === 'function') {
+          result = await AIExtractionService.extractPOWithStorage(file);
+        } else {
+          throw new Error('AI extraction service is not available');
+        }
       } catch (extractionError) {
-        // ✅ CATCH: Handle extraction service errors specifically
         console.error('❌ AI Extraction Service Error:', extractionError);
         
-        // ✅ DETECT: Check for the S.warning error specifically
-        if (extractionError.message?.includes('S.warning is not a function')) {
-          console.error('🚨 CRITICAL: S.warning function not found in AIExtractionService');
+        // Check for specific error types
+        if (extractionError.message?.includes('S.warning is not a function') || 
+            extractionError.message?.includes('warning is not a function')) {
+          console.error('🚨 CRITICAL: Warning function not found in AIExtractionService');
           throw new Error('Internal processing error detected. The AI extraction service needs to be updated.');
         }
         
@@ -170,10 +258,10 @@ const PurchaseOrders = () => {
         // Create POModal-compatible structure
         let modalData;
         
-        // ✅ FIXED: Check for BOTH 'client_purchase_order' AND 'po' document types
+        // Check for both 'client_purchase_order' AND 'po' document types
         if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
           modalData = {
-            // ✅ FIXED LINES - Get document storage fields from correct location:
+            // Document storage fields from correct location:
             documentId: result.documentStorage?.documentId || 
                         result.data.documentId || 
                         result.data.extractionMetadata?.documentId || 
@@ -202,8 +290,8 @@ const PurchaseOrders = () => {
                               result.data.extractionMetadata?.originalFileName || 
                               file.name,
             
-            // Generate new internal PO number
-            poNumber: generatePONumber(),
+            // Generate new internal PO number safely
+            poNumber: (typeof generatePONumber === 'function') ? generatePONumber() : `PO-${Date.now()}`,
             
             // Use client's original PO number  
             clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
@@ -228,13 +316,13 @@ const PurchaseOrders = () => {
             notes: result.data.notes || '',
             
             // Items array - ensure it matches POModal's expected structure
-            items: (result.data.items || []).map(item => ({
+            items: (result.data.items || []).map((item, index) => ({
               productName: item.productName || item.description || '',
               productCode: item.productCode || item.partNumber || '',
               quantity: item.quantity || 0,
               unitPrice: item.unitPrice || 0,
               totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-              id: Date.now().toString() + Math.random()
+              id: `item-${Date.now()}-${index}`
             })),
             
             // Additional extracted data
@@ -283,14 +371,14 @@ const PurchaseOrders = () => {
           console.log('Supplier PI data:', result.data);
           
         } else {
-          // ✅ FIXED: Remove the C.warning call and use safe notifications
+          // Handle unknown document types safely
           console.warn('Unknown document type:', result.data.documentType);
           toast.warning(`Unknown document type: ${result.data.documentType}. Please check the extraction results.`);
           console.log('Unknown document data:', result.data);
           
-          // ✅ OPTIONAL: Still try to process unknown types
+          // Still try to process unknown types
           modalData = {
-            poNumber: generatePONumber(),
+            poNumber: (typeof generatePONumber === 'function') ? generatePONumber() : `PO-${Date.now()}`,
             clientPoNumber: '',
             clientName: `Unknown Type: ${result.data.documentType}`,
             status: 'draft',
@@ -310,12 +398,12 @@ const PurchaseOrders = () => {
     } catch (error) {
       console.error('❌ PO extraction with storage failed:', error);
       
-      // ✅ ENHANCED: Better error messaging for S.warning issue
+      // Enhanced error messaging
       let userMessage = 'Failed to extract PO: ' + error.message;
       
-      if (error.message?.includes('S.warning is not a function')) {
+      if (error.message?.includes('warning is not a function')) {
         userMessage = 'Internal system error detected. Please contact support - the AI extraction service needs an update.';
-        console.error('🚨 URGENT: S.warning function missing in AIExtractionService - needs immediate fix');
+        console.error('🚨 URGENT: Warning function missing in AIExtractionService - needs immediate fix');
       }
       
       setUploadError(userMessage);
@@ -331,8 +419,8 @@ const PurchaseOrders = () => {
 
   // Handle manual PO creation
   const handleCreatePO = () => {
-    setCurrentPO({
-      poNumber: generatePONumber(),
+    const newPO = {
+      poNumber: (typeof generatePONumber === 'function') ? generatePONumber() : `PO-${Date.now()}`,
       clientPoNumber: '',
       clientName: '',
       clientContact: '',
@@ -345,15 +433,20 @@ const PurchaseOrders = () => {
       status: 'draft',
       notes: '',
       items: []
-    });
+    };
+    setCurrentPO(newPO);
     setModalOpen(true);
   };
 
-  // ✅ ENHANCED: Handle PO save with document field preservation using Firestore hook
+  // Enhanced PO save with document field preservation using Firestore hook
   const handleSavePO = async (poData) => {
     try {
-      await withLoading(async () => {
-        // ✅ ENSURE DOCUMENT FIELDS ARE PRESERVED
+      const loadingWrapper = withLoading || ((fn, options) => {
+        console.log(options?.title || 'Processing...');
+        return fn();
+      });
+
+      await loadingWrapper(async () => {
         console.log('💾 Saving PO with document fields:', {
           documentId: poData.documentId,
           hasStoredDocuments: poData.hasStoredDocuments,
@@ -362,20 +455,35 @@ const PurchaseOrders = () => {
         
         let result;
         if (poData.id) {
-          result = await updatePurchaseOrder(poData.id, poData);
+          if (typeof updatePurchaseOrder === 'function') {
+            result = await updatePurchaseOrder(poData.id, poData);
+          } else {
+            throw new Error('Update function not available');
+          }
         } else {
-          result = await addPurchaseOrder(poData);
+          if (typeof addPurchaseOrder === 'function') {
+            result = await addPurchaseOrder(poData);
+          } else {
+            throw new Error('Add function not available');
+          }
         }
         
-        if (result.success) {
-          showSuccess(
-            poData.id ? 'Purchase Order Updated' : 'Purchase Order Created',
-            `PO ${poData.poNumber} has been ${poData.id ? 'updated' : 'created'} successfully with document storage.`
-          );
+        if (result && result.success) {
+          const successMsg = `PO ${poData.poNumber} has been ${poData.id ? 'updated' : 'created'} successfully with document storage.`;
+          
+          if (showSuccess) {
+            showSuccess(
+              poData.id ? 'Purchase Order Updated' : 'Purchase Order Created',
+              successMsg
+            );
+          } else {
+            toast.success(successMsg);
+          }
+          
           setModalOpen(false);
           setCurrentPO(null);
         } else {
-          throw new Error(result.error || 'Failed to save purchase order');
+          throw new Error(result?.error || 'Failed to save purchase order');
         }
         
         setLastSyncTime(new Date());
@@ -386,18 +494,20 @@ const PurchaseOrders = () => {
       
     } catch (error) {
       console.error('Error saving PO:', error);
-      showError(
-        'Save Failed',
-        'Unable to save purchase order. Please check your connection and try again.',
-        {
+      const errorMsg = 'Unable to save purchase order. Please check your connection and try again.';
+      
+      if (showError) {
+        showError('Save Failed', errorMsg, {
           actions: [
             {
               label: 'Retry',
               onClick: () => handleSavePO(poData)
             }
           ]
-        }
-      );
+        });
+      } else {
+        toast.error(errorMsg);
+      }
     }
   };
 
@@ -405,64 +515,76 @@ const PurchaseOrders = () => {
   const handleDeletePO = async (poId) => {
     const po = purchaseOrders.find(p => p.id === poId);
     
-    showWarning(
-      'Delete Purchase Order',
-      `Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`,
-      {
-        persistent: true,
-        actions: [
-          {
-            label: 'Delete',
-            onClick: async () => {
-              try {
-                await withLoading(async () => {
-                  const result = await deletePurchaseOrder(poId);
-                  if (result.success) {
-                    showSuccess('Deleted', `PO ${po?.poNumber || po?.orderNumber} has been deleted.`);
-                  } else {
-                    throw new Error(result.error || 'Failed to delete purchase order');
-                  }
-                }, {
-                  title: 'Deleting Purchase Order...'
-                });
-              } catch (error) {
-                console.error('Error deleting PO:', error);
-                showError('Delete Failed', 'Unable to delete purchase order.');
-              }
-            }
-          },
-          {
-            label: 'Cancel',
-            onClick: () => {} // Will auto-close notification
-          }
-        ]
+    const confirmDelete = () => {
+      if (window.confirm(`Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`)) {
+        performDelete();
       }
-    );
+    };
+
+    const performDelete = async () => {
+      try {
+        const loadingWrapper = withLoading || ((fn, options) => {
+          console.log(options?.title || 'Processing...');
+          return fn();
+        });
+
+        await loadingWrapper(async () => {
+          if (typeof deletePurchaseOrder === 'function') {
+            const result = await deletePurchaseOrder(poId);
+            if (result && result.success) {
+              const successMsg = `PO ${po?.poNumber || po?.orderNumber} has been deleted.`;
+              if (showSuccess) {
+                showSuccess('Deleted', successMsg);
+              } else {
+                toast.success(successMsg);
+              }
+            } else {
+              throw new Error(result?.error || 'Failed to delete purchase order');
+            }
+          } else {
+            throw new Error('Delete function not available');
+          }
+        }, {
+          title: 'Deleting Purchase Order...'
+        });
+      } catch (error) {
+        console.error('Error deleting PO:', error);
+        const errorMsg = 'Unable to delete purchase order.';
+        if (showError) {
+          showError('Delete Failed', errorMsg);
+        } else {
+          toast.error(errorMsg);
+        }
+      }
+    };
+
+    if (showWarning) {
+      showWarning(
+        'Delete Purchase Order',
+        `Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`,
+        {
+          persistent: true,
+          actions: [
+            {
+              label: 'Delete',
+              onClick: performDelete
+            },
+            {
+              label: 'Cancel',
+              onClick: () => {} // Will auto-close notification
+            }
+          ]
+        }
+      );
+    } else {
+      confirmDelete();
+    }
   };
 
   // Navigate to supplier matching page
   const handleViewSupplierMatching = (po) => {
     navigate(`/purchase-orders/${po.id}/supplier-matching`);
   };
-
-  
-
-  // Calculate statistics using the hook
-  const stats = React.useMemo(() => {
-    const hookStats = getStatistics();
-    return {
-      total: hookStats.total,
-      draft: hookStats.byStatus.draft || hookStats.draft || 0,
-      sent: hookStats.byStatus.sent || 0,
-      confirmed: hookStats.byStatus.confirmed || hookStats.confirmed || 0,
-      pending: hookStats.byStatus.pending || 0,
-      approved: hookStats.byStatus.approved || 0,
-      in_progress: hookStats.byStatus.in_progress || 0,
-      completed: hookStats.byStatus.completed || 0,
-      cancelled: hookStats.byStatus.cancelled || 0,
-      totalValue: hookStats.totalValue || 0
-    };
-  }, [getStatistics]);
 
   const getStatusBadge = (status) => {
     const statusConfig = {
@@ -479,18 +601,7 @@ const PurchaseOrders = () => {
     
     const config = statusConfig[status] || statusConfig.draft;
     const Icon = config.icon;
-
-
-    // Filter purchase orders using the hook's search function
-  const filteredPOs = React.useMemo(() => {
-    let result = searchTerm ? searchPurchaseOrders(searchTerm) : purchaseOrders;
     
-    if (statusFilter !== 'all') {
-      result = result.filter(po => po.status === statusFilter);
-    }
-    
-    return result;
-  }, [purchaseOrders, searchTerm, statusFilter, searchPurchaseOrders]);
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
         <Icon className="h-3 w-3 mr-1" />
@@ -504,7 +615,7 @@ const PurchaseOrders = () => {
     console.log('Modal state changed:', { modalOpen, currentPO });
   }, [modalOpen, currentPO]);
 
-  // Show authentication required message
+  // 🔧 FIX 7: Early returns for loading/error states
   if (!user) {
     return (
       <div className="text-center py-12">
@@ -515,7 +626,6 @@ const PurchaseOrders = () => {
     );
   }
 
-  // Show error state
   if (error) {
     return (
       <div className="text-center py-12">
@@ -523,7 +633,13 @@ const PurchaseOrders = () => {
         <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Purchase Orders</h3>
         <p className="text-gray-500 mb-4">{error}</p>
         <button
-          onClick={refetch}
+          onClick={() => {
+            if (typeof refetch === 'function') {
+              refetch();
+            } else {
+              window.location.reload();
+            }
+          }}
           className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           <Loader2 className="w-4 h-4 mr-2" />
@@ -560,11 +676,13 @@ const PurchaseOrders = () => {
                 <p className="text-sm text-gray-500">
                   Manage your purchase orders with AI extraction and document storage
                 </p>
-                <RealtimeStatusIndicator 
-                  status={syncStatus} 
-                  lastUpdated={lastSyncTime}
-                />
-                <UserPresence users={activeUsers} />
+                {RealtimeStatusIndicator && (
+                  <RealtimeStatusIndicator 
+                    status={syncStatus} 
+                    lastUpdated={lastSyncTime}
+                  />
+                )}
+                {UserPresence && <UserPresence users={activeUsers} />}
               </div>
             </div>
             <div className="flex gap-3">
@@ -592,26 +710,6 @@ const PurchaseOrders = () => {
                 <Plus className="h-4 w-4 mr-2" />
                 Create PO
               </button>
-              {/* 🔍 DEBUG: Temporary debug button */}
-              <button
-                onClick={() => {
-                  console.log('🔍 MANUAL DEBUG CHECK:');
-                  console.log('User:', user);
-                  console.log('Purchase Orders:', purchaseOrders);
-                  console.log('Filtered POs:', filteredPOs);
-                  console.log('Loading:', loading);
-                  console.log('Error:', error);
-                  console.log('Search Term:', searchTerm);
-                  console.log('Status Filter:', statusFilter);
-                  
-                  // Force refresh
-                  refetch();
-                  toast.success('Debug info logged to console & refreshed data');
-                }}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-              >
-                🔍 Debug & Refresh
-              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -632,6 +730,12 @@ const PurchaseOrders = () => {
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Upload Error</h3>
               <p className="mt-1 text-sm text-red-700">{uploadError}</p>
+              <button
+                onClick={() => setUploadError(null)}
+                className="mt-2 text-red-600 hover:text-red-800 underline text-sm"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         </div>
@@ -804,7 +908,9 @@ const PurchaseOrders = () => {
                       <FileText className="h-12 w-12 text-gray-300 mb-3" />
                       <p className="text-gray-500">No purchase orders found</p>
                       <p className="text-gray-400 text-xs mt-1">
-                        Upload a PO or create a new one to get started
+                        {searchTerm || statusFilter !== 'all' 
+                          ? 'No purchase orders match your current filters.' 
+                          : 'Upload a PO or create a new one to get started'}
                       </p>
                     </div>
                   </td>
@@ -817,7 +923,7 @@ const PurchaseOrders = () => {
                       <div className="flex items-center gap-2">
                         {po.clientPoNumber || po.clientPONumber || po.orderNumber || po.poNumber}
 
-                        {/* ✅ NEW: Show document storage indicator */}
+                        {/* Show document storage indicator */}
                         {po.hasStoredDocuments && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800" title="Documents stored in Firebase">
                             📁
