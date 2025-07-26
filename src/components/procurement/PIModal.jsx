@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
+import { getProformaInvoices } from '../../services/firebase';
+
 
 import { 
   X, Plus, Trash2, Search, Package, 
@@ -1940,18 +1942,47 @@ const handleSubmit = useCallback((e) => {
           ) : activeTab === 'receiving' ?  (
             // Receiving Tab f
             <StockReceivingTab 
-    pi={{
-      ...formData,
-      items: selectedProducts  // ← This is the key fix!
-    }} 
-    onUpdatePI={(updatedPI) => {
-      setFormData(updatedPI);
-      setSelectedProducts(updatedPI.items);  // ← Keep selectedProducts in sync
-      onSave(updatedPI);
-    }}
-    suppliers={suppliers}
-    showNotification={showNotification}
-  />
+  pi={{
+    ...formData,
+    // ✅ CRITICAL: Ensure PI always has an ID for allocation operations
+    id: formData.id || proformaInvoice?.id,
+    piNumber: formData.piNumber || proformaInvoice?.piNumber,
+    items: selectedProducts || []
+  }}
+  onUpdatePI={async (updatedPI) => {
+    try {
+      console.log('🔄 PIModal: Updating PI with allocation data:', updatedPI.id);
+      
+      // Ensure we preserve the Firestore ID and allocation data
+      const piWithIntegrity = {
+        ...updatedPI,
+        id: updatedPI.id || formData.id || proformaInvoice?.id
+      };
+      
+      if (!piWithIntegrity.id) {
+        console.warn('⚠️ Attempting to update PI without Firestore ID');
+        return;
+      }
+      
+      // Update formData to reflect changes immediately in UI
+      setFormData(piWithIntegrity);
+      setSelectedProducts(piWithIntegrity.items || []);
+      
+      // Call the parent update function
+      if (onSave) {
+        const result = await onSave(piWithIntegrity);
+        if (result?.success) {
+          console.log('✅ PI updated successfully with allocation data');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error updating PI with allocation data:', error);
+      showNotification('Failed to update PI', 'error');
+    }
+  }}
+  suppliers={suppliers}
+  showNotification={showNotification}
+/>
           ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
             <div className="space-y-4">
@@ -2221,6 +2252,45 @@ const StockReceivingTab = ({
     }
   }, [pi]);
 
+  // ✅ FIX: Ensure PI has proper Firestore ID for allocation operations
+useEffect(() => {
+  // When PI is loaded from Firestore, ensure we have the correct ID structure
+  if (proformaInvoice && !proformaInvoice.id && proformaInvoice.piNumber) {
+    console.log('🔍 PI missing Firestore ID, attempting lookup:', proformaInvoice.piNumber);
+    
+    // If we have a PI number but no Firestore ID, we need to get it from Firestore
+    const lookupFirestoreId = async () => {
+      try {
+        // Import the function at the top if not already imported
+        const { getProformaInvoices } = await import('../../services/firebase');
+        
+        const result = await getProformaInvoices();
+        if (result.success) {
+          const matchingPI = result.data.find(pi => 
+            pi.piNumber === proformaInvoice.piNumber
+          );
+          
+          if (matchingPI && matchingPI.id) {
+            console.log('✅ Found Firestore ID for PI:', matchingPI.id);
+            
+            // Update the PI object with the correct Firestore ID
+            setFormData(prev => ({
+              ...prev,
+              id: matchingPI.id,
+              // Also ensure we have all the latest data from Firestore
+              ...matchingPI
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error looking up PI Firestore ID:', error);
+      }
+    };
+    
+    lookupFirestoreId();
+  }
+}, [proformaInvoice?.piNumber, proformaInvoice?.id]);
+
   const handleReceivingUpdate = (itemId, field, value) => {
     setReceivingForm(prev => ({
       ...prev,
@@ -2272,7 +2342,6 @@ const StockReceivingTab = ({
   };
 
   const openAllocationModal = (item, event) => {
-  // Prevent form submission
   if (event) {
     event.preventDefault();
     event.stopPropagation();
@@ -2283,8 +2352,13 @@ const StockReceivingTab = ({
     return;
   }
 
-  // ✅ FIXED: Use the correct PI ID from props
-  const actualPiId = pi.id || pi.piNumber || `temp-${Date.now()}`;
+  // ✅ CRITICAL: Ensure we have a valid PI ID
+  const actualPiId = pi.id || pi.piNumber;
+  if (!actualPiId) {
+    console.error('❌ Cannot allocate stock: PI ID is missing');
+    showNotification('Cannot allocate stock: PI data is incomplete', 'error');
+    return;
+  }
   
   console.log('🎯 Opening allocation modal with PI ID:', actualPiId);
   
@@ -2292,7 +2366,11 @@ const StockReceivingTab = ({
     ...item,
     piId: actualPiId,
     piNumber: pi.piNumber,
-    supplierName: pi.supplierName
+    supplierName: pi.supplierName,
+    // Include current allocation status
+    receivedQty: item.receivedQty || 0,
+    totalAllocated: item.totalAllocated || 0,
+    unallocatedQty: (item.receivedQty || 0) - (item.totalAllocated || 0)
   });
   
   setShowAllocationModal(true);
@@ -2329,36 +2407,66 @@ console.log('🔍 Modal Props Debug:', {
 });
 
   const handleAllocationComplete = async (allocations) => {
-    try {
-      // Refresh the PI data to show updated allocations
-      const updatedItems = pi.items.map(item => {
-        if (item.id === selectedItem.id) {
-          const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
-          return {
-            ...item,
-            allocations: allocations,
-            totalAllocated: totalAllocated,
-            unallocatedQty: (item.receivedQty || 0) - totalAllocated
-          };
+  try {
+    console.log('✅ Allocation completed, updating UI state:', allocations);
+    
+    // Close the modal first
+    setShowAllocationModal(false);
+    setSelectedItem(null);
+    
+    // ✅ CRITICAL: Force re-fetch the PI data from Firestore to get latest allocations
+    if (pi.id || pi.piNumber) {
+      try {
+        // Import the function if not already imported
+        const { getProformaInvoices } = await import('../../services/firebase');
+        
+        const result = await getProformaInvoices();
+        if (result.success) {
+          const updatedPI = result.data.find(p => 
+            p.id === pi.id || p.piNumber === pi.piNumber
+          );
+          
+          if (updatedPI) {
+            console.log('🔄 Refreshed PI data with latest allocations');
+            // Update the parent component with fresh data
+            await onUpdatePI(updatedPI);
+            showNotification('Stock allocated successfully', 'success');
+            return;
+          }
         }
-        return item;
-      });
-
-      const updatedPI = {
-        ...pi,
-        items: updatedItems,
-        updatedAt: new Date().toISOString()
-      };
-
-      await onUpdatePI(updatedPI);
-      showNotification('Stock allocated successfully', 'success');
-      setShowAllocationModal(false);
-      setSelectedItem(null);
-    } catch (error) {
-      console.error('Error updating allocations:', error);
-      showNotification('Failed to update allocations', 'error');
+      } catch (error) {
+        console.error('❌ Error refreshing PI data:', error);
+      }
     }
-  };
+    
+    // Fallback: Update local state if Firestore refresh fails
+    const updatedItems = pi.items.map(item => {
+      if (item.id === selectedItem.id) {
+        const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
+        return {
+          ...item,
+          allocations: allocations,
+          totalAllocated: totalAllocated,
+          unallocatedQty: (item.receivedQty || 0) - totalAllocated
+        };
+      }
+      return item;
+    });
+
+    const updatedPI = {
+      ...pi,
+      items: updatedItems,
+      updatedAt: new Date().toISOString()
+    };
+
+    await onUpdatePI(updatedPI);
+    showNotification('Stock allocated successfully', 'success');
+    
+  } catch (error) {
+    console.error('❌ Error handling allocation completion:', error);
+    showNotification('Allocation completed but UI update failed', 'warning');
+  }
+};
 
   const getItemStatus = (item) => {
     const received = item.receivedQty || 0;
