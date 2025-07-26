@@ -517,9 +517,12 @@ export const deleteProformaInvoice = async (id) => {
   }, `deleteProformaInvoice(${id})`);
 };
 
-// Similar functions for other collections...
-export const getSuppliers = async () => {
-  const result = await safeGetCollection('suppliers');
+export const updateDeliveryStatus = async (id, status) => {
+  return updateProformaInvoice(id, { deliveryStatus: status });
+};
+
+export const getPurchaseOrders = async () => {
+  const result = await safeGetCollection('purchaseOrders');
   return {
     success: result.success,
     data: result.success ? result.data : [],
@@ -527,8 +530,177 @@ export const getSuppliers = async () => {
   };
 };
 
-export const getPurchaseOrders = async () => {
-  const result = await safeGetCollection('purchaseOrders');
+export const addSupplier = async (supplier) => {
+  const cleanData = cleanFirestoreData(supplier);
+  const result = await safeAddDocument('suppliers', cleanData);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id: result.data.id, ...cleanData }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const updateSupplier = async (id, updates) => {
+  const cleanUpdates = cleanFirestoreData(updates);
+  const result = await safeUpdateDocument('suppliers', id, cleanUpdates);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id, ...cleanUpdates }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const deleteSupplier = async (id) => {
+  return handleFirestoreOperation(async () => {
+    await deleteDoc(doc(db, 'suppliers', id));
+    return { success: true };
+  }, `deleteSupplier(${id})`);
+};
+
+export const addProduct = async (product) => {
+  const cleanData = cleanFirestoreData(product);
+  const result = await safeAddDocument('products', cleanData);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id: result.data.id, ...cleanData }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const updateProduct = async (id, updates) => {
+  const cleanUpdates = cleanFirestoreData(updates);
+  const result = await safeUpdateDocument('products', id, cleanUpdates);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id, ...cleanUpdates }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const deleteProduct = async (id) => {
+  return handleFirestoreOperation(async () => {
+    await deleteDoc(doc(db, 'products', id));
+    return { success: true };
+  }, `deleteProduct(${id})`);
+};
+
+export const addPurchaseOrder = async (order) => {
+  const cleanData = cleanFirestoreData(order);
+  const result = await safeAddDocument('purchaseOrders', cleanData);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id: result.data.id, ...cleanData }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const updatePurchaseOrder = async (id, updates) => {
+  const cleanUpdates = cleanFirestoreData(updates);
+  const result = await safeUpdateDocument('purchaseOrders', id, cleanUpdates);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id, ...cleanUpdates }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const deletePurchaseOrder = async (id) => {
+  return handleFirestoreOperation(async () => {
+    await deleteDoc(doc(db, 'purchaseOrders', id));
+    return { success: true };
+  }, `deletePurchaseOrder(${id})`);
+};
+
+export const getClientInvoices = async () => {
+  const result = await safeGetCollection('clientInvoices');
+  return {
+    success: result.success,
+    data: result.success ? result.data : [],
+    error: result.error
+  };
+};
+
+export const addClientInvoice = async (invoice) => {
+  const cleanData = cleanFirestoreData(invoice);
+  const result = await safeAddDocument('clientInvoices', cleanData);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id: result.data.id, ...cleanData }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const updateClientInvoice = async (id, updates) => {
+  const cleanUpdates = cleanFirestoreData(updates);
+  const result = await safeUpdateDocument('clientInvoices', id, cleanUpdates);
+  
+  if (result.success) {
+    return {
+      success: true,
+      data: { id, ...cleanUpdates }
+    };
+  } else {
+    return { success: false, error: result.error };
+  }
+};
+
+export const deleteClientInvoice = async (id) => {
+  return handleFirestoreOperation(async () => {
+    await deleteDoc(doc(db, 'clientInvoices', id));
+    return { success: true };
+  }, `deleteClientInvoice(${id})`);
+};
+
+export const getInvoicesByPOId = async (poId) => {
+  const result = await safeGetCollection('clientInvoices', [where('poId', '==', poId)]);
+  return {
+    success: result.success,
+    data: result.success ? result.data : [],
+    error: result.error
+  };
+};
+
+export const updateInvoicePaymentStatus = async (id, paymentData) => {
+  const updateData = {
+    paymentStatus: paymentData.status,
+    paidAmount: paymentData.paidAmount || 0,
+    paymentDate: paymentData.paymentDate,
+    paymentMethod: paymentData.paymentMethod
+  };
+  
+  return updateClientInvoice(id, updateData);
+};
+
+export const getProducts = async () => {
+  const result = await safeGetCollection('products');
   return {
     success: result.success,
     data: result.success ? result.data : [],
