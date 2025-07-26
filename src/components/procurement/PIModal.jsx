@@ -497,7 +497,44 @@ useEffect(() => {
     }
   }, [proformaInvoice?.documentId, proformaInvoice?.hasStoredDocuments, formData.documentId]);
 
-  
+  // ✅ FIX: Ensure PI has proper Firestore ID for allocation operations
+useEffect(() => {
+  // When PI is loaded from Firestore, ensure we have the correct ID structure
+  if (proformaInvoice && !proformaInvoice.id && proformaInvoice.piNumber) {
+    console.log('🔍 PI missing Firestore ID, attempting lookup:', proformaInvoice.piNumber);
+    
+    // If we have a PI number but no Firestore ID, we need to get it from Firestore
+    const lookupFirestoreId = async () => {
+      try {
+        // Import the function at the top if not already imported
+        const { getProformaInvoices } = await import('../../services/firebase');
+        
+        const result = await getProformaInvoices();
+        if (result.success) {
+          const matchingPI = result.data.find(pi => 
+            pi.piNumber === proformaInvoice.piNumber
+          );
+          
+          if (matchingPI && matchingPI.id) {
+            console.log('✅ Found Firestore ID for PI:', matchingPI.id);
+            
+            // Update the PI object with the correct Firestore ID
+            setFormData(prev => ({
+              ...prev,
+              id: matchingPI.id,
+              // Also ensure we have all the latest data from Firestore
+              ...matchingPI
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error looking up PI Firestore ID:', error);
+      }
+    };
+    
+    lookupFirestoreId();
+  }
+}, [proformaInvoice?.piNumber, proformaInvoice?.id]);
   
   const generatePINumber = () => {
     const date = new Date();
@@ -2252,44 +2289,7 @@ const StockReceivingTab = ({
     }
   }, [pi]);
 
-  // ✅ FIX: Ensure PI has proper Firestore ID for allocation operations
-useEffect(() => {
-  // When PI is loaded from Firestore, ensure we have the correct ID structure
-  if (proformaInvoice && !proformaInvoice.id && proformaInvoice.piNumber) {
-    console.log('🔍 PI missing Firestore ID, attempting lookup:', proformaInvoice.piNumber);
-    
-    // If we have a PI number but no Firestore ID, we need to get it from Firestore
-    const lookupFirestoreId = async () => {
-      try {
-        // Import the function at the top if not already imported
-        const { getProformaInvoices } = await import('../../services/firebase');
-        
-        const result = await getProformaInvoices();
-        if (result.success) {
-          const matchingPI = result.data.find(pi => 
-            pi.piNumber === proformaInvoice.piNumber
-          );
-          
-          if (matchingPI && matchingPI.id) {
-            console.log('✅ Found Firestore ID for PI:', matchingPI.id);
-            
-            // Update the PI object with the correct Firestore ID
-            setFormData(prev => ({
-              ...prev,
-              id: matchingPI.id,
-              // Also ensure we have all the latest data from Firestore
-              ...matchingPI
-            }));
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error looking up PI Firestore ID:', error);
-      }
-    };
-    
-    lookupFirestoreId();
-  }
-}, [proformaInvoice?.piNumber, proformaInvoice?.id]);
+
 
   const handleReceivingUpdate = (itemId, field, value) => {
     setReceivingForm(prev => ({
