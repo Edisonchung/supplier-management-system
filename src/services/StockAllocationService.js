@@ -773,10 +773,12 @@ export class StockAllocationService {
   }
 
   /**
-   * 🚀 Update product stock levels
+   * 🚀 Update product stock levels - ENHANCED VERSION
    */
   static async updateProductStock(productId, allocations) {
     try {
+      console.log('🔍 Starting product stock update for:', productId);
+      
       // Get products using business logic function
       const productsResult = await getProducts();
       if (!productsResult.success) {
@@ -785,17 +787,97 @@ export class StockAllocationService {
       }
 
       const products = productsResult.data;
-      const product = products.find(p => 
-        p.id === productId || 
-        p.sku === productId || 
-        p.code === productId ||
-        p.productCode === productId
-      );
+      console.log('📦 Total products available:', products.length);
+      
+      // ENHANCED PRODUCT LOOKUP - Try multiple strategies
+      let product = null;
+      
+      // Strategy 1: Exact ID match
+      product = products.find(p => p.id === productId);
+      if (product) {
+        console.log('✅ Product found using ID match:', productId);
+      }
+      
+      // Strategy 2: SKU/Code match (case insensitive)
+      if (!product) {
+        product = products.find(p => 
+          (p.sku && p.sku.toLowerCase() === productId.toLowerCase()) ||
+          (p.code && p.code.toLowerCase() === productId.toLowerCase()) ||
+          (p.productCode && p.productCode.toLowerCase() === productId.toLowerCase())
+        );
+        if (product) {
+          console.log('✅ Product found using SKU/Code match:', productId);
+        }
+      }
+      
+      // Strategy 3: Partial match for bearings (handles cases like "33213" vs "BEARING 33213")
+      if (!product) {
+        product = products.find(p => 
+          (p.sku && p.sku.includes(productId)) ||
+          (p.code && p.code.includes(productId)) ||
+          (p.productCode && p.productCode.includes(productId)) ||
+          (p.name && p.name.toLowerCase().includes(productId.toLowerCase()))
+        );
+        if (product) {
+          console.log('✅ Product found using partial match:', productId);
+        }
+      }
+      
+      // Strategy 4: Create product if not found (for auto-sync from PI)
+      if (!product && allocations.length > 0) {
+        console.log('🔧 Product not found, creating from allocation context...');
+        
+        const allocation = allocations[0]; // Get first allocation for context
+        if (allocation && (allocation.productName || productId)) {
+          console.log('🆕 Creating new product from allocation context...');
+          
+          const newProductData = {
+            name: allocation.productName || `Product ${productId}`,
+            sku: productId,
+            code: productId,
+            productCode: productId,
+            category: 'components', // Default category
+            price: allocation.unitPrice || 0,
+            stock: 0,
+            currentStock: 0,
+            allocatedStock: 0,
+            availableStock: 0,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            createdFrom: 'stock-allocation'
+          };
+          
+          try {
+            const createResult = await safeAddDocument('products', newProductData);
+            if (createResult.success) {
+              product = { id: createResult.data.id, ...newProductData };
+              console.log('✅ Auto-created product during stock allocation:', product.id);
+            }
+          } catch (createError) {
+            console.error('❌ Failed to auto-create product:', createError);
+          }
+        }
+      }
       
       if (!product) {
-        console.log('⚠️ Product not found in Firestore for stock update:', productId);
-        return;
+        console.log('❌ Product not found after all strategies:', productId);
+        console.log('📋 Available products:', products.map(p => ({
+          id: p.id,
+          sku: p.sku,
+          code: p.code,
+          productCode: p.productCode,
+          name: p.name
+        })));
+        return { success: false, error: 'Product not found' };
       }
+
+      console.log('✅ Product found for stock update:', {
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        code: product.code,
+        currentStock: product.stock || product.currentStock || 0
+      });
 
       // Calculate allocation breakdown
       const warehouseAllocations = allocations
@@ -806,26 +888,67 @@ export class StockAllocationService {
         .filter(alloc => alloc.allocationType !== this.ALLOCATION_TYPES.WAREHOUSE)
         .reduce((sum, alloc) => sum + alloc.quantity, 0);
 
-      // Prepare updates
+      // Prepare updates with safe defaults
+      const currentStock = parseInt(product.stock || product.currentStock || 0);
+      const currentAllocated = parseInt(product.allocatedStock || 0);
+      
       const updates = {
-        stock: (product.stock || 0) + warehouseAllocations,
-        allocatedStock: (product.allocatedStock || 0) + reservedAllocations,
+        stock: currentStock + warehouseAllocations,
+        currentStock: currentStock + warehouseAllocations, // Sync both fields
+        allocatedStock: currentAllocated + reservedAllocations,
         updatedAt: new Date().toISOString()
       };
       
       updates.availableStock = updates.stock - updates.allocatedStock;
+
+      console.log('📊 Stock update calculation:', {
+        before: {
+          stock: currentStock,
+          allocated: currentAllocated,
+          available: currentStock - currentAllocated
+        },
+        changes: {
+          warehouseAllocations,
+          reservedAllocations
+        },
+        after: {
+          stock: updates.stock,
+          allocated: updates.allocatedStock,
+          available: updates.availableStock
+        }
+      });
 
       // Update in Firestore using business logic function
       const result = await safeUpdateDocument('products', product.id, updates);
       
       if (result.success) {
         console.log('✅ Product stock levels updated in Firestore');
+        console.log('📈 New stock levels:', {
+          productCode: productId,
+          totalStock: updates.stock,
+          allocatedStock: updates.allocatedStock,
+          availableStock: updates.availableStock
+        });
+        
+        return {
+          success: true,
+          productId: product.id,
+          updates: updates
+        };
       } else {
         console.error('❌ Failed to update product stock:', result.error);
+        return {
+          success: false,
+          error: result.error
+        };
       }
     } catch (error) {
       console.error('❌ Error updating product stock in Firestore:', error);
-      // Don't throw - this is not critical for allocation
+      // Don't throw - this is not critical for allocation success
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 
