@@ -2388,257 +2388,79 @@ const StockReceivingTab = ({
   />
 )}
 
-    const handleAllocationComplete = async (allocations) => {
+
+  const handleAllocationComplete = async (allocations) => {
   try {
-    console.log('✅ ALLOCATION COMPLETE: Starting update process...');
-    console.log('📋 Allocations received:', allocations);
-    console.log('🎯 Selected item:', selectedItem);
-    console.log('📄 Current PI:', pi);
+    console.log('✅ Allocation completed, updating UI state:', allocations);
     
     // Close the modal first
     setShowAllocationModal(false);
     setSelectedItem(null);
     
-    if (!selectedItem || !allocations || allocations.length === 0) {
-      console.error('❌ Missing required data for allocation update');
-      showNotification('Allocation data is incomplete', 'error');
-      return;
+    // ✅ CRITICAL: Force re-fetch the PI data from Firestore to get latest allocations
+    if (pi.id || pi.piNumber) {
+      try {
+        // Import the function if not already imported
+        const { getProformaInvoices } = await import('../../services/firebase');
+        
+        const result = await getProformaInvoices();
+        if (result.success) {
+          const updatedPI = result.data.find(p => 
+            p.id === pi.id || p.piNumber === pi.piNumber
+          );
+          
+          if (updatedPI) {
+            console.log('🔄 Refreshed PI data with latest allocations');
+            // Update the parent component with fresh data
+            await onUpdatePI(updatedPI);
+            showNotification('Stock allocated successfully', 'success');
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error refreshing PI data:', error);
+      }
     }
-
-    // 🎯 CRITICAL: Calculate the total allocated from new allocations
-    const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-    console.log('🔢 New total allocated:', newTotalAllocated);
-
-    // 🎯 IMMEDIATE LOCAL UPDATE: Update the PI items immediately
+    
+    // Fallback: Update local state if Firestore refresh fails
     const updatedItems = pi.items.map(item => {
       if (item.id === selectedItem.id) {
-        console.log('🔄 Updating item:', item.id);
-        console.log('   Before:', {
-          receivedQty: item.receivedQty,
-          totalAllocated: item.totalAllocated,
-          allocations: item.allocations?.length || 0
-        });
-
-        // Merge existing allocations with new ones
-        const existingAllocations = item.allocations || [];
-        const allAllocations = [...existingAllocations, ...allocations];
-        const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-        const receivedQty = item.receivedQty || 0;
-        const unallocatedQty = receivedQty - totalAllocated;
-
-        const updatedItem = {
+        const totalAllocated = allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
+        return {
           ...item,
-          allocations: allAllocations,
+          allocations: allocations,
           totalAllocated: totalAllocated,
-          unallocatedQty: unallocatedQty,
-          lastAllocationUpdate: new Date().toISOString(),
-          // Add allocation status for debugging
-          allocationStatus: totalAllocated >= receivedQty ? 'complete' : 'partial'
+          unallocatedQty: (item.receivedQty || 0) - totalAllocated
         };
-
-        console.log('   After:', {
-          receivedQty: updatedItem.receivedQty,
-          totalAllocated: updatedItem.totalAllocated,
-          allocations: updatedItem.allocations?.length || 0,
-          unallocatedQty: updatedItem.unallocatedQty,
-          allocationStatus: updatedItem.allocationStatus
-        });
-
-        return updatedItem;
       }
       return item;
     });
 
-    // Create updated PI object
     const updatedPI = {
       ...pi,
       items: updatedItems,
-      updatedAt: new Date().toISOString(),
-      lastAllocationUpdate: new Date().toISOString()
+      updatedAt: new Date().toISOString()
     };
 
-    console.log('💾 Updating PI with new allocation data...');
-    
-    // 🎯 CRITICAL: Update the parent component immediately
-    try {
-      await onUpdatePI(updatedPI);
-      console.log('✅ PI updated successfully with allocations');
-      showNotification('Stock allocated successfully', 'success');
-
-      // 🎯 FORCE UI REFRESH: Multiple strategies to ensure re-render
-      setTimeout(() => {
-        console.log('🔄 Forcing UI refresh...');
-        
-        // Strategy 1: Update receiving form state
-        setReceivingForm(prev => ({ 
-          ...prev, 
-          lastUpdate: Date.now(),
-          [`${selectedItem.id}_allocated`]: true 
-        }));
-
-        // Strategy 2: Force component re-render by updating a dummy state
-        // This will trigger the getItemStatus function to run again
-        console.log('🔄 UI refresh completed');
-      }, 50);
-
-    } catch (updateError) {
-      console.error('❌ Error updating PI:', updateError);
-      showNotification('Failed to save allocation data', 'error');
-    }
-
-    // 🎯 BACKUP: Also try to refresh from Firestore as secondary measure
-    try {
-      if (pi.id || pi.piNumber) {
-        const { getProformaInvoices } = await import('../../services/firebase');
-        const result = await getProformaInvoices();
-        
-        if (result.success) {
-          const refreshedPI = result.data.find(p => 
-            p.id === pi.id || p.piNumber === pi.piNumber
-          );
-          
-          if (refreshedPI) {
-            console.log('🔄 Secondary refresh from Firestore successful');
-            await onUpdatePI(refreshedPI);
-          }
-        }
-      }
-    } catch (refreshError) {
-      console.warn('⚠️ Secondary Firestore refresh failed:', refreshError);
-      // Don't throw - the primary update already succeeded
-    }
+    await onUpdatePI(updatedPI);
+    showNotification('Stock allocated successfully', 'success');
     
   } catch (error) {
-    console.error('❌ Critical error in allocation completion:', error);
-    showNotification('Allocation failed: ' + error.message, 'error');
-  
-    });
-
-    // Create updated PI object
-    const updatedPI = {
-      ...pi,
-      items: updatedItems,
-      updatedAt: new Date().toISOString(),
-      lastAllocationUpdate: new Date().toISOString()
-    };
-
-    console.log('💾 Updating PI with new allocation data...');
-    
-    // 🎯 CRITICAL: Update the parent component immediately
-    try {
-      await onUpdatePI(updatedPI);
-      console.log('✅ PI updated successfully with allocations');
-      showNotification('Stock allocated successfully', 'success');
-
-      // 🎯 FORCE UI REFRESH: Multiple strategies to ensure re-render
-      setTimeout(() => {
-        console.log('🔄 Forcing UI refresh...');
-        
-        // Strategy 1: Update receiving form state
-        setReceivingForm(prev => ({ 
-          ...prev, 
-          lastUpdate: Date.now(),
-          [`${selectedItem.id}_allocated`]: true 
-        }));
-
-        // Strategy 2: Force component re-render by updating a dummy state
-        // This will trigger the getItemStatus function to run again
-        console.log('🔄 UI refresh completed');
-      }, 50);
-
-    } catch (updateError) {
-      console.error('❌ Error updating PI:', updateError);
-      showNotification('Failed to save allocation data', 'error');
-    }
-
-    // 🎯 BACKUP: Also try to refresh from Firestore as secondary measure
-    try {
-      if (pi.id || pi.piNumber) {
-        const { getProformaInvoices } = await import('../../services/firebase');
-        const result = await getProformaInvoices();
-        
-        if (result.success) {
-          const refreshedPI = result.data.find(p => 
-            p.id === pi.id || p.piNumber === pi.piNumber
-          );
-          
-          if (refreshedPI) {
-            console.log('🔄 Secondary refresh from Firestore successful');
-            await onUpdatePI(refreshedPI);
-          }
-        }
-      }
-    } catch (refreshError) {
-      console.warn('⚠️ Secondary Firestore refresh failed:', refreshError);
-      // Don't throw - the primary update already succeeded
-    }
-    
-  } catch (error) {
-    console.error('❌ Critical error in allocation completion:', error);
-    showNotification('Allocation failed: ' + error.message, 'error');
+    console.error('❌ Error handling allocation completion:', error);
+    showNotification('Allocation completed but UI update failed', 'warning');
   }
 };
 
   const getItemStatus = (item) => {
-  const received = item.receivedQty || 0;
-  const ordered = item.quantity || 0;
-  
-  // 🎯 ENHANCED: Calculate totalAllocated from multiple sources
-  let allocated = 0;
-  
-  // Strategy 1: Use totalAllocated field if available
-  if (item.totalAllocated !== undefined && item.totalAllocated !== null) {
-    allocated = item.totalAllocated;
-  }
-  // Strategy 2: Calculate from allocations array
-  else if (item.allocations && Array.isArray(item.allocations)) {
-    allocated = item.allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-  }
-  // Strategy 3: Use 0 as fallback
-  else {
-    allocated = 0;
-  }
+    const received = item.receivedQty || 0;
+    const ordered = item.quantity || 0;
+    const allocated = item.totalAllocated || 0;
 
-  // 🔍 ENHANCED DEBUGGING: Show full item structure when allocation is 0
-  if (allocated === 0 && received > 0) {
-    console.log(`🚨 ZERO ALLOCATION DEBUG for item ${item.id}:`, {
-      fullItem: item,
-      hasAllocations: !!item.allocations,
-      allocationsArray: item.allocations,
-      totalAllocatedField: item.totalAllocated,
-      receivedQty: received,
-      itemKeys: Object.keys(item)
-    });
-  }
-
-  console.log(`🔍 Status calculation for item ${item.id || item.productCode}:`, {
-    received,
-    ordered,
-    allocated,
-    totalAllocatedField: item.totalAllocated,
-    allocationsArray: item.allocations?.length || 0,
-    allocationsSum: item.allocations?.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0) || 0
-  });
-
-  // Status logic with enhanced debugging
-  if (received === 0) {
-    console.log(`   → Status: PENDING (no items received)`);
-    return { status: 'pending', color: 'gray', icon: Clock };
-  }
-  
-  if (received !== ordered) {
-    console.log(`   → Status: DISCREPANCY (received ${received} ≠ ordered ${ordered})`);
-    return { status: 'discrepancy', color: 'yellow', icon: AlertTriangle };
-  }
-  
-  if (allocated < received) {
-    console.log(`   → Status: PARTIAL ALLOCATION (allocated ${allocated} < received ${received})`);
-    return { status: 'partial-allocation', color: 'orange', icon: Package };
-  }
-  
-  console.log(`   → Status: COMPLETE (allocated ${allocated} >= received ${received})`);
-  return { status: 'complete', color: 'green', icon: CheckCircle };
-};
+    if (received === 0) return { status: 'pending', color: 'gray', icon: Clock };
+    if (received !== ordered) return { status: 'discrepancy', color: 'yellow', icon: AlertTriangle };
+    if (allocated < received) return { status: 'partial-allocation', color: 'orange', icon: Package };
+    return { status: 'complete', color: 'green', icon: CheckCircle };
+  };
 
   return (
     <div className="space-y-6">
