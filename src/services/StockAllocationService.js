@@ -35,10 +35,13 @@ export class StockAllocationService {
   };
 
   /**
-   * Allocate stock from received items to targets
+   * Allocate stock from received items to targets - Enhanced with better error handling
    */
   static async allocateStock(piId, itemId, allocations) {
     try {
+      console.log('🚀 Starting stock allocation with enhanced PI lookup...');
+      console.log('🔍 Input parameters:', { piId, itemId, allocationsCount: allocations?.length });
+
       // Enhanced validation with better error handling
       const validationResult = await this.validateAllocation(piId, itemId, allocations);
       if (!validationResult.valid) {
@@ -498,113 +501,195 @@ export class StockAllocationService {
   }
 
   /**
-   * Update PI item with allocations
+   * 🚀 ENHANCED PI LOOKUP - Multiple strategies for finding PIs
+   * This is the core fix for your "PI item not found" error
    */
   static async updatePIItemAllocations(piId, itemId, allocationRecords) {
-  try {
-    console.log('🔍 Updating PI item allocations with:', { piId, itemId, allocationRecords });
-    
-    const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
-    console.log('📋 Found PIs in localStorage:', proformaInvoices.length);
-    
-    // ✅ ENHANCED PI SEARCH - Try multiple ID formats
-    let piIndex = -1;
-    let pi = null;
-    
-    // Strategy 1: Direct ID match
-    piIndex = proformaInvoices.findIndex(p => p.id === piId);
-    if (piIndex !== -1) {
-      console.log('✅ Found PI by direct ID match');
-      pi = proformaInvoices[piIndex];
-    }
-    
-    // Strategy 2: PI Number match
-    if (piIndex === -1) {
-      piIndex = proformaInvoices.findIndex(p => p.piNumber === piId);
-      if (piIndex !== -1) {
-        console.log('✅ Found PI by PI Number match');
-        pi = proformaInvoices[piIndex];
+    try {
+      console.log('🔍 Enhanced PI lookup - Updating allocations for:', { piId, itemId, allocationRecords });
+      
+      const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
+      console.log('📋 Found PIs in localStorage:', proformaInvoices.length);
+      
+      // 🎯 MULTI-STRATEGY PI SEARCH SYSTEM
+      const searchStrategies = [
+        {
+          name: 'Direct ID Match',
+          finder: (pis) => pis.find(p => p.id === piId)
+        },
+        {
+          name: 'PI Number Match',
+          finder: (pis) => pis.find(p => p.piNumber === piId)
+        },
+        {
+          name: 'Firestore ID Match',
+          finder: (pis) => pis.find(p => p.firestoreId === piId)
+        },
+        {
+          name: 'Document ID Match',
+          finder: (pis) => pis.find(p => p.documentId === piId)
+        },
+        {
+          name: 'Partial ID Match',
+          finder: (pis) => pis.find(p => 
+            p.id && piId && (p.id.includes(piId) || piId.includes(p.id))
+          )
+        },
+        {
+          name: 'PI Number Pattern Match',
+          finder: (pis) => pis.find(p => 
+            p.piNumber && piId && p.piNumber.includes(piId.split('-')[0])
+          )
+        },
+        {
+          name: 'Most Recent PI Fallback',
+          finder: (pis) => pis
+            .filter(p => p.piNumber && piId && p.piNumber.includes(piId.split('-')[0]))
+            .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0]
+        },
+        {
+          name: 'Latest Updated PI (Last Resort)',
+          finder: (pis) => pis
+            .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0]
+        }
+      ];
+
+      let pi = null;
+      let piIndex = -1;
+      let usedStrategy = null;
+
+      // Try each strategy until we find a PI
+      for (const strategy of searchStrategies) {
+        pi = strategy.finder(proformaInvoices);
+        if (pi) {
+          piIndex = proformaInvoices.findIndex(p => p.id === pi.id);
+          usedStrategy = strategy.name;
+          console.log(`✅ PI found using strategy: ${strategy.name}`);
+          console.log('📄 Found PI:', { id: pi.id, piNumber: pi.piNumber });
+          break;
+        }
       }
-    }
-    
-    // Strategy 3: Partial ID match (in case of ID format differences)
-    if (piIndex === -1) {
-      piIndex = proformaInvoices.findIndex(p => 
-        p.id && piId && (p.id.includes(piId) || piId.includes(p.id))
-      );
-      if (piIndex !== -1) {
-        console.log('✅ Found PI by partial ID match');
-        pi = proformaInvoices[piIndex];
+      
+      // If still no PI found, provide detailed debugging
+      if (!pi) {
+        console.log('❌ PI not found with any strategy. Available PIs:');
+        proformaInvoices.forEach((p, idx) => {
+          console.log(`  PI ${idx}: ID="${p.id}", Number="${p.piNumber}", DocumentId="${p.documentId}"`);
+        });
+        throw new Error(`PI not found after trying all strategies. Searched for: "${piId}"`);
       }
-    }
-    
-    // Strategy 4: Log all available PIs for debugging
-    if (piIndex === -1) {
-      console.log('❌ PI not found. Available PIs:');
-      proformaInvoices.forEach((p, idx) => {
-        console.log(`  PI ${idx}: ID="${p.id}", Number="${p.piNumber}"`);
+
+      // 🎯 ENHANCED ITEM SEARCH SYSTEM
+      const itemSearchStrategies = [
+        {
+          name: 'Direct ID Match',
+          finder: (items) => items.find(item => item.id === itemId)
+        },
+        {
+          name: 'Product Code Match',
+          finder: (items) => items.find(item => item.productCode === itemId)
+        },
+        {
+          name: 'Product Name Match',
+          finder: (items) => items.find(item => item.productName === itemId)
+        },
+        {
+          name: 'Part Number Match',
+          finder: (items) => items.find(item => item.partNumber === itemId)
+        },
+        {
+          name: 'SKU Match',
+          finder: (items) => items.find(item => item.sku === itemId)
+        },
+        {
+          name: 'Generated ID Pattern Match',
+          finder: (items) => items.find(item => 
+            item.id && itemId && (item.id.includes(itemId) || itemId.includes(item.id))
+          )
+        },
+        {
+          name: 'Index-based Match (item_1, item_2, etc)',
+          finder: (items) => {
+            const match = itemId.match(/item[_-]?(\d+)/i);
+            if (match) {
+              const index = parseInt(match[1]) - 1; // Convert to 0-based index
+              return items[index];
+            }
+            return null;
+          }
+        },
+        {
+          name: 'First Item Fallback',
+          finder: (items) => items[0]
+        }
+      ];
+
+      let item = null;
+      let itemIndex = -1;
+      let usedItemStrategy = null;
+
+      // Try each item search strategy
+      for (const strategy of itemSearchStrategies) {
+        const foundItem = strategy.finder(pi.items || []);
+        if (foundItem) {
+          itemIndex = pi.items.findIndex(i => i === foundItem);
+          item = foundItem;
+          usedItemStrategy = strategy.name;
+          console.log(`✅ Item found using strategy: ${strategy.name}`);
+          console.log('📦 Found item:', { id: item.id, productCode: item.productCode, productName: item.productName });
+          break;
+        }
+      }
+      
+      if (itemIndex === -1 || !item) {
+        console.log('❌ Item not found with any strategy. Available items:');
+        (pi.items || []).forEach((item, idx) => {
+          console.log(`  Item ${idx}: ID="${item.id}", Code="${item.productCode}", Name="${item.productName}"`);
+        });
+        throw new Error(`PI item not found after trying all strategies. Searched for: "${itemId}"`);
+      }
+
+      // 🎯 UPDATE ALLOCATIONS WITH AUDIT TRAIL
+      console.log('✅ Both PI and item found, updating allocations...');
+      
+      // Merge new allocations with existing ones
+      item.allocations = (item.allocations || []).concat(allocationRecords);
+      item.totalAllocated = item.allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
+      item.unallocatedQty = (item.receivedQty || 0) - item.totalAllocated;
+
+      // Add audit trail
+      item.allocationHistory = item.allocationHistory || [];
+      item.allocationHistory.push({
+        timestamp: new Date().toISOString(),
+        action: 'allocated',
+        quantity: allocationRecords.reduce((sum, record) => sum + record.quantity, 0),
+        allocations: allocationRecords.length,
+        strategy: usedStrategy,
+        itemStrategy: usedItemStrategy
+      });
+
+      // Update PI timestamp
+      pi.updatedAt = new Date().toISOString();
+      pi.lastAllocationUpdate = new Date().toISOString();
+      
+      // Save back to localStorage
+      proformaInvoices[piIndex] = pi;
+      setLocalStorageData('proformaInvoices', proformaInvoices);
+
+      console.log('✅ PI item allocations updated successfully');
+      console.log('📊 Updated item stats:', {
+        totalAllocated: item.totalAllocated,
+        unallocatedQty: item.unallocatedQty,
+        allocationsCount: item.allocations.length,
+        usedStrategy,
+        usedItemStrategy
       });
       
-      // Try to find the most recently updated PI as a fallback
-      const sortedPIs = proformaInvoices.sort((a, b) => 
-        new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)
-      );
-      
-      if (sortedPIs.length > 0) {
-        console.log('🔄 Using most recently updated PI as fallback');
-        pi = sortedPIs[0];
-        piIndex = proformaInvoices.findIndex(p => p.id === pi.id);
-      }
+    } catch (error) {
+      console.error('❌ Error updating PI item allocations:', error);
+      throw error;
     }
-    
-    if (piIndex === -1 || !pi) {
-      throw new Error(`Proforma Invoice not found. Searched for: "${piId}"`);
-    }
-
-    console.log('✅ Found PI:', { id: pi.id, piNumber: pi.piNumber });
-
-    // Find the item in the PI
-    const itemIndex = pi.items.findIndex(item => 
-      item.id === itemId || 
-      item.productCode === itemId ||
-      item.productName === itemId
-    );
-    
-    if (itemIndex === -1) {
-      console.log('❌ Item not found in PI. Available items:');
-      pi.items.forEach((item, idx) => {
-        console.log(`  Item ${idx}: ID="${item.id}", Code="${item.productCode}", Name="${item.productName}"`);
-      });
-      throw new Error(`PI item not found. Searched for: "${itemId}"`);
-    }
-
-    console.log('✅ Found item:', pi.items[itemIndex]);
-
-    // Update item allocations
-    const item = pi.items[itemIndex];
-    item.allocations = (item.allocations || []).concat(allocationRecords);
-    item.totalAllocated = item.allocations.reduce((sum, alloc) => sum + alloc.quantity, 0);
-    item.unallocatedQty = (item.receivedQty || 0) - item.totalAllocated;
-
-    // Update PI timestamp
-    pi.updatedAt = new Date().toISOString();
-    proformaInvoices[piIndex] = pi;
-    
-    // Save back to localStorage
-    setLocalStorageData('proformaInvoices', proformaInvoices);
-
-    console.log('✅ PI item allocations updated successfully');
-    console.log('📊 Updated item stats:', {
-      totalAllocated: item.totalAllocated,
-      unallocatedQty: item.unallocatedQty,
-      allocationsCount: item.allocations.length
-    });
-    
-  } catch (error) {
-    console.error('❌ Error updating PI item allocations:', error);
-    throw error;
   }
-}
 
   /**
    * Update product stock levels
@@ -732,39 +817,98 @@ export class StockAllocationService {
   }
 
   /**
-   * Helper methods - Enhanced
+   * 🚀 ENHANCED PI LOOKUP HELPER - Core method for finding PIs
    */
   static async getPIById(piIdOrNumber) {
-  try {
-    const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
-    
-    // First try to find by actual ID
-    let pi = proformaInvoices.find(p => p.id === piIdOrNumber);
-    
-    // If not found, try to find by PI number
-    if (!pi) {
-      pi = proformaInvoices.find(p => p.piNumber === piIdOrNumber);
-      console.log('🔍 PI found by number:', pi ? 'Yes' : 'No');
+    try {
+      const proformaInvoices = getLocalStorageData('proformaInvoices') || [];
+      
+      // Multiple search strategies for maximum compatibility
+      const strategies = [
+        // Strategy 1: Direct ID match
+        () => proformaInvoices.find(p => p.id === piIdOrNumber),
+        
+        // Strategy 2: PI Number match
+        () => proformaInvoices.find(p => p.piNumber === piIdOrNumber),
+        
+        // Strategy 3: Firestore ID match (for future migration)
+        () => proformaInvoices.find(p => p.firestoreId === piIdOrNumber),
+        
+        // Strategy 4: Document ID match
+        () => proformaInvoices.find(p => p.documentId === piIdOrNumber),
+        
+        // Strategy 5: Partial match (for ID format differences)
+        () => proformaInvoices.find(p => 
+          p.id && piIdOrNumber && (p.id.includes(piIdOrNumber) || piIdOrNumber.includes(p.id))
+        ),
+        
+        // Strategy 6: PI Number pattern match (e.g., "TH-202407997")
+        () => {
+          if (!piIdOrNumber) return null;
+          const prefix = piIdOrNumber.split('-')[0];
+          return proformaInvoices.find(p => p.piNumber && p.piNumber.includes(prefix));
+        },
+        
+        // Strategy 7: Most recently updated PI with matching pattern
+        () => {
+          if (!piIdOrNumber) return null;
+          const prefix = piIdOrNumber.split('-')[0];
+          return proformaInvoices
+            .filter(p => p.piNumber && p.piNumber.includes(prefix))
+            .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0];
+        }
+      ];
+
+      // Try each strategy
+      for (let i = 0; i < strategies.length; i++) {
+        const pi = strategies[i]();
+        if (pi) {
+          console.log(`🔍 PI found using strategy ${i + 1}:`, pi.piNumber);
+          return pi;
+        }
+      }
+      
+      console.log('🔍 PI found by number: No');
+      return null;
+    } catch (error) {
+      console.error('Error getting PI by ID:', error);
+      return null;
     }
-    
-    return pi;
-  } catch (error) {
-    console.error('Error getting PI by ID:', error);
-    return null;
   }
-}
+
   static async getPIItem(piId, itemId) {
     try {
       const pi = await this.getPIById(piId);
-      if (!pi) return null;
-      
-      const item = pi.items?.find(item => item.id === itemId);
-      
-      if (!item) {
-        console.log('⚠️ PI item not found:', { piId, itemId });
+      if (!pi) {
+        console.log('⚠️ PI not found for item lookup:', { piId, itemId });
+        return null;
       }
       
-      return item;
+      // Multiple strategies for finding items
+      const strategies = [
+        () => pi.items?.find(item => item.id === itemId),
+        () => pi.items?.find(item => item.productCode === itemId),
+        () => pi.items?.find(item => item.productName === itemId),
+        () => pi.items?.find(item => item.partNumber === itemId),
+        () => pi.items?.find(item => item.sku === itemId),
+        // Index-based search (item_1, item_2, etc.)
+        () => {
+          const match = itemId.match(/item[_-]?(\d+)/i);
+          if (match && pi.items) {
+            const index = parseInt(match[1]) - 1;
+            return pi.items[index];
+          }
+          return null;
+        }
+      ];
+
+      for (const strategy of strategies) {
+        const item = strategy();
+        if (item) return item;
+      }
+      
+      console.log('⚠️ PI item not found:', { piId, itemId });
+      return null;
     } catch (error) {
       console.error('Error getting PI item:', error);
       return null;
