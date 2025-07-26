@@ -87,6 +87,7 @@ const SupplierMatchingPage = () => {
       });
     }
   }, [purchaseOrder]);
+
   // 🔧 ROBUST PO LOADING with multiple fallback strategies
   const loadPurchaseOrderRobust = useCallback(async () => {
     try {
@@ -821,132 +822,7 @@ const SupplierMatchingPage = () => {
     rows.push(['Total Items', purchaseOrder.items?.length || 0]);
     rows.push(['Items Selected', status.count]);
     rows.push(['Selection Progress', status.percentage + '%']);
-    rows.push(['Total Potential Savings', '
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="flex items-center justify-center mb-4">
-            <Brain className="w-8 h-8 animate-pulse text-blue-600 mr-2" />
-            <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
-          </div>
-          <p className="text-gray-600 text-lg">Loading purchase order...</p>
-          <p className="text-gray-500 text-sm mt-2">Initializing supplier matching system</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error || !purchaseOrder) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md mx-auto text-center bg-white rounded-lg shadow-lg p-8">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-red-900 mb-2">
-            {error || 'Purchase order not found'}
-          </h3>
-          <p className="text-red-700 mb-6">
-            The purchase order could not be loaded. Please check the URL or try again.
-          </p>
-          <div className="space-y-3">
-            <button
-              onClick={() => navigate('/purchase-orders')}
-              className="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4 inline mr-2" />
-              Back to Purchase Orders
-            </button>
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              <RefreshCw className="w-4 h-4 inline mr-2" />
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Back button and title */}
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate('/purchase-orders')}
-                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 mr-2" />
-                Back to Purchase Orders
-              </button>
-              <div className="border-l border-gray-300 pl-4">
-                <h1 className="text-xl font-semibold text-gray-900">
-                  Supplier Matching Analysis
-                </h1>
-                <p className="text-sm text-gray-500">
-                  {purchaseOrder.poNumber || purchaseOrder.orderNumber} • {purchaseOrder.items?.length || 0} items
-                </p>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => handleRefreshMatching()}
-                disabled={refreshing}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Matching...' : 'Refresh Matching'}
-              </button>
-              
-              <button
-                onClick={handleExport}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </button>
-              
-              <button
-                onClick={handleSaveSelections}
-                disabled={saving || !hasChanges}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Selections'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <SupplierMatchingDisplay
-          purchaseOrder={purchaseOrder}
-          matchingResult={matchingResult}
-          selectedSuppliers={selectedSuppliers}
-          onSupplierSelect={(itemNumber, supplierId) => {
-            setSelectedSuppliers(prev => ({
-              ...prev,
-              [itemNumber]: supplierId
-            }));
-            setHasChanges(true);
-          }}
-          onRefreshMatching={() => handleRefreshMatching()}
-          refreshing={refreshing}
-        />
-      </div>
-    </div>
-  );
-
-export default SupplierMatchingPage; + status.totalSavings.toFixed(2)]);
+    rows.push(['Total Potential Savings', '$' + status.totalSavings.toFixed(2)]);
     rows.push(['Average Confidence', status.averageConfidence + '%']);
     rows.push(['Overall Match Rate', (metrics.matchRate || 0) + '%']);
     rows.push(['AI Enhancements', metrics.aiEnhancements || 0]);
@@ -958,6 +834,9 @@ export default SupplierMatchingPage; + status.totalSavings.toFixed(2)]);
   };
 
   const selectionStatus = getEnhancedSelectionStatus();
+
+  // Enhanced loading state with AI theming
+  if (loading || hookLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -965,8 +844,8 @@ export default SupplierMatchingPage; + status.totalSavings.toFixed(2)]);
             <Brain className="w-8 h-8 animate-pulse text-blue-600 mr-2" />
             <RefreshCw className="w-8 h-8 animate-spin text-blue-600" />
           </div>
-          <p className="text-gray-600 text-lg">Loading purchase order...</p>
-          <p className="text-gray-500 text-sm mt-2">Initializing supplier matching system</p>
+          <p className="text-gray-600 text-lg">Loading enhanced AI supplier matching...</p>
+          <p className="text-gray-500 text-sm mt-2">Initializing machine learning algorithms</p>
         </div>
       </div>
     );
@@ -1007,77 +886,290 @@ export default SupplierMatchingPage; + status.totalSavings.toFixed(2)]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      {/* Enhanced Header with AI Indicators */}
+      <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Back button and title */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/purchase-orders')}
-                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <ArrowLeft className="w-5 h-5 mr-2" />
-                Back to Purchase Orders
+                <ArrowLeft className="w-5 h-5" />
               </button>
-              <div className="border-l border-gray-300 pl-4">
-                <h1 className="text-xl font-semibold text-gray-900">
-                  Supplier Matching Analysis
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                  <Brain className="w-5 h-5 text-blue-600" />
+                  Enhanced AI Supplier Matching
                 </h1>
-                <p className="text-sm text-gray-500">
-                  {purchaseOrder.poNumber || purchaseOrder.orderNumber} • {purchaseOrder.items?.length || 0} items
-                </p>
+                <div className="flex items-center gap-4 mt-1">
+                  <p className="text-sm text-gray-600">
+                    PO {purchaseOrder.poNumber || purchaseOrder.orderNumber}
+                  </p>
+                  
+                  {/* Show tracking status */}
+                  {purchaseOrder.status === 'suppliers_selected' && (
+                    <div className="flex items-center gap-1">
+                      <BarChart3 className="w-4 h-4 text-green-600" />
+                      <span className="text-green-600 font-medium text-sm">
+                        Tracking Active
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Enhanced Selection Status */}
+                  {selectionStatus.count > 0 && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <div className="flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <span className="text-green-600 font-medium">
+                          {selectionStatus.count}/{selectionStatus.total} selected ({selectionStatus.percentage}%)
+                        </span>
+                      </div>
+                      
+                      {selectionStatus.totalSavings > 0 && (
+                        <div className="flex items-center gap-1">
+                          <TrendingUp className="w-4 h-4 text-blue-600" />
+                          <span className="text-blue-600 font-medium">
+                            ${selectionStatus.totalSavings.toFixed(2)} savings
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectionStatus.averageConfidence > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Target className="w-4 h-4 text-purple-600" />
+                          <span className="text-purple-600 font-medium">
+                            {selectionStatus.averageConfidence}% confidence
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* AI Enhancement Indicators */}
+                  {(matchingResult?.metrics || purchaseOrder.matchingMetrics) && (
+                    <div className="flex items-center gap-3 text-sm">
+                      <div className="flex items-center gap-1">
+                        <Zap className="w-4 h-4 text-yellow-600" />
+                        <span className="text-yellow-600 font-medium">
+                          {(matchingResult?.metrics || purchaseOrder.matchingMetrics).matchRate || 0}% match rate
+                        </span>
+                      </div>
+                      
+                      {((matchingResult?.metrics || purchaseOrder.matchingMetrics).aiEnhancements > 0) && (
+                        <div className="flex items-center gap-1">
+                          <Brain className="w-4 h-4 text-blue-600" />
+                          <span className="text-blue-600 font-medium">
+                            {(matchingResult?.metrics || purchaseOrder.matchingMetrics).aiEnhancements} AI enhanced
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center space-x-3">
+            
+            <div className="flex items-center gap-3">
+              {/* Tracking Dashboard Link */}
+              {purchaseOrder.status === 'suppliers_selected' && (
+                <button
+                  onClick={() => navigate(`/tracking?po=${poId}`)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  View Tracking
+                </button>
+              )}
+              
+              {/* Enhanced Export Button */}
+              <button
+                onClick={exportEnhancedReport}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export AI Analysis
+              </button>
+              
+              {/* Enhanced Save Button */}
+              {hasChanges && (
+                <button
+                  onClick={saveSupplierSelections}
+                  disabled={saving}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {saving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Saving & Initializing...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save & Initialize Tracking
+                    </>
+                  )}
+                </button>
+              )}
+              
+              {/* Re-run Enhanced Matching */}
               <button
                 onClick={() => handleRefreshMatching()}
                 disabled={refreshing}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Matching...' : 'Refresh Matching'}
+                {refreshing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    AI Matching...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="w-4 h-4" />
+                    Re-run AI Match
+                  </>
+                )}
               </button>
               
-              <button
-                onClick={handleExport}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </button>
-              
-              <button
-                onClick={handleSaveSelections}
-                disabled={saving || !hasChanges}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Selections'}
-              </button>
+              {/* Last Save Status */}
+              {lastSaveTime && (
+                <div className="text-sm text-gray-600 flex items-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  <span>Saved: {lastSaveTime.toLocaleTimeString()}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <SupplierMatchingDisplay
-          purchaseOrder={purchaseOrder}
-          matchingResult={matchingResult}
-          selectedSuppliers={selectedSuppliers}
-          onSupplierSelect={(itemNumber, supplierId) => {
-            setSelectedSuppliers(prev => ({
-              ...prev,
-              [itemNumber]: supplierId
-            }));
-            setHasChanges(true);
-          }}
-          onRefreshMatching={() => handleRefreshMatching()}
-          refreshing={refreshing}
-        />
+      {/* Breadcrumb Navigation */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <nav className="flex items-center gap-2 text-sm text-gray-600">
+          <button 
+            onClick={() => navigate('/')}
+            className="hover:text-gray-900 flex items-center gap-1"
+          >
+            <Home className="w-4 h-4" />
+            Home
+          </button>
+          <ChevronRight className="w-4 h-4" />
+          <button 
+            onClick={() => navigate('/purchase-orders')}
+            className="hover:text-gray-900"
+          >
+            Purchase Orders
+          </button>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium">Enhanced AI Matching</span>
+        </nav>
+      </div>
+
+      {/* Success Banner for Unsaved Changes with Tracking Info */}
+      {hasChanges && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
+          <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-yellow-600" />
+              <div>
+                <p className="text-yellow-800 font-medium">
+                  You have {Object.keys(selectedSuppliers).length} enhanced AI selections ready to save.
+                </p>
+                <p className="text-yellow-700 text-sm">
+                  Saving will initialize delivery and payment tracking systems.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={saveSupplierSelections}
+              disabled={saving}
+              className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Saving & Initializing...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save & Initialize Tracking
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tracking Status Banner */}
+      {purchaseOrder.status === 'suppliers_selected' && !hasChanges && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
+          <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-green-600" />
+              <div>
+                <p className="text-green-800 font-medium">
+                  Tracking systems are active for this purchase order.
+                </p>
+                <p className="text-green-700 text-sm">
+                  Monitor delivery status and payment progress in the tracking dashboard.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate(`/tracking?po=${poId}`)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <Truck className="w-4 h-4" />
+              Open Tracking Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        {(matchingResult || purchaseOrder.items) ? (
+          <SupplierMatchingDisplay
+            items={matchingResult?.itemMatches || purchaseOrder.items}
+            sourcingPlan={matchingResult?.sourcingPlan || purchaseOrder.sourcingPlan}
+            metrics={matchingResult?.metrics || purchaseOrder.matchingMetrics}
+            purchaseOrder={purchaseOrder}
+            onSupplierSelect={handleSupplierSelection}
+            selectedSuppliers={selectedSuppliers}
+          />
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
+            <div className="flex items-center justify-center mb-4">
+              <Package className="w-12 h-12 text-gray-400 mr-2" />
+              <Brain className="w-12 h-12 text-blue-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              No Enhanced AI Matching Results
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Run the enhanced AI supplier matching to see intelligent recommendations with machine learning.
+            </p>
+            <button
+              onClick={() => handleRefreshMatching()}
+              disabled={refreshing}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 mx-auto disabled:opacity-50"
+            >
+              {refreshing ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  Running Enhanced AI Matching...
+                </>
+              ) : (
+                <>
+                  <Brain className="w-5 h-5" />
+                  Run Enhanced AI Matching
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
