@@ -1,12 +1,12 @@
 // src/components/supplier-matching/ManualMatchingInterface.jsx
-// 🔧 React 19 Compatible - Using HTML5 Drag & Drop API
+// 🔧 React 19 Compatible - Using HTML5 Drag & Drop API with Lucide Icons
 import React, { useState } from 'react';
 import { 
-  XMarkIcon,
-  MagnifyingGlassIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon
-} from '@heroicons/react/24/outline';
+  X,
+  Search,
+  CheckCircle,
+  AlertTriangle
+} from 'lucide-react';
 
 const ManualMatchingInterface = ({ 
   unmatchedItems, 
@@ -124,7 +124,7 @@ const ManualMatchingInterface = ({
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >
-              <XMarkIcon className="h-6 w-6" />
+              <X className="h-6 w-6" />
             </button>
           </div>
         </div>
@@ -187,7 +187,7 @@ const ManualMatchingInterface = ({
             <div className="p-4 border-b border-gray-200 bg-white">
               <div className="flex space-x-3 mb-3">
                 <div className="flex-1 relative">
-                  <MagnifyingGlassIcon className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Search products..."
@@ -286,12 +286,12 @@ const ManualMatchingInterface = ({
                   className="p-3 bg-white rounded-lg border border-green-200 bg-green-50"
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <CheckCircleIcon className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
                     <button
                       onClick={() => removeMatch(match.poItem.id || match.poItem.itemNumber)}
                       className="text-gray-400 hover:text-red-600"
                     >
-                      <XMarkIcon className="h-4 w-4" />
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
                   
