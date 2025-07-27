@@ -2699,12 +2699,12 @@ const resetItemAllocations = async (itemId) => {
       allocationsToReverse: allocationsToReverse
     });
 
-    // ✅ STEP 3: Reverse stock levels in Products database (if allocations exist)
+    // ✅ STEP 3: Reverse stock levels FIRST, BEFORE updating PI
     if (totalAllocatedToReverse > 0 && targetItem.productCode) {
       console.log('📦 Reversing product stock levels for:', targetItem.productCode);
       
       try {
-        await reverseProductStockLevels({
+        const stockReversalResult = await reverseProductStockLevels({
           productCode: targetItem.productCode,
           quantity: totalAllocatedToReverse,
           allocations: allocationsToReverse,
@@ -2713,11 +2713,17 @@ const resetItemAllocations = async (itemId) => {
           itemId: targetItem.id
         });
         
+        if (!stockReversalResult.success) {
+          throw new Error(`Stock reversal failed: ${stockReversalResult.error}`);
+        }
+        
         console.log('✅ Product stock levels reversed successfully');
+        console.log('📊 Stock reversal details:', stockReversalResult.reversalDetails);
+        
       } catch (stockError) {
-        console.error('❌ Error reversing stock levels:', stockError);
-        showNotification('Warning: Allocation reset but stock levels may need manual correction', 'warning');
-        // Continue with PI reset even if stock reversal fails
+        console.error('❌ CRITICAL: Stock reversal failed:', stockError);
+        showNotification(`Failed to reverse stock levels: ${stockError.message}`, 'error');
+        return; // Don't proceed with PI update if stock reversal fails
       }
     }
 
@@ -2759,42 +2765,42 @@ const resetItemAllocations = async (itemId) => {
       otherItemsUnchanged: updatedItems.filter(item => item.id !== itemId).length
     });
 
-    // ✅ STEP 6: CRITICAL - Save to FIRESTORE first, then update local state
-try {
-  // ✅ Import all required Firestore functions
-  const { updateDoc, doc, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore');
-  const { db } = await import('../../services/firebase');
-  
-  console.log('💾 Updating Firestore PI document...');
-  
-  // Update Firestore PI document
-  await updateDoc(doc(db, 'proformaInvoices', pi.id), {
-    items: updatedItems,
-    updatedAt: new Date().toISOString()
-  });
-  console.log('✅ Firestore PI updated with reset allocations');
+    // ✅ STEP 6: Update Firestore and local state
+    try {
+      // ✅ Import all required Firestore functions with correct path
+      const { updateDoc, doc, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore');
+      const { db } = await import('../../config/firebase'); // ✅ CORRECT PATH
+      
+      console.log('💾 Updating Firestore PI document...');
+      
+      // Update Firestore PI document
+      await updateDoc(doc(db, 'proformaInvoices', pi.id), {
+        items: updatedItems,
+        updatedAt: new Date().toISOString()
+      });
+      console.log('✅ Firestore PI updated with reset allocations');
 
-  // Delete allocation records from Firestore
-  console.log('🗑️ Deleting allocation records...');
-  const allocationsRef = collection(db, 'stockAllocations');
-  const allocationsQuery = query(
-    allocationsRef, 
-    where('piId', '==', pi.id),
-    where('itemId', '==', itemId)
-  );
-  const allocationsSnapshot = await getDocs(allocationsQuery);
-  
-  for (const allocationDoc of allocationsSnapshot.docs) {
-    await deleteDoc(allocationDoc.ref);
-    console.log('🗑️ Deleted allocation record:', allocationDoc.id);
-  }
-  
-  console.log('✅ All Firestore operations completed successfully');
+      // Delete allocation records from Firestore
+      console.log('🗑️ Deleting allocation records...');
+      const allocationsRef = collection(db, 'stockAllocations');
+      const allocationsQuery = query(
+        allocationsRef, 
+        where('piId', '==', pi.id),
+        where('itemId', '==', itemId)
+      );
+      const allocationsSnapshot = await getDocs(allocationsQuery);
+      
+      for (const allocationDoc of allocationsSnapshot.docs) {
+        await deleteDoc(allocationDoc.ref);
+        console.log('🗑️ Deleted allocation record:', allocationDoc.id);
+      }
+      
+      console.log('✅ All Firestore operations completed successfully');
 
-} catch (firestoreError) {
-  console.error('❌ Error updating Firestore:', firestoreError);
-  showNotification('Reset saved locally but may need to refresh to sync with database', 'warning');
-}
+    } catch (firestoreError) {
+      console.error('❌ Error updating Firestore:', firestoreError);
+      throw new Error(`Firestore update failed: ${firestoreError.message}`);
+    }
 
     // ✅ STEP 7: Update local state (use local update to prevent modal closure)
     if (onReceivingDataUpdate) {
@@ -2821,13 +2827,14 @@ try {
     }, 100);
 
   } catch (error) {
-    console.error('❌ Error resetting allocations for specific item:', error);
-    showNotification(`Failed to reset allocations for ${targetItem?.productCode || itemId}`, 'error');
+    console.error('❌ CRITICAL ERROR in resetItemAllocations:', error);
+    showNotification(`Failed to reset allocations: ${error.message}`, 'error');
   }
 };
 
   // ✅ CRITICAL FIX: Fixed the Firestore import path in reverseProductStockLevels function
 
+// ✅ CRITICAL FIX 1: Correct import path and enhanced error handling
 const reverseProductStockLevels = async ({ 
   productCode, 
   quantity, 
@@ -2846,7 +2853,7 @@ const reverseProductStockLevels = async ({
 
     // ✅ CRITICAL FIX: Import from config/firebase, not services/firebase
     const { collection, query, where, getDocs, updateDoc, arrayUnion } = await import('firebase/firestore');
-    const { db } = await import('../../config/firebase'); // ✅ FIXED: Changed from services to config
+    const { db } = await import('../../config/firebase'); // ✅ FIXED PATH
 
     // Find the product in Firestore
     const productsRef = collection(db, 'products');
@@ -2855,7 +2862,7 @@ const reverseProductStockLevels = async ({
     
     if (productSnapshot.empty) {
       console.warn('⚠️ Product not found for stock reversal:', productCode);
-      return;
+      throw new Error(`Product not found for stock reversal: ${productCode}`);
     }
 
     const productDoc = productSnapshot.docs[0];
@@ -2916,67 +2923,84 @@ const reverseProductStockLevels = async ({
 
     // ✅ CRITICAL: Validate the reversal makes sense
     if (warehouseReversals > currentTotalStock) {
-      console.warn('⚠️ Warning: Trying to reverse more warehouse stock than available:', {
+      console.error('❌ CRITICAL: Trying to reverse more warehouse stock than available:', {
         trying_to_reverse: warehouseReversals,
         current_stock: currentTotalStock
       });
+      throw new Error(`Cannot reverse ${warehouseReversals} units - only ${currentTotalStock} available in stock`);
     }
     
     if (reservedReversals > currentAllocatedStock) {
-      console.warn('⚠️ Warning: Trying to reverse more reserved stock than allocated:', {
+      console.error('❌ CRITICAL: Trying to reverse more reserved stock than allocated:', {
         trying_to_reverse: reservedReversals,
         current_allocated: currentAllocatedStock
       });
+      throw new Error(`Cannot reverse ${reservedReversals} reserved units - only ${currentAllocatedStock} allocated`);
     }
 
-    // ✅ CRITICAL: Update product stock levels with enhanced error handling
+    // ✅ CRITICAL FIX: Enhanced Firestore update with retry logic
     console.log('💾 Updating product stock levels in Firestore...');
     
-    try {
-      await updateDoc(productDoc.ref, {
-        currentStock: newTotalStock,
-        allocatedStock: newAllocatedStock,
-        availableStock: newAvailableStock,
-        lastStockUpdate: new Date().toISOString(),
-        stockHistory: arrayUnion({
-          action: 'ALLOCATION_REVERSAL',
-          quantity: -quantity, // Negative for reversal
-          piId: piId,
-          itemId: itemId,
-          productCode: productCode,
-          reason: reason,
-          timestamp: new Date().toISOString(),
-          reversedAllocations: allocations,
-          stockChanges: {
-            warehouseReversed: -warehouseReversals,
-            reservedReversed: -reservedReversals,
-            totalStockBefore: currentTotalStock,
-            totalStockAfter: newTotalStock,
-            allocatedStockBefore: currentAllocatedStock,
-            allocatedStockAfter: newAllocatedStock
-          }
-        })
-      });
+    const updateData = {
+      currentStock: newTotalStock,
+      allocatedStock: newAllocatedStock,
+      availableStock: newAvailableStock,
+      lastStockUpdate: new Date().toISOString(),
+      stockHistory: arrayUnion({
+        action: 'ALLOCATION_REVERSAL',
+        quantity: -quantity, // Negative for reversal
+        piId: piId,
+        itemId: itemId,
+        productCode: productCode,
+        reason: reason,
+        timestamp: new Date().toISOString(),
+        reversedAllocations: allocations,
+        stockChanges: {
+          warehouseReversed: -warehouseReversals,
+          reservedReversed: -reservedReversals,
+          totalStockBefore: currentTotalStock,
+          totalStockAfter: newTotalStock,
+          allocatedStockBefore: currentAllocatedStock,
+          allocatedStockAfter: newAllocatedStock
+        }
+      })
+    };
 
-      console.log('✅ Product stock levels reversed successfully for:', productCode);
-      console.log('📊 Final stock levels:', {
-        currentStock: newTotalStock,
-        allocatedStock: newAllocatedStock,
-        availableStock: newAvailableStock
+    console.log('🔍 About to update Firestore with:', updateData);
+    
+    try {
+      await updateDoc(productDoc.ref, updateData);
+      console.log('✅ Firestore update completed successfully');
+    } catch (updateError) {
+      console.error('❌ FIRESTORE UPDATE FAILED:', updateError);
+      console.error('Product reference:', productDoc.ref);
+      console.error('Update data:', updateData);
+      throw new Error(`Firestore update failed: ${updateError.message}`);
+    }
+
+    // ✅ VERIFICATION: Re-fetch the product to confirm the update
+    const verificationSnapshot = await getDocs(productQuery);
+    if (!verificationSnapshot.empty) {
+      const updatedProduct = verificationSnapshot.docs[0].data();
+      console.log('🔍 VERIFICATION: Stock levels after update:', {
+        currentStock: updatedProduct.currentStock,
+        allocatedStock: updatedProduct.allocatedStock,
+        availableStock: updatedProduct.availableStock
       });
       
-    } catch (updateError) {
-      console.error('❌ CRITICAL: Firestore update failed:', updateError);
-      console.error('Update details:', {
-        productId: productDoc.id,
-        productCode,
-        newTotalStock,
-        newAllocatedStock,
-        newAvailableStock,
-        error: updateError.message
-      });
-      throw new Error(`Failed to update product stock in Firestore: ${updateError.message}`);
+      // Double-check that the update actually worked
+      if (updatedProduct.currentStock !== newTotalStock) {
+        console.error('❌ VERIFICATION FAILED: Stock update did not persist');
+        throw new Error(`Stock update verification failed. Expected ${newTotalStock}, got ${updatedProduct.currentStock}`);
+      }
     }
+
+    console.log('✅ Product stock levels reversed successfully for:', productCode);
+    console.log('📊 Final verified stock levels:', {
+      currentStock: newTotalStock,
+      allocatedStock: newAllocatedStock,
+      availableStock: newAvailableStock
+    });
     
     return {
       success: true,
@@ -2991,7 +3015,7 @@ const reverseProductStockLevels = async ({
     };
 
   } catch (error) {
-    console.error('❌ Error in reverseProductStockLevels:', error);
+    console.error('❌ CRITICAL ERROR in reverseProductStockLevels:', error);
     console.error('Error details:', {
       productCode,
       quantity,
@@ -2999,7 +3023,9 @@ const reverseProductStockLevels = async ({
       errorMessage: error.message,
       errorStack: error.stack
     });
-    throw error;
+    
+    // Re-throw with enhanced error message
+    throw new Error(`Stock reversal failed for ${productCode}: ${error.message}`);
   }
 };
   
