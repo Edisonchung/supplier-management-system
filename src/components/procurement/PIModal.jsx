@@ -2399,20 +2399,20 @@ const StockReceivingTab = ({
     console.log('🎯 Selected item:', selectedItem);
     console.log('📄 Current PI:', pi);
     
-    // Close the modal first
-    setShowAllocationModal(false);
-    setSelectedItem(null);
+    // 🎯 DON'T CLOSE MODAL YET - Let user see the status update first
+    // setShowAllocationModal(false);  ← MOVED TO END
+    // setSelectedItem(null);           ← MOVED TO END
     
     if (!selectedItem || !allocations || allocations.length === 0) {
       console.error('❌ Missing required data for allocation update');
       showNotification('Allocation data is incomplete', 'error');
       return;
     }
-
+    
     // 🎯 CRITICAL: Calculate the total allocated from new allocations
     const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
     console.log('🔢 New total allocated:', newTotalAllocated);
-
+    
     // 🎯 IMMEDIATE LOCAL UPDATE: Update both formData and selectedProducts
     setFormData(prev => ({
       ...prev,
@@ -2423,14 +2423,14 @@ const StockReceivingTab = ({
           const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
           const receivedQty = item.receivedQty || 0;
           const unallocatedQty = receivedQty - totalAllocated;
-
+          
           console.log('📦 Updated item status:', {
             itemId: item.id,
             received: receivedQty,
             allocated: totalAllocated,
             newStatus: totalAllocated >= receivedQty ? 'COMPLETED' : 'PARTIAL ALLOCATION'
           });
-
+          
           return {
             ...item,
             allocations: allAllocations,
@@ -2460,19 +2460,39 @@ const StockReceivingTab = ({
       }
       return item;
     }));
-
-    console.log('✅ Local state updated - modal stays open, status should update to COMPLETED');
+    
+    console.log('✅ Local state updated - PI modal stays open, status should update to COMPLETED');
     showNotification('Stock allocated successfully', 'success');
     
-    // 🎯 CRITICAL: Only call onUpdatePI if it's for final save, not intermediate updates
-    // This line should only be uncommented if you want to save to database immediately
-    // await onUpdatePI(updatedPI);
+    // 🎯 FORCE UI REFRESH: Give React time to process state updates
+    setTimeout(() => {
+      console.log('🔄 UI refresh completed, user can see status change');
+      // Force a tiny re-render to ensure status calculation runs
+      setReceivingForm(prev => ({ 
+        ...prev, 
+        [`${selectedItem.id}_refreshed`]: Date.now() 
+      }));
+    }, 50);
+    
+    // 🎯 OPTION 1: Close allocation modal after 2 seconds (let user see the change)
+    setTimeout(() => {
+      console.log('⏰ Auto-closing allocation modal after showing status update');
+      setShowAllocationModal(false);
+      setSelectedItem(null);
+    }, 2000);
+    
+    // 🎯 OPTION 2: Or keep it open and let user close manually
+    // Leave allocation modal open - user can close when ready
     
   } catch (error) {
     console.error('❌ Error in allocation complete:', error);
     showNotification('Failed to update allocation data', 'error');
+    
+    // Close modal on error
+    setShowAllocationModal(false);
+    setSelectedItem(null);
   }
-}, [selectedItem, pi, setFormData, setSelectedProducts, showNotification]);
+}, [selectedItem, pi, setFormData, setSelectedProducts, showNotification, setReceivingForm]);
 
   const resetItemAllocations = async (itemId) => {
   try {
