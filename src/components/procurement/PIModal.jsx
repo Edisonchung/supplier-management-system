@@ -25,7 +25,7 @@ const fixPIItemPrices = (items, debug = true) => {
     console.warn('No valid items array provided to fixPIItemPrices');
     return [];
   }
-
+  
   if (debug) {
     console.log('🔧 FIXING PI ITEM PRICES...');
     console.log('Original items:', items);
@@ -120,6 +120,53 @@ const validatePITotals = (formData, selectedProducts, debug = false) => {
     subtotal: calculatedSubtotal,
     totalAmount: calculatedTotal
   };
+};
+
+// 🔧 ADD THE normalizeDate FUNCTION HERE:
+const normalizeDate = (dateValue) => {
+  try {
+    // Handle various date formats that AI might extract
+    if (!dateValue) {
+      return new Date().toISOString().split('T')[0]; // Default to today
+    }
+    
+    // If it's already a proper ISO string or standard format, use it
+    if (typeof dateValue === 'string') {
+      // Handle different date formats from AI extraction
+      let normalizedDate = dateValue;
+      
+      // Convert dots to hyphens: "2024.10.12" -> "2024-10-12" 
+      if (dateValue.includes('.')) {
+        normalizedDate = dateValue.replace(/\./g, '-');
+      }
+      
+      // Convert slashes to hyphens: "2024/10/12" -> "2024-10-12"
+      if (dateValue.includes('/')) {
+        normalizedDate = dateValue.replace(/\//g, '-');
+      }
+      
+      // Try to parse the normalized date
+      const parsedDate = new Date(normalizedDate);
+      
+      // Check if the date is valid
+      if (!isNaN(parsedDate.getTime())) {
+        return parsedDate.toISOString().split('T')[0];
+      }
+    }
+    
+    // If dateValue is already a Date object
+    if (dateValue instanceof Date) {
+      return dateValue.toISOString().split('T')[0];
+    }
+    
+    // Fallback to current date
+    console.warn('Could not parse date:', dateValue, 'using current date');
+    return new Date().toISOString().split('T')[0];
+    
+  } catch (error) {
+    console.error('Error normalizing date:', error, 'using current date');
+    return new Date().toISOString().split('T')[0];
+  }
 };
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
@@ -401,7 +448,9 @@ useEffect(() => {
         projectCode: proformaInvoice.projectCode || proformaInvoice.clientRef || '',
         isPriority: proformaInvoice.isPriority || false,
         priorityReason: proformaInvoice.priorityReason || '',
-        date: proformaInvoice.date?.split('T')[0] || new Date().toISOString().split('T')[0],
+        date: normalizeDate(proformaInvoice.date),
+
+        //date: proformaInvoice.date?.split('T')[0] || new Date().toISOString().split('T')[0],
         
         // Don't set items array here - handle separately below
         
@@ -466,6 +515,12 @@ useEffect(() => {
       documentId: proformaInvoice.documentId,
       hasStoredDocuments: proformaInvoice.hasStoredDocuments,
       originalFileName: proformaInvoice.originalFileName
+    });
+
+      console.log('🔍 Date Processing Debug:', {
+      originalDate: proformaInvoice.date,
+      dateType: typeof proformaInvoice.date,
+      normalizedDate: normalizeDate(proformaInvoice.date)
     });
         
    
