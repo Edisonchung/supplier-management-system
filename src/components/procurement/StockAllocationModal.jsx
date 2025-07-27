@@ -267,30 +267,11 @@ const StockAllocationModal = ({
   
   // ✅ STEP 6: useEffect HOOKS (AFTER ALL FUNCTIONS ARE DECLARED)
   useEffect(() => {
-  if (isOpen && piId) {
-    setPiLoading(true);
-    setPiError(null);
-    
-    // Load PI data using existing service
-    import('../../hooks/useProformaInvoices').then(({ default: useProformaInvoices }) => {
-      // This is a bit tricky since we need to call the hook properly
-      // For now, let's use localStorage as fallback
-      const pis = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-      const foundPI = pis.find(p => p.id === piId || p.piNumber === piId);
-      
-      if (foundPI) {
-        setPi(foundPI);
-        setPiLoading(false);
-      } else {
-        setPiError('PI not found');
-        setPiLoading(false);
-      }
-    }).catch(err => {
-      setPiError(err.message);
-      setPiLoading(false);
-    });
+  if (isOpen && pi) {
+    console.log('✅ Using PI prop directly:', pi.piNumber);
+    // PI data is already available from props, no loading needed
   }
-}, [isOpen, piId]);
+}, [isOpen, pi]);
   
   useEffect(() => {
     if (isOpen && itemData && effectivePiId) {
@@ -301,46 +282,20 @@ const StockAllocationModal = ({
   // ✅ STEP 7: EARLY RETURNS
   if (!isOpen) return null;
   
-  if (piLoading) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Allocation Data</h3>
-          <p className="text-gray-600">Please wait...</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-if (piError) {
+  if (!pi || !pi.items) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
         <div className="text-center">
           <AlertCircle className="mx-auto h-12 w-12 text-red-500 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Data</h3>
-          <p className="text-gray-600 mb-4">{piError}</p>
-          <div className="flex gap-2 justify-center">
-            <button
-              onClick={() => {
-                setPiLoading(true);
-                setPiError(null);
-                // Retry logic here
-              }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Retry
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-            >
-              Close
-            </button>
-          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">PI Data Missing</h3>
+          <p className="text-gray-600 mb-4">PI data not available for allocation.</p>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
