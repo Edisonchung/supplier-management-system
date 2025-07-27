@@ -3058,8 +3058,10 @@ const reverseProductStockLevels = async ({
   }
 };
   
- const getItemStatus = useCallback((item) => {
-  const received = item.receivedQty || 0;
+ const getItemStatus = useCallback((item, itemFormData = {}) => {
+ const received = itemFormData.receivedQty !== undefined 
+  ? itemFormData.receivedQty 
+  : (item.receivedQty || 0);
   const ordered = item.quantity || 0;
   
   // ✅ ENHANCED: Multi-strategy allocation calculation with debugging
@@ -3174,7 +3176,7 @@ const reverseProductStockLevels = async ({
       <div className="space-y-4">
         {pi.items && pi.items.map(item => {
           const itemForm = receivingForm[item.id] || {};
-          const itemStatus = getItemStatus(item);
+          const itemStatus = getItemStatus(item, itemForm);
           const StatusIcon = itemStatus.icon;
 
           return (
