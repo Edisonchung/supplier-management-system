@@ -2556,7 +2556,7 @@ const StockReceivingTab = ({
       const formData = {};
       pi.items.forEach(item => {
         formData[item.id] = {
-          receivedQty: item.receivedQty || 0,
+          receivedQty: item.receivedQty || item.quantity || 0,
           receivingNotes: item.receivingNotes || '',
           hasDiscrepancy: item.hasDiscrepancy || false,
           discrepancyReason: item.discrepancyReason || ''
@@ -2590,6 +2590,34 @@ const StockReceivingTab = ({
       }
     }));
   };
+
+  const handleSetAllAsReceived = () => {
+  if (pi && pi.items) {
+    const updatedForm = {};
+    pi.items.forEach(item => {
+      updatedForm[item.id] = {
+        ...receivingForm[item.id],
+        receivedQty: item.quantity // Set to ordered quantity
+      };
+    });
+    setReceivingForm(updatedForm);
+    showNotification('All items set as fully received', 'success');
+  }
+};
+
+const handleClearAllReceived = () => {
+  if (pi && pi.items) {
+    const updatedForm = {};
+    pi.items.forEach(item => {
+      updatedForm[item.id] = {
+        ...receivingForm[item.id],
+        receivedQty: 0 // Clear all received quantities
+      };
+    });
+    setReceivingForm(updatedForm);
+    showNotification('All received quantities cleared', 'info');
+  }
+};
 
   const saveReceivingData = async (itemId) => {
   try {
@@ -3117,6 +3145,31 @@ const reverseProductStockLevels = async ({
         </div>
       </div>
 
+      {/* Bulk Actions */}
+    <div className="bg-gray-50 p-4 rounded-lg">
+      <div className="flex justify-between items-center">
+        <div className="text-sm text-gray-600">
+          Quick Actions: {pi.items?.reduce((sum, item) => sum + (receivingForm[item.id]?.receivedQty || 0), 0) || 0} / {pi.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0} items received
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSetAllAsReceived}
+            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
+            disabled={pi.items?.every(item => receivingForm[item.id]?.receivedQty === item.quantity)}
+          >
+            Set All as Received
+          </button>
+          <button
+            onClick={handleClearAllReceived}
+            className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400"
+            disabled={pi.items?.every(item => (receivingForm[item.id]?.receivedQty || 0) === 0)}
+          >
+            Clear All
+          </button>
+        </div>
+      </div>
+    </div>
+      
       {/* Items List */}
       <div className="space-y-4">
         {pi.items && pi.items.map(item => {
@@ -3152,17 +3205,35 @@ const reverseProductStockLevels = async ({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Received Qty
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={itemForm.receivedQty || 0}
-                    onChange={(e) => handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Received Qty
+    {/* ✅ Show when using default value */}
+    {(itemForm.receivedQty === item.quantity) && (
+      <span className="text-xs text-green-600 ml-1">(default)</span>
+    )}
+  </label>
+  <div className="relative">
+    <input
+      type="number"
+      min="0"
+      value={itemForm.receivedQty !== undefined ? itemForm.receivedQty : item.quantity}
+      onChange={(e) => handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+      placeholder={`Default: ${item.quantity}`}
+    />
+    {/* ✅ Quick action button to reset to default */}
+    {itemForm.receivedQty !== item.quantity && (
+      <button
+        type="button"
+        onClick={() => handleReceivingUpdate(item.id, 'receivedQty', item.quantity)}
+        className="absolute right-1 top-1 bottom-1 px-2 text-xs text-blue-600 hover:bg-blue-50 rounded"
+        title={`Set to ordered qty (${item.quantity})`}
+      >
+        ↺
+      </button>
+    )}
+  </div>
+</div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
