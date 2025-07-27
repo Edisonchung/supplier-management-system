@@ -2760,32 +2760,36 @@ const resetItemAllocations = async (itemId) => {
     });
 
     // ✅ STEP 6: CRITICAL - Save to FIRESTORE first, then update local state
-    try {
-      // Update Firestore PI document
-      await updateDoc(doc(db, 'proformaInvoices', pi.id), {
-        items: updatedItems,
-        updatedAt: new Date().toISOString()
-      });
-      console.log('✅ Firestore PI updated with reset allocations');
+try {
+  // ✅ FIXED: Import all required Firestore functions
+  const { updateDoc, doc, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore');
+  const { db } = await import('../../services/firebase');
+  
+  // Update Firestore PI document
+  await updateDoc(doc(db, 'proformaInvoices', pi.id), {
+    items: updatedItems,
+    updatedAt: new Date().toISOString()
+  });
+  console.log('✅ Firestore PI updated with reset allocations');
 
-      // Also delete allocation records from Firestore
-      const allocationsRef = collection(db, 'stockAllocations');
-      const allocationsQuery = query(
-        allocationsRef, 
-        where('piId', '==', pi.id),
-        where('itemId', '==', itemId)
-      );
-      const allocationsSnapshot = await getDocs(allocationsQuery);
-      
-      for (const allocationDoc of allocationsSnapshot.docs) {
-        await deleteDoc(allocationDoc.ref);
-        console.log('🗑️ Deleted allocation record:', allocationDoc.id);
-      }
+  // Also delete allocation records from Firestore
+  const allocationsRef = collection(db, 'stockAllocations');
+  const allocationsQuery = query(
+    allocationsRef, 
+    where('piId', '==', pi.id),
+    where('itemId', '==', itemId)
+  );
+  const allocationsSnapshot = await getDocs(allocationsQuery);
+  
+  for (const allocationDoc of allocationsSnapshot.docs) {
+    await deleteDoc(allocationDoc.ref);
+    console.log('🗑️ Deleted allocation record:', allocationDoc.id);
+  }
 
-    } catch (firestoreError) {
-      console.error('❌ Error updating Firestore:', firestoreError);
-      showNotification('Reset saved locally but may need to refresh to sync with database', 'warning');
-    }
+} catch (firestoreError) {
+  console.error('❌ Error updating Firestore:', firestoreError);
+  showNotification('Reset saved locally but may need to refresh to sync with database', 'warning');
+}
 
     // ✅ STEP 7: Update local state (use local update to prevent modal closure)
     if (onReceivingDataUpdate) {
