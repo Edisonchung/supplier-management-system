@@ -1044,18 +1044,21 @@ const handleSubmit = useCallback((e) => {
     storedAt: formData.storedAt
   };
 
+  
 
   
-  // ✅ ADD THIS DEBUG LOG:
-  console.log('🎯 PIModal: Saving PI with document storage fields:', {
-    documentId: piDataToSave.documentId,
-    hasStoredDocuments: piDataToSave.hasStoredDocuments,
-    originalFileName: piDataToSave.originalFileName,
-    allKeys: Object.keys(piDataToSave).filter(key => key.includes('document') || key.includes('storage') || key.includes('file'))
-  });
+  // 🔧 FIX: Check if this is a receiving data update
+  const isReceivingDataUpdate = activeTab === 'receiving';
   
-  onSave(piDataToSave);
-}, [formData, selectedProducts, selectedSupplier, onSave, validateForm]);
+  if (isReceivingDataUpdate && handleReceivingDataUpdate) {
+    // Use local update for receiving tab - MODAL STAYS OPEN
+    handleReceivingDataUpdate(piDataToSave);
+    showNotification('Receiving data updated', 'success');
+  } else {
+    // Use full save for other tabs (will close modal)
+    onSave(piDataToSave);
+  }
+}, [activeTab, formData, selectedProducts, onSave, handleReceivingDataUpdate]);
 
   const handleReceivingDataUpdate = useCallback((updatedPI) => {
   // Update local state only - DO NOT close modal
@@ -2552,6 +2555,8 @@ const StockReceivingTab = ({
   const [receivingForm, setReceivingForm] = useState({});
 
     const [skipFormInit, setSkipFormInit] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
 
  useEffect(() => {
     const originalSetReceivingForm = setReceivingForm;
@@ -2620,7 +2625,7 @@ useEffect(() => {
   } else {
     console.log('🔒 Skipping form initialization - conditions not met');
   }
-}, [pi?.id, skipFormInit]);  // Only trigger on PI ID changes or skip flag changes
+}, [pi?.id, skipFormInit, isSaving]);  // Only trigger on PI ID changes or skip flag changes
 
   useEffect(() => {
     if (pi?.items) {
@@ -2701,6 +2706,8 @@ const handleClearAllReceived = async () => {
 
 // ✅ ADD this new function right after handleClearAllReceived:
 const bulkSaveReceivingData = async (formData = null) => {
+      setIsSaving(true); // 🆕 ADD THIS LINE AT START
+
   try {
     const dataToSave = formData || receivingForm;
     
@@ -2736,7 +2743,7 @@ const bulkSaveReceivingData = async (formData = null) => {
   console.log('🔄 Bulk receiving data saved - modal stays open');
 } else {
   console.error('❌ onReceivingDataUpdate prop missing! Modal will close.');
-  await onUpdatePI(updatedPI);  // Fallback but will close modal
+  //await onUpdatePI(updatedPI);  // Fallback but will close modal
 }
 
     console.log('🔄 Bulk receiving data saved - modal stays open');
@@ -2745,9 +2752,12 @@ const bulkSaveReceivingData = async (formData = null) => {
     console.error('❌ Error in bulk save:', error);
     showNotification('Error saving receiving data', 'error');
     throw error;
+    } finally {
+      setIsSaving(false); // 🆕 ADD THIS LINE IN FINALLY BLOCK
   }
 };
   const saveReceivingData = async (itemId) => {
+    setIsSaving(true);
   try {
     const receivingData = receivingForm[itemId];
     
@@ -2789,6 +2799,8 @@ const bulkSaveReceivingData = async (formData = null) => {
   } catch (error) {
     console.error('Error saving receiving data:', error);
     showNotification('Failed to save receiving data', 'error');
+     } finally {
+      setIsSaving(false); // 🆕 ADD THIS LINE IN FINALLY BLOCK
   }
 };
 
