@@ -1,5 +1,8 @@
 //// src/components/procurement/PIModal.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { collection, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db } from '../../services/firebase'; // Adjust path based on your structure
+
 import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
@@ -2365,6 +2368,7 @@ const StockReceivingTab = ({
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [receivingForm, setReceivingForm] = useState({});
 
+
   // Initialize receiving form data
   useEffect(() => {
     if (pi && pi.items) {
@@ -2380,6 +2384,19 @@ const StockReceivingTab = ({
       setReceivingForm(formData);
     }
   }, [pi]);
+
+  useEffect(() => {
+    if (pi?.items) {
+      console.log('📊 CURRENT ALLOCATION STATE:', pi.items.map(item => ({
+        id: item.id,
+        productCode: item.productCode,
+        allocations: item.allocations?.length || 0,
+        totalAllocated: item.totalAllocated || 0,
+        unallocated: item.unallocatedQty || 0,
+        lastReset: item.lastAllocationReset || 'never'
+      })));
+    }
+  }, [pi?.items?.map(item => `${item.id}:${item.totalAllocated || 0}`).join(',')]);
 
 
 
@@ -2475,55 +2492,235 @@ const StockReceivingTab = ({
 
 
 
-  const resetItemAllocations = async (itemId) => {
+const resetItemAllocations = async (itemId) => {
   try {
-    console.log('🔄 Resetting allocations for item:', itemId);
+    console.log('🔄 Resetting allocations for SPECIFIC item:', itemId);
     
-    // Find the item and reset its allocations
-    const updatedItems = pi.items.map(item => {
-      if (item.id === itemId) {
-        console.log('🧹 Clearing allocations for:', {
-          itemId: item.id,
-          productCode: item.productCode,
-          previousAllocations: item.allocations?.length || 0,
-          previousTotalAllocated: item.totalAllocated || 0
-        });
+    // ✅ STEP 1: Find and validate the specific item
+    const targetItem = pi.items.find(item => item.id === itemId);
+    if (!targetItem) {
+      console.error('❌ Item not found:', itemId);
+      showNotification('Item not found for reset', 'error');
+      return;
+    }
 
-        return {
-          ...item,
-          allocations: [], // Clear all allocations
-          totalAllocated: 0, // Reset total
-          unallocatedQty: item.receivedQty || 0, // Reset to full received quantity
-          lastAllocationReset: new Date().toISOString()
-        };
-      }
-      return item;
+    // ✅ STEP 2: Get allocation details BEFORE reset for stock reversal
+    const allocationsToReverse = targetItem.allocations || [];
+    const totalAllocatedToReverse = targetItem.totalAllocated || 0;
+    
+    console.log('🧹 Clearing allocations for SPECIFIC item:', {
+      itemId: targetItem.id,
+      productCode: targetItem.productCode,
+      productName: targetItem.productName,
+      previousAllocations: allocationsToReverse.length,
+      previousTotalAllocated: totalAllocatedToReverse,
+      allocationsToReverse: allocationsToReverse
     });
 
-    // Update the PI with reset allocations
+    // ✅ STEP 3: Reverse stock levels in Products database (if allocations exist)
+    if (totalAllocatedToReverse > 0 && targetItem.productCode) {
+      console.log('📦 Reversing product stock levels for:', targetItem.productCode);
+      
+      try {
+        await reverseProductStockLevels({
+          productCode: targetItem.productCode,
+          quantity: totalAllocatedToReverse,
+          allocations: allocationsToReverse,
+          reason: 'User reset - allocation correction',
+          piId: pi.id || pi.piNumber,
+          itemId: targetItem.id
+        });
+        
+        console.log('✅ Product stock levels reversed successfully');
+      } catch (stockError) {
+        console.error('❌ Error reversing stock levels:', stockError);
+        showNotification('Warning: Allocation reset but stock levels may need manual correction', 'warning');
+        // Continue with PI reset even if stock reversal fails
+      }
+    }
+
+    // ✅ STEP 4: Update ONLY the target item, preserve all others exactly as they are
+    const updatedItems = pi.items.map(item => {
+      if (item.id === itemId) {
+        // Reset ONLY this specific item
+        return {
+          ...item, // Preserve all existing item properties
+          allocations: [], // Clear allocations for THIS item only
+          totalAllocated: 0, // Reset total for THIS item only
+          unallocatedQty: item.receivedQty || 0, // Reset to full received quantity for THIS item only
+          lastAllocationReset: new Date().toISOString(), // Mark when THIS item was reset
+          resetHistory: [...(item.resetHistory || []), {
+            resetAt: new Date().toISOString(),
+            reversedAllocations: allocationsToReverse,
+            reversedQuantity: totalAllocatedToReverse,
+            reason: 'User correction'
+          }]
+        };
+      }
+      // ✅ CRITICAL: Return all other items COMPLETELY UNCHANGED
+      return item; // No modifications to other items
+    });
+
+    // ✅ STEP 5: Create minimal PI update that preserves everything else
     const updatedPI = {
-      ...pi,
-      items: updatedItems,
-      updatedAt: new Date().toISOString(),
-      lastAllocationReset: new Date().toISOString()
+      ...pi, // Preserve ALL existing PI properties
+      items: updatedItems, // Only update the items array
+      updatedAt: new Date().toISOString()
+      // Don't set lastAllocationReset on entire PI - only on specific item
     };
 
-    console.log('💾 Updating PI with reset allocations...');
-    await onUpdatePI(updatedPI);
+    console.log('💾 Updating PI with reset for SPECIFIC item only:', {
+      piId: pi.id || pi.piNumber,
+      resetItemId: itemId,
+      resetItemProduct: targetItem.productCode,
+      totalItemsInPI: updatedItems.length,
+      otherItemsUnchanged: updatedItems.filter(item => item.id !== itemId).length
+    });
+
+    // ✅ STEP 6: Use local update to prevent modal closure
+    if (onReceivingDataUpdate) {
+      // Use the local update function to prevent modal from closing
+      onReceivingDataUpdate(updatedPI);
+      console.log('✅ Local state updated - modal stays open');
+    } else {
+      // Fallback to full update if local update not available
+      await onUpdatePI(updatedPI);
+    }
     
-    showNotification('Allocations reset successfully', 'success');
+    // ✅ STEP 7: Enhanced success message with stock reversal info
+    showNotification(
+      `Allocations reset for ${targetItem.productName} (${targetItem.productCode}). ` +
+      `${totalAllocatedToReverse} units reversed from stock and are now available for reallocation.`,
+      'success'
+    );
     
-    // Force UI refresh
+    // ✅ STEP 8: Force UI refresh for the specific item only
     setTimeout(() => {
       setReceivingForm(prev => ({ 
         ...prev, 
-        [`${itemId}_reset`]: Date.now()
+        [`${itemId}_reset`]: Date.now() // Update only this item's form state
       }));
     }, 100);
 
   } catch (error) {
-    console.error('❌ Error resetting allocations:', error);
-    showNotification('Failed to reset allocations', 'error');
+    console.error('❌ Error resetting allocations for specific item:', error);
+    showNotification(`Failed to reset allocations for ${targetItem?.productCode || itemId}`, 'error');
+  }
+};
+
+  const reverseProductStockLevels = async ({ 
+  productCode, 
+  quantity, 
+  allocations, 
+  reason, 
+  piId, 
+  itemId 
+}) => {
+  try {
+    console.log('🔄 Reversing stock allocation for specific product:', {
+      productCode,
+      quantity,
+      allocations: allocations.length,
+      reason
+    });
+
+    // Find the product in Firestore
+    const productsRef = collection(db, 'products');
+    const productQuery = query(productsRef, where('sku', '==', productCode));
+    const productSnapshot = await getDocs(productQuery);
+    
+    if (productSnapshot.empty) {
+      console.warn('⚠️ Product not found for stock reversal:', productCode);
+      return;
+    }
+
+    const productDoc = productSnapshot.docs[0];
+    const product = productDoc.data();
+    
+    console.log('📦 Found product for stock reversal:', {
+      id: productDoc.id,
+      name: product.name,
+      sku: product.sku,
+      currentStock: product.currentStock || 0
+    });
+
+    // Calculate stock reversal amounts by allocation type
+    let warehouseReversals = 0;
+    let reservedReversals = 0;
+
+    allocations.forEach(allocation => {
+      if (allocation.allocationType === 'warehouse') {
+        warehouseReversals += allocation.quantity;
+      } else if (allocation.allocationType === 'po' || allocation.allocationType === 'project') {
+        reservedReversals += allocation.quantity;
+      }
+    });
+
+    // Calculate new stock levels (reverse the allocation)
+    const currentTotalStock = product.currentStock || 0;
+    const currentAllocatedStock = product.allocatedStock || 0;
+    
+    const newTotalStock = Math.max(0, currentTotalStock - warehouseReversals); // Remove from total stock
+    const newAllocatedStock = Math.max(0, currentAllocatedStock - reservedReversals); // Remove from allocated
+    const newAvailableStock = newTotalStock - newAllocatedStock;
+
+    console.log('📊 Stock reversal calculation for specific item:', {
+      productCode,
+      before: {
+        totalStock: currentTotalStock,
+        allocatedStock: currentAllocatedStock,
+        availableStock: currentTotalStock - currentAllocatedStock
+      },
+      reversals: {
+        warehouseReversals,
+        reservedReversals,
+        totalReversed: warehouseReversals + reservedReversals
+      },
+      after: {
+        totalStock: newTotalStock,
+        allocatedStock: newAllocatedStock,
+        availableStock: newAvailableStock
+      }
+    });
+
+    // Update product stock levels
+    await updateDoc(productDoc.ref, {
+      currentStock: newTotalStock,
+      allocatedStock: newAllocatedStock,
+      availableStock: newAvailableStock,
+      lastStockUpdate: new Date().toISOString(),
+      stockHistory: arrayUnion({
+        action: 'ALLOCATION_REVERSAL',
+        quantity: -quantity, // Negative for reversal
+        piId: piId,
+        itemId: itemId,
+        productCode: productCode,
+        reason: reason,
+        timestamp: new Date().toISOString(),
+        reversedAllocations: allocations,
+        stockChanges: {
+          warehouseReversed: -warehouseReversals,
+          reservedReversed: -reservedReversals
+        }
+      })
+    });
+
+    console.log('✅ Product stock levels reversed successfully for:', productCode);
+    
+    return {
+      success: true,
+      productCode,
+      reversedQuantity: quantity,
+      newStockLevels: {
+        totalStock: newTotalStock,
+        allocatedStock: newAllocatedStock,
+        availableStock: newAvailableStock
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ Error reversing stock allocation for specific product:', error);
+    throw error;
   }
 };
   
@@ -2726,22 +2923,32 @@ const StockReceivingTab = ({
   </button>
 
   <div className="flex items-center gap-2">
-    {/* Reset Allocations Button - Show for any received items */}
-    {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
-      <button
-        onClick={() => {
-          if (window.confirm(`Reset all allocations for ${item.productName}? This cannot be undone.`)) {
-            resetItemAllocations(item.id);
-          }
-        }}
-        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center text-sm"
-        type="button"
-        title="Reset all allocations for this item"
-      >
-        <X className="mr-1 h-3 w-3" />
-        Reset
-      </button>
-    )}
+    {/* Enhanced Reset Button with Item-Specific Confirmation and Stock Reversal Info */}
+{(itemForm.receivedQty || item.receivedQty || 0) > 0 && item.totalAllocated > 0 && (
+  <button
+    onClick={() => {
+      // ✅ Enhanced confirmation with specific item details and stock impact
+      const confirmMessage = 
+        `Reset all allocations for ${item.productName} (${item.productCode})?\n\n` +
+        `This will:\n` +
+        `• Clear ${item.totalAllocated || 0} allocated units from this item\n` +
+        `• Reverse stock levels in the Products database\n` +
+        `• Make ${item.totalAllocated || 0} units available for reallocation\n` +
+        `• Keep all other items unchanged\n\n` +
+        `This cannot be undone.`;
+        
+      if (window.confirm(confirmMessage)) {
+        resetItemAllocations(item.id);
+      }
+    }}
+    className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center text-sm"
+    type="button"
+    title={`Reset allocations for ${item.productName} only and reverse stock levels`}
+  >
+    <X className="mr-1 h-3 w-3" />
+    Reset {item.productCode}
+  </button>
+)}
 
     {/* Allocate Stock Button */}
     {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
