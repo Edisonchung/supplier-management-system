@@ -2574,24 +2574,29 @@ useEffect(() => {
   
   // Initialize receiving form data
   useEffect(() => {
-       // if (pi && pi.items && !skipFormInit) {  // 🆕 ADD && !skipFormInit
-      if (pi && pi.items && Object.keys(receivingForm).length === 0 && !skipFormInit) {
-
-    //if (pi && pi.items) {
-      const formData = {};
-      pi.items.forEach(item => {
-        formData[item.id] = {
-          receivedQty: item.receivedQty || item.quantity || 0,
-          receivingNotes: item.receivingNotes || '',
-          hasDiscrepancy: item.hasDiscrepancy || false,
-          discrepancyReason: item.discrepancyReason || ''
-        };
-      });
-      setReceivingForm(formData);
-    }
-  }, [pi?.id, skipFormInit]);
-  //}, [pi, skipFormInit]);
-  //}, [pi]);
+  // Only initialize if form is truly empty AND we have PI data AND not skipping
+  const shouldInitialize = pi && 
+                          pi.items && 
+                          pi.items.length > 0 && 
+                          Object.keys(receivingForm).length === 0 && 
+                          !skipFormInit;
+  
+  if (shouldInitialize) {
+    console.log('🔄 Initializing empty form with PI data...');
+    const formData = {};
+    pi.items.forEach(item => {
+      formData[item.id] = {
+        receivedQty: item.receivedQty || item.quantity || 0,
+        receivingNotes: item.receivingNotes || '',
+        hasDiscrepancy: item.hasDiscrepancy || false,
+        discrepancyReason: item.discrepancyReason || ''
+      };
+    });
+    setReceivingForm(formData);
+  } else {
+    console.log('🔒 Skipping form initialization - conditions not met');
+  }
+}, [pi?.id, skipFormInit]);  // Only trigger on PI ID changes or skip flag changes
 
   useEffect(() => {
     if (pi?.items) {
@@ -2703,11 +2708,12 @@ const bulkSaveReceivingData = async (formData = null) => {
 
     // ✅ CRITICAL: Use onReceivingDataUpdate to keep modal open
     if (onReceivingDataUpdate) {
-      onReceivingDataUpdate(updatedPI);
-    } else {
-      console.warn('onReceivingDataUpdate not available, using onUpdatePI');
-      await onUpdatePI(updatedPI);
-    }
+  onReceivingDataUpdate(updatedPI);
+  console.log('🔄 Bulk receiving data saved - modal stays open');
+} else {
+  console.error('❌ onReceivingDataUpdate prop missing! Modal will close.');
+  await onUpdatePI(updatedPI);  // Fallback but will close modal
+}
 
     console.log('🔄 Bulk receiving data saved - modal stays open');
     
