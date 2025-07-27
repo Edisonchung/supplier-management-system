@@ -2761,9 +2761,11 @@ const resetItemAllocations = async (itemId) => {
 
     // ✅ STEP 6: CRITICAL - Save to FIRESTORE first, then update local state
 try {
-  // ✅ FIXED: Import all required Firestore functions
+  // ✅ Import all required Firestore functions
   const { updateDoc, doc, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore');
   const { db } = await import('../../services/firebase');
+  
+  console.log('💾 Updating Firestore PI document...');
   
   // Update Firestore PI document
   await updateDoc(doc(db, 'proformaInvoices', pi.id), {
@@ -2772,7 +2774,8 @@ try {
   });
   console.log('✅ Firestore PI updated with reset allocations');
 
-  // Also delete allocation records from Firestore
+  // Delete allocation records from Firestore
+  console.log('🗑️ Deleting allocation records...');
   const allocationsRef = collection(db, 'stockAllocations');
   const allocationsQuery = query(
     allocationsRef, 
@@ -2785,6 +2788,8 @@ try {
     await deleteDoc(allocationDoc.ref);
     console.log('🗑️ Deleted allocation record:', allocationDoc.id);
   }
+  
+  console.log('✅ All Firestore operations completed successfully');
 
 } catch (firestoreError) {
   console.error('❌ Error updating Firestore:', firestoreError);
@@ -2838,7 +2843,12 @@ try {
     });
 
     // Find the product in Firestore
-    const productsRef = collection(db, 'products');
+    // ✅ FIXED: Import all needed Firestore functions
+const { collection, query, where, getDocs, updateDoc, arrayUnion } = await import('firebase/firestore');
+const { db } = await import('../../services/firebase');
+
+// Find the product in Firestore
+const productsRef = collection(db, 'products');
     const productQuery = query(productsRef, where('sku', '==', productCode));
     const productSnapshot = await getDocs(productQuery);
     
