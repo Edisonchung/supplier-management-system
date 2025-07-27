@@ -2114,7 +2114,7 @@ const handleSubmit = useCallback((e) => {
   onReceivingDataUpdate={handleReceivingDataUpdate} 
   suppliers={suppliers}
   showNotification={showNotification}
-  onAllocationComplete={onAllocationComplete}
+  onAllocationComplete={handleAllocationComplete}
 />
           ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
