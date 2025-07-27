@@ -2392,25 +2392,7 @@ const StockReceivingTab = ({
 };
 
 
-// ✅ UPDATED: StockAllocationModal JSX with consistent PI ID passing
-{showAllocationModal && selectedItem && (
-  <StockAllocationModal
-    isOpen={showAllocationModal}
-    onClose={() => {
-      setShowAllocationModal(false);
-      setSelectedItem(null);
-    }}
-    
-    // ✅ FIX: Use the same PI ID logic consistently
-    piId={selectedItem.piId}
-    
-    itemData={selectedItem}
-    onAllocationComplete={handleAllocationComplete}
-  />
-)}
-
-
-  const handleAllocationComplete = async (allocations) => {
+  const handleAllocationComplete = useCallback(async (allocations) => {
   try {
     console.log('✅ ALLOCATION COMPLETE: Starting update process...');
     console.log('📋 Allocations received:', allocations);
@@ -2431,110 +2413,66 @@ const StockReceivingTab = ({
     const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
     console.log('🔢 New total allocated:', newTotalAllocated);
 
-    // 🎯 IMMEDIATE LOCAL UPDATE: Update the PI items immediately
-    const updatedItems = pi.items.map(item => {
-      if (item.id === selectedItem.id) {
-        console.log('🔄 Updating item:', item.id);
-        console.log('   Before:', {
-          receivedQty: item.receivedQty,
-          totalAllocated: item.totalAllocated,
-          allocations: item.allocations?.length || 0
-        });
+    // 🎯 IMMEDIATE LOCAL UPDATE: Update both formData and selectedProducts
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id === selectedItem.id) {
+          const existingAllocations = item.allocations || [];
+          const allAllocations = [...existingAllocations, ...allocations];
+          const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+          const receivedQty = item.receivedQty || 0;
+          const unallocatedQty = receivedQty - totalAllocated;
 
-        // Merge existing allocations with new ones
+          console.log('📦 Updated item status:', {
+            itemId: item.id,
+            received: receivedQty,
+            allocated: totalAllocated,
+            newStatus: totalAllocated >= receivedQty ? 'COMPLETED' : 'PARTIAL ALLOCATION'
+          });
+
+          return {
+            ...item,
+            allocations: allAllocations,
+            totalAllocated: totalAllocated,
+            unallocatedQty: unallocatedQty,
+            lastAllocationUpdate: new Date().toISOString()
+          };
+        }
+        return item;
+      })
+    }));
+    
+    setSelectedProducts(prev => prev.map(item => {
+      if (item.id === selectedItem.id) {
         const existingAllocations = item.allocations || [];
         const allAllocations = [...existingAllocations, ...allocations];
         const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
         const receivedQty = item.receivedQty || 0;
-        const unallocatedQty = receivedQty - totalAllocated;
-
-        const updatedItem = {
+        
+        return {
           ...item,
           allocations: allAllocations,
           totalAllocated: totalAllocated,
-          unallocatedQty: unallocatedQty,
-          lastAllocationUpdate: new Date().toISOString(),
-          // Add allocation status for debugging
-          allocationStatus: totalAllocated >= receivedQty ? 'complete' : 'partial'
+          unallocatedQty: receivedQty - totalAllocated,
+          lastAllocationUpdate: new Date().toISOString()
         };
-
-        console.log('   After:', {
-          receivedQty: updatedItem.receivedQty,
-          totalAllocated: updatedItem.totalAllocated,
-          allocations: updatedItem.allocations?.length || 0,
-          unallocatedQty: updatedItem.unallocatedQty,
-          allocationStatus: updatedItem.allocationStatus
-        });
-
-        return updatedItem;
       }
       return item;
-    });
+    }));
 
-    // Create updated PI object
-    const updatedPI = {
-      ...pi,
-      items: updatedItems,
-      updatedAt: new Date().toISOString(),
-      lastAllocationUpdate: new Date().toISOString()
-    };
-
-    console.log('💾 Updating PI with new allocation data...');
+    console.log('✅ Local state updated - modal stays open, status should update to COMPLETED');
+    showNotification('Stock allocated successfully', 'success');
     
-    // 🎯 CRITICAL: Update the parent component immediately
-    try {
-      await onUpdatePI(updatedPI);
-      console.log('✅ PI updated successfully with allocations');
-      showNotification('Stock allocated successfully', 'success');
-
-      // 🎯 FORCE UI REFRESH: Multiple strategies to ensure re-render
-      setTimeout(() => {
-        console.log('🔄 Forcing UI refresh...');
-        
-        // Strategy 1: Update receiving form state
-        setReceivingForm(prev => ({ 
-          ...prev, 
-          lastUpdate: Date.now(),
-          [`${selectedItem.id}_allocated`]: true 
-        }));
-
-        // Strategy 2: Force component re-render by updating a dummy state
-        // This will trigger the getItemStatus function to run again
-        console.log('🔄 UI refresh completed');
-      }, 50);
-
-    } catch (updateError) {
-      console.error('❌ Error updating PI:', updateError);
-      showNotification('Failed to save allocation data', 'error');
-    }
-
-    // 🎯 BACKUP: Also try to refresh from Firestore as secondary measure
-    try {
-      if (pi.id || pi.piNumber) {
-        const { getProformaInvoices } = await import('../../services/firebase');
-        const result = await getProformaInvoices();
-        
-        if (result.success) {
-          const refreshedPI = result.data.find(p => 
-            p.id === pi.id || p.piNumber === pi.piNumber
-          );
-          
-          if (refreshedPI) {
-            console.log('🔄 Secondary refresh from Firestore successful');
-            await onUpdatePI(refreshedPI);
-          }
-        }
-      }
-    } catch (refreshError) {
-      console.warn('⚠️ Secondary Firestore refresh failed:', refreshError);
-      // Don't throw - the primary update already succeeded
-    }
+    // 🎯 CRITICAL: Only call onUpdatePI if it's for final save, not intermediate updates
+    // This line should only be uncommented if you want to save to database immediately
+    // await onUpdatePI(updatedPI);
     
   } catch (error) {
-    console.error('❌ Critical error in allocation completion:', error);
-    showNotification('Allocation failed: ' + error.message, 'error');
+    console.error('❌ Error in allocation complete:', error);
+    showNotification('Failed to update allocation data', 'error');
   }
-};
+}, [selectedItem, pi, setFormData, setSelectedProducts, showNotification]);
 
   const resetItemAllocations = async (itemId) => {
   try {
