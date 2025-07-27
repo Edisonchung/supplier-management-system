@@ -261,83 +261,115 @@ useEffect(() => {
   const [supplierErrors, setSupplierErrors] = useState({});
 
   const handleAllocationComplete = useCallback(async (allocations) => {
-    try {
-      console.log('✅ ALLOCATION COMPLETE: Starting update process...');
-      console.log('📋 Allocations received:', allocations);
-      
-      if (!allocations || allocations.length === 0) {
-        console.error('❌ Missing allocation data');
-        showNotification('Allocation data is incomplete', 'error');
-        return;
-      }
-
-      // Calculate new totals
-      const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-      console.log('🔢 New total allocated:', newTotalAllocated);
-
-      // Get itemId from the first allocation (they should all be for the same item)
-      const itemId = allocations[0]?.itemId;
-      if (!itemId) {
-        console.error('❌ No itemId found in allocations');
-        showNotification('Allocation data missing item ID', 'error');
-        return;
-      }
-
-      // Update selectedProducts state
-      setSelectedProducts(prev => prev.map(item => {
-        if (item.id === itemId) {
-          const existingAllocations = item.allocations || [];
-          const allAllocations = [...existingAllocations, ...allocations];
-          const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-          const receivedQty = item.receivedQty || 0;
-          
-          console.log('📦 Updated item status:', {
-            itemId: item.id,
-            received: receivedQty,
-            allocated: totalAllocated,
-            newStatus: totalAllocated >= receivedQty ? 'COMPLETED' : 'PARTIAL ALLOCATION'
-          });
-          
-          return {
-            ...item,
-            allocations: allAllocations,
-            totalAllocated: totalAllocated,
-            unallocatedQty: receivedQty - totalAllocated,
-            lastAllocationUpdate: new Date().toISOString()
-          };
-        }
-        return item;
-      }));
-
-      // Also update formData.items to keep everything in sync
-      setFormData(prev => ({
-        ...prev,
-        items: prev.items.map(item => {
-          if (item.id === itemId) {
-            const existingAllocations = item.allocations || [];
-            const allAllocations = [...existingAllocations, ...allocations];
-            const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-            
-            return {
-              ...item,
-              allocations: allAllocations,
-              totalAllocated: totalAllocated,
-              unallocatedQty: (item.receivedQty || 0) - totalAllocated,
-              lastAllocationUpdate: new Date().toISOString()
-            };
-          }
-          return item;
-        })
-      }));
-
-      console.log('✅ Local state updated - status should update to COMPLETED');
-      showNotification('Stock allocated successfully', 'success');
-      
-    } catch (error) {
-      console.error('❌ Error in allocation complete:', error);
-      showNotification('Failed to update allocation data', 'error');
+  try {
+    console.log('✅ ALLOCATION COMPLETE: Starting enhanced update process...');
+    console.log('📋 Allocations received:', allocations);
+    
+    if (!allocations || allocations.length === 0) {
+      console.error('❌ Missing allocation data');
+      showNotification('Allocation data is incomplete', 'error');
+      return;
     }
-  }, [setSelectedProducts, setFormData, showNotification]);
+
+    // Calculate new totals
+    const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+    console.log('🔢 New total allocated:', newTotalAllocated);
+
+    // Get itemId from the first allocation (they should all be for the same item)
+    const itemId = allocations[0]?.itemId;
+    if (!itemId) {
+      console.error('❌ No itemId found in allocations');
+      showNotification('Allocation data missing item ID', 'error');
+      return;
+    }
+
+    // ✅ CRITICAL FIX: Get the current PI ID for Firestore updates
+    const currentPiId = formData.id || proformaInvoice?.id;
+    if (!currentPiId) {
+      console.error('❌ No PI ID found for Firestore update');
+      showNotification('Cannot save allocation - PI ID missing', 'error');
+      return;
+    }
+
+    console.log('💾 Updating PI in Firestore:', currentPiId);
+
+    // ✅ ENHANCEMENT: Replace allocations instead of appending (prevents duplicates)
+    const updateItemAllocations = (item) => {
+      if (item.id === itemId) {
+        const totalAllocated = newTotalAllocated; // Use the new allocations only
+        const receivedQty = item.receivedQty || 0;
+        
+        console.log('📦 Updated item status:', {
+          itemId: item.id,
+          productCode: item.productCode,
+          received: receivedQty,
+          allocated: totalAllocated,
+          newStatus: totalAllocated >= receivedQty ? 'COMPLETED' : 'PARTIAL ALLOCATION'
+        });
+        
+        return {
+          ...item,
+          allocations: allocations, // ✅ Use new allocations (not append)
+          totalAllocated: totalAllocated,
+          unallocatedQty: receivedQty - totalAllocated,
+          lastAllocationUpdate: new Date().toISOString()
+        };
+      }
+      return item;
+    };
+
+    // Update selectedProducts state
+    const updatedSelectedProducts = selectedProducts.map(updateItemAllocations);
+    setSelectedProducts(updatedSelectedProducts);
+
+    // Update formData.items to keep everything in sync
+    const updatedFormData = {
+      ...formData,
+      items: formData.items.map(updateItemAllocations),
+      updatedAt: new Date().toISOString()
+    };
+    setFormData(updatedFormData);
+
+    // ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY to persist allocation data
+    try {
+      // Import Firestore functions dynamically to avoid import issues
+      const { updateDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('../../services/firebase');
+      
+      console.log('💾 FIRESTORE: Updating PI with allocation data...');
+      
+      await updateDoc(doc(db, 'proformaInvoices', currentPiId), {
+        items: updatedFormData.items,
+        updatedAt: new Date().toISOString()
+      });
+      
+      console.log('✅ FIRESTORE: Allocation data saved successfully');
+      
+      // Show enhanced success message
+      const targetItem = updatedFormData.items.find(item => item.id === itemId);
+      showNotification(
+        `✅ Stock allocated! ${newTotalAllocated} units allocated for ${targetItem?.productName || targetItem?.productCode || 'item'}. Data saved to database.`,
+        'success'
+      );
+      
+    } catch (firestoreError) {
+      console.error('❌ FIRESTORE: Error saving allocation data:', firestoreError);
+      
+      // Still show success for local update, but warn about persistence
+      showNotification(
+        '⚠️ Stock allocated locally, but failed to save to database. Please refresh and try again if status reverts.',
+        'warning'
+      );
+    }
+
+    console.log('✅ Local state updated - status should persist after modal close');
+    
+  } catch (error) {
+    console.error('❌ Error in allocation complete:', error);
+    showNotification('Failed to update allocation data', 'error');
+  }
+}, [selectedProducts, formData, proformaInvoice?.id, setSelectedProducts, setFormData, showNotification]);
+
 
 
   // Filter suppliers based on search term
