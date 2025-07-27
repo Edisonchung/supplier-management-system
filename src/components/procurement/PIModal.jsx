@@ -2526,7 +2526,7 @@ const StockReceivingTab = ({
     showNotification('Failed to reset allocations', 'error');
   }
 };
-  const getItemStatus = (item) => {
+ const getItemStatus = useCallback((item) => {
   const received = item.receivedQty || 0;
   const ordered = item.quantity || 0;
   
@@ -2545,9 +2545,11 @@ const StockReceivingTab = ({
   else {
     allocated = 0;
   }
-
-  // 🔍 ENHANCED DEBUGGING: Show full item structure when allocation is 0
-  if (allocated === 0 && received > 0) {
+  
+  // 🔍 CONDITIONAL DEBUGGING: Only log when debug mode is enabled
+  const debugMode = localStorage.getItem('piDebugMode') === 'true'; // Enable/disable as needed
+  
+  if (debugMode && allocated === 0 && received > 0) {
     console.log(`🚨 ZERO ALLOCATION DEBUG for item ${item.id}:`, {
       fullItem: item,
       hasAllocations: !!item.allocations,
@@ -2557,35 +2559,37 @@ const StockReceivingTab = ({
       itemKeys: Object.keys(item)
     });
   }
-
-  console.log(`🔍 Status calculation for item ${item.id || item.productCode}:`, {
-    received,
-    ordered,
-    allocated,
-    totalAllocatedField: item.totalAllocated,
-    allocationsArray: item.allocations?.length || 0,
-    allocationsSum: item.allocations?.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0) || 0
-  });
-
+  
+  if (debugMode) {
+    console.log(`🔍 Status calculation for item ${item.id || item.productCode}:`, {
+      received,
+      ordered,
+      allocated,
+      totalAllocatedField: item.totalAllocated,
+      allocationsArray: item.allocations?.length || 0,
+      allocationsSum: item.allocations?.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0) || 0
+    });
+  }
+  
   // Status logic with enhanced debugging
   if (received === 0) {
-    console.log(`   → Status: PENDING (no items received)`);
+    if (debugMode) console.log(`   → Status: PENDING (no items received)`);
     return { status: 'pending', color: 'gray', icon: Clock };
   }
   
   if (received !== ordered) {
-    console.log(`   → Status: DISCREPANCY (received ${received} ≠ ordered ${ordered})`);
+    if (debugMode) console.log(`   → Status: DISCREPANCY (received ${received} ≠ ordered ${ordered})`);
     return { status: 'discrepancy', color: 'yellow', icon: AlertTriangle };
   }
   
   if (allocated < received) {
-    console.log(`   → Status: PARTIAL ALLOCATION (allocated ${allocated} < received ${received})`);
+    if (debugMode) console.log(`   → Status: PARTIAL ALLOCATION (allocated ${allocated} < received ${received})`);
     return { status: 'partial-allocation', color: 'orange', icon: Package };
   }
   
-  console.log(`   → Status: COMPLETE (allocated ${allocated} >= received ${received})`);
+  if (debugMode) console.log(`   → Status: COMPLETE (allocated ${allocated} >= received ${received})`);
   return { status: 'complete', color: 'green', icon: CheckCircle };
-};
+}, []); // ← CRITICAL: Empty dependency array prevents infinite re-renders
   
   return (
     <div className="space-y-6">
