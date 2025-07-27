@@ -2548,6 +2548,23 @@ const StockReceivingTab = ({
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [receivingForm, setReceivingForm] = useState({});
+    const [isFormInitialized, setIsFormInitialized] = useState(false);
+// ✅ Add this new useEffect to prevent reinitialization
+  useEffect(() => {
+    if (pi && pi.items && !isFormInitialized) {
+      const initialForm = {};
+      pi.items.forEach(item => {
+        initialForm[item.id] = {
+          receivedQty: item.receivedQty || 0,
+          receivingNotes: '',
+          hasDiscrepancy: false,
+          discrepancyReason: ''
+        };
+      });
+      setReceivingForm(initialForm);
+      setIsFormInitialized(true);
+    }
+  }, [pi, isFormInitialized]);
 
 useEffect(() => {
     console.log('🔍 RECEIVING FORM STATE CHANGED:', {
