@@ -2510,6 +2510,12 @@ const StockReceivingTab = ({
   showNotification,
   onAllocationComplete
 }) => {
+
+  // ✅ ADD THIS LINE to enable detailed debugging
+  useEffect(() => {
+    localStorage.setItem('piDebugMode', 'true');
+    return () => localStorage.removeItem('piDebugMode');
+  }, []);
   
 
   // Log the actual PI structure
@@ -2908,66 +2914,71 @@ const resetItemAllocations = async (itemId) => {
   const received = item.receivedQty || 0;
   const ordered = item.quantity || 0;
   
-  // 🎯 ENHANCED: Calculate totalAllocated from multiple sources
+  // ✅ ENHANCED: Multi-strategy allocation calculation with debugging
   let allocated = 0;
   
-  // Strategy 1: Use totalAllocated field if available
-  if (item.totalAllocated !== undefined && item.totalAllocated !== null) {
+  // Strategy 1: Use totalAllocated field (most reliable)
+  if (typeof item.totalAllocated === 'number' && item.totalAllocated >= 0) {
     allocated = item.totalAllocated;
+    console.log(`📊 Status calc for ${item.productCode}: Using totalAllocated = ${allocated}`);
   }
   // Strategy 2: Calculate from allocations array
-  else if (item.allocations && Array.isArray(item.allocations)) {
-    allocated = item.allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+  else if (item.allocations && Array.isArray(item.allocations) && item.allocations.length > 0) {
+    allocated = item.allocations.reduce((sum, alloc) => sum + (parseFloat(alloc.quantity) || 0), 0);
+    console.log(`📊 Status calc for ${item.productCode}: Calculated from allocations = ${allocated}`);
   }
-  // Strategy 3: Use 0 as fallback
+  // Strategy 3: Check for legacy allocation data
+  else if (item.allocation && typeof item.allocation === 'number') {
+    allocated = item.allocation;
+    console.log(`📊 Status calc for ${item.productCode}: Using legacy allocation = ${allocated}`);
+  }
+  // Strategy 4: Check if status was explicitly set
+  else if (item.status === 'complete' || item.status === 'COMPLETED') {
+    // If status is explicitly COMPLETED, assume fully allocated
+    allocated = received;
+    console.log(`📊 Status calc for ${item.productCode}: Status override, setting allocated = ${allocated}`);
+  }
   else {
     allocated = 0;
+    console.log(`📊 Status calc for ${item.productCode}: No allocation data found, using 0`);
   }
   
-  // 🔍 CONDITIONAL DEBUGGING: Only log when debug mode is enabled
-  const debugMode = localStorage.getItem('piDebugMode') === 'true'; // Enable/disable as needed
+  // ✅ ENHANCED: Status calculation with explicit debugging
+  console.log(`🔍 Status calculation for ${item.productCode}:`, {
+    received,
+    ordered, 
+    allocated,
+    totalAllocatedField: item.totalAllocated,
+    allocationsArray: item.allocations?.length || 0,
+    allocationsSum: item.allocations?.reduce((sum, alloc) => sum + (parseFloat(alloc.quantity) || 0), 0) || 0,
+    explicitStatus: item.status
+  });
   
-  if (debugMode && allocated === 0 && received > 0) {
-    console.log(`🚨 ZERO ALLOCATION DEBUG for item ${item.id}:`, {
-      fullItem: item,
-      hasAllocations: !!item.allocations,
-      allocationsArray: item.allocations,
-      totalAllocatedField: item.totalAllocated,
-      receivedQty: received,
-      itemKeys: Object.keys(item)
-    });
-  }
-  
-  if (debugMode) {
-    console.log(`🔍 Status calculation for item ${item.id || item.productCode}:`, {
-      received,
-      ordered,
-      allocated,
-      totalAllocatedField: item.totalAllocated,
-      allocationsArray: item.allocations?.length || 0,
-      allocationsSum: item.allocations?.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0) || 0
-    });
-  }
-  
-  // Status logic with enhanced debugging
+  // Status logic with clearer conditions
   if (received === 0) {
-    if (debugMode) console.log(`   → Status: PENDING (no items received)`);
+    console.log(`   → Status: PENDING (no items received)`);
     return { status: 'pending', color: 'gray', icon: Clock };
   }
   
   if (received !== ordered) {
-    if (debugMode) console.log(`   → Status: DISCREPANCY (received ${received} ≠ ordered ${ordered})`);
+    console.log(`   → Status: DISCREPANCY (received ${received} ≠ ordered ${ordered})`);
     return { status: 'discrepancy', color: 'yellow', icon: AlertTriangle };
   }
   
-  if (allocated < received) {
-    if (debugMode) console.log(`   → Status: PARTIAL ALLOCATION (allocated ${allocated} < received ${received})`);
+  // ✅ CRITICAL FIX: More precise allocation comparison
+  if (allocated >= received) {
+    console.log(`   → Status: COMPLETE (allocated ${allocated} >= received ${received})`);
+    return { status: 'complete', color: 'green', icon: CheckCircle };
+  }
+  
+  if (allocated > 0) {
+    console.log(`   → Status: PARTIAL ALLOCATION (allocated ${allocated} < received ${received})`);
     return { status: 'partial-allocation', color: 'orange', icon: Package };
   }
   
-  if (debugMode) console.log(`   → Status: COMPLETE (allocated ${allocated} >= received ${received})`);
-  return { status: 'complete', color: 'green', icon: CheckCircle };
-}, []); // ← CRITICAL: Empty dependency array prevents infinite re-renders
+  console.log(`   → Status: PARTIAL ALLOCATION (no allocations, but received ${received})`);
+  return { status: 'partial-allocation', color: 'orange', icon: Package };
+}, []); // Empty dependency array prevents infinite re-renders
   
   return (
     <div className="space-y-6">
