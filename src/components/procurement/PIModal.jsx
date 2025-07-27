@@ -2548,6 +2548,9 @@ const StockReceivingTab = ({
   const [selectedItem, setSelectedItem] = useState(null);
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [receivingForm, setReceivingForm] = useState({});
+
+    const [skipFormInit, setSkipFormInit] = useState(false);
+
  
 
 useEffect(() => {
@@ -2564,7 +2567,9 @@ useEffect(() => {
   
   // Initialize receiving form data
   useEffect(() => {
-    if (pi && pi.items) {
+        if (pi && pi.items && !skipFormInit) {  // 🆕 ADD && !skipFormInit
+
+    //if (pi && pi.items) {
       const formData = {};
       pi.items.forEach(item => {
         formData[item.id] = {
@@ -2576,7 +2581,8 @@ useEffect(() => {
       });
       setReceivingForm(formData);
     }
-  }, [pi]);
+  }, [pi, skipFormInit]);
+  //}, [pi]);
 
   useEffect(() => {
     if (pi?.items) {
@@ -2615,7 +2621,10 @@ useEffect(() => {
     setReceivingForm(updatedForm);
     
     // ✅ NEW: Bulk save all the set values to database
-    //await bulkSaveReceivingData(updatedForm);
+    await bulkSaveReceivingData(updatedForm);
+
+    // 🆕 ADD THESE LINES:
+    setTimeout(() => setSkipFormInit(false), 100);
     
     showNotification('All items set as fully received and saved', 'success');
   }
@@ -2623,6 +2632,8 @@ useEffect(() => {
   
 const handleClearAllReceived = async () => {
   if (pi && pi.items) {
+        setSkipFormInit(true);  // 🆕 ADD THIS LINE
+
     const updatedForm = {};
     pi.items.forEach(item => {
       updatedForm[item.id] = {
@@ -2641,6 +2652,8 @@ const handleClearAllReceived = async () => {
     
     // ✅ NEW: Bulk save all the cleared values to database
     await bulkSaveReceivingData(updatedForm);
+     // 🆕 ADD THESE LINES:
+    setTimeout(() => setSkipFormInit(false), 100);
     
     showNotification('All received quantities cleared and saved', 'success');
   }
