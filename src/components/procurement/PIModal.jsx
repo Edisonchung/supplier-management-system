@@ -195,6 +195,84 @@ useEffect(() => {
   storedAt: ''
 });
 
+  const handleAllocationComplete = useCallback(async (allocations) => {
+    try {
+      console.log('✅ ALLOCATION COMPLETE: Starting update process...');
+      console.log('📋 Allocations received:', allocations);
+      
+      if (!allocations || allocations.length === 0) {
+        console.error('❌ Missing allocation data');
+        showNotification('Allocation data is incomplete', 'error');
+        return;
+      }
+
+      // Calculate new totals
+      const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+      console.log('🔢 New total allocated:', newTotalAllocated);
+
+      // Get itemId from the first allocation (they should all be for the same item)
+      const itemId = allocations[0]?.itemId;
+      if (!itemId) {
+        console.error('❌ No itemId found in allocations');
+        showNotification('Allocation data missing item ID', 'error');
+        return;
+      }
+
+      // Update selectedProducts state
+      setSelectedProducts(prev => prev.map(item => {
+        if (item.id === itemId) {
+          const existingAllocations = item.allocations || [];
+          const allAllocations = [...existingAllocations, ...allocations];
+          const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+          const receivedQty = item.receivedQty || 0;
+          
+          console.log('📦 Updated item status:', {
+            itemId: item.id,
+            received: receivedQty,
+            allocated: totalAllocated,
+            newStatus: totalAllocated >= receivedQty ? 'COMPLETED' : 'PARTIAL ALLOCATION'
+          });
+          
+          return {
+            ...item,
+            allocations: allAllocations,
+            totalAllocated: totalAllocated,
+            unallocatedQty: receivedQty - totalAllocated,
+            lastAllocationUpdate: new Date().toISOString()
+          };
+        }
+        return item;
+      }));
+
+      // Also update formData.items to keep everything in sync
+      setFormData(prev => ({
+        ...prev,
+        items: prev.items.map(item => {
+          if (item.id === itemId) {
+            const existingAllocations = item.allocations || [];
+            const allAllocations = [...existingAllocations, ...allocations];
+            const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+            
+            return {
+              ...item,
+              allocations: allAllocations,
+              totalAllocated: totalAllocated,
+              unallocatedQty: (item.receivedQty || 0) - totalAllocated,
+              lastAllocationUpdate: new Date().toISOString()
+            };
+          }
+          return item;
+        })
+      }));
+
+      console.log('✅ Local state updated - status should update to COMPLETED');
+      showNotification('Stock allocated successfully', 'success');
+      
+    } catch (error) {
+      console.error('❌ Error in allocation complete:', error);
+      showNotification('Failed to update allocation data', 'error');
+    }
+  }, [setSelectedProducts, setFormData, showNotification]);
 
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
@@ -2034,6 +2112,7 @@ const handleSubmit = useCallback((e) => {
   onReceivingDataUpdate={handleReceivingDataUpdate} 
   suppliers={suppliers}
   showNotification={showNotification}
+  onAllocationComplete={handleAllocationComplete}
 />
           ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
@@ -2392,71 +2471,6 @@ const StockReceivingTab = ({
 };
 
 
-  const handleAllocationComplete = useCallback(async (allocations) => {
-  try {
-    console.log('✅ ALLOCATION COMPLETE: Starting update process...');
-    console.log('📋 Allocations received:', allocations);
-    console.log('🎯 Selected item:', selectedItem);
-    console.log('📄 Current PI:', pi);
-    
-    if (!selectedItem || !allocations || allocations.length === 0) {
-      console.error('❌ Missing required data for allocation update');
-      showNotification('Allocation data is incomplete', 'error');
-      // Close modal on error
-      setShowAllocationModal(false);
-      setSelectedItem(null);
-      return;
-    }
-    
-    // Calculate the total allocated from new allocations
-    const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-    console.log('🔢 New total allocated:', newTotalAllocated);
-    
-    // 🎯 FIXED: Only update selectedProducts (which exists)
-    setSelectedProducts(prev => prev.map(item => {
-      if (item.id === selectedItem.id) {
-        const existingAllocations = item.allocations || [];
-        const allAllocations = [...existingAllocations, ...allocations];
-        const totalAllocated = allAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-        const receivedQty = item.receivedQty || 0;
-        
-        console.log('📦 Updated item status:', {
-          itemId: item.id,
-          received: receivedQty,
-          allocated: totalAllocated,
-          newStatus: totalAllocated >= receivedQty ? 'COMPLETED' : 'PARTIAL ALLOCATION'
-        });
-        
-        return {
-          ...item,
-          allocations: allAllocations,
-          totalAllocated: totalAllocated,
-          unallocatedQty: receivedQty - totalAllocated,
-          lastAllocationUpdate: new Date().toISOString()
-        };
-      }
-      return item;
-    }));
-    
-    console.log('✅ Local state updated - status should update to COMPLETED');
-    showNotification('Stock allocated successfully', 'success');
-    
-    // 🎯 Give UI time to update, then close modal
-    setTimeout(() => {
-      console.log('⏰ Auto-closing allocation modal after showing status update');
-      setShowAllocationModal(false);
-      setSelectedItem(null);
-    }, 2000);
-    
-  } catch (error) {
-    console.error('❌ Error in allocation complete:', error);
-    showNotification('Failed to update allocation data', 'error');
-    
-    // Close modal on error
-    setShowAllocationModal(false);
-    setSelectedItem(null);
-  }
-}, [selectedItem, pi, setSelectedProducts, showNotification]);
 
   const resetItemAllocations = async (itemId) => {
   try {
