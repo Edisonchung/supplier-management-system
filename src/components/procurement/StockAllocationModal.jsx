@@ -18,6 +18,7 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 const StockAllocationModal = ({ 
   isOpen, 
   onClose, 
+  pi,
   piId, 
   itemData, 
   onAllocationComplete 
