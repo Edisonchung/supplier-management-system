@@ -797,6 +797,20 @@ const handleSubmit = useCallback((e) => {
   onSave(piDataToSave);
 }, [formData, selectedProducts, selectedSupplier, onSave, validateForm]);
 
+  const handleReceivingDataUpdate = useCallback((updatedPI) => {
+  // Update local state only - DO NOT close modal
+  setFormData(prev => ({
+    ...prev,
+    ...updatedPI,
+    items: updatedPI.items
+  }));
+  
+  // Update selected products to reflect receiving changes  
+  setSelectedProducts(updatedPI.items);
+  
+  console.log('🔄 Local PI state updated - modal stays open');
+}, []);
+
   const handleAddPayment = () => {
     setShowPaymentModal(true);
   };
@@ -2017,6 +2031,7 @@ const handleSubmit = useCallback((e) => {
       showNotification('Failed to update PI', 'error');
     }
   }}
+  onReceivingDataUpdate={handleReceivingDataUpdate} 
   suppliers={suppliers}
   showNotification={showNotification}
 />
@@ -2253,7 +2268,8 @@ const handleSubmit = useCallback((e) => {
 // Stock Receiving Tab Component with Stock Allocation
 const StockReceivingTab = ({ 
   pi, 
-  onUpdatePI, 
+  onUpdatePI,
+  onReceivingDataUpdate,
   suppliers, 
   showNotification 
 }) => {
@@ -2326,8 +2342,9 @@ const StockReceivingTab = ({
         items: updatedItems,
         updatedAt: new Date().toISOString()
       };
-
-      await onUpdatePI(updatedPI);
+      
+      // ✅ FIX: Use local update instead of onUpdatePI
+      onReceivingDataUpdate(updatedPI);
       showNotification('Receiving data saved successfully', 'success');
     } catch (error) {
       console.error('Error saving receiving data:', error);
