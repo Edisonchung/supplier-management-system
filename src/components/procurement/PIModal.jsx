@@ -3216,11 +3216,15 @@ const reverseProductStockLevels = async ({
     <input
       type="number"
       min="0"
-      value={itemForm.receivedQty !== undefined ? itemForm.receivedQty : item.quantity}
-      onChange={(e) => handleReceivingUpdate(item.id, 'receivedQty', parseInt(e.target.value) || 0)}
-      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-      placeholder={`Default: ${item.quantity}`}
-    />
+      value={itemForm.receivedQty !== undefined ? itemForm.receivedQty : ''}  // ✅ Handle undefined properly
+  onChange={(e) => {
+    const value = e.target.value;
+    const numValue = value === '' ? 0 : Math.max(0, parseInt(value, 10) || 0);
+    handleReceivingUpdate(item.id, 'receivedQty', numValue);
+  }}
+  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+  placeholder="0"
+/>
     {/* ✅ Quick action button to reset to default */}
     {itemForm.receivedQty !== item.quantity && (
       <button
