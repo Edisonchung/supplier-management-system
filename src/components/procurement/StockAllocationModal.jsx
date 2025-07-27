@@ -34,9 +34,9 @@ const StockAllocationModal = ({
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [error, setError] = useState('');
-  const [pi, setPi] = useState(null);
-  const [piLoading, setPiLoading] = useState(true);
-  const [piError, setPiError] = useState(null);
+  //const [pi, setPi] = useState(null);
+  //const [piLoading, setPiLoading] = useState(true);
+  //const [piError, setPiError] = useState(null);
 
   // ✅ STEP 3: DERIVED VALUES (CALCULATED FROM STATE)
   const totalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
