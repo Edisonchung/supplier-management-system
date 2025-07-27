@@ -346,12 +346,25 @@ useEffect(() => {
         const totalAllocated = newTotalAllocated;
         const receivedQty = item.receivedQty || 0;
         
+        // ✅ ENHANCED STATUS CALCULATION
+        let status = 'PENDING';
+        if (receivedQty > 0) {
+          if (totalAllocated >= receivedQty) {
+            status = 'COMPLETED';  // ✅ Fully allocated
+          } else if (totalAllocated > 0) {
+            status = 'PARTIAL ALLOCATION';  // ✅ Partially allocated
+          } else {
+            status = 'PARTIAL ALLOCATION';  // ✅ Received but not allocated
+          }
+        }
+        
         console.log('📦 Updated item status:', {
           itemId: item.id,
           productCode: item.productCode,
           received: receivedQty,
           allocated: totalAllocated,
-          newStatus: totalAllocated >= receivedQty ? 'COMPLETED' : 'PARTIAL ALLOCATION'
+          newStatus: status,
+          allocationsCount: allocations.length
         });
         
         return {
@@ -359,6 +372,7 @@ useEffect(() => {
           allocations: allocations, // ✅ Use new allocations
           totalAllocated: totalAllocated,
           unallocatedQty: receivedQty - totalAllocated,
+          status: status, // ✅ Add explicit status field
           lastAllocationUpdate: new Date().toISOString()
         };
       }
@@ -369,9 +383,11 @@ useEffect(() => {
     const updatedSelectedProducts = selectedProducts.map(updateItemAllocations);
     const updatedFormDataItems = formData.items.map(updateItemAllocations);
     
-    // Update both states at the same time
+    // ✅ CRITICAL: Update both states in the correct order
+    console.log('🔄 Updating selectedProducts with allocation data...');
     setSelectedProducts(updatedSelectedProducts);
     
+    console.log('🔄 Updating formData.items with allocation data...');
     const updatedFormData = {
       ...formData,
       items: updatedFormDataItems, // ✅ CRITICAL: Sync formData.items with allocations
@@ -379,7 +395,7 @@ useEffect(() => {
     };
     setFormData(updatedFormData);
 
-    // ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY
+    // ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY with allocation data
     try {
       const { updateDoc, doc } = await import('firebase/firestore');
       const { db } = await import('../../services/firebase');
@@ -392,11 +408,12 @@ useEffect(() => {
       });
       
       console.log('✅ FIRESTORE: Allocation data saved successfully');
+      console.log('✅ Local state updated - status should persist after modal close');
       
-      // Show enhanced success message
+      // Enhanced success message
       const targetItem = updatedFormDataItems.find(item => item.id === itemId);
       showNotification(
-        `✅ Stock allocated! ${newTotalAllocated} units allocated for ${targetItem?.productName || targetItem?.productCode || 'item'}. Data saved to database.`,
+        `✅ Stock allocated! ${newTotalAllocated} units allocated for ${targetItem?.productName || targetItem?.productCode || 'item'}. Status: ${targetItem?.status || 'Updated'}.`,
         'success'
       );
       
@@ -407,8 +424,6 @@ useEffect(() => {
         'warning'
       );
     }
-
-    console.log('✅ Local state updated - status should persist after modal close');
     
   } catch (error) {
     console.error('❌ Error in allocation complete:', error);
@@ -724,6 +739,37 @@ useEffect(() => {
     }
   }
 }, [selectedProducts]); // Only trigger when selectedProducts changes
+
+  // ✅ NEW: Enhanced allocation persistence useEffect
+useEffect(() => {
+  if (selectedProducts && selectedProducts.length > 0) {
+    const hasAllocations = selectedProducts.some(item => 
+      item.allocations && item.allocations.length > 0
+    );
+    
+    if (hasAllocations) {
+      const currentItemsJson = JSON.stringify(formData.items || []);
+      const selectedProductsJson = JSON.stringify(selectedProducts);
+      
+      if (currentItemsJson !== selectedProductsJson) {
+        console.log('🔄 ENHANCED: Synchronizing allocation data between arrays');
+        console.log('📊 Items with allocations:', selectedProducts.filter(item => 
+          item.allocations && item.allocations.length > 0
+        ).map(item => ({
+          id: item.id,
+          productCode: item.productCode,
+          allocations: item.allocations?.length || 0,
+          totalAllocated: item.totalAllocated || 0
+        })));
+        
+        setFormData(prev => ({
+          ...prev,
+          items: selectedProducts  // Ensure allocation data persists
+        }));
+      }
+    }
+  }
+}, [selectedProducts]); // Monitor selectedProducts for allocation changes
   
   const generatePINumber = () => {
     const date = new Date();
