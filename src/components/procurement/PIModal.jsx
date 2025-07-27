@@ -3243,11 +3243,23 @@ const reverseProductStockLevels = async ({
                   <p className="text-sm text-gray-600">{item.productCode}</p>
                 </div>
                 <div className="flex items-center">
-                  <StatusIcon className={`h-5 w-5 text-${itemStatus.color}-500 mr-2`} />
-                  <span className={`text-sm font-medium text-${itemStatus.color}-700 capitalize`}>
-                    {itemStatus.status.replace('-', ' ')}
-                  </span>
-                </div>
+  <StatusIcon className={`h-5 w-5 mr-2 ${
+    itemStatus.color === 'gray' ? 'text-gray-500' :
+    itemStatus.color === 'yellow' ? 'text-yellow-500' :
+    itemStatus.color === 'orange' ? 'text-orange-500' :
+    itemStatus.color === 'green' ? 'text-green-500' :
+    'text-gray-500'
+  }`} />
+  <span className={`text-sm font-medium capitalize ${
+    itemStatus.color === 'gray' ? 'text-gray-700' :
+    itemStatus.color === 'yellow' ? 'text-yellow-700' :
+    itemStatus.color === 'orange' ? 'text-orange-700' :
+    itemStatus.color === 'green' ? 'text-green-700' :
+    'text-gray-700'
+  }`}>
+    {itemStatus.status.replace('-', ' ')}
+  </span>
+</div>
               </div>
 
               {/* Quantity Grid */}
