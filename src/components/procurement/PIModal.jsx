@@ -2564,6 +2564,13 @@ useEffect(() => {
     });
   }, [receivingForm]);
 
+  useEffect(() => {
+    if (Object.keys(receivingForm).length === 0 && pi?.items?.length > 0) {
+      console.log('🚨 FORM WAS CLEARED! Stack trace:');
+      console.trace();
+    }
+  }, [receivingForm]);
+
   
   // Initialize receiving form data
   useEffect(() => {
