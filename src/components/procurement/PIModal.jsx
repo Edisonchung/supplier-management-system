@@ -2114,7 +2114,7 @@ const handleSubmit = useCallback((e) => {
   onReceivingDataUpdate={handleReceivingDataUpdate} 
   suppliers={suppliers}
   showNotification={showNotification}
-  onAllocationComplete={handleAllocationComplete}
+  onAllocationComplete={onAllocationComplete}
 />
           ) : activeTab === 'documents' ? (
             // Documents Tab - NEW ADDITION
@@ -2775,7 +2775,7 @@ const StockReceivingTab = ({
           piId={pi.id || pi.piNumber || 'temp-pi-id'}
 
           itemData={selectedItem}
-          onAllocationComplete={handleAllocationComplete}
+          onAllocationComplete={onAllocationComplete}
         />
       )}
     </div>
