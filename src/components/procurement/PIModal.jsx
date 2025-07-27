@@ -2352,7 +2352,8 @@ const StockReceivingTab = ({
   onUpdatePI,
   onReceivingDataUpdate,
   suppliers, 
-  showNotification 
+  showNotification,
+  onAllocationComplete
 }) => {
   
 
