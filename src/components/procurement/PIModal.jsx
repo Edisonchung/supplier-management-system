@@ -2591,7 +2591,7 @@ const StockReceivingTab = ({
     }));
   };
 
-  const handleSetAllAsReceived = () => {
+  const handleSetAllAsReceived = async () => {
   if (pi && pi.items) {
     const updatedForm = {};
     pi.items.forEach(item => {
@@ -2601,11 +2601,15 @@ const StockReceivingTab = ({
       };
     });
     setReceivingForm(updatedForm);
-    showNotification('All items set as fully received', 'success');
+    
+    // ✅ NEW: Bulk save all the set values to database
+    await bulkSaveReceivingData(updatedForm);
+    
+    showNotification('All items set as fully received and saved', 'success');
   }
 };
-
-const handleClearAllReceived = () => {
+  
+const handleClearAllReceived = async () => {
   if (pi && pi.items) {
     const updatedForm = {};
     pi.items.forEach(item => {
@@ -2615,10 +2619,61 @@ const handleClearAllReceived = () => {
       };
     });
     setReceivingForm(updatedForm);
-    showNotification('All received quantities cleared', 'info');
+    
+    // ✅ NEW: Bulk save all the cleared values to database
+    await bulkSaveReceivingData(updatedForm);
+    
+    showNotification('All received quantities cleared and saved', 'success');
   }
 };
 
+// ✅ ADD this new function right after handleClearAllReceived:
+const bulkSaveReceivingData = async (formData = null) => {
+  try {
+    const dataToSave = formData || receivingForm;
+    
+    // Update all PI items with the new receiving data
+    const updatedItems = pi.items.map(item => {
+      const receivingData = dataToSave[item.id];
+      if (receivingData) {
+        const receivedQty = receivingData.receivedQty || 0;
+        const orderedQty = item.quantity;
+        const difference = receivedQty - orderedQty;
+        
+        return {
+          ...item,
+          receivedQty: receivedQty,
+          receivingNotes: receivingData.receivingNotes || '',
+          hasDiscrepancy: receivingData.hasDiscrepancy || difference !== 0,
+          discrepancyReason: difference !== 0 ? `Quantity difference: ${difference > 0 ? '+' : ''}${difference}` : receivingData.discrepancyReason || ''
+        };
+      }
+      return item;
+    });
+
+    const updatedPI = {
+      ...pi,
+      items: updatedItems,
+      lastModified: new Date().toISOString(),
+      modifiedBy: 'current-user' // You might want to use actual user ID
+    };
+
+    // ✅ CRITICAL: Use onReceivingDataUpdate to keep modal open
+    if (onReceivingDataUpdate) {
+      onReceivingDataUpdate(updatedPI);
+    } else {
+      console.warn('onReceivingDataUpdate not available, using onUpdatePI');
+      await onUpdatePI(updatedPI);
+    }
+
+    console.log('🔄 Bulk receiving data saved - modal stays open');
+    
+  } catch (error) {
+    console.error('❌ Error in bulk save:', error);
+    showNotification('Error saving receiving data', 'error');
+    throw error;
+  }
+};
   const saveReceivingData = async (itemId) => {
   try {
     const receivingData = receivingForm[itemId];
