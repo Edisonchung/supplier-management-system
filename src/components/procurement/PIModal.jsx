@@ -2568,7 +2568,8 @@ useEffect(() => {
   // Initialize receiving form data
   useEffect(() => {
        // if (pi && pi.items && !skipFormInit) {  // 🆕 ADD && !skipFormInit
-    if (pi && pi.items && Object.keys(receivingForm).length === 0) { 
+      if (pi && pi.items && Object.keys(receivingForm).length === 0 && !skipFormInit) {
+
     //if (pi && pi.items) {
       const formData = {};
       pi.items.forEach(item => {
@@ -2581,7 +2582,7 @@ useEffect(() => {
       });
       setReceivingForm(formData);
     }
-  }, [pi?.id]);
+  }, [pi?.id, skipFormInit]);
   //}, [pi, skipFormInit]);
   //}, [pi]);
 
