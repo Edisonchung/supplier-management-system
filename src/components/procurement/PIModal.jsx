@@ -2657,6 +2657,8 @@ const handleClearAllReceived = async () => {
     
     showNotification('All received quantities cleared and saved', 'success');
   }
+    setTimeout(() => setSkipFormInit(false), 100);  // ✅ RE-ENABLE
+
 };
 
 // ✅ ADD this new function right after handleClearAllReceived:
