@@ -2773,6 +2773,7 @@ const StockReceivingTab = ({
              {/* Action Buttons */}
 <div className="flex justify-between items-center">
   <button
+    type="button"
     onClick={() => saveReceivingData(item.id)}
     className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center"
   >
