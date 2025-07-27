@@ -2506,7 +2506,8 @@ const resetItemAllocations = async (itemId) => {
 
     // ✅ STEP 2: Get allocation details BEFORE reset for stock reversal
     const allocationsToReverse = targetItem.allocations || [];
-    const totalAllocatedToReverse = targetItem.totalAllocated || 0;
+    const totalAllocatedToReverse = targetItem.totalAllocated || 
+      allocationsToReverse.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
     
     console.log('🧹 Clearing allocations for SPECIFIC item:', {
       itemId: targetItem.id,
@@ -2577,9 +2578,36 @@ const resetItemAllocations = async (itemId) => {
       otherItemsUnchanged: updatedItems.filter(item => item.id !== itemId).length
     });
 
-    // ✅ STEP 6: Use local update to prevent modal closure
+    // ✅ STEP 6: CRITICAL - Save to FIRESTORE first, then update local state
+    try {
+      // Update Firestore PI document
+      await updateDoc(doc(db, 'proformaInvoices', pi.id), {
+        items: updatedItems,
+        updatedAt: new Date().toISOString()
+      });
+      console.log('✅ Firestore PI updated with reset allocations');
+
+      // Also delete allocation records from Firestore
+      const allocationsRef = collection(db, 'stockAllocations');
+      const allocationsQuery = query(
+        allocationsRef, 
+        where('piId', '==', pi.id),
+        where('itemId', '==', itemId)
+      );
+      const allocationsSnapshot = await getDocs(allocationsQuery);
+      
+      for (const allocationDoc of allocationsSnapshot.docs) {
+        await deleteDoc(allocationDoc.ref);
+        console.log('🗑️ Deleted allocation record:', allocationDoc.id);
+      }
+
+    } catch (firestoreError) {
+      console.error('❌ Error updating Firestore:', firestoreError);
+      showNotification('Reset saved locally but may need to refresh to sync with database', 'warning');
+    }
+
+    // ✅ STEP 7: Update local state (use local update to prevent modal closure)
     if (onReceivingDataUpdate) {
-      // Use the local update function to prevent modal from closing
       onReceivingDataUpdate(updatedPI);
       console.log('✅ Local state updated - modal stays open');
     } else {
@@ -2587,14 +2615,14 @@ const resetItemAllocations = async (itemId) => {
       await onUpdatePI(updatedPI);
     }
     
-    // ✅ STEP 7: Enhanced success message with stock reversal info
+    // ✅ STEP 8: Enhanced success message with stock reversal info
     showNotification(
       `Allocations reset for ${targetItem.productName} (${targetItem.productCode}). ` +
       `${totalAllocatedToReverse} units reversed from stock and are now available for reallocation.`,
       'success'
     );
     
-    // ✅ STEP 8: Force UI refresh for the specific item only
+    // ✅ STEP 9: Force UI refresh for the specific item only
     setTimeout(() => {
       setReceivingForm(prev => ({ 
         ...prev, 
@@ -2924,16 +2952,21 @@ const resetItemAllocations = async (itemId) => {
 
   <div className="flex items-center gap-2">
     {/* Enhanced Reset Button with Item-Specific Confirmation and Stock Reversal Info */}
-{(itemForm.receivedQty || item.receivedQty || 0) > 0 && item.totalAllocated > 0 && (
+  {(itemForm.receivedQty || item.receivedQty || 0) > 0 && 
+ (item.allocations && item.allocations.length > 0) && (
   <button
     onClick={() => {
-      // ✅ Enhanced confirmation with specific item details and stock impact
+      // Enhanced confirmation with specific item details and stock impact
+      const allocationsCount = item.allocations ? item.allocations.length : 0;
+      const totalAllocated = item.totalAllocated || 
+        (item.allocations ? item.allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0) : 0);
+      
       const confirmMessage = 
         `Reset all allocations for ${item.productName} (${item.productCode})?\n\n` +
         `This will:\n` +
-        `• Clear ${item.totalAllocated || 0} allocated units from this item\n` +
+        `• Clear ${allocationsCount} allocation(s) totaling ${totalAllocated} units\n` +
         `• Reverse stock levels in the Products database\n` +
-        `• Make ${item.totalAllocated || 0} units available for reallocation\n` +
+        `• Make ${totalAllocated} units available for reallocation\n` +
         `• Keep all other items unchanged\n\n` +
         `This cannot be undone.`;
         
@@ -2949,7 +2982,6 @@ const resetItemAllocations = async (itemId) => {
     Reset {item.productCode}
   </button>
 )}
-
     {/* Allocate Stock Button */}
     {(itemForm.receivedQty || item.receivedQty || 0) > 0 && (
       <button
