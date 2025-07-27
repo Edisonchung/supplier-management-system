@@ -275,7 +275,7 @@ useEffect(() => {
     const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
     console.log('🔢 New total allocated:', newTotalAllocated);
 
-    // Get itemId from the first allocation (they should all be for the same item)
+    // Get itemId from the first allocation
     const itemId = allocations[0]?.itemId;
     if (!itemId) {
       console.error('❌ No itemId found in allocations');
@@ -293,10 +293,10 @@ useEffect(() => {
 
     console.log('💾 Updating PI in Firestore:', currentPiId);
 
-    // ✅ ENHANCEMENT: Replace allocations instead of appending (prevents duplicates)
+    // ✅ ENHANCEMENT: Create update function for consistent item updates
     const updateItemAllocations = (item) => {
       if (item.id === itemId) {
-        const totalAllocated = newTotalAllocated; // Use the new allocations only
+        const totalAllocated = newTotalAllocated;
         const receivedQty = item.receivedQty || 0;
         
         console.log('📦 Updated item status:', {
@@ -309,7 +309,7 @@ useEffect(() => {
         
         return {
           ...item,
-          allocations: allocations, // ✅ Use new allocations (not append)
+          allocations: allocations, // ✅ Use new allocations
           totalAllocated: totalAllocated,
           unallocatedQty: receivedQty - totalAllocated,
           lastAllocationUpdate: new Date().toISOString()
@@ -318,35 +318,36 @@ useEffect(() => {
       return item;
     };
 
-    // Update selectedProducts state
+    // ✅ CRITICAL: Update BOTH selectedProducts AND formData.items simultaneously
     const updatedSelectedProducts = selectedProducts.map(updateItemAllocations);
+    const updatedFormDataItems = formData.items.map(updateItemAllocations);
+    
+    // Update both states at the same time
     setSelectedProducts(updatedSelectedProducts);
-
-    // Update formData.items to keep everything in sync
+    
     const updatedFormData = {
       ...formData,
-      items: formData.items.map(updateItemAllocations),
+      items: updatedFormDataItems, // ✅ CRITICAL: Sync formData.items with allocations
       updatedAt: new Date().toISOString()
     };
     setFormData(updatedFormData);
 
-    // ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY to persist allocation data
+    // ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY
     try {
-      // Import Firestore functions dynamically to avoid import issues
       const { updateDoc, doc } = await import('firebase/firestore');
       const { db } = await import('../../services/firebase');
       
       console.log('💾 FIRESTORE: Updating PI with allocation data...');
       
       await updateDoc(doc(db, 'proformaInvoices', currentPiId), {
-        items: updatedFormData.items,
+        items: updatedFormDataItems,  // ✅ Use the items with allocations
         updatedAt: new Date().toISOString()
       });
       
       console.log('✅ FIRESTORE: Allocation data saved successfully');
       
       // Show enhanced success message
-      const targetItem = updatedFormData.items.find(item => item.id === itemId);
+      const targetItem = updatedFormDataItems.find(item => item.id === itemId);
       showNotification(
         `✅ Stock allocated! ${newTotalAllocated} units allocated for ${targetItem?.productName || targetItem?.productCode || 'item'}. Data saved to database.`,
         'success'
@@ -354,8 +355,6 @@ useEffect(() => {
       
     } catch (firestoreError) {
       console.error('❌ FIRESTORE: Error saving allocation data:', firestoreError);
-      
-      // Still show success for local update, but warn about persistence
       showNotification(
         '⚠️ Stock allocated locally, but failed to save to database. Please refresh and try again if status reverts.',
         'warning'
@@ -369,6 +368,7 @@ useEffect(() => {
     showNotification('Failed to update allocation data', 'error');
   }
 }, [selectedProducts, formData, proformaInvoice?.id, setSelectedProducts, setFormData, showNotification]);
+
 
 
 
@@ -650,6 +650,25 @@ useEffect(() => {
     lookupFirestoreId();
   }
 }, [proformaInvoice?.piNumber, proformaInvoice?.id]);
+
+  // ✅ CRITICAL: Synchronize formData.items with selectedProducts to prevent allocation data loss
+useEffect(() => {
+  // Only sync if selectedProducts has data and is different from formData.items
+  if (selectedProducts && selectedProducts.length > 0) {
+    const currentItemsJson = JSON.stringify(formData.items || []);
+    const selectedProductsJson = JSON.stringify(selectedProducts);
+    
+    // Only update if they're actually different (prevents infinite loops)
+    if (currentItemsJson !== selectedProductsJson) {
+      console.log('🔄 Synchronizing formData.items with selectedProducts (allocation data sync)');
+      
+      setFormData(prev => ({
+        ...prev,
+        items: selectedProducts  // Keep formData.items synchronized with allocations
+      }));
+    }
+  }
+}, [selectedProducts]); // Only trigger when selectedProducts changes
   
   const generatePINumber = () => {
     const date = new Date();
