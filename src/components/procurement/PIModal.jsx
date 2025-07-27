@@ -2312,45 +2312,49 @@ const StockReceivingTab = ({
   };
 
   const saveReceivingData = async (itemId) => {
-    try {
-      const receivingData = receivingForm[itemId];
-      
-      // Update the PI item
-      const updatedItems = pi.items.map(item => {
-        if (item.id === itemId) {
-          const receivedQty = receivingData.receivedQty;
-          const orderedQty = item.quantity;
-          const difference = receivedQty - orderedQty;
-          
-          return {
-            ...item,
-            receivedQty: receivedQty,
-            receivingNotes: receivingData.receivingNotes,
-            hasDiscrepancy: receivingData.hasDiscrepancy || difference !== 0,
-            discrepancyReason: difference !== 0 ? `Quantity difference: ${difference > 0 ? '+' : ''}${difference}` : receivingData.discrepancyReason,
-            difference: difference,
-            receivedDate: new Date().toISOString().split('T')[0],
-            unallocatedQty: receivedQty - (item.totalAllocated || 0)
-          };
-        }
-        return item;
-      });
+  try {
+    const receivingData = receivingForm[itemId];
+    
+    // Update the PI item
+    const updatedItems = pi.items.map(item => {
+      if (item.id === itemId) {
+        const receivedQty = receivingData.receivedQty;
+        const orderedQty = item.quantity;
+        const difference = receivedQty - orderedQty;
+        
+        return {
+          ...item,
+          receivedQty: receivedQty,
+          receivingNotes: receivingData.receivingNotes,
+          hasDiscrepancy: receivingData.hasDiscrepancy || difference !== 0,
+          discrepancyReason: difference !== 0 ? `Quantity difference: ${difference > 0 ? '+' : ''}${difference}` : receivingData.discrepancyReason,
+          difference: difference,
+          receivedDate: new Date().toISOString().split('T')[0],
+          unallocatedQty: receivedQty - (item.totalAllocated || 0)
+        };
+      }
+      return item;
+    });
 
-      // Update the PI
-      const updatedPI = {
-        ...pi,
-        items: updatedItems,
-        updatedAt: new Date().toISOString()
-      };
-      
-      // ✅ FIX: Use local update instead of onUpdatePI
-      onReceivingDataUpdate(updatedPI);
-      showNotification('Receiving data saved successfully', 'success');
-    } catch (error) {
-      console.error('Error saving receiving data:', error);
-      showNotification('Failed to save receiving data', 'error');
-    }
-  };
+    // Update the PI
+    const updatedPI = {
+      ...pi,
+      items: updatedItems,
+      updatedAt: new Date().toISOString()
+    };
+    
+    // ✅ ONLY USE LOCAL UPDATE - NO MODAL CLOSE
+    onReceivingDataUpdate(updatedPI);
+    showNotification('Receiving data saved successfully', 'success');
+    
+    // ❌ REMOVE THIS LINE IF IT EXISTS:
+    // await onUpdatePI(updatedPI);  // DELETE THIS LINE
+    
+  } catch (error) {
+    console.error('Error saving receiving data:', error);
+    showNotification('Failed to save receiving data', 'error');
+  }
+};
 
   const openAllocationModal = (item, event) => {
   if (event) {
