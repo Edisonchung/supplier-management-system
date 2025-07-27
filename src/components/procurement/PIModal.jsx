@@ -346,24 +346,11 @@ useEffect(() => {
         const totalAllocated = newTotalAllocated;
         const receivedQty = item.receivedQty || 0;
         
-        // ✅ ENHANCED STATUS CALCULATION
-        let status = 'PENDING';
-        if (receivedQty > 0) {
-          if (totalAllocated >= receivedQty) {
-            status = 'COMPLETED';  // ✅ Fully allocated
-          } else if (totalAllocated > 0) {
-            status = 'PARTIAL ALLOCATION';  // ✅ Partially allocated
-          } else {
-            status = 'PARTIAL ALLOCATION';  // ✅ Received but not allocated
-          }
-        }
-        
-        console.log('📦 Updated item status:', {
+        console.log('📦 Updating item with allocation data:', {
           itemId: item.id,
           productCode: item.productCode,
           received: receivedQty,
           allocated: totalAllocated,
-          newStatus: status,
           allocationsCount: allocations.length
         });
         
@@ -372,8 +359,14 @@ useEffect(() => {
           allocations: allocations, // ✅ Use new allocations
           totalAllocated: totalAllocated,
           unallocatedQty: receivedQty - totalAllocated,
-          status: status, // ✅ Add explicit status field
-          lastAllocationUpdate: new Date().toISOString()
+          lastAllocationUpdate: new Date().toISOString(),
+          // ✅ CRITICAL: Add debugging fields
+          hasAllocationData: true,
+          allocationDebug: {
+            savedAt: new Date().toISOString(),
+            totalAllocated,
+            allocationsCount: allocations.length
+          }
         };
       }
       return item;
@@ -381,9 +374,8 @@ useEffect(() => {
 
     // ✅ CRITICAL: Update BOTH selectedProducts AND formData.items simultaneously
     const updatedSelectedProducts = selectedProducts.map(updateItemAllocations);
-    const updatedFormDataItems = formData.items.map(updateItemAllocations);
+    const updatedFormDataItems = formData.items ? formData.items.map(updateItemAllocations) : updatedSelectedProducts;
     
-    // ✅ CRITICAL: Update both states in the correct order
     console.log('🔄 Updating selectedProducts with allocation data...');
     setSelectedProducts(updatedSelectedProducts);
     
@@ -394,6 +386,16 @@ useEffect(() => {
       updatedAt: new Date().toISOString()
     };
     setFormData(updatedFormData);
+
+    // ✅ CRITICAL: Log what we're about to save to Firestore
+    const itemToSave = updatedFormDataItems.find(item => item.id === itemId);
+    console.log('💾 Item that will be saved to Firestore:', {
+      id: itemToSave.id,
+      productCode: itemToSave.productCode,
+      totalAllocated: itemToSave.totalAllocated,
+      allocations: itemToSave.allocations,
+      hasAllocationData: itemToSave.hasAllocationData
+    });
 
     // ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY with allocation data
     try {
@@ -413,7 +415,7 @@ useEffect(() => {
       // Enhanced success message
       const targetItem = updatedFormDataItems.find(item => item.id === itemId);
       showNotification(
-        `✅ Stock allocated! ${newTotalAllocated} units allocated for ${targetItem?.productName || targetItem?.productCode || 'item'}. Status: ${targetItem?.status || 'Updated'}.`,
+        `✅ Stock allocated! ${newTotalAllocated} units allocated for ${targetItem?.productName || targetItem?.productCode || 'item'}. Data saved to database.`,
         'success'
       );
       
@@ -541,30 +543,51 @@ useEffect(() => {
    
       
       // Handle items/products array separately to ensure proper structure
-      const items = proformaInvoice.items || proformaInvoice.products || [];
-      console.log('Processing items:', items);
+    const items = proformaInvoice.items || proformaInvoice.products || [];
+    console.log('🔍 LOADING ITEMS FROM FIRESTORE:', items.map(item => ({
+      id: item.id,
+      productCode: item.productCode,
+      totalAllocated: item.totalAllocated,
+      allocations: item.allocations?.length || 0,
+      hasAllocationData: item.hasAllocationData,
+      allKeys: Object.keys(item)
+    })));
 
+    let itemsWithIds = items.map((item, index) => ({
+      id: item.id || `item-${Date.now()}-${index}`,
+      productCode: item.productCode || item.partNumber || '',
+      productName: item.productName || item.description || '',
+      quantity: parseInt(item.quantity) || 1,
+      unitPrice: parseFloat(item.unitPrice) || 0,
+      totalPrice: parseFloat(item.totalPrice) || (parseInt(item.quantity || 1) * parseFloat(item.unitPrice || 0)),
+      leadTime: item.leadTime || '',
+      warranty: item.warranty || '',
+      notes: item.notes || '',
+      // Receiving tracking fields
+      received: item.received || false,
+      receivedQty: item.receivedQty || 0,
+      receivedDate: item.receivedDate || '',
+      hasDiscrepancy: item.hasDiscrepancy || false,
+      discrepancyReason: item.discrepancyReason || '',
+      receivingNotes: item.receivingNotes || '',
+      isReceived: item.isReceived || false,
       
-     let itemsWithIds = items.map((item, index) => ({
-  id: item.id || `item-${Date.now()}-${index}`,
-  productCode: item.productCode || item.partNumber || '',
-  productName: item.productName || item.description || '',
-  quantity: parseInt(item.quantity) || 1,
-  unitPrice: parseFloat(item.unitPrice) || 0,
-  totalPrice: parseFloat(item.totalPrice) || (parseInt(item.quantity || 1) * parseFloat(item.unitPrice || 0)),
-  leadTime: item.leadTime || '',
-  warranty: item.warranty || '',
-  notes: item.notes || '',
-        // Receiving tracking fields
-        received: item.received || false,
-        receivedQty: item.receivedQty || 0,
-        receivedDate: item.receivedDate || '',
-        hasDiscrepancy: item.hasDiscrepancy || false,
-        discrepancyReason: item.discrepancyReason || '',
-        receivingNotes: item.receivingNotes || '',
-        isReceived: item.isReceived || false
-      }));
+      // ✅ CRITICAL: Preserve allocation data from Firestore
+      allocations: item.allocations || [],
+      totalAllocated: item.totalAllocated || 0,
+      unallocatedQty: item.unallocatedQty || 0,
+      lastAllocationUpdate: item.lastAllocationUpdate || '',
+      hasAllocationData: item.hasAllocationData || false,
+      allocationDebug: item.allocationDebug || null
+    }));
 
+    console.log('🔍 ITEMS AFTER PROCESSING:', itemsWithIds.map(item => ({
+      id: item.id,
+      productCode: item.productCode,
+      totalAllocated: item.totalAllocated,
+      allocations: item.allocations?.length || 0,
+      hasAllocationData: item.hasAllocationData
+    })));
      // ✅ Auto-fix price calculations with enhanced function
       itemsWithIds = fixPIItemPrices(itemsWithIds);
       
