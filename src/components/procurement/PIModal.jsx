@@ -2850,14 +2850,23 @@ const resetItemAllocations = async (itemId) => {
       id: productDoc.id,
       name: product.name,
       sku: product.sku,
-      currentStock: product.currentStock || 0
+      currentStock: product.currentStock || 0,
+      allocatedStock: product.allocatedStock || 0
     });
 
-    // Calculate stock reversal amounts by allocation type
+    // ✅ ENHANCED: Calculate stock reversal amounts by allocation type
     let warehouseReversals = 0;
     let reservedReversals = 0;
 
+    console.log('🔍 Analyzing allocations for reversal:', allocations);
+    
     allocations.forEach(allocation => {
+      console.log('📊 Processing allocation:', {
+        type: allocation.allocationType,
+        quantity: allocation.quantity,
+        target: allocation.targetName
+      });
+      
       if (allocation.allocationType === 'warehouse') {
         warehouseReversals += allocation.quantity;
       } else if (allocation.allocationType === 'po' || allocation.allocationType === 'project') {
@@ -2865,34 +2874,49 @@ const resetItemAllocations = async (itemId) => {
       }
     });
 
-    // Calculate new stock levels (reverse the allocation)
+    // ✅ CRITICAL FIX: Correct stock reversal logic
     const currentTotalStock = product.currentStock || 0;
     const currentAllocatedStock = product.allocatedStock || 0;
     
-    const newTotalStock = Math.max(0, currentTotalStock - warehouseReversals); // Remove from total stock
-    const newAllocatedStock = Math.max(0, currentAllocatedStock - reservedReversals); // Remove from allocated
+    // ✅ CORRECT LOGIC: 
+    // - Warehouse allocations INCREASED currentStock, so we DECREASE on reset
+    // - Reserved allocations INCREASED allocatedStock, so we DECREASE on reset
+    const newTotalStock = Math.max(0, currentTotalStock - warehouseReversals);
+    const newAllocatedStock = Math.max(0, currentAllocatedStock - reservedReversals);
     const newAvailableStock = newTotalStock - newAllocatedStock;
 
-    console.log('📊 Stock reversal calculation for specific item:', {
+    console.log('📊 CORRECTED Stock reversal calculation:', {
       productCode,
-      before: {
-        totalStock: currentTotalStock,
-        allocatedStock: currentAllocatedStock,
-        availableStock: currentTotalStock - currentAllocatedStock
+      allocationsAnalysis: {
+        warehouseAllocations: warehouseReversals,
+        reservedAllocations: reservedReversals,
+        totalToReverse: warehouseReversals + reservedReversals
       },
-      reversals: {
-        warehouseReversals,
-        reservedReversals,
-        totalReversed: warehouseReversals + reservedReversals
-      },
-      after: {
-        totalStock: newTotalStock,
-        allocatedStock: newAllocatedStock,
-        availableStock: newAvailableStock
+      stockChanges: {
+        currentStock: `${currentTotalStock} → ${newTotalStock} (${warehouseReversals > 0 ? '-' : ''}${warehouseReversals})`,
+        allocatedStock: `${currentAllocatedStock} → ${newAllocatedStock} (${reservedReversals > 0 ? '-' : ''}${reservedReversals})`,
+        availableStock: `${currentTotalStock - currentAllocatedStock} → ${newAvailableStock}`
       }
     });
 
+    // ✅ CRITICAL: Validate the reversal makes sense
+    if (warehouseReversals > currentTotalStock) {
+      console.warn('⚠️ Warning: Trying to reverse more warehouse stock than available:', {
+        trying_to_reverse: warehouseReversals,
+        current_stock: currentTotalStock
+      });
+    }
+    
+    if (reservedReversals > currentAllocatedStock) {
+      console.warn('⚠️ Warning: Trying to reverse more reserved stock than allocated:', {
+        trying_to_reverse: reservedReversals,
+        current_allocated: currentAllocatedStock
+      });
+    }
+
     // Update product stock levels
+    console.log('💾 Updating product stock levels in Firestore...');
+    
     await updateDoc(productDoc.ref, {
       currentStock: newTotalStock,
       allocatedStock: newAllocatedStock,
@@ -2909,12 +2933,21 @@ const resetItemAllocations = async (itemId) => {
         reversedAllocations: allocations,
         stockChanges: {
           warehouseReversed: -warehouseReversals,
-          reservedReversed: -reservedReversals
+          reservedReversed: -reservedReversals,
+          totalStockBefore: currentTotalStock,
+          totalStockAfter: newTotalStock,
+          allocatedStockBefore: currentAllocatedStock,
+          allocatedStockAfter: newAllocatedStock
         }
       })
     });
 
     console.log('✅ Product stock levels reversed successfully for:', productCode);
+    console.log('📊 Final stock levels:', {
+      currentStock: newTotalStock,
+      allocatedStock: newAllocatedStock,
+      availableStock: newAvailableStock
+    });
     
     return {
       success: true,
