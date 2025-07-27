@@ -3234,6 +3234,9 @@ const reverseProductStockLevels = async ({
           const itemStatus = getItemStatus(item, itemForm);
           const StatusIcon = itemStatus.icon;
 
+            console.log('🎨 Rendering status badge:', item.productCode, itemStatus);
+
+          
           return (
             <div key={item.id} className="border border-gray-200 rounded-lg p-6 bg-white">
               {/* Item Header */}
