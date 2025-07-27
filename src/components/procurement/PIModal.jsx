@@ -2826,7 +2826,9 @@ try {
   }
 };
 
-  const reverseProductStockLevels = async ({ 
+  // ✅ CRITICAL FIX: Fixed the Firestore import path in reverseProductStockLevels function
+
+const reverseProductStockLevels = async ({ 
   productCode, 
   quantity, 
   allocations, 
@@ -2842,13 +2844,12 @@ try {
       reason
     });
 
-    // Find the product in Firestore
-    // ✅ FIXED: Import all needed Firestore functions
-const { collection, query, where, getDocs, updateDoc, arrayUnion } = await import('firebase/firestore');
-const { db } = await import('../../services/firebase');
+    // ✅ CRITICAL FIX: Import from config/firebase, not services/firebase
+    const { collection, query, where, getDocs, updateDoc, arrayUnion } = await import('firebase/firestore');
+    const { db } = await import('../../config/firebase'); // ✅ FIXED: Changed from services to config
 
-// Find the product in Firestore
-const productsRef = collection(db, 'products');
+    // Find the product in Firestore
+    const productsRef = collection(db, 'products');
     const productQuery = query(productsRef, where('sku', '==', productCode));
     const productSnapshot = await getDocs(productQuery);
     
@@ -2928,54 +2929,76 @@ const productsRef = collection(db, 'products');
       });
     }
 
-    // Update product stock levels
+    // ✅ CRITICAL: Update product stock levels with enhanced error handling
     console.log('💾 Updating product stock levels in Firestore...');
     
-    await updateDoc(productDoc.ref, {
-      currentStock: newTotalStock,
-      allocatedStock: newAllocatedStock,
-      availableStock: newAvailableStock,
-      lastStockUpdate: new Date().toISOString(),
-      stockHistory: arrayUnion({
-        action: 'ALLOCATION_REVERSAL',
-        quantity: -quantity, // Negative for reversal
-        piId: piId,
-        itemId: itemId,
-        productCode: productCode,
-        reason: reason,
-        timestamp: new Date().toISOString(),
-        reversedAllocations: allocations,
-        stockChanges: {
-          warehouseReversed: -warehouseReversals,
-          reservedReversed: -reservedReversals,
-          totalStockBefore: currentTotalStock,
-          totalStockAfter: newTotalStock,
-          allocatedStockBefore: currentAllocatedStock,
-          allocatedStockAfter: newAllocatedStock
-        }
-      })
-    });
+    try {
+      await updateDoc(productDoc.ref, {
+        currentStock: newTotalStock,
+        allocatedStock: newAllocatedStock,
+        availableStock: newAvailableStock,
+        lastStockUpdate: new Date().toISOString(),
+        stockHistory: arrayUnion({
+          action: 'ALLOCATION_REVERSAL',
+          quantity: -quantity, // Negative for reversal
+          piId: piId,
+          itemId: itemId,
+          productCode: productCode,
+          reason: reason,
+          timestamp: new Date().toISOString(),
+          reversedAllocations: allocations,
+          stockChanges: {
+            warehouseReversed: -warehouseReversals,
+            reservedReversed: -reservedReversals,
+            totalStockBefore: currentTotalStock,
+            totalStockAfter: newTotalStock,
+            allocatedStockBefore: currentAllocatedStock,
+            allocatedStockAfter: newAllocatedStock
+          }
+        })
+      });
 
-    console.log('✅ Product stock levels reversed successfully for:', productCode);
-    console.log('📊 Final stock levels:', {
-      currentStock: newTotalStock,
-      allocatedStock: newAllocatedStock,
-      availableStock: newAvailableStock
-    });
+      console.log('✅ Product stock levels reversed successfully for:', productCode);
+      console.log('📊 Final stock levels:', {
+        currentStock: newTotalStock,
+        allocatedStock: newAllocatedStock,
+        availableStock: newAvailableStock
+      });
+      
+    } catch (updateError) {
+      console.error('❌ CRITICAL: Firestore update failed:', updateError);
+      console.error('Update details:', {
+        productId: productDoc.id,
+        productCode,
+        newTotalStock,
+        newAllocatedStock,
+        newAvailableStock,
+        error: updateError.message
+      });
+      throw new Error(`Failed to update product stock in Firestore: ${updateError.message}`);
+    }
     
     return {
       success: true,
       productCode,
-      reversedQuantity: quantity,
-      newStockLevels: {
-        totalStock: newTotalStock,
-        allocatedStock: newAllocatedStock,
-        availableStock: newAvailableStock
+      reversalDetails: {
+        warehouseReversed: warehouseReversals,
+        reservedReversed: reservedReversals,
+        finalStock: newTotalStock,
+        finalAllocated: newAllocatedStock,
+        finalAvailable: newAvailableStock
       }
     };
 
   } catch (error) {
-    console.error('❌ Error reversing stock allocation for specific product:', error);
+    console.error('❌ Error in reverseProductStockLevels:', error);
+    console.error('Error details:', {
+      productCode,
+      quantity,
+      allocationsCount: allocations?.length,
+      errorMessage: error.message,
+      errorStack: error.stack
+    });
     throw error;
   }
 };
