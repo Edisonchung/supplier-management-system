@@ -2549,7 +2549,18 @@ const StockReceivingTab = ({
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [receivingForm, setReceivingForm] = useState({});
 
+useEffect(() => {
+    console.log('🔍 RECEIVING FORM STATE CHANGED:', {
+      totalItems: Object.keys(receivingForm).length,
+      sampleItem: Object.keys(receivingForm)[0] ? {
+        id: Object.keys(receivingForm)[0],
+        data: receivingForm[Object.keys(receivingForm)[0]]
+      } : 'No items',
+      allItems: receivingForm // Full form state for debugging
+    });
+  }, [receivingForm]);
 
+  
   // Initialize receiving form data
   useEffect(() => {
     if (pi && pi.items) {
@@ -2618,7 +2629,14 @@ const handleClearAllReceived = async () => {
         receivedQty: 0 // Clear all received quantities
       };
     });
+
+    // Add this debug log:
+    console.log('🔍 BULK CLEAR - Updated form:', updatedForm);
+    
     setReceivingForm(updatedForm);
+
+    // Add this debug log after state update:
+    console.log('🔍 BULK CLEAR - Form state set, calling bulk save...');
     
     // ✅ NEW: Bulk save all the cleared values to database
     await bulkSaveReceivingData(updatedForm);
@@ -3232,6 +3250,14 @@ const reverseProductStockLevels = async ({
         {pi.items && pi.items.map(item => {
           const itemForm = receivingForm[item.id] || {};
           const itemStatus = getItemStatus(item, itemForm);
+      // Add this debug log:
+console.log(`🔍 FORM STATE DEBUG for ${item.productCode}:`, {
+  itemFormReceivedQty: itemForm.receivedQty,
+  itemSavedReceivedQty: item.receivedQty,
+  itemFormExists: !!itemForm,
+  formStateKeys: Object.keys(itemForm),
+  statusResult: itemStatus.status
+});
           const StatusIcon = itemStatus.icon;
 
             console.log('🎨 Rendering status badge:', item.productCode, itemStatus);
