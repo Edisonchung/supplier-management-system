@@ -200,6 +200,16 @@ const StockAllocationModal = ({
     setError('');
     
     try {
+
+      // 🔧 FIX: Add itemId to each allocation before processing
+    const allocationsWithItemId = allocations.map(alloc => ({
+      ...alloc,
+      itemId: itemData.id,  // ← ADD THIS LINE
+      piId: effectivePiId   // ← ADD THIS LINE TOO FOR SAFETY
+    }));
+    
+    console.log('🔍 Allocations with itemId added:', allocationsWithItemId);
+      
       // Enhanced validation logging
       const invalidAllocations = allocations.filter(alloc => 
         !alloc.allocationTarget || alloc.quantity <= 0
@@ -220,11 +230,15 @@ const StockAllocationModal = ({
       }
 
       console.log('💾 Calling StockAllocationService.allocateStock...');
-      const result = await StockAllocationService.allocateStock(effectivePiId, itemData.id, allocations);
+      const result = await StockAllocationService.allocateStock(
+      effectivePiId, 
+      itemData.id, 
+      allocationsWithItemId  // ← USE THE FIXED ALLOCATIONS
+    );
       console.log('✅ Allocation successful:', result);
       
       console.log('🎯 Calling onAllocationComplete...');
-      onAllocationComplete(allocations);
+      onAllocationComplete(allocationsWithItemId); 
       
       // Success - close modal
       console.log('✅ ALLOCATION COMPLETE - Closing modal');
