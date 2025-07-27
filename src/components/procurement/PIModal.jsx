@@ -2942,6 +2942,7 @@ const reverseProductStockLevels = async ({
     console.log('💾 Updating product stock levels in Firestore...');
     
     const updateData = {
+      stock: newTotalStock, 
       currentStock: newTotalStock,
       allocatedStock: newAllocatedStock,
       availableStock: newAvailableStock,
