@@ -2640,7 +2640,7 @@ const handleClearAllReceived = async () => {
     console.log('🔍 BULK CLEAR - Form state set, calling bulk save...');
     
     // ✅ NEW: Bulk save all the cleared values to database
-    //await bulkSaveReceivingData(updatedForm);
+    await bulkSaveReceivingData(updatedForm);
     
     showNotification('All received quantities cleared and saved', 'success');
   }
