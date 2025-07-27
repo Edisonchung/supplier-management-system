@@ -1044,6 +1044,8 @@ const handleSubmit = useCallback((e) => {
     storedAt: formData.storedAt
   };
 
+
+  
   // ✅ ADD THIS DEBUG LOG:
   console.log('🎯 PIModal: Saving PI with document storage fields:', {
     documentId: piDataToSave.documentId,
@@ -2551,7 +2553,29 @@ const StockReceivingTab = ({
 
     const [skipFormInit, setSkipFormInit] = useState(false);
 
- 
+ useEffect(() => {
+    const originalSetReceivingForm = setReceivingForm;
+    
+    // Override setReceivingForm to catch who's clearing it
+    const wrappedSetReceivingForm = (newValue) => {
+      if (typeof newValue === 'function') {
+        const result = newValue(receivingForm);
+        if (Object.keys(result).length === 0 && Object.keys(receivingForm).length > 0) {
+          console.log('🚨 SOMEONE IS CLEARING THE FORM!');
+          console.trace();
+        }
+        return originalSetReceivingForm(result);
+      } else {
+        if (Object.keys(newValue).length === 0 && Object.keys(receivingForm).length > 0) {
+          console.log('🚨 SOMEONE IS CLEARING THE FORM!');
+          console.trace();
+        }
+        return originalSetReceivingForm(newValue);
+      }
+    };
+    
+    // This is just for debugging - remove after finding the issue
+  }, [receivingForm]);
 
 useEffect(() => {
     console.log('🔍 RECEIVING FORM STATE CHANGED:', {
