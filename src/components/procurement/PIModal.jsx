@@ -2526,6 +2526,128 @@ const StockReceivingTab = ({
     showNotification('Failed to reset allocations', 'error');
   }
 };
+
+  const onAllocationComplete = useCallback((allocations) => {
+    console.log('✅ ALLOCATION COMPLETE: Starting update process...');
+    console.log('📋 Allocations received:', allocations);
+    
+    // 🔧 FIX: Add defensive checks to prevent crashes
+    if (!allocations || !Array.isArray(allocations) || allocations.length === 0) {
+      console.error('❌ No allocations provided to onAllocationComplete');
+      setShowAllocationModal(false);
+      setSelectedItem(null);
+      return;
+    }
+    
+    if (!selectedItem || !selectedItem.id) {
+      console.error('❌ No selected item available for allocation update');
+      setShowAllocationModal(false);
+      setSelectedItem(null);
+      return;
+    }
+
+    try {
+      const totalNewAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+      console.log('🔢 New total allocated:', totalNewAllocated);
+
+      // 🔧 FIX: Safe formData update with proper validation
+      setFormData(prevFormData => {
+        // Check if formData exists and has items
+        if (!prevFormData || !prevFormData.items || !Array.isArray(prevFormData.items)) {
+          console.error('❌ FormData is invalid during allocation update');
+          return prevFormData; // Return unchanged if invalid
+        }
+
+        const updatedItems = prevFormData.items.map(item => {
+          if (item.id === selectedItem.id) {
+            const currentReceived = item.receivedQty || 0;
+            const previousAllocated = item.totalAllocated || 0;
+            const newTotalAllocated = previousAllocated + totalNewAllocated;
+            
+            // Determine new status
+            let newStatus = 'PENDING';
+            if (currentReceived > 0 && newTotalAllocated > 0) {
+              newStatus = newTotalAllocated >= currentReceived ? 'COMPLETED' : 'PARTIAL ALLOCATION';
+            }
+            
+            console.log('📦 Updated item status:', {
+              itemId: item.id,
+              received: currentReceived,
+              allocated: newTotalAllocated,
+              newStatus
+            });
+
+            return {
+              ...item,
+              allocations: [...(item.allocations || []), ...allocations],
+              totalAllocated: newTotalAllocated,
+              unallocatedQty: Math.max(0, currentReceived - newTotalAllocated),
+              status: newStatus,
+              lastAllocated: new Date().toISOString()
+            };
+          }
+          return item;
+        });
+
+        return {
+          ...prevFormData,
+          items: updatedItems,
+          updatedAt: new Date().toISOString()
+        };
+      });
+
+      // 🔧 FIX: Safe selectedProducts update
+      setSelectedProducts(prevProducts => {
+        if (!prevProducts || !Array.isArray(prevProducts)) {
+          console.error('❌ SelectedProducts is invalid during allocation update');
+          return prevProducts || []; // Return empty array if undefined
+        }
+
+        return prevProducts.map(product => {
+          if (product.id === selectedItem.id) {
+            const currentReceived = product.receivedQty || 0;
+            const previousAllocated = product.totalAllocated || 0;
+            const newTotalAllocated = previousAllocated + totalNewAllocated;
+            
+            return {
+              ...product,
+              allocations: [...(product.allocations || []), ...allocations],
+              totalAllocated: newTotalAllocated,
+              unallocatedQty: Math.max(0, currentReceived - newTotalAllocated),
+              status: newTotalAllocated >= currentReceived ? 'COMPLETED' : 'PARTIAL ALLOCATION',
+              lastAllocated: new Date().toISOString()
+            };
+          }
+          return product;
+        });
+      });
+
+      console.log('✅ Local state updated - status should update to COMPLETED');
+      
+      // Show success notification
+      if (showNotification) {
+        showNotification('Stock allocated successfully!', 'success');
+      }
+      
+      // Close the allocation modal
+      setShowAllocationModal(false);
+      setSelectedItem(null);
+      console.log('✅ ALLOCATION COMPLETE - Closing modal');
+      
+    } catch (error) {
+      console.error('❌ Error in onAllocationComplete:', error);
+      
+      // Don't crash the app - just show error and close modal
+      if (showNotification) {
+        showNotification('Allocation completed but UI update failed - please refresh', 'warning');
+      }
+      
+      setShowAllocationModal(false);
+      setSelectedItem(null);
+    }
+  }, [selectedItem, showNotification]);
+
+  
 const onAllocationComplete = useCallback((allocations) => {
     console.log('✅ ALLOCATION COMPLETE: Starting update process...');
     console.log('📋 Allocations received:', allocations);
