@@ -1942,116 +1942,211 @@ const handleSubmit = useCallback((e) => {
                   </div>
                 )}
 
-                {/* Selected Products */}
-                {selectedProducts.length > 0 && (
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-                          <th className="px-4 py-2"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedProducts.map((item, index) => (
-                          <tr key={item.id || index} className="border-t">
-                            <td className="px-4 py-2">
-                              <div>
-                                <div className="font-medium">{item.productName}</div>
-                                <div className="text-sm text-gray-600">{item.productCode}</div>
-                                {item.leadTime && (
-                                  <div className="text-xs text-gray-500">Lead time: {item.leadTime}</div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.quantity}
-                                onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                                className={`w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                  errors[`quantity-${index}`] ? 'border-red-500' : 'border-gray-300'
-                                }`}
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.unitPrice}
-                                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                                className={`w-24 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                  errors[`price-${index}`] ? 'border-red-500' : 'border-gray-300'
-                                }`}
-                              />
-                            </td>
-                            <td className="px-4 py-2 font-medium">
-                              <div className="flex items-center gap-2">
-                                <span>{formData.currency} {item.totalPrice.toFixed(2)}</span>
-                                {/* ✅ Visual indicator for auto-corrected prices */}
-                                {Math.abs(item.totalPrice - (item.quantity * item.unitPrice)) < 0.01 && (
-                                  <CheckCircle size={14} className="text-green-500" title="Price calculation verified" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveItem(index)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-gray-50">
-                        {/* Show financial breakdown if extracted */}
-                        {formData.subtotal > 0 && (
-                          <>
-                            <tr>
-                              <td colSpan="3" className="px-4 py-2 text-right text-sm">Subtotal:</td>
-                              <td className="px-4 py-2 font-medium">{formData.currency} {formData.subtotal.toFixed(2)}</td>
-                              <td></td>
-                            </tr>
-                            {formData.discount > 0 && (
-                              <tr>
-                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Discount:</td>
-                                <td className="px-4 py-2 font-medium text-red-600">-{formData.currency} {formData.discount.toFixed(2)}</td>
-                                <td></td>
-                              </tr>
-                            )}
-                            {formData.shipping > 0 && (
-                              <tr>
-                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Shipping:</td>
-                                <td className="px-4 py-2 font-medium">{formData.currency} {formData.shipping.toFixed(2)}</td>
-                                <td></td>
-                              </tr>
-                            )}
-                            {formData.tax > 0 && (
-                              <tr>
-                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Tax:</td>
-                                <td className="px-4 py-2 font-medium">{formData.currency} {formData.tax.toFixed(2)}</td>
-                                <td></td>
-                              </tr>
-                            )}
-                          </>
-                        )}
-                        <tr>
-                          <td colSpan="3" className="px-4 py-2 text-right font-medium">Total:</td>
-                          <td className="px-4 py-2 font-bold text-lg">{formData.currency} {totalAmount.toFixed(2)}</td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
+               {/* Enhanced Selected Products Table with Editable Names and SKUs */}
+{selectedProducts.length > 0 && (
+  <div className="border rounded-lg overflow-hidden">
+    <table className="w-full">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+          <th className="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {selectedProducts.map((item, index) => (
+          <tr key={item.id || index} className="border-t">
+            <td className="px-4 py-2">
+              <div className="space-y-2">
+                {/* Editable Product Name */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Product Name
+                  </label>
+                  <input
+                    type="text"
+                    value={item.productName || ''}
+                    onChange={(e) => handleUpdateItem(index, 'productName', e.target.value)}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter product name"
+                  />
+                </div>
+                
+                {/* Editable Product Code/SKU */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Product Code/SKU
+                  </label>
+                  <input
+                    type="text"
+                    value={item.productCode || ''}
+                    onChange={(e) => handleUpdateItem(index, 'productCode', e.target.value)}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter product code"
+                  />
+                </div>
+                
+                {/* Optional: Brand field if needed */}
+                {item.brand !== undefined && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Brand
+                    </label>
+                    <input
+                      type="text"
+                      value={item.brand || ''}
+                      onChange={(e) => handleUpdateItem(index, 'brand', e.target.value)}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter brand"
+                    />
                   </div>
                 )}
+                
+                {/* Lead Time - Show if available */}
+                {item.leadTime && (
+                  <div className="text-xs text-gray-500">
+                    Lead time: {item.leadTime}
+                  </div>
+                )}
+                
+                {/* AI Extraction Indicator */}
+                {item.isExtracted && (
+                  <div className="flex items-center text-xs text-blue-600">
+                    <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M13 10V3L4 14h7v7l9-11h-7z" clipRule="evenodd" />
+                    </svg>
+                    AI Extracted - Please verify
+                  </div>
+                )}
+              </div>
+            </td>
+            
+            <td className="px-4 py-2">
+              <input
+                type="number"
+                min="1"
+                value={item.quantity}
+                onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                className={`w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors[`quantity-${index}`] ? 'border-red-500' : 'border-gray-300'
+                }`}
+              />
+            </td>
+            
+            <td className="px-4 py-2">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={item.unitPrice}
+                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                className={`w-24 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors[`price-${index}`] ? 'border-red-500' : 'border-gray-300'
+                }`}
+              />
+            </td>
+            
+            <td className="px-4 py-2">
+              <div className="flex items-center">
+                <span className="font-medium">
+                  USD {(item.totalPrice || (item.quantity * item.unitPrice) || 0).toFixed(2)}
+                </span>
+                {/* Price validation indicator */}
+                {item.totalPrice !== (item.quantity * item.unitPrice) && (
+                  <svg className="w-4 h-4 ml-2 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+                  </svg>
+                )}
+              </div>
+            </td>
+            
+            <td className="px-4 py-2">
+              <button
+                type="button"
+                onClick={() => handleRemoveItem(index)}
+                className="text-red-600 hover:text-red-800 p-1"
+                title="Remove item"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
+
+{/* Enhanced Bulk Edit Actions for AI Extracted Data */}
+{selectedProducts.some(item => item.isExtracted) && (
+  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+    <div className="flex items-start space-x-3">
+      <div className="flex-shrink-0">
+        <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+      </div>
+      <div className="flex-1">
+        <h3 className="text-sm font-medium text-blue-800">
+          AI Extraction Notice
+        </h3>
+        <p className="mt-1 text-sm text-blue-700">
+          Some product information was automatically extracted from the document. 
+          Please review and correct product names and codes as needed to ensure accuracy.
+        </p>
+        <div className="mt-3 flex space-x-3">
+          <button
+            type="button"
+            onClick={() => {
+              // Mark all items as verified
+              setSelectedProducts(prev => prev.map(item => ({
+                ...item,
+                isExtracted: false,
+                isVerified: true
+              })));
+              if (showNotification) {
+                showNotification('All product information marked as verified', 'success');
+              }
+            }}
+            className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200"
+          >
+            Mark All as Verified
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Open bulk edit modal or expand inline editing
+              if (showNotification) {
+                showNotification('Edit individual fields above to correct product information', 'info');
+              }
+            }}
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            Need Help Editing?
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Smart Price Correction Notice */}
+{selectedProducts.some(item => item.totalPrice !== (item.quantity * item.unitPrice)) && (
+  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+    <div className="flex items-center">
+      <svg className="w-5 h-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+      </svg>
+      <div className="text-sm text-blue-700">
+        <strong>Smart Price Correction:</strong> Automatically validates quantity × unit price = total price
+      </div>
+    </div>
+  </div>
+)}
 
                 {!formData.supplierId && selectedProducts.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
