@@ -2317,8 +2317,6 @@ const handleUpdateItem = (index, field, value) => {
   </div>
 )}
 
-                // Add these notification sections right after your product table
-// and before the "Additional Terms Section"
 
 {/* Enhanced Bulk Edit Actions for AI Extracted Data */}
 {selectedProducts.some(item => item.isExtracted && !item.isVerified) && (
