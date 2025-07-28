@@ -307,105 +307,6 @@ useEffect(() => {
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [supplierErrors, setSupplierErrors] = useState({});
 
-  // In your PIModal.jsx component, add the validation functions here:
-// Place them INSIDE your component, after your useState declarations but BEFORE your useEffect hooks
-
-const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
-  // Your existing useState declarations
-  const [selectedProducts, setSelectedProducts] = useState([]);
-  const [formData, setFormData] = useState({});
-  const [errors, setErrors] = useState({}); // Make sure you have this
-  // ... other useState declarations
-
-  // 🎯 ADD THE VALIDATION FUNCTIONS HERE (after useState, before useEffect)
-  
-  // Validate product data before saving
-  const validateProductData = (products) => {
-    const newErrors = {};
-    
-    products.forEach((item, index) => {
-      // Validate product name
-      if (!item.productName || item.productName.trim().length < 2) {
-        newErrors[`productName-${index}`] = 'Product name is required (minimum 2 characters)';
-      } else if (item.productName.length > 100) {
-        newErrors[`productName-${index}`] = 'Product name is too long (maximum 100 characters)';
-      }
-      
-      // Validate product code
-      if (!item.productCode || item.productCode.trim().length < 1) {
-        newErrors[`productCode-${index}`] = 'Product code/SKU is required';
-      } else if (item.productCode.length > 50) {
-        newErrors[`productCode-${index}`] = 'Product code is too long (maximum 50 characters)';
-      }
-      
-      // Check for duplicate product codes within the same PI
-      const duplicateIndex = products.findIndex((p, i) => 
-        i !== index && 
-        p.productCode === item.productCode && 
-        item.productCode.trim() !== ''
-      );
-      if (duplicateIndex !== -1) {
-        newErrors[`productCode-${index}`] = `Duplicate product code "${item.productCode}" found on line ${duplicateIndex + 1}`;
-      }
-      
-      // Your existing quantity and price validation can stay here too
-      if (!item.quantity || item.quantity <= 0) {
-        newErrors[`quantity-${index}`] = 'Quantity must be greater than 0';
-      }
-      
-      if (item.unitPrice < 0) {
-        newErrors[`unitPrice-${index}`] = 'Unit price cannot be negative';
-      }
-    });
-    
-    return newErrors;
-  };
-
-  // Validation function to call before submit
-  const validateBeforeSubmit = () => {
-    const productErrors = validateProductData(selectedProducts);
-    
-    if (Object.keys(productErrors).length > 0) {
-      setErrors(prev => ({
-        ...prev,
-        ...productErrors
-      }));
-      
-      if (showNotification) {
-        showNotification('Please fix product information errors before saving', 'error');
-      }
-      
-      // Scroll to first error
-      setTimeout(() => {
-        const firstError = document.querySelector('.border-red-500');
-        if (firstError) {
-          firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          firstError.focus();
-        }
-      }, 100);
-      
-      return false; // Validation failed
-    }
-    
-    return true; // Validation passed
-  };
-
-  // Helper function for AI extraction results
-  const processAIExtractionResults = (extractedItems) => {
-    return extractedItems.map((item, index) => ({
-      ...item,
-      id: item.id || `extracted-${Date.now()}-${index}`,
-      isExtracted: true,  // Mark as AI extracted
-      isVerified: false,  // Requires user verification
-      productName: item.productName || item.description || 'Unknown Product',
-      productCode: item.productCode || item.partNumber || `CODE-${Date.now()}`,
-      brand: item.brand || '',
-      quantity: Math.max(1, parseInt(item.quantity) || 1),
-      unitPrice: Math.max(0, parseFloat(item.unitPrice) || 0),
-      totalPrice: Math.max(0, parseFloat(item.totalPrice) || 0)
-    }));
-  };
-
   const handleAllocationComplete = useCallback(async (allocations) => {
   try {
     console.log('✅ ALLOCATION COMPLETE: Starting enhanced update process...');
@@ -1108,9 +1009,7 @@ useEffect(() => {
 
 const handleSubmit = useCallback((e) => {
   e.preventDefault();
-   if (!validateBeforeSubmit()) {
-    return; // Stop submission if product validation fails
-  }
+  
   if (!validateForm()) return;
   
   // Calculate total if not already set (for manually added items)
@@ -1270,67 +1169,34 @@ const handleSubmit = useCallback((e) => {
     setShowProductSearch(false);
   };
 
-  // Replace your existing handleUpdateItem function with this enhanced version
-const handleUpdateItem = (index, field, value) => {
-  setSelectedProducts(prev => {
-    const updated = [...prev];
-    updated[index] = {
-      ...updated[index],
-      [field]: value
-    };
-    
-    // ✅ NEW: Special handling for product name and code changes
-    if (field === 'productName') {
-      // Clear any extraction flags when user manually edits
-      updated[index].isExtracted = false;
-      updated[index].isVerified = true;
-    }
-    
-    if (field === 'productCode') {
-      // Clear extraction flags when user manually edits
-      updated[index].isExtracted = false;
-      updated[index].isVerified = true;
-    }
-    
-    if (field === 'brand') {
-      // Just store the brand value
-      updated[index].brand = value;
-    }
-    
-    // ✅ Apply price fixing immediately after any change (YOUR EXISTING LOGIC)
-    const fixedItems = fixPIItemPrices(updated, false); // Set debug=false for manual changes
-    
-    // Check if price was auto-corrected and notify user (YOUR EXISTING LOGIC)
-    const originalTotal = updated[index].totalPrice;
-    const fixedTotal = fixedItems[index].totalPrice;
-    
-    if (showNotification && Math.abs(originalTotal - fixedTotal) > 0.01) {
-      showNotification(`Price auto-corrected for ${fixedItems[index].productName}`, 'info');
-    }
-    
-    // Check if item is fully received (YOUR EXISTING LOGIC)
-    if (field === 'receivedQty') {
-      fixedItems[index].isReceived = value >= fixedItems[index].quantity;
-    }
-    
-    return fixedItems;
-  });
-  
-  // ✅ NEW: Clear any validation errors for edited fields
-  if (typeof setErrors === 'function') {
-    setErrors(prev => {
-      const newErrors = { ...prev };
-      // Clear errors for the specific field being edited
-      delete newErrors[`${field}-${index}`];
-      // Also clear product-related errors when name or code is edited
-      if (field === 'productName' || field === 'productCode') {
-        delete newErrors[`productName-${index}`];
-        delete newErrors[`productCode-${index}`];
+  const handleUpdateItem = (index, field, value) => {
+    setSelectedProducts(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        [field]: value
+      };
+      
+      // ✅ Apply price fixing immediately after any change
+      const fixedItems = fixPIItemPrices(updated, false); // Set debug=false for manual changes
+      
+      // Check if price was auto-corrected and notify user
+      const originalTotal = updated[index].totalPrice;
+      const fixedTotal = fixedItems[index].totalPrice;
+      
+      if (showNotification && Math.abs(originalTotal - fixedTotal) > 0.01) {
+        showNotification(`Price auto-corrected for ${fixedItems[index].productName}`, 'info');
       }
-      return newErrors;
+      
+      // Check if item is fully received (keep existing logic)
+      if (field === 'receivedQty') {
+        fixedItems[index].isReceived = value >= fixedItems[index].quantity;
+      }
+      
+      return fixedItems;
     });
-  }
-};
+  };
+
   const handleToggleReceived = (index) => {
     const updated = [...selectedProducts];
     updated[index].isReceived = !updated[index].isReceived;
@@ -2078,347 +1944,319 @@ const handleUpdateItem = (index, field, value) => {
 
                 {/* Selected Products */}
                 {selectedProducts.length > 0 && (
-  <div className="border rounded-lg overflow-hidden">
-    <table className="w-full">
-      <thead className="bg-gray-50">
-        <tr>
-          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-          <th className="px-4 py-2"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {selectedProducts.map((item, index) => (
-          <tr key={item.id || index} className="border-t">
-            <td className="px-4 py-2">
-              <div className="space-y-2">
-                {/* Editable Product Name */}
-                <div>
-                  <input
-                    type="text"
-                    value={item.productName || ''}
-                    onChange={(e) => handleUpdateItem(index, 'productName', e.target.value)}
-                    className={`w-full px-2 py-1 text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors[`productName-${index}`] ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter product name"
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                          <th className="px-4 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedProducts.map((item, index) => (
+                          <tr key={item.id || index} className="border-t">
+                            <td className="px-4 py-2">
+                              <div>
+                                <div className="font-medium">{item.productName}</div>
+                                <div className="text-sm text-gray-600">{item.productCode}</div>
+                                {item.leadTime && (
+                                  <div className="text-xs text-gray-500">Lead time: {item.leadTime}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                                className={`w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                  errors[`quantity-${index}`] ? 'border-red-500' : 'border-gray-300'
+                                }`}
+                              />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.unitPrice}
+                                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                className={`w-24 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                  errors[`price-${index}`] ? 'border-red-500' : 'border-gray-300'
+                                }`}
+                              />
+                            </td>
+                            <td className="px-4 py-2 font-medium">
+                              <div className="flex items-center gap-2">
+                                <span>{formData.currency} {item.totalPrice.toFixed(2)}</span>
+                                {/* ✅ Visual indicator for auto-corrected prices */}
+                                {Math.abs(item.totalPrice - (item.quantity * item.unitPrice)) < 0.01 && (
+                                  <CheckCircle size={14} className="text-green-500" title="Price calculation verified" />
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(index)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        {/* Show financial breakdown if extracted */}
+                        {formData.subtotal > 0 && (
+                          <>
+                            <tr>
+                              <td colSpan="3" className="px-4 py-2 text-right text-sm">Subtotal:</td>
+                              <td className="px-4 py-2 font-medium">{formData.currency} {formData.subtotal.toFixed(2)}</td>
+                              <td></td>
+                            </tr>
+                            {formData.discount > 0 && (
+                              <tr>
+                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Discount:</td>
+                                <td className="px-4 py-2 font-medium text-red-600">-{formData.currency} {formData.discount.toFixed(2)}</td>
+                                <td></td>
+                              </tr>
+                            )}
+                            {formData.shipping > 0 && (
+                              <tr>
+                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Shipping:</td>
+                                <td className="px-4 py-2 font-medium">{formData.currency} {formData.shipping.toFixed(2)}</td>
+                                <td></td>
+                              </tr>
+                            )}
+                            {formData.tax > 0 && (
+                              <tr>
+                                <td colSpan="3" className="px-4 py-2 text-right text-sm">Tax:</td>
+                                <td className="px-4 py-2 font-medium">{formData.currency} {formData.tax.toFixed(2)}</td>
+                                <td></td>
+                              </tr>
+                            )}
+                          </>
+                        )}
+                        <tr>
+                          <td colSpan="3" className="px-4 py-2 text-right font-medium">Total:</td>
+                          <td className="px-4 py-2 font-bold text-lg">{formData.currency} {totalAmount.toFixed(2)}</td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+
+                {!formData.supplierId && selectedProducts.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                    <p>Select a supplier to add products</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Additional Terms Section for Extracted Data */}
+              {(formData.deliveryTerms || formData.validity) && (
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-medium text-gray-700 mb-3">Additional Terms</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    {formData.deliveryTerms && (
+                      <div>
+                        <label className="block text-gray-600 mb-1">Delivery Terms</label>
+                        <input
+                          type="text"
+                          value={formData.deliveryTerms}
+                          onChange={(e) => setFormData({ ...formData, deliveryTerms: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                    {formData.validity && (
+                      <div>
+                        <label className="block text-gray-600 mb-1">Validity</label>
+                        <input
+                          type="text"
+                          value={formData.validity}
+                          onChange={(e) => setFormData({ ...formData, validity: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Additional notes..."
+                />
+              </div>
+
+              {/* Special Instructions */}
+              {formData.specialInstructions && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Special Instructions
+                  </label>
+                  <textarea
+                    value={formData.specialInstructions}
+                    onChange={(e) => setFormData({ ...formData, specialInstructions: e.target.value })}
+                    rows="2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                
-                {/* Editable Product Code/SKU */}
-                <div>
-                  <input
-                    type="text"
-                    value={item.productCode || ''}
-                    onChange={(e) => handleUpdateItem(index, 'productCode', e.target.value)}
-                    className={`w-full px-2 py-1 text-sm text-gray-600 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors[`productCode-${index}`] ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter product code"
-                  />
-                </div>
-                
-                {/* Optional: Brand field if available */}
-                {(item.brand !== undefined || item.isExtracted) && (
+              )}
+            </>
+          ) : activeTab === 'payment' ? (
+            // Payment Tab
+            <div className="space-y-6">
+              {/* Payment Summary */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
-                    <input
-                      type="text"
-                      value={item.brand || ''}
-                      onChange={(e) => handleUpdateItem(index, 'brand', e.target.value)}
-                      className="w-full px-2 py-1 text-xs text-gray-500 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300"
-                      placeholder="Enter brand (optional)"
+                    <p className="text-sm text-gray-600">Total Amount</p>
+                    <p className="text-2xl font-bold">{formData.currency} {totalAmount.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Paid</p>
+                    <p className="text-2xl font-bold text-green-600">{formData.currency} {totalPaid.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Balance</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {formData.currency} {(totalAmount - totalPaid).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Status</p>
+                    <p className="text-lg font-bold">
+                      <span className={`px-3 py-1 rounded-full text-sm ${
+                        formData.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
+                        formData.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {formData.paymentStatus}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Payment Progress Bar */}
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-1">
+                    <span>Payment Progress</span>
+                    <span>{paymentProgress.toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(paymentProgress, 100)}%` }}
                     />
                   </div>
-                )}
-                
-                {/* Lead Time Display */}
-                {item.leadTime && (
-                  <div className="text-xs text-gray-500">
-                    Lead time: {item.leadTime}
-                  </div>
-                )}
-                
-                {/* AI Extraction Indicator */}
-                {item.isExtracted && !item.isVerified && (
-                  <div className="flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                    <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M13 10V3L4 14h7v7l9-11h-7z" clipRule="evenodd" />
-                    </svg>
-                    AI Extracted - Please verify
-                  </div>
-                )}
-                
-                {/* Validation Errors */}
-                {(errors[`productName-${index}`] || errors[`productCode-${index}`]) && (
-                  <div className="text-xs text-red-600">
-                    {errors[`productName-${index}`] || errors[`productCode-${index}`]}
+                </div>
+
+                {/* Payment Terms */}
+                <div className="mt-4 p-3 bg-white rounded border border-gray-200">
+                  <p className="text-sm font-medium text-gray-700">Payment Terms</p>
+                  <p className="text-sm text-gray-600 mt-1">{formData.paymentTerms}</p>
+                </div>
+              
+              </div>
+
+              {/* Add Payment Button */}
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">Payment History</h3>
+                <button
+                  type="button"
+                  onClick={handleAddPayment}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Plus size={20} />
+                  Add Payment
+                </button>
+              </div>
+
+              {/* Payment History */}
+              <div className="space-y-4">
+                {formData.payments && formData.payments.length > 0 ? (
+                  formData.payments.map((payment, index) => (
+                    <div key={payment.id || index} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <CreditCard className="h-5 w-5 text-gray-400" />
+                            <div>
+                              <p className="font-medium">${payment.amount.toFixed(2)}</p>
+                              <p className="text-sm text-gray-600">
+                                {new Date(payment.date).toLocaleDateString()} • {payment.type.replace('-', ' ')}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          payment.type === 'down-payment' ? 'bg-blue-100 text-blue-800' :
+                          payment.type === 'balance' ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {payment.type.replace('-', ' ')}
+                        </span>
+                      </div>
+
+                      {payment.reference && (
+                        <div className="text-sm text-gray-600 mb-2">
+                          <span className="font-medium">Reference:</span> {payment.reference}
+                        </div>
+                      )}
+
+                      {payment.remark && (
+                        <div className="text-sm text-gray-600 mb-2">
+                          <span className="font-medium">Remark:</span> {payment.remark}
+                        </div>
+                      )}
+
+                      {payment.attachments && payment.attachments.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Attachments</p>
+                          <div className="flex flex-wrap gap-2">
+                            {payment.attachments.map((file, idx) => (
+                              <a
+                                key={idx}
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 px-3 py-1 bg-gray-100 rounded text-sm hover:bg-gray-200"
+                              >
+                                <FileText size={14} />
+                                {file.name}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <DollarSign className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                    <p>No payments recorded yet</p>
                   </div>
                 )}
               </div>
-            </td>
-            
-            <td className="px-4 py-2">
-              <input
-                type="number"
-                min="1"
-                value={item.quantity}
-                onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                className={`w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors[`quantity-${index}`] ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-            </td>
-            
-            <td className="px-4 py-2">
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={item.unitPrice}
-                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                className={`w-24 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors[`price-${index}`] ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-            </td>
-            
-            <td className="px-4 py-2 font-medium">
-              <div className="flex items-center gap-2">
-                <span>{formData.currency} {item.totalPrice.toFixed(2)}</span>
-                {/* Visual indicator for auto-corrected prices */}
-                {Math.abs(item.totalPrice - (item.quantity * item.unitPrice)) < 0.01 && (
-                  <CheckCircle size={14} className="text-green-500" title="Price calculation verified" />
-                )}
-              </div>
-            </td>
-            
-            <td className="px-4 py-2">
-              <button
-                type="button"
-                onClick={() => handleRemoveItem(index)}
-                className="text-red-600 hover:text-red-800"
-              >
-                <Trash2 size={16} />
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-      
-      {/* Keep your existing tfoot with financial breakdown */}
-      <tfoot className="bg-gray-50">
-        {/* Show financial breakdown if extracted */}
-        {formData.subtotal > 0 && (
-          <>
-            <tr>
-              <td colSpan="3" className="px-4 py-2 text-right text-sm">Subtotal:</td>
-              <td className="px-4 py-2 font-medium">{formData.currency} {formData.subtotal.toFixed(2)}</td>
-              <td></td>
-            </tr>
-            {formData.discount > 0 && (
-              <tr>
-                <td colSpan="3" className="px-4 py-2 text-right text-sm">Discount:</td>
-                <td className="px-4 py-2 font-medium text-red-600">-{formData.currency} {formData.discount.toFixed(2)}</td>
-                <td></td>
-              </tr>
-            )}
-            {formData.shipping > 0 && (
-              <tr>
-                <td colSpan="3" className="px-4 py-2 text-right text-sm">Shipping:</td>
-                <td className="px-4 py-2 font-medium">{formData.currency} {formData.shipping.toFixed(2)}</td>
-                <td></td>
-              </tr>
-            )}
-            {formData.tax > 0 && (
-              <tr>
-                <td colSpan="3" className="px-4 py-2 text-right text-sm">Tax:</td>
-                <td className="px-4 py-2 font-medium">{formData.currency} {formData.tax.toFixed(2)}</td>
-                <td></td>
-              </tr>
-            )}
-          </>
-        )}
-        <tr>
-          <td colSpan="3" className="px-4 py-2 text-right font-medium">Total:</td>
-          <td className="px-4 py-2 font-bold text-lg">{formData.currency} {totalAmount.toFixed(2)}</td>
-          <td></td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-)}
-
-{/* Enhanced Bulk Edit Actions for AI Extracted Data */}
-{selectedProducts.some(item => item.isExtracted) && (
-  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-    <div className="flex items-start space-x-3">
-      <div className="flex-shrink-0">
-        <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <h3 className="text-sm font-medium text-blue-800">
-          AI Extraction Notice
-        </h3>
-        <p className="mt-1 text-sm text-blue-700">
-          Some product information was automatically extracted from the document. 
-          Please review and correct product names and codes as needed to ensure accuracy.
-        </p>
-        <div className="mt-3 flex space-x-3">
-          <button
-            type="button"
-            onClick={() => {
-              // Mark all items as verified
-              setSelectedProducts(prev => prev.map(item => ({
-                ...item,
-                isExtracted: false,
-                isVerified: true
-              })));
-              if (showNotification) {
-                showNotification('All product information marked as verified', 'success');
-              }
-            }}
-            className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200"
-          >
-            Mark All as Verified
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              // Open bulk edit modal or expand inline editing
-              if (showNotification) {
-                showNotification('Edit individual fields above to correct product information', 'info');
-              }
-            }}
-            className="text-sm text-blue-600 hover:text-blue-800"
-          >
-            Need Help Editing?
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* Smart Price Correction Notice */}
-{selectedProducts.some(item => item.totalPrice !== (item.quantity * item.unitPrice)) && (
-  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-    <div className="flex items-center">
-      <svg className="w-5 h-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-      </svg>
-      <div className="text-sm text-blue-700">
-        <strong>Smart Price Correction:</strong> Automatically validates quantity × unit price = total price
-      </div>
-    </div>
-  </div>
-)}
-
-
-{/* Enhanced Bulk Edit Actions for AI Extracted Data */}
-{selectedProducts.some(item => item.isExtracted && !item.isVerified) && (
-  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-    <div className="flex items-start space-x-3">
-      <div className="flex-shrink-0">
-        <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <h3 className="text-sm font-medium text-blue-800">
-          AI Extraction Notice
-        </h3>
-        <p className="mt-1 text-sm text-blue-700">
-          {selectedProducts.filter(item => item.isExtracted && !item.isVerified).length} product(s) were automatically extracted from the document. 
-          Please review and correct product names and codes as needed to ensure accuracy.
-        </p>
-        <div className="mt-3 flex space-x-3">
-          <button
-            type="button"
-            onClick={() => {
-              // Mark all items as verified
-              setSelectedProducts(prev => prev.map(item => ({
-                ...item,
-                isExtracted: false,
-                isVerified: true
-              })));
-              if (showNotification) {
-                showNotification('All product information marked as verified', 'success');
-              }
-            }}
-            className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200 transition-colors"
-          >
-            Mark All as Verified
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              // Scroll to first unverified item or show help
-              const firstUnverified = document.querySelector('[data-extracted="true"]');
-              if (firstUnverified) {
-                firstUnverified.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-              if (showNotification) {
-                showNotification('Click directly on product names and codes above to edit them', 'info');
-              }
-            }}
-            className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
-          >
-            How to Edit?
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* Validation Errors Summary */}
-{Object.keys(errors).some(key => key.includes('productName') || key.includes('productCode')) && (
-  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-    <div className="flex items-start space-x-3">
-      <div className="flex-shrink-0">
-        <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <h3 className="text-sm font-medium text-red-800">
-          Product Information Errors
-        </h3>
-        <p className="mt-1 text-sm text-red-700">
-          Please fix the following issues before saving:
-        </p>
-        <ul className="mt-2 text-sm text-red-700 list-disc list-inside">
-          {Object.entries(errors)
-            .filter(([key]) => key.includes('productName') || key.includes('productCode'))
-            .map(([key, message]) => {
-              const lineNumber = parseInt(key.split('-')[1]) + 1;
-              return (
-                <li key={key}>Line {lineNumber}: {message}</li>
-              );
-            })}
-        </ul>
-      </div>
-    </div>
-  </div>
-)}
-
-{/* Smart Price Correction Notice - Enhanced */}
-{selectedProducts.some(item => Math.abs(item.totalPrice - (item.quantity * item.unitPrice)) < 0.01) && (
-  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-    <div className="flex items-center">
-      <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-      <div className="text-sm text-green-700">
-        <strong>Smart Price Validation:</strong> All product prices are correctly calculated (quantity × unit price = total price)
-      </div>
-    </div>
-  </div>
-)}
-
-    
+            </div>
           ) : activeTab === 'receiving' ?  (
             // Receiving Tab f
             <StockReceivingTab 
@@ -2506,8 +2344,8 @@ const handleUpdateItem = (index, field, value) => {
               {proformaInvoice ? 'Update' : 'Create'} PI
             </button>
           </div>
-
-            </div>
+        </form>
+        </div>
       </div>
 
       {/* Payment Modal */}
