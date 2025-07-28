@@ -119,11 +119,12 @@ export const usePermissions = () => {
                      ['admin', 'manager', 'employee', 'viewer'].includes(userRole),
     
     // Supplier permissions
-    canEditSuppliers: PERMISSIONS?.canEditSuppliers?.includes(userRole) ?? 
-                   ['admin', 'manager'].includes(userRole) ||
-                   isGroupAdmin || // ADD THIS LINE
-                   hasCompanyPermission('edit_all') || // ADD THIS LINE
-                   hasCompanyPermission('manage_companies'), // ADD THIS LINE
+    canEditSuppliers: (PERMISSIONS?.canEditSuppliers?.includes(userRole) ?? 
+                    ['admin', 'manager'].includes(userRole)) ||
+                    isGroupAdmin ||
+                    hasCompanyPermission('edit_all') ||
+                    hasCompanyPermission('manage_companies'),
+                   
     canViewSuppliers: PERMISSIONS?.canViewSuppliers?.includes(userRole) ?? 
                      ['admin', 'manager'].includes(userRole),
     
