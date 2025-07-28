@@ -16,7 +16,7 @@ import {
   DollarSign, Upload, Link, Eye, Download,
   CreditCard, MessageSquare, Briefcase, AlertTriangle,
   Building2, Mail, Phone, MapPin, User, Loader2,
-  ChevronDown, Check, CheckCircle, Clock
+  ChevronDown, Check, CheckCircle, Clock, Edit2, Info 
 } from 'lucide-react';
 
 // ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
@@ -282,6 +282,7 @@ useEffect(() => {
   const [errors, setErrors] = useState({});
   const [activeTab, setActiveTab] = useState('details'); // details, receiving, payment
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [editingProducts, setEditingProducts] = useState({});
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -1197,6 +1198,44 @@ const handleSubmit = useCallback((e) => {
     });
   };
 
+  const handleProductNameEdit = (index, field, value) => {
+  setSelectedProducts(prev => {
+    const updated = [...prev];
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    };
+    return updated;
+  });
+};
+
+const toggleProductEdit = (index, field) => {
+  setEditingProducts(prev => ({
+    ...prev,
+    [`${index}-${field}`]: !prev[`${index}-${field}`]
+  }));
+};
+
+const saveProductEdit = (index, field) => {
+  setEditingProducts(prev => ({
+    ...prev,
+    [`${index}-${field}`]: false
+  }));
+  
+  // Show confirmation
+  const item = selectedProducts[index];
+  showNotification?.(`Updated ${field} for ${item.productName}`, 'success');
+  
+  // Track AI correction for analytics
+  console.log('🎯 AI Extraction Correction:', {
+    field,
+    productName: item.productName,
+    productCode: item.productCode,
+    piNumber: formData.piNumber,
+    timestamp: new Date().toISOString()
+  });
+};
+
   const handleToggleReceived = (index) => {
     const updated = [...selectedProducts];
     updated[index].isReceived = !updated[index].isReceived;
@@ -1889,6 +1928,37 @@ const handleSubmit = useCallback((e) => {
         Fix All Prices
       </button>
     )}
+
+    {selectedProducts.length > 0 && (
+      <button
+        type="button"
+        onClick={() => {
+          const anyEditing = Object.values(editingProducts).some(editing => editing);
+          if (anyEditing) {
+            // Exit edit mode for all
+            setEditingProducts({});
+            showNotification?.('Exited bulk edit mode', 'info');
+          } else {
+            // Enter edit mode for all product names
+            const newEditingState = {};
+            selectedProducts.forEach((_, index) => {
+              newEditingState[`${index}-productName`] = true;
+            });
+            setEditingProducts(newEditingState);
+            showNotification?.('Entered bulk edit mode - click outside inputs to save', 'info');
+          }
+        }}
+        className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-2 shadow-sm transition-all duration-200 ${
+          Object.values(editingProducts).some(editing => editing)
+            ? 'bg-gray-500 text-white hover:bg-gray-600'
+            : 'bg-blue-500 text-white hover:bg-blue-600'
+        }`}
+        title={Object.values(editingProducts).some(editing => editing) ? "Exit bulk edit mode" : "Edit all product names"}
+      >
+        <Edit2 size={14} />
+        {Object.values(editingProducts).some(editing => editing) ? 'Exit Edit' : 'Bulk Edit'}
+      </button>
+    )}
     {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
   </div>
 </div>
@@ -1960,10 +2030,75 @@ const handleSubmit = useCallback((e) => {
                           <tr key={item.id || index} className="border-t">
                             <td className="px-4 py-2">
                               <div>
-                                <div className="font-medium">{item.productName}</div>
-                                <div className="text-sm text-gray-600">{item.productCode}</div>
+                                {/* Editable Product Name */}
+                                <div className="flex items-center gap-2 mb-1">
+                                  {editingProducts[`${index}-productName`] ? (
+                                    <input
+                                      type="text"
+                                      value={item.productName}
+                                      onChange={(e) => handleProductNameEdit(index, 'productName', e.target.value)}
+                                      onBlur={() => saveProductEdit(index, 'productName')}
+                                      onKeyPress={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.target.blur();
+                                        }
+                                      }}
+                                      className="font-medium text-gray-900 bg-blue-50 border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0 flex-1"
+                                      autoFocus
+                                      placeholder="Product Name"
+                                    />
+                                  ) : (
+                                    <div 
+                                      className="font-medium text-gray-900 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded flex-1 min-w-0 flex items-center gap-2"
+                                      onClick={() => toggleProductEdit(index, 'productName')}
+                                      title="Click to edit product name"
+                                    >
+                                      <span className="truncate">{item.productName || 'Unnamed Product'}</span>
+                                      <Edit2 size={12} className="text-gray-400 flex-shrink-0" />
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* Editable Product Code/SKU */}
+                                <div className="flex items-center gap-2">
+                                  {editingProducts[`${index}-productCode`] ? (
+                                    <input
+                                      type="text"
+                                      value={item.productCode}
+                                      onChange={(e) => handleProductNameEdit(index, 'productCode', e.target.value)}
+                                      onBlur={() => saveProductEdit(index, 'productCode')}
+                                      onKeyPress={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.target.blur();
+                                        }
+                                      }}
+                                      className="text-sm text-gray-600 bg-yellow-50 border border-yellow-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-yellow-500 min-w-0 flex-1"
+                                      autoFocus
+                                      placeholder="Product Code/SKU"
+                                    />
+                                  ) : (
+                                    <div 
+                                      className="text-sm text-gray-600 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded flex-1 min-w-0 flex items-center gap-2"
+                                      onClick={() => toggleProductEdit(index, 'productCode')}
+                                      title="Click to edit product code/SKU"
+                                    >
+                                      <span className="truncate">{item.productCode || 'No SKU'}</span>
+                                      <Edit2 size={10} className="text-gray-400 flex-shrink-0" />
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* Lead Time (existing code) */}
                                 {item.leadTime && (
-                                  <div className="text-xs text-gray-500">Lead time: {item.leadTime}</div>
+                                  <div className="text-xs text-gray-500 mt-1">Lead time: {item.leadTime}</div>
+                                )}
+                                
+                                {/* Show edit hint on first item */}
+                                {index === 0 && !editingProducts[`${index}-productName`] && !editingProducts[`${index}-productCode`] && (
+                                  <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                                    <Info size={10} />
+                                    <span>Click to edit</span>
+                                  </div>
                                 )}
                               </div>
                             </td>
