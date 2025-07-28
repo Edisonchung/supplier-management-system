@@ -2506,7 +2506,7 @@ const handleUpdateItem = (index, field, value) => {
               {proformaInvoice ? 'Update' : 'Create'} PI
             </button>
           </div>
-        </div>
+        </>
         </div>
       </div>
 
