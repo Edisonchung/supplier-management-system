@@ -404,6 +404,15 @@ useEffect(() => {
       
       console.log('💾 FIRESTORE: Updating PI with allocation data...');
       
+  console.log('💾 FIRESTORE: About to update PI with these details:');
+  console.log('📋 PI ID:', currentPiId);
+  console.log('📋 Items to save:', updatedFormDataItems.map(item => ({
+    id: item.id,
+    productCode: item.productCode,
+    totalAllocated: item.totalAllocated,
+    allocations: item.allocations?.length || 0
+  })));
+      
       await updateDoc(doc(db, 'proformaInvoices', currentPiId), {
         items: updatedFormDataItems,  // ✅ Use the items with allocations
         updatedAt: new Date().toISOString()
