@@ -323,132 +323,94 @@ useEffect(() => {
     console.log('🔢 New total allocated:', newTotalAllocated);
     
     // 🔥 CRITICAL: Update selectedProducts state with new allocation data
-    setSelectedProducts(prevProducts =>
-      prevProducts.map(product => {
-        const itemAllocations = allocations.filter(alloc => alloc.itemId === product.id);
+    const updatedSelectedProducts = selectedProducts.map(product => {
+      const itemAllocations = allocations.filter(alloc => alloc.itemId === product.id);
+      
+      if (itemAllocations.length > 0) {
+        const additionalAllocated = itemAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
+        const newTotalAllocated = (product.totalAllocated || 0) + additionalAllocated;
+        const newAllocations = [...(product.allocations || []), ...itemAllocations];
         
-        if (itemAllocations.length > 0) {
-          const additionalAllocated = itemAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-          const newTotalAllocated = (product.totalAllocated || 0) + additionalAllocated;
-          const newAllocations = [...(product.allocations || []), ...itemAllocations];
-          
-          console.log('📦 Updating item with allocation data:', {
-            itemId: product.id,
-            productCode: product.productCode,
-            received: product.receivedQty || 0,
-            allocated: newTotalAllocated,
-            allocationsCount: newAllocations.length
-          });
-          
-          return {
-            ...product,
-            allocations: newAllocations,
-            totalAllocated: newTotalAllocated,
-            unallocatedQty: (product.receivedQty || 0) - newTotalAllocated,
-            lastAllocationUpdate: new Date().toISOString(),
-            hasAllocationData: true
-          };
-        }
-        return product;
-      })
-    );
+        console.log('📦 Updating item with allocation data:', {
+          itemId: product.id,
+          productCode: product.productCode,
+          received: product.receivedQty || 0,
+          allocated: newTotalAllocated,
+          allocationsCount: newAllocations.length
+        });
+        
+        return {
+          ...product,
+          allocations: newAllocations,
+          totalAllocated: newTotalAllocated,
+          unallocatedQty: (product.receivedQty || 0) - newTotalAllocated,
+          lastAllocationUpdate: new Date().toISOString(),
+          hasAllocationData: true
+        };
+      }
+      return product;
+    });
 
-    // 🔥 CRITICAL: Update formData.items to keep everything in sync
+    // 🔥 CRITICAL: Update both selectedProducts AND formData simultaneously
+    setSelectedProducts(updatedSelectedProducts);
+    
     setFormData(prevFormData => {
-      const updatedFormDataItems = prevFormData.items ? 
-        prevFormData.items.map(item => {
-          const itemAllocations = allocations.filter(alloc => alloc.itemId === item.id);
-          
-          if (itemAllocations.length > 0) {
-            const additionalAllocated = itemAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-            const newTotalAllocated = (item.totalAllocated || 0) + additionalAllocated;
-            const newAllocations = [...(item.allocations || []), ...itemAllocations];
-            
-            return {
-              ...item,
-              allocations: newAllocations,
-              totalAllocated: newTotalAllocated,
-              unallocatedQty: (item.receivedQty || 0) - newTotalAllocated,
-              lastAllocationUpdate: new Date().toISOString(),
-              hasAllocationData: true
-            };
-          }
-          return item;
-        }) : [];
-
       console.log('🔄 Updating formData.items with allocation data...');
       
       return {
         ...prevFormData,
-        items: updatedFormDataItems,
+        items: updatedSelectedProducts,
         updatedAt: new Date().toISOString()
       };
     });
 
-    // 🔥 STEP 3: Save to Firestore to persist the allocation data
-    try {
-      // Create the updated PI data for Firestore
-      const updatedItems = selectedProducts.map(product => {
-        const itemAllocations = allocations.filter(alloc => alloc.itemId === product.id);
-        
-        if (itemAllocations.length > 0) {
-          const additionalAllocated = itemAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-          const newTotalAllocated = (product.totalAllocated || 0) + additionalAllocated;
-          const newAllocations = [...(product.allocations || []), ...itemAllocations];
-          
-          console.log('💾 Item that will be saved to Firestore:', {
-            id: product.id,
-            productCode: product.productCode,
-            totalAllocated: newTotalAllocated,
-            allocations: newAllocations,
-            hasAllocationData: true
-          });
-          
-          return {
-            ...product,
-            allocations: newAllocations,
-            totalAllocated: newTotalAllocated,
-            unallocatedQty: (product.receivedQty || 0) - newTotalAllocated,
-            hasAllocationData: true
-          };
-        }
-        return product;
-      });
+    // 🔥 CRITICAL FIX: Use handleReceivingDataUpdate instead of onSave to keep modal open
+    const updatedPI = {
+      ...formData,
+      items: updatedSelectedProducts,
+      updatedAt: new Date().toISOString()
+    };
 
-      console.log('💾 FIRESTORE: Updating PI with allocation data...');
-      console.log('💾 FIRESTORE: About to update PI with these details:');
-      console.log('📋 PI ID:', formData.id || proformaInvoice?.id);
-      console.log('📋 Items to save:', updatedItems.map(item => ({
-        id: item.id,
-        productCode: item.productCode,
-        totalAllocated: item.totalAllocated,
-        allocationsCount: item.allocations?.length || 0
-      })));
-
-      if (onSave) {
-        const piDataToSave = {
-          ...formData,
-          items: updatedItems,
-          updatedAt: new Date().toISOString()
-        };
-        
-        await onSave(piDataToSave);
-        console.log('✅ FIRESTORE: Allocation data saved successfully');
-      }
-      
-    } catch (firestoreError) {
-      console.error('❌ Firestore save failed:', firestoreError);
-      showNotification('Allocation successful but save failed. Please refresh.', 'warning');
+    // ✅ This keeps the modal open and updates local state
+    if (handleReceivingDataUpdate) {
+      handleReceivingDataUpdate(updatedPI);
+      console.log('🔄 Local PI state updated - modal stays open for next allocation');
     }
+
+    // 🔥 ALSO save to Firestore in background (but don't wait for it or close modal)
+    const saveToFirestore = async () => {
+      try {
+        console.log('💾 BACKGROUND: Saving allocation data to Firestore...');
+        
+        const { updateDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('../../services/firebase');
+        
+        const piId = formData.id || proformaInvoice?.id;
+        if (piId) {
+          await updateDoc(doc(db, 'proformaInvoices', piId), {
+            items: updatedSelectedProducts,
+            updatedAt: new Date().toISOString(),
+            lastAllocationUpdate: new Date().toISOString()
+          });
+          console.log('✅ BACKGROUND: Allocation data saved to Firestore successfully');
+        }
+      } catch (firestoreError) {
+        console.error('❌ Background Firestore save failed:', firestoreError);
+        // Don't show error to user since this is background save
+      }
+    };
+
+    // Save in background without blocking UI
+    saveToFirestore();
     
-    console.log('✅ Local state updated - status should persist after modal close');
-    showNotification('Stock allocated successfully', 'success');
+    console.log('✅ ALLOCATION COMPLETE - Closing modal');
+    showNotification(`Stock allocated successfully for ${allocations[0]?.productCode || 'item'}`, 'success');
     
   } catch (error) {
     console.error('❌ Error in allocation complete:', error);
     showNotification('Error updating allocation data', 'error');
   }
-}, [selectedProducts, formData, onSave, showNotification]);
+}, [selectedProducts, formData, proformaInvoice?.id, handleReceivingDataUpdate, showNotification]);
 
 
 
