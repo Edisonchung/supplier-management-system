@@ -307,7 +307,7 @@ useEffect(() => {
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [supplierErrors, setSupplierErrors] = useState({});
 
-   const handleAllocationComplete = useCallback(async (allocations) => {
+  const handleAllocationComplete = useCallback(async (allocations) => {
   try {
     console.log('✅ ALLOCATION COMPLETE: Starting enhanced update process...');
     console.log('📋 Allocations received:', allocations);
@@ -322,9 +322,9 @@ useEffect(() => {
     const newTotalAllocated = allocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
     console.log('🔢 New total allocated:', newTotalAllocated);
     
-    // 🔥 CRITICAL: Update selectedProducts state with new allocation data
-    setSelectedProducts(prevProducts =>
-      prevProducts.map(product => {
+    // 🔥 FIX: Create updated items ONCE and reuse them
+    const createUpdatedItems = (items) => {
+      return items.map(product => {
         const itemAllocations = allocations.filter(alloc => alloc.itemId === product.id);
         
         if (itemAllocations.length > 0) {
@@ -350,31 +350,19 @@ useEffect(() => {
           };
         }
         return product;
-      })
-    );
+      });
+    };
+
+    // Create updated items from current selectedProducts
+    const updatedSelectedProducts = createUpdatedItems(selectedProducts);
+    
+    // 🔥 CRITICAL: Update selectedProducts state with new allocation data
+    setSelectedProducts(updatedSelectedProducts);
 
     // 🔥 CRITICAL: Update formData.items to keep everything in sync
     setFormData(prevFormData => {
       const updatedFormDataItems = prevFormData.items ? 
-        prevFormData.items.map(item => {
-          const itemAllocations = allocations.filter(alloc => alloc.itemId === item.id);
-          
-          if (itemAllocations.length > 0) {
-            const additionalAllocated = itemAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-            const newTotalAllocated = (item.totalAllocated || 0) + additionalAllocated;
-            const newAllocations = [...(item.allocations || []), ...itemAllocations];
-            
-            return {
-              ...item,
-              allocations: newAllocations,
-              totalAllocated: newTotalAllocated,
-              unallocatedQty: (item.receivedQty || 0) - newTotalAllocated,
-              lastAllocationUpdate: new Date().toISOString(),
-              hasAllocationData: true
-            };
-          }
-          return item;
-        }) : [];
+        createUpdatedItems(prevFormData.items) : updatedSelectedProducts;
 
       console.log('🔄 Updating formData.items with allocation data...');
       
@@ -385,89 +373,51 @@ useEffect(() => {
       };
     });
 
-    // 🔥 STEP 3: Save to Firestore to persist the allocation data
-    try {
-      // Create the updated PI data for Firestore
-      const updatedItems = selectedProducts.map(product => {
-        const itemAllocations = allocations.filter(alloc => alloc.itemId === product.id);
+    // 🔥 CRITICAL FIX: Use handleReceivingDataUpdate instead of onSave to keep modal open
+    const updatedPI = {
+      ...formData,
+      items: updatedSelectedProducts,
+      updatedAt: new Date().toISOString()
+    };
+
+    // ✅ This keeps the modal open and updates local state
+    if (handleReceivingDataUpdate) {
+      handleReceivingDataUpdate(updatedPI);
+      console.log('🔄 Local PI state updated - modal stays open for next allocation');
+    }
+
+    // 🔥 Save to Firestore in background without blocking UI
+    const saveToFirestore = async () => {
+      try {
+        console.log('💾 BACKGROUND: Saving allocation data to Firestore...');
+        console.log('💾 FIRESTORE: About to update PI with these details:');
+        console.log('📋 PI ID:', formData.id || proformaInvoice?.id);
+        console.log('📋 Items to save:', updatedSelectedProducts.map(item => ({
+          id: item.id,
+          productCode: item.productCode,
+          totalAllocated: item.totalAllocated,
+          allocationsCount: item.allocations?.length || 0
+        })));
         
-        if (itemAllocations.length > 0) {
-          const additionalAllocated = itemAllocations.reduce((sum, alloc) => sum + (alloc.quantity || 0), 0);
-          const newTotalAllocated = (product.totalAllocated || 0) + additionalAllocated;
-          const newAllocations = [...(product.allocations || []), ...itemAllocations];
-          
-          console.log('💾 Item that will be saved to Firestore:', {
-            id: product.id,
-            productCode: product.productCode,
-            totalAllocated: newTotalAllocated,
-            allocations: newAllocations,
-            hasAllocationData: true
+        const { updateDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('../../services/firebase');
+        
+        const piId = formData.id || proformaInvoice?.id;
+        if (piId) {
+          await updateDoc(doc(db, 'proformaInvoices', piId), {
+            items: updatedSelectedProducts,
+            updatedAt: new Date().toISOString(),
+            lastAllocationUpdate: new Date().toISOString()
           });
-          
-          return {
-            ...product,
-            allocations: newAllocations,
-            totalAllocated: newTotalAllocated,
-            unallocatedQty: (product.receivedQty || 0) - newTotalAllocated,
-            hasAllocationData: true
-          };
+          console.log('✅ BACKGROUND: Allocation data saved to Firestore successfully');
         }
-        return product;
-      });
+      } catch (firestoreError) {
+        console.error('❌ Background Firestore save failed:', firestoreError);
+      }
+    };
 
-      console.log('💾 FIRESTORE: Updating PI with allocation data...');
-      console.log('💾 FIRESTORE: About to update PI with these details:');
-      console.log('📋 PI ID:', formData.id || proformaInvoice?.id);
-      console.log('📋 Items to save:', updatedItems.map(item => ({
-        id: item.id,
-        productCode: item.productCode,
-        totalAllocated: item.totalAllocated,
-        allocationsCount: item.allocations?.length || 0
-      })));
-
-      // 🔥 REPLACE WITH THIS (keeps modal open):
-const updatedPI = {
-  ...formData,
-  items: updatedItems,
-  updatedAt: new Date().toISOString()
-};
-
-// ✅ Use handleReceivingDataUpdate to keep modal open
-if (handleReceivingDataUpdate) {
-  handleReceivingDataUpdate(updatedPI);
-  console.log('🔄 Local PI state updated - modal stays open for next allocation');
-}
-
-// 🔥 Save to Firestore in background without blocking UI
-const saveToFirestore = async () => {
-  try {
-    console.log('💾 BACKGROUND: Saving allocation data to Firestore...');
-    
-    const { updateDoc, doc } = await import('firebase/firestore');
-    const { db } = await import('../../services/firebase');
-    
-    const piId = formData.id || proformaInvoice?.id;
-    if (piId) {
-      await updateDoc(doc(db, 'proformaInvoices', piId), {
-        items: updatedItems,
-        updatedAt: new Date().toISOString(),
-        lastAllocationUpdate: new Date().toISOString()
-      });
-      console.log('✅ BACKGROUND: Allocation data saved to Firestore successfully');
-    }
-  } catch (firestoreError) {
-    console.error('❌ Background Firestore save failed:', firestoreError);
-  }
-};
-
-// Save in background without blocking UI
-saveToFirestore();
-console.log('✅ FIRESTORE: Allocation data saved successfully');
-      
-    } catch (firestoreError) {
-      console.error('❌ Firestore save failed:', firestoreError);
-      showNotification('Allocation successful but save failed. Please refresh.', 'warning');
-    }
+    // Save in background without blocking UI
+    saveToFirestore();
     
     console.log('✅ Local state updated - status should persist after modal close');
     showNotification('Stock allocated successfully', 'success');
