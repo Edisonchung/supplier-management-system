@@ -2574,7 +2574,7 @@ useEffect(() => {
   
   // Initialize receiving form data
   useEffect(() => {
-  // Only initialize if form is truly empty AND we have PI data AND not skipping
+  // Only initialize if ALL conditions are met AND we don't have current form data
   const shouldInitialize = pi && 
                           pi.items && 
                           pi.items.length > 0 && 
@@ -2582,21 +2582,23 @@ useEffect(() => {
                           !skipFormInit;
   
   if (shouldInitialize) {
-    console.log('🔄 Initializing empty form with PI data...');
+    console.log('🔄 Initializing form with PI data (including saved receiving data)...');
     const formData = {};
     pi.items.forEach(item => {
       formData[item.id] = {
-        receivedQty: item.receivedQty || item.quantity || 0,
+        // ✅ CRITICAL FIX: Use saved receivedQty from database, not ordered quantity
+        receivedQty: item.receivedQty || 0, // Use saved value instead of defaulting to item.quantity
         receivingNotes: item.receivingNotes || '',
         hasDiscrepancy: item.hasDiscrepancy || false,
         discrepancyReason: item.discrepancyReason || ''
       };
     });
     setReceivingForm(formData);
+    console.log('📋 Form initialized with saved receiving data:', formData);
   } else {
-    console.log('🔒 Skipping form initialization - conditions not met');
+    console.log('🔒 Skipping form initialization - preserving current state');
   }
-}, [pi?.id, skipFormInit]);  // Only trigger on PI ID changes or skip flag changes
+}, [pi?.id, skipFormInit]);
 
   useEffect(() => {
     if (pi?.items) {
@@ -2646,7 +2648,7 @@ useEffect(() => {
   
 const handleClearAllReceived = async () => {
   if (pi && pi.items) {
-        setSkipFormInit(true);  // 🆕 ADD THIS LINE
+    setSkipFormInit(true);  // Prevent form reinitialization
 
     const updatedForm = {};
     pi.items.forEach(item => {
@@ -2656,23 +2658,17 @@ const handleClearAllReceived = async () => {
       };
     });
 
-    // Add this debug log:
-    console.log('🔍 BULK CLEAR - Updated form:', updatedForm);
+    console.log('🔍 BULK CLEAR - Clearing form and saving to database...');
     
     setReceivingForm(updatedForm);
-
-    // Add this debug log after state update:
-    console.log('🔍 BULK CLEAR - Form state set, calling bulk save...');
     
-    // ✅ NEW: Bulk save all the cleared values to database
+    // ✅ CRITICAL: Save to database immediately
     await bulkSaveReceivingData(updatedForm);
-     // 🆕 ADD THESE LINES:
+    
     setTimeout(() => setSkipFormInit(false), 100);
     
-    showNotification('All received quantities cleared and saved', 'success');
+    showNotification('All received quantities cleared and saved to database', 'success');
   }
-    setTimeout(() => setSkipFormInit(false), 100);  // ✅ RE-ENABLE
-
 };
 
 // ✅ ADD this new function right after handleClearAllReceived:
@@ -2705,17 +2701,34 @@ const bulkSaveReceivingData = async (formData = null) => {
       lastModified: new Date().toISOString(),
       modifiedBy: 'current-user' // You might want to use actual user ID
     };
+// ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY 
+    try {
+      const { updateDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('../../services/firebase');
+      
+      console.log('💾 FIRESTORE: Saving bulk receiving data immediately...');
+      
+      await updateDoc(doc(db, 'proformaInvoices', pi.id), {
+        items: updatedItems,
+        updatedAt: new Date().toISOString()
+      });
+      
+      console.log('✅ FIRESTORE: Bulk receiving data saved to database');
+      
+    } catch (firestoreError) {
+      console.error('❌ FIRESTORE: Error saving bulk data:', firestoreError);
+      showNotification('Error saving to database', 'error');
+      throw firestoreError;
+    }
 
-    // ✅ CRITICAL: Use onReceivingDataUpdate to keep modal open
+    // ✅ Update local state AFTER successful database save
     if (onReceivingDataUpdate) {
-  onReceivingDataUpdate(updatedPI);
-  console.log('🔄 Bulk receiving data saved - modal stays open');
-} else {
-  console.error('❌ onReceivingDataUpdate prop missing! Modal will close.');
-  await onUpdatePI(updatedPI);  // Fallback but will close modal
-}
-
-    console.log('🔄 Bulk receiving data saved - modal stays open');
+      onReceivingDataUpdate(updatedPI);
+      console.log('🔄 Bulk receiving data saved - modal stays open');
+    } else {
+      console.error('❌ onReceivingDataUpdate prop missing! Modal will close.');
+      await onUpdatePI(updatedPI);  // Fallback but will close modal
+    }
     
   } catch (error) {
     console.error('❌ Error in bulk save:', error);
@@ -2723,48 +2736,97 @@ const bulkSaveReceivingData = async (formData = null) => {
     throw error;
   }
 };
-  const saveReceivingData = async (itemId) => {
+ const saveReceivingData = async (itemId) => {
   try {
     const receivingData = receivingForm[itemId];
     
-    // Update the PI item
+    if (!receivingData) {
+      console.warn('No receiving data found for item:', itemId);
+      showNotification('No changes to save', 'info');
+      return;
+    }
+    
+    console.log('💾 SAVING INDIVIDUAL RECEIVING DATA:', {
+      itemId,
+      receivedQty: receivingData.receivedQty,
+      notes: receivingData.receivingNotes
+    });
+    
+    // Update the PI item with receiving data
     const updatedItems = pi.items.map(item => {
       if (item.id === itemId) {
-        const receivedQty = receivingData.receivedQty;
-        const orderedQty = item.quantity;
+        const receivedQty = receivingData.receivedQty || 0;
+        const orderedQty = item.quantity || 0;
         const difference = receivedQty - orderedQty;
         
         return {
           ...item,
+          // ✅ CRITICAL: Update all receiving fields
           receivedQty: receivedQty,
-          receivingNotes: receivingData.receivingNotes,
+          receivingNotes: receivingData.receivingNotes || '',
           hasDiscrepancy: receivingData.hasDiscrepancy || difference !== 0,
-          discrepancyReason: difference !== 0 ? `Quantity difference: ${difference > 0 ? '+' : ''}${difference}` : receivingData.discrepancyReason,
+          discrepancyReason: difference !== 0 ? 
+            `Quantity difference: ${difference > 0 ? '+' : ''}${difference}` : 
+            (receivingData.discrepancyReason || ''),
           difference: difference,
           receivedDate: new Date().toISOString().split('T')[0],
-          unallocatedQty: receivedQty - (item.totalAllocated || 0)
+          unallocatedQty: receivedQty - (item.totalAllocated || 0),
+          // ✅ Add metadata for tracking
+          lastReceivingUpdate: new Date().toISOString(),
+          receivingStatus: receivedQty === 0 ? 'pending' : 
+                          receivedQty === orderedQty ? 'complete' : 'partial'
         };
       }
       return item;
     });
 
-    // Update the PI
+    // ✅ CRITICAL FIX: Save to Firestore IMMEDIATELY (this was missing!)
+    try {
+      const { updateDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('../../services/firebase');
+      
+      console.log('💾 FIRESTORE: Saving individual receiving data to database...');
+      
+      await updateDoc(doc(db, 'proformaInvoices', pi.id), {
+        items: updatedItems,
+        updatedAt: new Date().toISOString(),
+        lastReceivingDataUpdate: new Date().toISOString()
+      });
+      
+      console.log('✅ FIRESTORE: Individual receiving data persisted successfully');
+      
+    } catch (firestoreError) {
+      console.error('❌ FIRESTORE: Error saving individual receiving data:', firestoreError);
+      showNotification('Error saving to database. Changes may be lost.', 'error');
+      throw firestoreError;
+    }
+
+    // ✅ Update local state AFTER successful database save
     const updatedPI = {
       ...pi,
       items: updatedItems,
       updatedAt: new Date().toISOString()
     };
     
-    // ✅ ONLY USE LOCAL UPDATE - NO MODAL CLOSE
-    onReceivingDataUpdate(updatedPI);
-    showNotification('Receiving data saved successfully', 'success');
+    // ✅ Use local update to keep modal open
+    if (onReceivingDataUpdate) {
+      onReceivingDataUpdate(updatedPI);
+      console.log('🔄 Individual receiving data saved - modal stays open');
+    } else {
+      console.error('❌ onReceivingDataUpdate missing! Using fallback.');
+      await onUpdatePI(updatedPI);  // Fallback but might close modal
+    }
     
-    // ❌ REMOVE THIS LINE IF IT EXISTS:
-    // await onUpdatePI(updatedPI);  // DELETE THIS LINE
+    // ✅ Enhanced success message
+    const updatedItem = updatedItems.find(item => item.id === itemId);
+    showNotification(
+      `✅ Receiving data saved to database: ${updatedItem?.productCode} - ${receivingData.receivedQty} units received`,
+      'success'
+    );
     
   } catch (error) {
-    console.error('Error saving receiving data:', error);
-    showNotification('Failed to save receiving data', 'error');
+    console.error('❌ Error saving individual receiving data:', error);
+    showNotification('Failed to save receiving data to database', 'error');
   }
 };
 
@@ -3163,9 +3225,10 @@ const reverseProductStockLevels = async ({
 };
   
  const getItemStatus = useCallback((item, itemFormData = {}) => {
- const received = itemFormData.receivedQty !== undefined 
-  ? itemFormData.receivedQty 
-  : (item.receivedQty || 0);
+  // ✅ CRITICAL: Prioritize form data, fallback to saved database data
+  const received = itemFormData.receivedQty !== undefined 
+    ? itemFormData.receivedQty 
+    : (item.receivedQty || 0);
   const ordered = item.quantity || 0;
   
   // ✅ ENHANCED: Multi-strategy allocation calculation with debugging
@@ -3205,7 +3268,19 @@ const reverseProductStockLevels = async ({
     totalAllocatedField: item.totalAllocated,
     allocationsArray: item.allocations?.length || 0,
     allocationsSum: item.allocations?.reduce((sum, alloc) => sum + (parseFloat(alloc.quantity) || 0), 0) || 0,
-    explicitStatus: item.status
+    explicitStatus: item.status,
+    formReceivedQty: itemFormData.receivedQty,
+    savedReceivedQty: item.receivedQty
+  });
+  
+  // ✅ CRITICAL: Enhanced debug logging for persistence tracking
+  console.log(`🔍 FORM STATE DEBUG for ${item.productCode}:`, {
+    itemFormReceivedQty: itemFormData.receivedQty,
+    itemSavedReceivedQty: item.receivedQty,
+    itemFormExists: !!itemFormData,
+    formStateKeys: Object.keys(itemFormData),
+    usingFormData: itemFormData.receivedQty !== undefined,
+    finalReceivedValue: received
   });
   
   // Status logic with clearer conditions
