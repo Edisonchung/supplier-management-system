@@ -307,6 +307,151 @@ useEffect(() => {
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [supplierErrors, setSupplierErrors] = useState({});
 
+
+  const validateProductData = (products) => {
+    const newErrors = {};
+    
+    products.forEach((item, index) => {
+      // Validate product name
+      if (!item.productName || item.productName.trim().length < 2) {
+        newErrors[`productName-${index}`] = 'Product name is required (minimum 2 characters)';
+      } else if (item.productName.length > 100) {
+        newErrors[`productName-${index}`] = 'Product name is too long (maximum 100 characters)';
+      }
+      
+      // Validate product code
+      if (!item.productCode || item.productCode.trim().length < 1) {
+        newErrors[`productCode-${index}`] = 'Product code/SKU is required';
+      } else if (item.productCode.length > 50) {
+        newErrors[`productCode-${index}`] = 'Product code is too long (maximum 50 characters)';
+      }
+      
+      // Check for duplicate product codes within the same PI
+      const duplicateIndex = products.findIndex((p, i) => 
+        i !== index && 
+        p.productCode === item.productCode && 
+        item.productCode.trim() !== ''
+      );
+      if (duplicateIndex !== -1) {
+        newErrors[`productCode-${index}`] = `Duplicate product code "${item.productCode}" found on line ${duplicateIndex + 1}`;
+      }
+      
+      // Your existing quantity and price validation can stay here too
+      if (!item.quantity || item.quantity <= 0) {
+        newErrors[`quantity-${index}`] = 'Quantity must be greater than 0';
+      }
+      
+      if (item.unitPrice < 0) {
+        newErrors[`unitPrice-${index}`] = 'Unit price cannot be negative';
+      }
+    });
+    
+    return newErrors;
+  };
+
+  // Validation function to call before submit
+  const validateBeforeSubmit = () => {
+    const productErrors = validateProductData(selectedProducts);
+    
+    if (Object.keys(productErrors).length > 0) {
+      setErrors(prev => ({
+        ...prev,
+        ...productErrors
+      }));
+      
+      if (showNotification) {
+        showNotification('Please fix product information errors before saving', 'error');
+      }
+      
+      // Scroll to first error
+      setTimeout(() => {
+        const firstError = document.querySelector('.border-red-500');
+        if (firstError) {
+          firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          firstError.focus();
+        }
+      }, 100);
+      
+      return false; // Validation failed
+    }
+    
+    return true; // Validation passed
+  };
+
+  // Helper function for AI extraction results
+  const processAIExtractionResults = (extractedItems) => {
+    return extractedItems.map((item, index) => ({
+      ...item,
+      id: item.id || `extracted-${Date.now()}-${index}`,
+      isExtracted: true,  // Mark as AI extracted
+      isVerified: false,  // Requires user verification
+      productName: item.productName || item.description || 'Unknown Product',
+      productCode: item.productCode || item.partNumber || `CODE-${Date.now()}`,
+      brand: item.brand || '',
+      quantity: Math.max(1, parseInt(item.quantity) || 1),
+      unitPrice: Math.max(0, parseFloat(item.unitPrice) || 0),
+      totalPrice: Math.max(0, parseFloat(item.totalPrice) || 0)
+    }));
+  };
+
+  // Your existing useEffect hooks come here
+  useEffect(() => {
+    // ... your existing useEffect logic
+  }, [proformaInvoice]);
+
+  // Your existing handleUpdateItem function (enhanced version)
+  const handleUpdateItem = (index, field, value) => {
+    setSelectedProducts(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        [field]: value
+      };
+      
+      // Special handling for product name and code changes
+      if (field === 'productName') {
+        updated[index].isExtracted = false;
+        updated[index].isVerified = true;
+      }
+      
+      if (field === 'productCode') {
+        updated[index].isExtracted = false;
+        updated[index].isVerified = true;
+      }
+      
+      if (field === 'brand') {
+        updated[index].brand = value;
+      }
+      
+      // Your existing price fixing logic
+      const fixedItems = fixPIItemPrices(updated, false);
+      
+      const originalTotal = updated[index].totalPrice;
+      const fixedTotal = fixedItems[index].totalPrice;
+      
+      if (showNotification && Math.abs(originalTotal - fixedTotal) > 0.01) {
+        showNotification(`Price auto-corrected for ${fixedItems[index].productName}`, 'info');
+      }
+      
+      if (field === 'receivedQty') {
+        fixedItems[index].isReceived = value >= fixedItems[index].quantity;
+      }
+      
+      return fixedItems;
+    });
+    
+    // Clear validation errors for edited fields
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[`${field}-${index}`];
+      if (field === 'productName' || field === 'productCode') {
+        delete newErrors[`productName-${index}`];
+        delete newErrors[`productCode-${index}`];
+      }
+      return newErrors;
+    });
+  };
+
   const handleAllocationComplete = useCallback(async (allocations) => {
   try {
     console.log('✅ ALLOCATION COMPLETE: Starting enhanced update process...');
@@ -1008,6 +1153,10 @@ useEffect(() => {
 }, [formData.piNumber, formData.supplierId, formData.supplierName, formData.date, selectedProducts]);
 
 const handleSubmit = useCallback((e) => {
+
+   if (!validateBeforeSubmit()) {
+      return; // Stop submission if validation fails
+    }
   e.preventDefault();
   
   if (!validateForm()) return;
@@ -1170,33 +1319,65 @@ const handleSubmit = useCallback((e) => {
   };
 
   const handleUpdateItem = (index, field, value) => {
-    setSelectedProducts(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        [field]: value
-      };
-      
-      // ✅ Apply price fixing immediately after any change
-      const fixedItems = fixPIItemPrices(updated, false); // Set debug=false for manual changes
-      
-      // Check if price was auto-corrected and notify user
-      const originalTotal = updated[index].totalPrice;
-      const fixedTotal = fixedItems[index].totalPrice;
-      
-      if (showNotification && Math.abs(originalTotal - fixedTotal) > 0.01) {
-        showNotification(`Price auto-corrected for ${fixedItems[index].productName}`, 'info');
+  setSelectedProducts(prev => {
+    const updated = [...prev];
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    };
+    
+    // ✅ NEW: Special handling for product name and code changes
+    if (field === 'productName') {
+      // Clear any extraction flags when user manually edits
+      updated[index].isExtracted = false;
+      updated[index].isVerified = true;
+    }
+    
+    if (field === 'productCode') {
+      // Clear extraction flags when user manually edits
+      updated[index].isExtracted = false;
+      updated[index].isVerified = true;
+    }
+    
+    if (field === 'brand') {
+      // Just store the brand value
+      updated[index].brand = value;
+    }
+    
+    // ✅ Apply price fixing immediately after any change (YOUR EXISTING LOGIC)
+    const fixedItems = fixPIItemPrices(updated, false); // Set debug=false for manual changes
+    
+    // Check if price was auto-corrected and notify user (YOUR EXISTING LOGIC)
+    const originalTotal = updated[index].totalPrice;
+    const fixedTotal = fixedItems[index].totalPrice;
+    
+    if (showNotification && Math.abs(originalTotal - fixedTotal) > 0.01) {
+      showNotification(`Price auto-corrected for ${fixedItems[index].productName}`, 'info');
+    }
+    
+    // Check if item is fully received (YOUR EXISTING LOGIC)
+    if (field === 'receivedQty') {
+      fixedItems[index].isReceived = value >= fixedItems[index].quantity;
+    }
+    
+    return fixedItems;
+  });
+  
+  // ✅ NEW: Clear any validation errors for edited fields
+  if (typeof setErrors === 'function') {
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      // Clear errors for the specific field being edited
+      delete newErrors[`${field}-${index}`];
+      // Also clear product-related errors when name or code is edited
+      if (field === 'productName' || field === 'productCode') {
+        delete newErrors[`productName-${index}`];
+        delete newErrors[`productCode-${index}`];
       }
-      
-      // Check if item is fully received (keep existing logic)
-      if (field === 'receivedQty') {
-        fixedItems[index].isReceived = value >= fixedItems[index].quantity;
-      }
-      
-      return fixedItems;
+      return newErrors;
     });
-  };
-
+  }
+};
   const handleToggleReceived = (index) => {
     const updated = [...selectedProducts];
     updated[index].isReceived = !updated[index].isReceived;
