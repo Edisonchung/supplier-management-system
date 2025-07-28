@@ -2624,9 +2624,10 @@ useEffect(() => {
       }
     }));
   };
-
-  const handleSetAllAsReceived = async () => {
+const handleSetAllAsReceived = async () => {
   if (pi && pi.items) {
+    setSkipFormInit(true);  // Prevent form reinitialization
+
     const updatedForm = {};
     pi.items.forEach(item => {
       updatedForm[item.id] = {
@@ -2634,15 +2635,17 @@ useEffect(() => {
         receivedQty: item.quantity // Set to ordered quantity
       };
     });
+
+    console.log('🔍 BULK SET - Setting all items to received and saving to database...');
+    
     setReceivingForm(updatedForm);
     
-    // ✅ NEW: Bulk save all the set values to database
+    // ✅ CRITICAL: Save to database immediately (this was missing!)
     await bulkSaveReceivingData(updatedForm);
-
-    // 🆕 ADD THESE LINES:
+    
     setTimeout(() => setSkipFormInit(false), 100);
     
-    showNotification('All items set as fully received and saved', 'success');
+    showNotification('All items set as fully received and saved to database', 'success');
   }
 };
   
