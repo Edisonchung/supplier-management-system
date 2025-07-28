@@ -399,46 +399,7 @@ useEffect(() => {
     // ... your existing useEffect logic
   }, [proformaInvoice]);
 
-  // Your existing handleUpdateItem function (enhanced version)
-  const handleUpdateItem = (index, field, value) => {
-    setSelectedProducts(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        [field]: value
-      };
-      
-      // Special handling for product name and code changes
-      if (field === 'productName') {
-        updated[index].isExtracted = false;
-        updated[index].isVerified = true;
-      }
-      
-      if (field === 'productCode') {
-        updated[index].isExtracted = false;
-        updated[index].isVerified = true;
-      }
-      
-      if (field === 'brand') {
-        updated[index].brand = value;
-      }
-      
-      // Your existing price fixing logic
-      const fixedItems = fixPIItemPrices(updated, false);
-      
-      const originalTotal = updated[index].totalPrice;
-      const fixedTotal = fixedItems[index].totalPrice;
-      
-      if (showNotification && Math.abs(originalTotal - fixedTotal) > 0.01) {
-        showNotification(`Price auto-corrected for ${fixedItems[index].productName}`, 'info');
-      }
-      
-      if (field === 'receivedQty') {
-        fixedItems[index].isReceived = value >= fixedItems[index].quantity;
-      }
-      
-      return fixedItems;
-    });
+  
     
     // Clear validation errors for edited fields
     setErrors(prev => {
