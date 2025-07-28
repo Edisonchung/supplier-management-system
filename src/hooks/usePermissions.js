@@ -1,5 +1,5 @@
 // src/hooks/usePermissions.js
-// Enhanced Multi-Company Permissions Hook
+// Enhanced Multi-Company Permissions Hook - FULLY FIXED SYNTAX
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -112,71 +112,117 @@ export const usePermissions = () => {
     return companyPermissions?.permissions?.includes(permission) || false;
   };
 
-  // Safe access with fallbacks for traditional permissions
+  // Safe access with fallbacks for traditional permissions - ALL SYNTAX FIXED
   const basePermissions = {
     // Dashboard permissions - everyone can view
     canViewDashboard: PERMISSIONS?.canViewDashboard?.includes(userRole) ?? 
                      ['admin', 'manager', 'employee', 'viewer'].includes(userRole),
     
-    // Supplier permissions
+    // Supplier permissions - FIXED WITH GROUP ADMIN
     canEditSuppliers: (PERMISSIONS?.canEditSuppliers?.includes(userRole) ?? 
-                    ['admin', 'manager'].includes(userRole)) ||
+                      ['admin', 'manager'].includes(userRole)) ||
+                      isGroupAdmin ||
+                      hasCompanyPermission('edit_all') ||
+                      hasCompanyPermission('manage_companies'),
+                     
+    canViewSuppliers: (PERMISSIONS?.canViewSuppliers?.includes(userRole) ?? 
+                      ['admin', 'manager'].includes(userRole)) ||
+                      isGroupAdmin ||
+                      hasCompanyPermission('view_all'),
+    
+    // Product permissions - FIXED WITH GROUP ADMIN
+    canEditProducts: (PERMISSIONS?.canEditProducts?.includes(userRole) ?? 
+                     ['admin', 'manager', 'employee'].includes(userRole)) ||
+                     isGroupAdmin ||
+                     hasCompanyPermission('edit_all'),
+                     
+    canViewProducts: (PERMISSIONS?.canViewProducts?.includes(userRole) ?? 
+                     ['admin', 'manager', 'employee', 'viewer'].includes(userRole)) ||
+                     isGroupAdmin ||
+                     hasCompanyPermission('view_all'),
+    
+    // Order permissions - FIXED TRIPLE ?? OPERATORS
+    canViewOrders: (PERMISSIONS?.canViewOrders?.includes(userRole) ?? 
+                   (PERMISSIONS?.canViewPurchaseOrders?.includes(userRole) ?? 
+                   ['admin', 'manager'].includes(userRole))) ||
+                   isGroupAdmin ||
+                   hasCompanyPermission('view_all'),
+    
+    // Purchase Order permissions - FIXED WITH GROUP ADMIN
+    canEditPurchaseOrders: (PERMISSIONS?.canEditPurchaseOrders?.includes(userRole) ?? 
+                           ['admin', 'manager'].includes(userRole)) ||
+                           isGroupAdmin ||
+                           hasCompanyPermission('edit_all'),
+                           
+    canViewPurchaseOrders: (PERMISSIONS?.canViewPurchaseOrders?.includes(userRole) ?? 
+                           ['admin', 'manager'].includes(userRole)) ||
+                           isGroupAdmin ||
+                           hasCompanyPermission('view_all'),
+                           
+    canApprovePurchaseOrders: (PERMISSIONS?.canApprovePurchaseOrders?.includes(userRole) ?? 
+                              ['admin', 'manager'].includes(userRole)) ||
+                              isGroupAdmin ||
+                              hasCompanyPermission('edit_all'),
+                              
+    canDeletePurchaseOrders: isAdmin || isGroupAdmin,
+    
+    // Proforma Invoice permissions - FIXED WITH GROUP ADMIN
+    canViewPI: (PERMISSIONS?.canViewPI?.includes(userRole) ?? 
+               ['admin', 'manager', 'employee'].includes(userRole)) ||
+               isGroupAdmin ||
+               hasCompanyPermission('view_all'),
+               
+    canEditPI: (PERMISSIONS?.canEditPI?.includes(userRole) ?? 
+               ['admin', 'manager'].includes(userRole)) ||
+               isGroupAdmin ||
+               hasCompanyPermission('edit_all'),
+    
+    // Invoice permissions - FIXED WITH GROUP ADMIN
+    canViewInvoices: (PERMISSIONS?.canViewInvoices?.includes(userRole) ?? 
+                     ['admin', 'manager'].includes(userRole)) ||
+                     isGroupAdmin ||
+                     hasCompanyPermission('view_all'),
+                     
+    canEditInvoices: (PERMISSIONS?.canEditInvoices?.includes(userRole) ?? 
+                     ['admin', 'manager'].includes(userRole)) ||
+                     isGroupAdmin ||
+                     hasCompanyPermission('edit_all'),
+    
+    // Delivery/Tracking permissions - FIXED TRIPLE ?? OPERATORS
+    canViewDeliveries: (PERMISSIONS?.canViewDeliveries?.includes(userRole) ?? 
+                       (PERMISSIONS?.canViewTracking?.includes(userRole) ?? 
+                       ['admin', 'manager', 'employee'].includes(userRole))) ||
+                       isGroupAdmin ||
+                       hasCompanyPermission('view_all'),
+                       
+    canViewTracking: (PERMISSIONS?.canViewTracking?.includes(userRole) ?? 
+                     ['admin', 'manager', 'employee'].includes(userRole)) ||
+                     isGroupAdmin ||
+                     hasCompanyPermission('view_all'),
+                     
+    canUpdateDeliveryStatus: (PERMISSIONS?.canUpdateDeliveryStatus?.includes(userRole) ?? 
+                             ['admin', 'manager'].includes(userRole)) ||
+                             isGroupAdmin ||
+                             hasCompanyPermission('edit_all'),
+    
+    // Import permissions - FIXED WITH GROUP ADMIN
+    canImportData: (PERMISSIONS?.canImportData?.includes(userRole) ?? 
+                   ['admin', 'manager'].includes(userRole)) ||
+                   isGroupAdmin ||
+                   hasCompanyPermission('edit_all'),
+    
+    // Team and system management permissions - FIXED WITH GROUP ADMIN
+    canManageUsers: (PERMISSIONS?.canManageUsers?.includes(userRole) ?? isAdmin) ||
                     isGroupAdmin ||
-                    hasCompanyPermission('edit_all') ||
-                    hasCompanyPermission('manage_companies'),
-                   
-    canViewSuppliers: PERMISSIONS?.canViewSuppliers?.includes(userRole) ?? 
-                     ['admin', 'manager'].includes(userRole),
-    
-    // Product permissions
-    canEditProducts: PERMISSIONS?.canEditProducts?.includes(userRole) ?? 
-                    ['admin', 'manager', 'employee'].includes(userRole),
-    canViewProducts: PERMISSIONS?.canViewProducts?.includes(userRole) ?? 
-                    ['admin', 'manager', 'employee', 'viewer'].includes(userRole),
-    
-    // Order permissions (for Sourcing & Procurement menu items)
-    canViewOrders: PERMISSIONS?.canViewOrders?.includes(userRole) ?? 
-                   PERMISSIONS?.canViewPurchaseOrders?.includes(userRole) ?? 
-                   ['admin', 'manager'].includes(userRole),
-    
-    // Purchase Order permissions
-    canEditPurchaseOrders: PERMISSIONS?.canEditPurchaseOrders?.includes(userRole) ?? 
-                          ['admin', 'manager'].includes(userRole),
-    canViewPurchaseOrders: PERMISSIONS?.canViewPurchaseOrders?.includes(userRole) ?? 
-                          ['admin', 'manager'].includes(userRole),
-    canApprovePurchaseOrders: PERMISSIONS?.canApprovePurchaseOrders?.includes(userRole) ?? 
-                             ['admin', 'manager'].includes(userRole),
-    canDeletePurchaseOrders: isAdmin,
-    
-    // Proforma Invoice permissions
-    canViewPI: PERMISSIONS?.canViewPI?.includes(userRole) ?? 
-              ['admin', 'manager', 'employee'].includes(userRole),
-    canEditPI: PERMISSIONS?.canEditPI?.includes(userRole) ?? 
-              ['admin', 'manager'].includes(userRole),
-    
-    // Invoice permissions
-    canViewInvoices: PERMISSIONS?.canViewInvoices?.includes(userRole) ?? 
-                    ['admin', 'manager'].includes(userRole),
-    canEditInvoices: PERMISSIONS?.canEditInvoices?.includes(userRole) ?? 
-                    ['admin', 'manager'].includes(userRole),
-    
-    // Delivery/Tracking permissions
-    canViewDeliveries: PERMISSIONS?.canViewDeliveries?.includes(userRole) ?? 
-                      PERMISSIONS?.canViewTracking?.includes(userRole) ?? 
-                      ['admin', 'manager', 'employee'].includes(userRole),
-    canViewTracking: PERMISSIONS?.canViewTracking?.includes(userRole) ?? 
-                    ['admin', 'manager', 'employee'].includes(userRole),
-    canUpdateDeliveryStatus: PERMISSIONS?.canUpdateDeliveryStatus?.includes(userRole) ?? 
-                            ['admin', 'manager'].includes(userRole),
-    
-    // Import permissions
-    canImportData: PERMISSIONS?.canImportData?.includes(userRole) ?? 
-                  ['admin', 'manager'].includes(userRole),
-    
-    // Team and system management permissions - Admin only
-    canManageUsers: PERMISSIONS?.canManageUsers?.includes(userRole) ?? isAdmin,
-    canViewActivity: PERMISSIONS?.canViewActivity?.includes(userRole) ?? isAdmin,
-    canManageSettings: PERMISSIONS?.canManageSettings?.includes(userRole) ?? isAdmin
+                    hasCompanyPermission('manage_users'),
+                    
+    canViewActivity: (PERMISSIONS?.canViewActivity?.includes(userRole) ?? isAdmin) ||
+                     isGroupAdmin ||
+                     hasCompanyPermission('view_all'),
+                     
+    canManageSettings: (PERMISSIONS?.canManageSettings?.includes(userRole) ?? isAdmin) ||
+                       isGroupAdmin ||
+                       hasCompanyPermission('manage_companies')
   };
 
   // Multi-company specific permissions
