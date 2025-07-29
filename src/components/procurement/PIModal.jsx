@@ -9,15 +9,16 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 
-// Replace the async import section with:
-import { PIPOMatchingService as ImportedPIPOMatchingService } from '../../services/PIPOMatchingService';
-const PIPOMatchingService = ImportedPIPOMatchingService || null;
-console.log('🔍 Service Debug:', {
-  PIPOMatchingService,
-  type: typeof PIPOMatchingService,
-  available: !!PIPOMatchingService,
-  methods: PIPOMatchingService ? Object.getOwnPropertyNames(PIPOMatchingService) : 'N/A'
-});
+// ✅ CRITICAL FIX: Safe import pattern to prevent uninitialized variable error
+let PIPOMatchingService = null;
+try {
+  const matchingModule = await import('../../services/PIPOMatchingService');
+  PIPOMatchingService = matchingModule.PIPOMatchingService || null;
+} catch (e) {
+  console.warn('PIPOMatchingService not available:', e.message);
+  PIPOMatchingService = null;
+}
+
 import { 
   X, Plus, Trash2, Search, Package, 
   FileText, Calculator, Calendar, Tag,
@@ -466,10 +467,9 @@ useEffect(() => {
     },
     // Additional extracted fields
     deliveryTerms: '',
-    validity: ''
+    validity: '',
 
     // ✅ ADD THESE NEW FIELDS HERE:
-  ,
   // Document storage fields
   documentId: '',
   documentNumber: '',
