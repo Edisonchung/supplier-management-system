@@ -21,33 +21,6 @@ import {
   ChevronDown, Check, CheckCircle, Clock, Edit2, Info 
 } from 'lucide-react';
 
-
-// ===== FIND THIS SECTION AT THE TOP OF YOUR PIMODAL.JSX =====
-// Look for your existing imports (around lines 1-20):
-
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { collection, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-
-import DocumentViewer from '../common/DocumentViewer';
-import StockAllocationModal from './StockAllocationModal';
-import { StockAllocationService } from '../../services/StockAllocationService';
-import { getProformaInvoices } from '../../services/firebase';
-
-import { 
-  X, Plus, Trash2, Search, Package, 
-  FileText, Calculator, Calendar, Tag,
-  Truck, AlertCircle, CheckSquare, Square,
-  DollarSign, Upload, Link, Eye, Download,
-  CreditCard, MessageSquare, Briefcase, AlertTriangle,
-  Building2, Mail, Phone, MapPin, User, Loader2,
-  ChevronDown, Check, CheckCircle, Clock,
-  Edit2, Info  // Your existing icons
-} from 'lucide-react';
-
-// ===== ADD CLIENTPOINPUT COMPONENT RIGHT AFTER IMPORTS =====
-// Add this component definition right after your imports and before the main functions:
-
 // ✅ ADD THIS COMPONENT HERE - RIGHT AFTER IMPORTS, BEFORE fixPIItemPrices
 const ClientPOInput = ({ value, onChange, index, className, placeholder }) => {
   const [suggestions, setSuggestions] = useState([]);
