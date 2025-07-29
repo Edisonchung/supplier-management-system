@@ -3216,41 +3216,52 @@ const PIPOMatchingModal = ({
   const [selectedMatches, setSelectedMatches] = useState({});
   const [loading, setLoading] = useState(false);
   const [matchingSummary, setMatchingSummary] = useState(null);
+  const [serviceAvailable, setServiceAvailable] = useState(!!PIPOMatchingService);
 
   useEffect(() => {
-    if (isOpen && piItems.length > 0) {
+    if (isOpen && piItems.length > 0 && serviceAvailable) {
       runMatching();
+    } else if (isOpen && !serviceAvailable) {
+      showNotification('PO Matching service is not available', 'error');
+      onClose();
     }
-  }, [isOpen, piItems]);
+  }, [isOpen, piItems, serviceAvailable]);
 
   const runMatching = async () => {
+    if (!PIPOMatchingService) {
+      showNotification('PO Matching service is not available', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await PIPOMatchingService.findMatchingPOs(piItems);
       
       if (result.success) {
-        setMatches(result.matches);
-        setMatchingSummary(result.summary);
+        setMatches(result.matches || []);
+        setMatchingSummary(result.summary || {});
         
         // Auto-select high confidence matches
         const autoSelected = {};
-        result.matches.forEach(match => {
-          const bestMatch = match.matches[0];
+        (result.matches || []).forEach(match => {
+          const bestMatch = match.matches?.[0];
           if (bestMatch && bestMatch.confidence >= 80) {
             autoSelected[match.piItem.id] = bestMatch;
           }
         });
         setSelectedMatches(autoSelected);
         
+        const summary = result.summary || {};
         showNotification(
-          `Found ${result.summary.matchedItems} new matches out of ${result.summary.searchedItems} unmatched items. ${result.summary.alreadyMatchedItems} items were already matched.`,
+          `Found ${summary.matchedItems || 0} new matches out of ${summary.searchedItems || 0} unmatched items. ${summary.alreadyMatchedItems || 0} items were already matched.`,
           'success'
         );
       } else {
-        showNotification('Error running PO matching: ' + result.error, 'error');
+        showNotification('Error running PO matching: ' + (result.error || 'Unknown error'), 'error');
       }
     } catch (error) {
-      showNotification('Error running PO matching', 'error');
+      console.error('Error in runMatching:', error);
+      showNotification('Error running PO matching: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -3264,14 +3275,19 @@ const PIPOMatchingModal = ({
   };
 
   const handleApplySelected = () => {
-    const matchesToApply = Object.values(selectedMatches);
-    onApplyMatches(matchesToApply);
-    onClose();
-    
-    showNotification(
-      `Applied ${matchesToApply.length} PO matches to PI items`,
-      'success'
-    );
+    try {
+      const matchesToApply = Object.values(selectedMatches);
+      onApplyMatches(matchesToApply);
+      onClose();
+      
+      showNotification(
+        `Applied ${matchesToApply.length} PO matches to PI items`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Error applying selected matches:', error);
+      showNotification('Failed to apply matches: ' + error.message, 'error');
+    }
   };
 
   const getConfidenceColor = (confidence) => {
@@ -3291,6 +3307,29 @@ const PIPOMatchingModal = ({
   };
 
   if (!isOpen) return null;
+
+  // Service not available fallback
+  if (!serviceAvailable) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="text-center">
+            <AlertTriangle className="mx-auto h-12 w-12 text-orange-500 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Service Unavailable</h3>
+            <p className="text-gray-600 mb-4">
+              The PO Matching service is currently unavailable. Please try again later.
+            </p>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -3313,23 +3352,23 @@ const PIPOMatchingModal = ({
           {matchingSummary && (
             <div className="mt-4 grid grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{matchingSummary.totalItems}</div>
+                <div className="text-2xl font-bold text-blue-600">{matchingSummary.totalItems || 0}</div>
                 <div className="text-xs text-gray-600">Total Items</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{matchingSummary.alreadyMatchedItems}</div>
+                <div className="text-2xl font-bold text-green-600">{matchingSummary.alreadyMatchedItems || 0}</div>
                 <div className="text-xs text-gray-600">Already Matched</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">{matchingSummary.searchedItems}</div>
+                <div className="text-2xl font-bold text-purple-600">{matchingSummary.searchedItems || 0}</div>
                 <div className="text-xs text-gray-600">Searched</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">{matchingSummary.matchedItems}</div>
+                <div className="text-2xl font-bold text-orange-600">{matchingSummary.matchedItems || 0}</div>
                 <div className="text-xs text-gray-600">New Matches</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-cyan-600">{matchingSummary.matchRate}%</div>
+                <div className="text-2xl font-bold text-cyan-600">{matchingSummary.matchRate || 0}%</div>
                 <div className="text-xs text-gray-600">Success Rate</div>
               </div>
             </div>
@@ -3371,14 +3410,14 @@ const PIPOMatchingModal = ({
                   <div key={index} className="border rounded-lg p-4">
                     <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="font-medium">{match.piItem.productName}</h3>
-                        <p className="text-sm text-gray-600">{match.piItem.productCode}</p>
+                        <h3 className="font-medium">{match.piItem?.productName || 'Unknown Product'}</h3>
+                        <p className="text-sm text-gray-600">{match.piItem?.productCode || 'No Code'}</p>
                         <p className="text-xs text-gray-500">
-                          Qty: {match.piItem.quantity} | Price: ${match.piItem.unitPrice}
+                          Qty: {match.piItem?.quantity || 0} | Price: ${match.piItem?.unitPrice || 0}
                         </p>
                       </div>
                       
-                      {match.matches.length === 0 ? (
+                      {!match.matches || match.matches.length === 0 ? (
                         <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">
                           No matches found
                         </span>
@@ -3389,7 +3428,7 @@ const PIPOMatchingModal = ({
                       )}
                     </div>
 
-                    {match.matches.length > 0 && (
+                    {match.matches && match.matches.length > 0 && (
                       <div className="space-y-3">
                         <h4 className="font-medium text-sm text-gray-700">Potential Matches:</h4>
                         {match.matches.slice(0, 3).map((poMatch, matchIndex) => (
@@ -3416,15 +3455,15 @@ const PIPOMatchingModal = ({
                             </div>
                             
                             <div className="text-sm text-gray-600">
-                              <p><strong>Product:</strong> {poMatch.poItem.productName}</p>
-                              <p><strong>Code:</strong> {poMatch.poItem.productCode}</p>
-                              <p><strong>Client:</strong> {poMatch.po.clientName}</p>
-                              {poMatch.po.projectCode && (
+                              <p><strong>Product:</strong> {poMatch.poItem?.productName || 'N/A'}</p>
+                              <p><strong>Code:</strong> {poMatch.poItem?.productCode || 'N/A'}</p>
+                              <p><strong>Client:</strong> {poMatch.po?.clientName || 'N/A'}</p>
+                              {poMatch.po?.projectCode && (
                                 <p><strong>Project:</strong> {poMatch.po.projectCode}</p>
                               )}
                             </div>
                             
-                            {poMatch.matchedFields.length > 0 && (
+                            {poMatch.matchedFields && poMatch.matchedFields.length > 0 && (
                               <div className="mt-2 flex gap-1">
                                 {poMatch.matchedFields.map(field => (
                                   <span 
