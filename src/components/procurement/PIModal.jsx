@@ -237,7 +237,6 @@ const normalizeDate = (dateValue) => {
   }
 };
 
-const ClientPOInput = ({ value, onChange, index, className, placeholder }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   
