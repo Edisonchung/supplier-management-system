@@ -237,67 +237,6 @@ const normalizeDate = (dateValue) => {
   }
 };
 
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  
-  // Sample client PO suggestions (replace with your actual data source)
-  const clientPOSuggestions = [
-    'PO-2025-PETRONAS-001',
-    'PO-2025-PETRONAS-002',
-    'PO-2025-SMART-CITY-001', 
-    'PO-2025-HOSPITALITY-001',
-    'PO-2025-INDUSTRIAL-001',
-    'PO-2025-FN-BEVERAGES-001',
-    'PO-2025-BORNEO-SPRINGS-001',
-    'PO-2025-LFM-ENERGY-001'
-  ];
-  
-  const handleInputChange = (inputValue) => {
-    onChange(inputValue);
-    
-    if (inputValue.length > 2) {
-      const filtered = clientPOSuggestions.filter(po => 
-        po.toLowerCase().includes(inputValue.toLowerCase())
-      );
-      setSuggestions(filtered);
-      setShowSuggestions(true);
-    } else {
-      setShowSuggestions(false);
-    }
-  };
-  
-  return (
-    <div className="relative">
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => handleInputChange(e.target.value)}
-        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-        className={className}
-        placeholder={placeholder}
-        title="Client Purchase Order Number"
-      />
-      
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-10 w-48 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-32 overflow-y-auto">
-          {suggestions.map((suggestion, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => {
-                onChange(suggestion);
-                setShowSuggestions(false);
-              }}
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
