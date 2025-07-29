@@ -18,7 +18,8 @@ import {
   DollarSign, Upload, Link, Eye, Download,
   CreditCard, MessageSquare, Briefcase, AlertTriangle,
   Building2, Mail, Phone, MapPin, User, Loader2,
-  ChevronDown, Check, CheckCircle, Clock, Edit2, Info 
+  ChevronDown, Check, CheckCircle, Clock, Edit2, Info,
+  Brain, Target, Zap, ExternalLink, ArrowRight 
 } from 'lucide-react';
 
 // ✅ ADD THIS COMPONENT HERE - RIGHT AFTER IMPORTS, BEFORE fixPIItemPrices
@@ -83,6 +84,163 @@ const ClientPOInput = ({ value, onChange, index, className, placeholder }) => {
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+const getMatchingStatus = (item) => {
+  const hasClientInfo = !!(item.clientPO || item.clientItemCode);
+  const hasProjectCode = !!item.fsProjectCode;
+  const hasAllTrackingData = hasClientInfo && hasProjectCode;
+  
+  // Mock supplier matching check - replace with actual logic
+  const hasSupplierMatch = item.supplierMatchStatus === 'matched' || 
+                          item.matchedSupplierId || 
+                          item.supplierMatchConfidence > 0;
+  
+  const matchingScore = item.supplierMatchConfidence || 0;
+  
+  // Determine overall matching status
+  if (hasAllTrackingData && hasSupplierMatch && matchingScore >= 85) {
+    return {
+      status: 'complete',
+      color: 'green',
+      icon: CheckCircle,
+      text: 'Fully Matched',
+      confidence: matchingScore,
+      description: 'All data complete, high-confidence supplier match'
+    };
+  } else if (hasAllTrackingData && hasSupplierMatch && matchingScore >= 60) {
+    return {
+      status: 'good',
+      color: 'blue', 
+      icon: Target,
+      text: 'Good Match',
+      confidence: matchingScore,
+      description: 'Complete tracking data with decent supplier match'
+    };
+  } else if (hasAllTrackingData && matchingScore < 60) {
+    return {
+      status: 'poor-match',
+      color: 'orange',
+      icon: AlertTriangle, 
+      text: 'Poor Match',
+      confidence: matchingScore,
+      description: 'Complete data but low supplier match confidence'
+    };
+  } else if (hasAllTrackingData && !hasSupplierMatch) {
+    return {
+      status: 'ready',
+      color: 'yellow',
+      icon: Brain,
+      text: 'Ready for Matching',
+      confidence: 0,
+      description: 'All tracking data present, ready for supplier matching'
+    };
+  } else {
+    return {
+      status: 'incomplete',
+      color: 'gray',
+      icon: Search,
+      text: 'Incomplete Data',
+      confidence: 0,
+      description: 'Missing tracking data required for matching'
+    };
+  }
+};
+
+const LineMatchingStatus = ({ item, formData, onNavigateToMatching }) => {
+  const matchingStatus = getMatchingStatus(item);
+  const StatusIcon = matchingStatus.icon;
+  
+  const getStatusColor = (color) => {
+    const colors = {
+      green: 'bg-green-100 text-green-800 border-green-200',
+      blue: 'bg-blue-100 text-blue-800 border-blue-200', 
+      orange: 'bg-orange-100 text-orange-800 border-orange-200',
+      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      gray: 'bg-gray-100 text-gray-800 border-gray-200'
+    };
+    return colors[color] || colors.gray;
+  };
+
+  const getActionButton = () => {
+    if (matchingStatus.status === 'complete' || matchingStatus.status === 'good') {
+      return (
+        <button
+          type="button"
+          onClick={() => onNavigateToMatching?.(item)}
+          className="ml-2 px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-1"
+          title="View matching details"
+        >
+          <ExternalLink size={10} />
+          View
+        </button>
+      );
+    } else if (matchingStatus.status === 'ready') {
+      return (
+        <button
+          type="button"
+          onClick={() => onNavigateToMatching?.(item, 'auto-match')}
+          className="ml-2 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+          title="Run AI matching"
+        >
+          <Brain size={10} />
+          Match
+        </button>
+      );
+    } else if (matchingStatus.status === 'poor-match') {
+      return (
+        <button
+          type="button"
+          onClick={() => onNavigateToMatching?.(item, 'manual-match')}
+          className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 flex items-center gap-1"
+          title="Improve matching manually"
+        >
+          <Target size={10} />
+          Fix
+        </button>
+      );
+    } else {
+      return (
+        <button
+          type="button"
+          onClick={() => onNavigateToMatching?.(item, 'setup')}
+          className="ml-2 px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center gap-1"
+          title="Complete required data first"
+        >
+          <Search size={10} />
+          Setup
+        </button>
+      );
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${getStatusColor(matchingStatus.color)}`}>
+        <StatusIcon size={12} className="mr-1" />
+        <span className="font-medium">{matchingStatus.text}</span>
+        {matchingStatus.confidence > 0 && (
+          <span className="ml-1 text-xs opacity-75">
+            ({matchingStatus.confidence}%)
+          </span>
+        )}
+        {getActionButton()}
+      </div>
+      
+      {/* Quick status indicators */}
+      <div className="flex flex-wrap gap-1 text-xs">
+        <span className={`px-1 rounded ${item.clientPO ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          📋 {item.clientPO ? 'PO' : 'No PO'}
+        </span>
+        <span className={`px-1 rounded ${item.fsProjectCode ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          🏷️ {item.fsProjectCode ? 'Proj' : 'No Proj'}
+        </span>
+        <span className={`px-1 rounded ${item.clientItemCode ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          🔢 {item.clientItemCode ? 'Code' : 'No Code'}
+        </span>
+      </div>
     </div>
   );
 };
