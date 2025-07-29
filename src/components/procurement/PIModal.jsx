@@ -9,18 +9,7 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 
-// ✅ CRITICAL FIX: Safe import pattern to prevent uninitialized variable error
-import { PIPOMatchingService as ImportedPIPOMatchingService } from '../../services/PIPOMatchingService';
 
-// Safe null check wrapper
-const PIPOMatchingService = (() => {
-  try {
-    return ImportedPIPOMatchingService || null;
-  } catch (e) {
-    console.warn('PIPOMatchingService not available:', e.message);
-    return null;
-  }
-})();
 
 import { 
   X, Plus, Trash2, Search, Package, 
@@ -29,8 +18,7 @@ import {
   DollarSign, Upload, Link, Eye, Download,
   CreditCard, MessageSquare, Briefcase, AlertTriangle,
   Building2, Mail, Phone, MapPin, User, Loader2,
-  ChevronDown, Check, CheckCircle, Clock, Edit2, Info,
-  Brain, Target, Zap, ExternalLink, ArrowRight
+  ChevronDown, Check, CheckCircle, Clock, Edit2, Info 
 } from 'lucide-react';
 
 // ✅ ADD THIS COMPONENT HERE - RIGHT AFTER IMPORTS, BEFORE fixPIItemPrices
@@ -98,166 +86,6 @@ const ClientPOInput = ({ value, onChange, index, className, placeholder }) => {
     </div>
   );
 };
-
-
-const getMatchingStatus = (item) => {
-  const hasClientInfo = !!(item.clientPO || item.clientItemCode);
-  const hasProjectCode = !!item.fsProjectCode;
-  const hasAllTrackingData = hasClientInfo && hasProjectCode;
-  
-  // Mock supplier matching check - replace with actual logic
-  const hasSupplierMatch = item.supplierMatchStatus === 'matched' || 
-                          item.matchedSupplierId || 
-                          item.supplierMatchConfidence > 0;
-  
-  const matchingScore = item.supplierMatchConfidence || 0;
-  
-  // Determine overall matching status
-  if (hasAllTrackingData && hasSupplierMatch && matchingScore >= 85) {
-    return {
-      status: 'complete',
-      color: 'green',
-      icon: CheckCircle,
-      text: 'Fully Matched',
-      confidence: matchingScore,
-      description: 'All data complete, high-confidence supplier match'
-    };
-  } else if (hasAllTrackingData && hasSupplierMatch && matchingScore >= 60) {
-    return {
-      status: 'good',
-      color: 'blue', 
-      icon: Target,
-      text: 'Good Match',
-      confidence: matchingScore,
-      description: 'Complete tracking data with decent supplier match'
-    };
-  } else if (hasAllTrackingData && matchingScore < 60) {
-    return {
-      status: 'poor-match',
-      color: 'orange',
-      icon: AlertTriangle, 
-      text: 'Poor Match',
-      confidence: matchingScore,
-      description: 'Complete data but low supplier match confidence'
-    };
-  } else if (hasAllTrackingData && !hasSupplierMatch) {
-    return {
-      status: 'ready',
-      color: 'yellow',
-      icon: Brain,
-      text: 'Ready for Matching',
-      confidence: 0,
-      description: 'All tracking data present, ready for supplier matching'
-    };
-  } else {
-    return {
-      status: 'incomplete',
-      color: 'gray',
-      icon: Search,
-      text: 'Incomplete Data',
-      confidence: 0,
-      description: 'Missing tracking data required for matching'
-    };
-  }
-};
-
-const LineMatchingStatus = ({ item, formData, onNavigateToMatching }) => {
-  const matchingStatus = getMatchingStatus(item);
-  const StatusIcon = matchingStatus.icon;
-  
-  const getStatusColor = (color) => {
-    const colors = {
-      green: 'bg-green-100 text-green-800 border-green-200',
-      blue: 'bg-blue-100 text-blue-800 border-blue-200', 
-      orange: 'bg-orange-100 text-orange-800 border-orange-200',
-      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      gray: 'bg-gray-100 text-gray-800 border-gray-200'
-    };
-    return colors[color] || colors.gray;
-  };
-
-  const getActionButton = () => {
-    if (matchingStatus.status === 'complete' || matchingStatus.status === 'good') {
-      return (
-        <button
-          type="button"
-          onClick={() => onNavigateToMatching?.(item)}
-          className="ml-2 px-2 py-1 text-xs bg-white border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-1"
-          title="View matching details"
-        >
-          <ExternalLink size={10} />
-          View
-        </button>
-      );
-    } else if (matchingStatus.status === 'ready') {
-      return (
-        <button
-          type="button"
-          onClick={() => onNavigateToMatching?.(item, 'auto-match')}
-          className="ml-2 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
-          title="Run AI matching"
-        >
-          <Brain size={10} />
-          Match
-        </button>
-      );
-    } else if (matchingStatus.status === 'poor-match') {
-      return (
-        <button
-          type="button"
-          onClick={() => onNavigateToMatching?.(item, 'manual-match')}
-          className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 flex items-center gap-1"
-          title="Improve matching manually"
-        >
-          <Target size={10} />
-          Fix
-        </button>
-      );
-    } else {
-      return (
-        <button
-          type="button"
-          onClick={() => onNavigateToMatching?.(item, 'setup')}
-          className="ml-2 px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center gap-1"
-          title="Complete required data first"
-        >
-          <Search size={10} />
-          Setup
-        </button>
-      );
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className={`inline-flex items-center px-2 py-1 rounded-md text-xs border ${getStatusColor(matchingStatus.color)}`}>
-        <StatusIcon size={12} className="mr-1" />
-        <span className="font-medium">{matchingStatus.text}</span>
-        {matchingStatus.confidence > 0 && (
-          <span className="ml-1 text-xs opacity-75">
-            ({matchingStatus.confidence}%)
-          </span>
-        )}
-        {getActionButton()}
-      </div>
-      
-      {/* Quick status indicators */}
-      <div className="flex flex-wrap gap-1 text-xs">
-        <span className={`px-1 rounded ${item.clientPO ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-          📋 {item.clientPO ? 'PO' : 'No PO'}
-        </span>
-        <span className={`px-1 rounded ${item.fsProjectCode ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-          🏷️ {item.fsProjectCode ? 'Proj' : 'No Proj'}
-        </span>
-        <span className={`px-1 rounded ${item.clientItemCode ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-          🔢 {item.clientItemCode ? 'Code' : 'No Code'}
-        </span>
-      </div>
-    </div>
-  );
-};
-
-
 
 // ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
 const fixPIItemPrices = (items, debug = true) => {
@@ -409,6 +237,67 @@ const normalizeDate = (dateValue) => {
   }
 };
 
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  // Sample client PO suggestions (replace with your actual data source)
+  const clientPOSuggestions = [
+    'PO-2025-PETRONAS-001',
+    'PO-2025-PETRONAS-002',
+    'PO-2025-SMART-CITY-001', 
+    'PO-2025-HOSPITALITY-001',
+    'PO-2025-INDUSTRIAL-001',
+    'PO-2025-FN-BEVERAGES-001',
+    'PO-2025-BORNEO-SPRINGS-001',
+    'PO-2025-LFM-ENERGY-001'
+  ];
+  
+  const handleInputChange = (inputValue) => {
+    onChange(inputValue);
+    
+    if (inputValue.length > 2) {
+      const filtered = clientPOSuggestions.filter(po => 
+        po.toLowerCase().includes(inputValue.toLowerCase())
+      );
+      setSuggestions(filtered);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+  
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleInputChange(e.target.value)}
+        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+        className={className}
+        placeholder={placeholder}
+        title="Client Purchase Order Number"
+      />
+      
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute z-10 w-48 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+          {suggestions.map((suggestion, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                onChange(suggestion);
+                setShowSuggestions(false);
+              }}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
@@ -422,13 +311,11 @@ useEffect(() => {
   console.log('onClose:', typeof onClose, onClose ? 'Present' : 'Missing');
   console.log('addSupplier:', typeof addSupplier, addSupplier ? 'Present' : 'Missing');
   console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
-  console.log('PIPOMatchingService available:', isServiceAvailable);
   console.log('=== End Props Debug ===');
 }, [
   proformaInvoice?.id,  // Only re-log when PI ID changes
   suppliers?.length,
-  products?.length,
-  isServiceAvailable
+  products?.length
 ]);
     const [formData, setFormData] = useState({
     piNumber: '',
@@ -472,9 +359,10 @@ useEffect(() => {
     },
     // Additional extracted fields
     deliveryTerms: '',
-    validity: '',
+    validity: ''
 
     // ✅ ADD THESE NEW FIELDS HERE:
+  ,
   // Document storage fields
   documentId: '',
   documentNumber: '',
@@ -488,56 +376,7 @@ useEffect(() => {
   storedAt: ''
 });
 
-const isServiceAvailable = !!PIPOMatchingService;
 
-const handleApplyPOMatches = useCallback((matches) => {
-  try {
-    if (!isServiceAvailable) {
-      showNotification('PO Matching service is not available', 'error');
-      return;
-    }
-
-    const updatedProducts = PIPOMatchingService.applyMatches(selectedProducts, matches);
-    setSelectedProducts(updatedProducts);
-    
-    // Update tracking summary
-    const matchedCount = matches.length;
-    showNotification(
-      `Successfully applied ${matchedCount} PO matches. Tracking fields updated automatically.`,
-      'success'
-    );
-  } catch (error) {
-    console.error('Error applying PO matches:', error);
-    showNotification('Failed to apply PO matches: ' + error.message, 'error');
-  }
-}, [selectedProducts, showNotification, isServiceAvailable]);
-
-
-
-const handleNavigateToMatching = useCallback((item, action = 'view') => {
-  // Save current PI data first
-  const piData = {
-    ...formData,
-    items: selectedProducts
-  };
-  
-  // Store PI data for the matching page
-  sessionStorage.setItem('currentPI', JSON.stringify(piData));
-  sessionStorage.setItem('matchingContext', JSON.stringify({
-    fromPI: true,
-    targetItemId: item.id,
-    action: action,
-    piNumber: formData.piNumber
-  }));
-  
-  // Generate matching page URL
-  const matchingUrl = `/purchase-orders/${formData.piNumber}/supplier-matching?item=${item.id}&action=${action}`;
-  
-  // Open in new tab to preserve current modal state
-  window.open(matchingUrl, '_blank');
-  
-  showNotification?.(`Opening supplier matching for ${item.productName}`, 'info');
-}, [formData, selectedProducts, showNotification]);
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
@@ -585,7 +424,6 @@ const handleNavigateToMatching = useCallback((item, action = 'view') => {
     attachments: []
   });
 
-
   // Supplier creation states
   const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
@@ -600,7 +438,6 @@ const handleNavigateToMatching = useCallback((item, action = 'view') => {
   });
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [supplierErrors, setSupplierErrors] = useState({});
-  const [showPOMatchingModal, setShowPOMatchingModal] = useState(false);
 
   const handleAllocationComplete = useCallback(async (allocations) => {
   try {
@@ -1631,7 +1468,7 @@ const saveProductEdit = (index, field) => {
 
   return (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-    <div className="bg-white rounded-lg max-w-6xl w-full h-[90vh] flex flex-col overflow-hidden">
+    <div className="bg-white rounded-lg max-w-5xl w-full h-[90vh] flex flex-col overflow-hidden">
       {/* Fixed Header */}
       <div className="p-6 border-b flex-shrink-0">
         <div className="flex justify-between items-center">
@@ -1639,28 +1476,22 @@ const saveProductEdit = (index, field) => {
             {proformaInvoice ? 'Edit Proforma Invoice' : 'Create Proforma Invoice'}
           </h2>
           <div className="flex items-center gap-2">
-  {/* Service availability indicator */}
-  {!isServiceAvailable && (
-    <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
-      PO Matching Unavailable
-    </div>
-  )}
-  {proformaInvoice && (
-    <button
-      onClick={copyShareableLink}
-      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-      title="Copy shareable link"
-    >
-      <Link size={20} />
-    </button>
-  )}
-  <button
-    onClick={onClose}
-    className="text-gray-500 hover:text-gray-700"
-  >
-    <X size={24} />
-  </button>
-</div>
+            {proformaInvoice && (
+              <button
+                onClick={copyShareableLink}
+                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                title="Copy shareable link"
+              >
+                <Link size={20} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X size={24} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2339,27 +2170,6 @@ const saveProductEdit = (index, field) => {
         </button>
       )}
 
-      {/* NEW: PO Matching Button - SAFE VERSION */}
-{selectedProducts.length > 0 && isServiceAvailable && (
-  <button
-    type="button"
-    onClick={() => setShowPOMatchingModal(true)}
-    className="px-3 py-1.5 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 flex items-center gap-2"
-  >
-    <Brain size={14} />
-    Find PO Matches
-  </button>
-)}
-
-{/* Show message when service not available */}
-{selectedProducts.length > 0 && !isServiceAvailable && (
-  <div className="px-3 py-1.5 text-sm bg-yellow-100 text-yellow-800 rounded-lg">
-    <Info size={14} className="inline mr-1" />
-    PO Matching feature temporarily unavailable
-  </div>
-)}
-
-
       {/* NEW: Bulk FS Project Assignment */}
       {selectedProducts.length > 0 && (
         <select
@@ -2400,78 +2210,33 @@ const saveProductEdit = (index, field) => {
     </div>
   )}
 
- {/* Enhanced AI Matching Intelligence Dashboard */}
-{selectedProducts.length > 0 && (
-  <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg">
-    <div className="flex items-center justify-between mb-3">
-      <div className="flex items-center gap-2">
-        <Brain className="h-5 w-5 text-green-600" />
-        <span className="font-medium text-green-800">AI Matching Intelligence Dashboard</span>
-      </div>
-      <button
-        type="button"
-        onClick={() => exportAIMatchingData(selectedProducts)}
-        className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"
-      >
-        <Download size={12} />
-        Export Matching Data
-      </button>
-    </div>
-    
-    {/* Status Breakdown */}
-    <div className="grid grid-cols-5 gap-4 text-sm">
-      <div className="text-center">
-        <div className="text-2xl font-bold text-green-600">
-          {selectedProducts.filter(item => getMatchingStatus(item).status === 'complete').length}
+  {/* NEW: AI Matching Tracking Summary */}
+  {selectedProducts.length > 0 && (
+    <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4 text-sm">
+          <span className="font-medium text-green-800">AI Matching Tracking:</span>
+          <span className="text-green-700">
+            📋 {selectedProducts.filter(item => item.clientPO).length} items with Client PO
+          </span>
+          <span className="text-green-700">
+            🏷️ {selectedProducts.filter(item => item.fsProjectCode).length} items with FS Project
+          </span>
+          <span className="text-green-700">
+            🎯 {selectedProducts.filter(item => item.clientItemCode).length} items with Client Item Code
+          </span>
+          <span className="text-green-700">
+            ✅ {selectedProducts.filter(item => item.clientPO && item.fsProjectCode).length} ready for AI matching
+          </span>
         </div>
-        <div className="text-green-700 text-xs">Fully Matched</div>
-      </div>
-      <div className="text-center">
-        <div className="text-2xl font-bold text-blue-600">
-          {selectedProducts.filter(item => getMatchingStatus(item).status === 'good').length}
+        
+        <div className="text-xs text-green-600">
+          {Math.round((selectedProducts.filter(item => item.clientPO && item.fsProjectCode).length / selectedProducts.length) * 100)}% tracking complete
         </div>
-        <div className="text-blue-700 text-xs">Good Matches</div>
-      </div>
-      <div className="text-center">
-        <div className="text-2xl font-bold text-yellow-600">
-          {selectedProducts.filter(item => getMatchingStatus(item).status === 'ready').length}
-        </div>
-        <div className="text-yellow-700 text-xs">Ready to Match</div>
-      </div>
-      <div className="text-center">
-        <div className="text-2xl font-bold text-orange-600">
-          {selectedProducts.filter(item => getMatchingStatus(item).status === 'poor-match').length}
-        </div>
-        <div className="text-orange-700 text-xs">Need Improvement</div>
-      </div>
-      <div className="text-center">
-        <div className="text-2xl font-bold text-gray-600">
-          {selectedProducts.filter(item => getMatchingStatus(item).status === 'incomplete').length}
-        </div>
-        <div className="text-gray-700 text-xs">Incomplete Data</div>
       </div>
     </div>
-    
-    {/* Overall Progress */}
-    <div className="mt-3 pt-3 border-t border-green-200">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-green-700 font-medium">Overall Matching Readiness:</span>
-        <span className="text-green-800 font-bold">
-          {Math.round((selectedProducts.filter(item => ['complete', 'good'].includes(getMatchingStatus(item).status)).length / selectedProducts.length) * 100)}%
-        </span>
-      </div>
-      
-      <div className="mt-2 w-full bg-green-200 rounded-full h-2">
-        <div 
-          className="bg-green-600 h-2 rounded-full transition-all duration-300"
-          style={{ 
-            width: `${(selectedProducts.filter(item => ['complete', 'good'].includes(getMatchingStatus(item).status)).length / selectedProducts.length) * 100}%` 
-          }}
-        />
-      </div>
-    </div>
-  </div>
-)}
+  )}
+
 
               
                 {/* Product Search - Only show if supplier is selected and no extracted items */}
@@ -2515,27 +2280,24 @@ const saveProductEdit = (index, field) => {
                 )}
 
                 {/* Selected Products */}
-               {selectedProducts.length > 0 && (
-  <div className="border rounded-lg overflow-x-auto">  {/* ← CHANGE: Add overflow-x-auto */}
-    <table className="w-full min-w-max">  {/* ← CHANGE: Add min-w-max */}
-      <thead className="bg-gray-50">
+                {selectedProducts.length > 0 && (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
   <tr>
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+    {/* AI MATCHING TRACKING FIELDS */}
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client PO</th>
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Line Item</th>
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client Item Code</th>
+    {/* FS PORTAL PROJECT CODE */}
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">FS Project Code</th>
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-60">
-      Matching Status
-      <span className="ml-1 text-xs text-gray-400">(AI Ready)</span>
-    </th>
     <th className="px-4 py-2"></th>
   </tr>
 </thead>
-
 
                       <tbody>
                        {selectedProducts.map((item, index) => (
@@ -2679,15 +2441,6 @@ const saveProductEdit = (index, field) => {
       />
     </td>
 
-
-    {/* NEW: Matching Status Column */}
-    <td className="px-4 py-2 w-60">
-      <LineMatchingStatus 
-        item={item}
-        formData={formData}
-        onNavigateToMatching={handleNavigateToMatching}
-      />
-    </td>
     {/* EXISTING: Remove Button */}
     <td className="px-4 py-2">
       <button
@@ -3217,338 +2970,11 @@ const saveProductEdit = (index, field) => {
           </div>
         </div>
       )}
-
-      {/* PO Matching Modal - SAFE VERSION */}
-{isServiceAvailable ? (
-  <PIPOMatchingModal
-    isOpen={showPOMatchingModal}
-    onClose={() => setShowPOMatchingModal(false)}
-    piItems={selectedProducts}
-    onApplyMatches={handleApplyPOMatches}
-    showNotification={showNotification}
-  />
-  ) : null}
-)}
-    
     </div>
   );
 };
 
-// ✅ PI-PO MATCHING MODAL COMPONENT
-const PIPOMatchingModal = ({ 
-  isOpen, 
-  onClose, 
-  piItems, 
-  onApplyMatches, 
-  showNotification 
-}) => {
-  const [matches, setMatches] = useState([]);
-  const [selectedMatches, setSelectedMatches] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [matchingSummary, setMatchingSummary] = useState(null);
-  const [serviceAvailable, setServiceAvailable] = useState(!!PIPOMatchingService);
-
-  useEffect(() => {
-    if (isOpen && piItems.length > 0 && serviceAvailable) {
-      runMatching();
-    } else if (isOpen && !serviceAvailable) {
-      showNotification('PO Matching service is not available', 'error');
-      onClose();
-    }
-  }, [isOpen, piItems, serviceAvailable]);
-
-  const runMatching = async () => {
-    if (!isServiceAvailable) {
-      showNotification('PO Matching service is not available', 'error');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await PIPOMatchingService.findMatchingPOs(piItems);
-      
-      if (result.success) {
-        setMatches(result.matches || []);
-        setMatchingSummary(result.summary || {});
-        
-        // Auto-select high confidence matches
-        const autoSelected = {};
-        (result.matches || []).forEach(match => {
-          const bestMatch = match.matches?.[0];
-          if (bestMatch && bestMatch.confidence >= 80) {
-            autoSelected[match.piItem.id] = bestMatch;
-          }
-        });
-        setSelectedMatches(autoSelected);
-        
-        const summary = result.summary || {};
-        showNotification(
-          `Found ${summary.matchedItems || 0} new matches out of ${summary.searchedItems || 0} unmatched items. ${summary.alreadyMatchedItems || 0} items were already matched.`,
-          'success'
-        );
-      } else {
-        showNotification('Error running PO matching: ' + (result.error || 'Unknown error'), 'error');
-      }
-    } catch (error) {
-      console.error('Error in runMatching:', error);
-      showNotification('Error running PO matching: ' + error.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectMatch = (piItemId, match) => {
-    setSelectedMatches(prev => ({
-      ...prev,
-      [piItemId]: { ...match, piItemId }
-    }));
-  };
-
-  const handleApplySelected = () => {
-    try {
-      const matchesToApply = Object.values(selectedMatches);
-      onApplyMatches(matchesToApply);
-      onClose();
-      
-      showNotification(
-        `Applied ${matchesToApply.length} PO matches to PI items`,
-        'success'
-      );
-    } catch (error) {
-      console.error('Error applying selected matches:', error);
-      showNotification('Failed to apply matches: ' + error.message, 'error');
-    }
-  };
-
-  const getConfidenceColor = (confidence) => {
-    if (confidence >= 80) return 'text-green-600 bg-green-100';
-    if (confidence >= 60) return 'text-blue-600 bg-blue-100';
-    if (confidence >= 40) return 'text-orange-600 bg-orange-100';
-    return 'text-red-600 bg-red-100';
-  };
-
-  const getMatchTypeIcon = (type) => {
-    switch (type) {
-      case 'exact': return <CheckCircle className="text-green-600" size={16} />;
-      case 'high': return <Target className="text-blue-600" size={16} />;
-      case 'medium': return <AlertTriangle className="text-orange-600" size={16} />;
-      default: return <Search className="text-gray-600" size={16} />;
-    }
-  };
-
-  if (!isOpen) return null;
-
-  // Service not available fallback
-  if (!serviceAvailable) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg max-w-md w-full p-6">
-          <div className="text-center">
-            <AlertTriangle className="mx-auto h-12 w-12 text-orange-500 mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Service Unavailable</h3>
-            <p className="text-gray-600 mb-4">
-              The PO Matching service is currently unavailable. Please try again later.
-            </p>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-6xl w-full h-[80vh] flex flex-col">
-        {/* Header */}
-        <div className="p-6 border-b">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-xl font-semibold">PI ↔ PO Matching Assistant</h2>
-              <p className="text-gray-600 text-sm mt-1">
-                Automatically match PI items with existing Purchase Orders
-              </p>
-            </div>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-              <X size={24} />
-            </button>
-          </div>
-          
-          {/* Summary */}
-          {matchingSummary && (
-            <div className="mt-4 grid grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{matchingSummary.totalItems || 0}</div>
-                <div className="text-xs text-gray-600">Total Items</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{matchingSummary.alreadyMatchedItems || 0}</div>
-                <div className="text-xs text-gray-600">Already Matched</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">{matchingSummary.searchedItems || 0}</div>
-                <div className="text-xs text-gray-600">Searched</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">{matchingSummary.matchedItems || 0}</div>
-                <div className="text-xs text-gray-600">New Matches</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-cyan-600">{matchingSummary.matchRate || 0}%</div>
-                <div className="text-xs text-gray-600">Success Rate</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <Loader2 className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-2" />
-                <p className="text-gray-600">Searching for PO matches...</p>
-                <p className="text-sm text-gray-500 mt-1">Excluding already-matched items</p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Show already matched items info */}
-              {matchingSummary?.alreadyMatchedItems > 0 && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-green-800">
-                    <CheckCircle size={16} />
-                    <span className="font-medium">
-                      {matchingSummary.alreadyMatchedItems} items already have PO matches and were skipped
-                    </span>
-                  </div>
-                </div>
-              )}
-              
-              {matches.length === 0 && matchingSummary?.searchedItems > 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Search className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-                  <p className="font-medium mb-1">No new matches found</p>
-                  <p className="text-sm">All searchable items have been checked against available POs</p>
-                </div>
-              ) : (
-                matches.map((match, index) => (
-                  <div key={index} className="border rounded-lg p-4">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-medium">{match.piItem?.productName || 'Unknown Product'}</h3>
-                        <p className="text-sm text-gray-600">{match.piItem?.productCode || 'No Code'}</p>
-                        <p className="text-xs text-gray-500">
-                          Qty: {match.piItem?.quantity || 0} | Price: ${match.piItem?.unitPrice || 0}
-                        </p>
-                      </div>
-                      
-                      {!match.matches || match.matches.length === 0 ? (
-                        <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">
-                          No matches found
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                          {match.matches.length} potential match(es)
-                        </span>
-                      )}
-                    </div>
-
-                    {match.matches && match.matches.length > 0 && (
-                      <div className="space-y-3">
-                        <h4 className="font-medium text-sm text-gray-700">Potential Matches:</h4>
-                        {match.matches.slice(0, 3).map((poMatch, matchIndex) => (
-                          <div 
-                            key={matchIndex}
-                            className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                              selectedMatches[match.piItem.id]?.poNumber === poMatch.poNumber
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                            onClick={() => handleSelectMatch(match.piItem.id, poMatch)}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                {getMatchTypeIcon(poMatch.matchType)}
-                                <span className="font-medium">PO: {poMatch.poNumber}</span>
-                                <span className="text-sm text-gray-600">
-                                  Line: {poMatch.lineItem}
-                                </span>
-                              </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getConfidenceColor(poMatch.confidence)}`}>
-                                {poMatch.confidence}% match
-                              </span>
-                            </div>
-                            
-                            <div className="text-sm text-gray-600">
-                              <p><strong>Product:</strong> {poMatch.poItem?.productName || 'N/A'}</p>
-                              <p><strong>Code:</strong> {poMatch.poItem?.productCode || 'N/A'}</p>
-                              <p><strong>Client:</strong> {poMatch.po?.clientName || 'N/A'}</p>
-                              {poMatch.po?.projectCode && (
-                                <p><strong>Project:</strong> {poMatch.po.projectCode}</p>
-                              )}
-                            </div>
-                            
-                            {poMatch.matchedFields && poMatch.matchedFields.length > 0 && (
-                              <div className="mt-2 flex gap-1">
-                                {poMatch.matchedFields.map(field => (
-                                  <span 
-                                    key={field}
-                                    className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs"
-                                  >
-                                    {field}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-6 border-t bg-gray-50 flex justify-between items-center">
-          <div className="text-sm text-gray-600">
-            {Object.keys(selectedMatches).length} matches selected for application
-          </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={runMatching}
-              disabled={loading}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-            >
-              Re-run Matching
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleApplySelected}
-              disabled={Object.keys(selectedMatches).length === 0}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Apply Selected Matches
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+// ADD THIS ENTIRE COMPONENT before the export default PIModal; line
 
 // Stock Receiving Tab Component with Stock Allocation
 const StockReceivingTab = ({ 
