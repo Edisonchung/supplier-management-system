@@ -1,6 +1,5 @@
-// Create: src/services/PIPOMatchingService.js
-
-class PIPOMatchingService {
+// src/services/PIPOMatchingService.js
+export class PIPOMatchingService {
   static async findMatchingPOs(piItems) {
     try {
       // Get all POs from storage/database
@@ -71,9 +70,11 @@ class PIPOMatchingService {
       }) || []
     })).filter(po => po.items.length > 0); // Only include POs with available items
   }
+
+  static findItemMatches(piItem, availablePOs) {
     const matches = [];
     
-    purchaseOrders.forEach(po => {
+    availablePOs.forEach(po => {
       po.items?.forEach(poItem => {
         const matchScore = this.calculateItemMatchScore(piItem, poItem);
         
