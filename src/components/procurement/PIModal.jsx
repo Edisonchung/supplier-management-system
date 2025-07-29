@@ -9,14 +9,9 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 
-let PIPOMatchingService = null;
-try {
-  const matchingModule = await import('../../services/PIPOMatchingService');
-  PIPOMatchingService = matchingModule.PIPOMatchingService || null;
-} catch (e) {
-  console.warn('PIPOMatchingService not available:', e.message);
-  PIPOMatchingService = null;
-}
+// Replace the async import section with:
+import { PIPOMatchingService as ImportedPIPOMatchingService } from '../../services/PIPOMatchingService';
+const PIPOMatchingService = ImportedPIPOMatchingService || null;
 
 import { 
   X, Plus, Trash2, Search, Package, 
