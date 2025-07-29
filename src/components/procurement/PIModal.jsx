@@ -2220,7 +2220,7 @@ const saveProductEdit = (index, field) => {
 
                 {/* Selected Products */}
                {selectedProducts.length > 0 && (
-  <div className="border rounded-lg overflow-x-auto">  {/* ← CHANGE: Add overflow-x-auto */}
+  <div className="bg-white rounded-lg max-w-6xl w-full h-[90vh] flex flex-col overflow-hidden">  {/* ← CHANGE: Add overflow-x-auto */}
     <table className="w-full min-w-max">  {/* ← CHANGE: Add min-w-max */}
       <thead className="bg-gray-50">
         <tr>
