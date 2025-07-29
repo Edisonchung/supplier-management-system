@@ -400,5 +400,4 @@ export class PIPOMatchingService {
   }
 }
 
-// ✅ ADD THE MISSING EXPORT
-export { PIPOMatchingService };
+// Note: Class is already exported above with "export class PIPOMatchingService"
