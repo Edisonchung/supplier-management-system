@@ -2619,7 +2619,14 @@ const saveProductEdit = (index, field) => {
       />
     </td>
 
-    
+    {/* NEW: Matching Status Column */}
+    <td className="px-4 py-2 w-60">
+      <LineMatchingStatus 
+        item={item}
+        formData={formData}
+        onNavigateToMatching={handleNavigateToMatching}
+      />
+    </td>
     
     {/* EXISTING: Remove Button */}
     <td className="px-4 py-2">
