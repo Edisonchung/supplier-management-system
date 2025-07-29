@@ -352,46 +352,6 @@ static findItemMatches(piItem, availablePOs) {
   return matches.sort((a, b) => b.matchScore - a.matchScore);
 }
 
-// 🔧 UPDATE: getMatchedFields to include manual matching
-static getMatchedFields(piItem, poItem) {
-  const fields = [];
-  
-  // Check manual Client PO matching
-  if (piItem.clientPO && poItem.po) {
-    const poNumber = poItem.po.orderNumber || poItem.po.clientPONumber || poItem.po.id;
-    if (piItem.clientPO.toLowerCase().trim() === poNumber?.toLowerCase().trim()) {
-      fields.push('clientPO');
-    }
-  }
-  
-  // Check manual Client Item Code matching
-  if (piItem.clientItemCode && poItem.productCode && 
-      piItem.clientItemCode.toLowerCase().trim() === poItem.productCode.toLowerCase().trim()) {
-    fields.push('clientItemCode');
-  }
-  
-  // Existing automatic matching checks
-  if (piItem.productCode && poItem.productCode && 
-      this.fuzzyMatch(piItem.productCode, poItem.productCode) > 0.8) {
-    fields.push('productCode');
-  }
-  
-  if (piItem.productName && poItem.productName && 
-      this.fuzzyMatch(piItem.productName, poItem.productName) > 0.7) {
-    fields.push('productName');
-  }
-  
-  if (piItem.quantity && poItem.quantity && piItem.quantity === poItem.quantity) {
-    fields.push('quantity');
-  }
-  
-  if (piItem.unitPrice && poItem.unitPrice && 
-      Math.abs(piItem.unitPrice - poItem.unitPrice) / Math.max(piItem.unitPrice, poItem.unitPrice) < 0.1) {
-    fields.push('unitPrice');
-  }
-  
-  return fields;
-}
 
   static fuzzyMatch(str1, str2) {
     if (!str1 || !str2) return 0;
@@ -455,30 +415,46 @@ static getMatchedFields(piItem, poItem) {
     return 'low';
   }
 
-  static getMatchedFields(piItem, poItem) {
-    const fields = [];
-    
-    if (piItem.productCode && poItem.productCode && 
-        this.fuzzyMatch(piItem.productCode, poItem.productCode) > 0.8) {
-      fields.push('productCode');
+  // 🔧 UPDATE: getMatchedFields to include manual matching
+static getMatchedFields(piItem, poItem) {
+  const fields = [];
+  
+  // Check manual Client PO matching
+  if (piItem.clientPO && poItem.po) {
+    const poNumber = poItem.po.orderNumber || poItem.po.clientPONumber || poItem.po.id;
+    if (piItem.clientPO.toLowerCase().trim() === poNumber?.toLowerCase().trim()) {
+      fields.push('clientPO');
     }
-    
-    if (piItem.productName && poItem.productName && 
-        this.fuzzyMatch(piItem.productName, poItem.productName) > 0.7) {
-      fields.push('productName');
-    }
-    
-    if (piItem.quantity && poItem.quantity && piItem.quantity === poItem.quantity) {
-      fields.push('quantity');
-    }
-    
-    if (piItem.unitPrice && poItem.unitPrice && 
-        Math.abs(piItem.unitPrice - poItem.unitPrice) / Math.max(piItem.unitPrice, poItem.unitPrice) < 0.1) {
-      fields.push('unitPrice');
-    }
-    
-    return fields;
   }
+  
+  // Check manual Client Item Code matching
+  if (piItem.clientItemCode && poItem.productCode && 
+      piItem.clientItemCode.toLowerCase().trim() === poItem.productCode.toLowerCase().trim()) {
+    fields.push('clientItemCode');
+  }
+  
+  // Existing automatic matching checks
+  if (piItem.productCode && poItem.productCode && 
+      this.fuzzyMatch(piItem.productCode, poItem.productCode) > 0.8) {
+    fields.push('productCode');
+  }
+  
+  if (piItem.productName && poItem.productName && 
+      this.fuzzyMatch(piItem.productName, poItem.productName) > 0.7) {
+    fields.push('productName');
+  }
+  
+  if (piItem.quantity && poItem.quantity && piItem.quantity === poItem.quantity) {
+    fields.push('quantity');
+  }
+  
+  if (piItem.unitPrice && poItem.unitPrice && 
+      Math.abs(piItem.unitPrice - poItem.unitPrice) / Math.max(piItem.unitPrice, poItem.unitPrice) < 0.1) {
+    fields.push('unitPrice');
+  }
+  
+  return fields;
+}
 
   static generateMatchingSummary(matches, totalItems, unmatchedItems) {
     const matchedItems = matches.filter(m => m.matches && m.matches.length > 0).length;
