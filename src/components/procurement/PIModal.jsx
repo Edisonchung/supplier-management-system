@@ -483,6 +483,8 @@ useEffect(() => {
   storedAt: ''
 });
 
+const isServiceAvailable = !!PIPOMatchingService;
+
 const handleApplyPOMatches = useCallback((matches) => {
   try {
     if (!PIPOMatchingService) {
