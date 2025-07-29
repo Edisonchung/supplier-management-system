@@ -7,6 +7,8 @@ import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
+import FSPortalProjectInput from '../common/FSPortalProjectInput';
+
 
 
 import { 
@@ -18,6 +20,99 @@ import {
   Building2, Mail, Phone, MapPin, User, Loader2,
   ChevronDown, Check, CheckCircle, Clock, Edit2, Info 
 } from 'lucide-react';
+
+
+// ===== FIND THIS SECTION AT THE TOP OF YOUR PIMODAL.JSX =====
+// Look for your existing imports (around lines 1-20):
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { collection, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+
+import DocumentViewer from '../common/DocumentViewer';
+import StockAllocationModal from './StockAllocationModal';
+import { StockAllocationService } from '../../services/StockAllocationService';
+import { getProformaInvoices } from '../../services/firebase';
+
+import { 
+  X, Plus, Trash2, Search, Package, 
+  FileText, Calculator, Calendar, Tag,
+  Truck, AlertCircle, CheckSquare, Square,
+  DollarSign, Upload, Link, Eye, Download,
+  CreditCard, MessageSquare, Briefcase, AlertTriangle,
+  Building2, Mail, Phone, MapPin, User, Loader2,
+  ChevronDown, Check, CheckCircle, Clock,
+  Edit2, Info  // Your existing icons
+} from 'lucide-react';
+
+// ===== ADD CLIENTPOINPUT COMPONENT RIGHT AFTER IMPORTS =====
+// Add this component definition right after your imports and before the main functions:
+
+// ✅ ADD THIS COMPONENT HERE - RIGHT AFTER IMPORTS, BEFORE fixPIItemPrices
+const ClientPOInput = ({ value, onChange, index, className, placeholder }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  // Sample client PO suggestions (replace with your actual data source)
+  const clientPOSuggestions = [
+    'PO-2025-PETRONAS-001',
+    'PO-2025-PETRONAS-002',
+    'PO-2025-SMART-CITY-001', 
+    'PO-2025-HOSPITALITY-001',
+    'PO-2025-INDUSTRIAL-001',
+    'PO-2025-FN-BEVERAGES-001',
+    'PO-2025-BORNEO-SPRINGS-001',
+    'PO-2025-LFM-ENERGY-001',
+    'PO-2025-TOP-GLOVE-001',
+    'PO-2025-TMK-CHEMICAL-001'
+  ];
+  
+  const handleInputChange = (inputValue) => {
+    onChange(inputValue);
+    
+    if (inputValue.length > 2) {
+      const filtered = clientPOSuggestions.filter(po => 
+        po.toLowerCase().includes(inputValue.toLowerCase())
+      );
+      setSuggestions(filtered);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+  
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleInputChange(e.target.value)}
+        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+        className={className}
+        placeholder={placeholder}
+        title="Client Purchase Order Number"
+      />
+      
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute z-10 w-48 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+          {suggestions.map((suggestion, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                onChange(suggestion);
+                setShowSuggestions(false);
+              }}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ✅ ADD THE AUTO-FIX FUNCTION HERE - RIGHT AFTER IMPORTS
 const fixPIItemPrices = (items, debug = true) => {
@@ -168,6 +263,70 @@ const normalizeDate = (dateValue) => {
     return new Date().toISOString().split('T')[0];
   }
 };
+
+const ClientPOInput = ({ value, onChange, index, className, placeholder }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  // Sample client PO suggestions (replace with your actual data source)
+  const clientPOSuggestions = [
+    'PO-2025-PETRONAS-001',
+    'PO-2025-PETRONAS-002',
+    'PO-2025-SMART-CITY-001', 
+    'PO-2025-HOSPITALITY-001',
+    'PO-2025-INDUSTRIAL-001',
+    'PO-2025-FN-BEVERAGES-001',
+    'PO-2025-BORNEO-SPRINGS-001',
+    'PO-2025-LFM-ENERGY-001'
+  ];
+  
+  const handleInputChange = (inputValue) => {
+    onChange(inputValue);
+    
+    if (inputValue.length > 2) {
+      const filtered = clientPOSuggestions.filter(po => 
+        po.toLowerCase().includes(inputValue.toLowerCase())
+      );
+      setSuggestions(filtered);
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+  
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleInputChange(e.target.value)}
+        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+        className={className}
+        placeholder={placeholder}
+        title="Client Purchase Order Number"
+      />
+      
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute z-10 w-48 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+          {suggestions.map((suggestion, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                onChange(suggestion);
+                setShowSuggestions(false);
+              }}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
   // Only log props debug when component mounts or key props change
@@ -581,6 +740,15 @@ useEffect(() => {
       discrepancyReason: item.discrepancyReason || '',
       receivingNotes: item.receivingNotes || '',
       isReceived: item.isReceived || false,
+
+      // NEW: AI Matching tracking fields
+  clientPO: item.clientPO || '',              // Client PO number
+  clientLineItem: item.clientLineItem || '',  // Line item number  
+  clientItemCode: item.clientItemCode || '',  // Client's part number
+  
+  // NEW: FS Portal project code
+  fsProjectCode: item.fsProjectCode || '',    // FS Portal project code
+  
       
       // ✅ CRITICAL: Preserve allocation data from Firestore
       allocations: item.allocations || [],
@@ -1197,6 +1365,63 @@ const handleSubmit = useCallback((e) => {
       return fixedItems;
     });
   };
+
+  const exportAIMatchingData = (piItems) => {
+  const matchingData = piItems.map(item => ({
+    // Supplier side (from PI)
+    supplierProduct: item.productName,
+    supplierCode: item.productCode,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    totalPrice: item.totalPrice,
+    
+    // Client side (tracking fields)
+    clientPO: item.clientPO || '',
+    clientLineItem: item.clientLineItem || '',
+    clientItemCode: item.clientItemCode || '',
+    
+    // FS Portal project
+    fsProjectCode: item.fsProjectCode || '',
+    
+    // AI matching readiness
+    hasClientInfo: !!(item.clientPO || item.clientItemCode),
+    hasProjectCode: !!item.fsProjectCode,
+    readyForMatching: !!(item.clientPO && item.fsProjectCode)
+  }));
+  
+  const csvContent = [
+    // CSV Headers
+    'PI Number,Supplier Product,Supplier Code,Quantity,Unit Price,Total Price,Client PO,Client Line Item,Client Item Code,FS Project Code,Ready for AI Matching',
+    
+    // CSV Rows
+    ...matchingData.map(item => [
+      formData.piNumber,
+      `"${item.supplierProduct}"`, // Wrap in quotes for CSV safety
+      item.supplierCode,
+      item.quantity,
+      item.unitPrice,
+      item.totalPrice,
+      item.clientPO,
+      item.clientLineItem,
+      item.clientItemCode,
+      item.fsProjectCode,
+      item.readyForMatching ? 'Yes' : 'No'
+    ].join(','))
+  ].join('\n');
+  
+  // Download CSV
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${formData.piNumber}-ai-matching-data.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+  
+  showNotification?.('AI matching data exported successfully! 📊', 'success');
+};
 
   const handleProductNameEdit = (index, field, value) => {
   setSelectedProducts(prev => {
@@ -1909,69 +2134,139 @@ const saveProductEdit = (index, field) => {
                 </div>
               )}
 
-              {/* Product Selection */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-  <label className="block text-sm font-medium text-gray-700">
-    Items ({selectedProducts.length}) <span className="text-red-500">*</span>
-  </label>
-  <div className="flex items-center gap-2">
- {/* ✅ ENHANCED Fix Prices Button with Better Styling */}
-    {selectedProducts.length > 0 && (
-      <button
-        type="button"
-        onClick={handleFixAllPrices}
-        className="px-3 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 flex items-center gap-2 shadow-sm transition-all duration-200"
-        title="Auto-fix all price calculations"
-      >
-        <Calculator size={14} />
-        Fix All Prices
-      </button>
-    )}
 
-    {selectedProducts.length > 0 && (
-      <button
-        type="button"
-        onClick={() => {
-          const anyEditing = Object.values(editingProducts).some(editing => editing);
-          if (anyEditing) {
-            // Exit edit mode for all
-            setEditingProducts({});
-            showNotification?.('Exited bulk edit mode', 'info');
-          } else {
-            // Enter edit mode for all product names
-            const newEditingState = {};
-            selectedProducts.forEach((_, index) => {
-              newEditingState[`${index}-productName`] = true;
-            });
-            setEditingProducts(newEditingState);
-            showNotification?.('Entered bulk edit mode - click outside inputs to save', 'info');
-          }
-        }}
-        className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-2 shadow-sm transition-all duration-200 ${
-          Object.values(editingProducts).some(editing => editing)
-            ? 'bg-gray-500 text-white hover:bg-gray-600'
-            : 'bg-blue-500 text-white hover:bg-blue-600'
-        }`}
-        title={Object.values(editingProducts).some(editing => editing) ? "Exit bulk edit mode" : "Edit all product names"}
-      >
-        <Edit2 size={14} />
-        {Object.values(editingProducts).some(editing => editing) ? 'Exit Edit' : 'Bulk Edit'}
-      </button>
-    )}
-    {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
+              {/* Product Selection */}
+<div className="mb-6">
+  <div className="flex justify-between items-center mb-3">
+    <label className="block text-sm font-medium text-gray-700">
+      Items ({selectedProducts.length}) <span className="text-red-500">*</span>
+    </label>
+    <div className="flex items-center gap-2">
+      {/* EXISTING: Fix Prices Button */}
+      {selectedProducts.length > 0 && (
+        <button
+          type="button"
+          onClick={handleFixAllPrices}
+          className="px-3 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 flex items-center gap-2 shadow-sm transition-all duration-200"
+          title="Auto-fix all price calculations"
+        >
+          <Calculator size={14} />
+          Fix All Prices
+        </button>
+      )}
+      
+      {/* EXISTING: Bulk Edit Button */}
+      {selectedProducts.length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            const anyEditing = Object.values(editingProducts).some(editing => editing);
+            if (anyEditing) {
+              setEditingProducts({});
+              showNotification?.('Exited bulk edit mode', 'info');
+            } else {
+              const newEditingState = {};
+              selectedProducts.forEach((_, index) => {
+                newEditingState[`${index}-productName`] = true;
+              });
+              setEditingProducts(newEditingState);
+              showNotification?.('Entered bulk edit mode - click outside inputs to save', 'info');
+            }
+          }}
+          className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-2 shadow-sm transition-all duration-200 ${
+            Object.values(editingProducts).some(editing => editing)
+              ? 'bg-gray-500 text-white hover:bg-gray-600'
+              : 'bg-blue-500 text-white hover:bg-blue-600'
+          }`}
+          title={Object.values(editingProducts).some(editing => editing) ? "Exit bulk edit mode" : "Edit all product names"}
+        >
+          <Edit2 size={14} />
+          {Object.values(editingProducts).some(editing => editing) ? 'Exit Edit' : 'Bulk Edit'}
+        </button>
+      )}
+
+      {/* NEW: Export AI Matching Data Button */}
+      {selectedProducts.length > 0 && (
+        <button
+          type="button"
+          onClick={() => exportAIMatchingData(selectedProducts)}
+          className="px-3 py-1.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center gap-2 shadow-sm transition-all duration-200"
+          title="Export data for AI matching system"
+        >
+          <Download size={14} />
+          Export Matching Data
+        </button>
+      )}
+
+      {/* NEW: Bulk FS Project Assignment */}
+      {selectedProducts.length > 0 && (
+        <select
+          onChange={(e) => {
+            if (e.target.value) {
+              const updatedProducts = selectedProducts.map(item => ({
+                ...item,
+                fsProjectCode: e.target.value
+              }));
+              setSelectedProducts(updatedProducts);
+              showNotification?.(`Assigned ${e.target.value} to all items`, 'success');
+              e.target.value = '';
+            }
+          }}
+          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+        >
+          <option value="">Bulk Assign FS Project...</option>
+          <option value="BWS-S1046">BWS-S1046 (Graco Bumper)</option>
+          <option value="FS-P1079">FS-P1079 (Forklift Control)</option>
+          <option value="BWS-P1078">BWS-P1078 (Chlorine Ejector)</option>
+          <option value="BWS-SV1002">BWS-SV1002 (Site Inspection)</option>
+          <option value="BWS-S1043">BWS-S1043 (Pump Service)</option>
+        </select>
+      )}
+
+      {errors.items && <p className="text-red-500 text-xs">{errors.items}</p>}
+    </div>
   </div>
-</div>
-                {/* ✅ ENHANCED Price Fix Status Indicator */}
-            {selectedProducts.length > 0 && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2 text-sm text-blue-700">
-                  <Calculator size={16} />
-                  <span className="font-medium">Smart Price Correction:</span>
-                  <span>Automatically validates quantity × unit price = total price</span>
-                </div>
-              </div>
-            )}
+
+  {/* EXISTING: Price Fix Status Indicator */}
+  {selectedProducts.length > 0 && (
+    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="flex items-center gap-2 text-sm text-blue-700">
+        <Calculator size={16} />
+        <span className="font-medium">Smart Price Correction:</span>
+        <span>Automatically validates quantity × unit price = total price</span>
+      </div>
+    </div>
+  )}
+
+  {/* NEW: AI Matching Tracking Summary */}
+  {selectedProducts.length > 0 && (
+    <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4 text-sm">
+          <span className="font-medium text-green-800">AI Matching Tracking:</span>
+          <span className="text-green-700">
+            📋 {selectedProducts.filter(item => item.clientPO).length} items with Client PO
+          </span>
+          <span className="text-green-700">
+            🏷️ {selectedProducts.filter(item => item.fsProjectCode).length} items with FS Project
+          </span>
+          <span className="text-green-700">
+            🎯 {selectedProducts.filter(item => item.clientItemCode).length} items with Client Item Code
+          </span>
+          <span className="text-green-700">
+            ✅ {selectedProducts.filter(item => item.clientPO && item.fsProjectCode).length} ready for AI matching
+          </span>
+        </div>
+        
+        <div className="text-xs text-green-600">
+          {Math.round((selectedProducts.filter(item => item.clientPO && item.fsProjectCode).length / selectedProducts.length) * 100)}% tracking complete
+        </div>
+      </div>
+    </div>
+  )}
+
+
+              
                 {/* Product Search - Only show if supplier is selected and no extracted items */}
                 {formData.supplierId && selectedProducts.length === 0 && (
                   <div className="relative mb-4">
@@ -2017,134 +2312,175 @@ const saveProductEdit = (index, field) => {
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full">
                       <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-                          <th className="px-4 py-2"></th>
-                        </tr>
-                      </thead>
+  <tr>
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+    {/* AI MATCHING TRACKING FIELDS */}
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client PO</th>
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Line Item</th>
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client Item Code</th>
+    {/* FS PORTAL PROJECT CODE */}
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">FS Project Code</th>
+    <th className="px-4 py-2"></th>
+  </tr>
+</thead>
+
                       <tbody>
-                        {selectedProducts.map((item, index) => (
-                          <tr key={item.id || index} className="border-t">
-                            <td className="px-4 py-2">
-                              <div>
-                                {/* Editable Product Name */}
-                                <div className="flex items-center gap-2 mb-1">
-                                  {editingProducts[`${index}-productName`] ? (
-                                    <input
-                                      type="text"
-                                      value={item.productName}
-                                      onChange={(e) => handleProductNameEdit(index, 'productName', e.target.value)}
-                                      onBlur={() => saveProductEdit(index, 'productName')}
-                                      onKeyPress={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.target.blur();
-                                        }
-                                      }}
-                                      className="font-medium text-gray-900 bg-blue-50 border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0 flex-1"
-                                      autoFocus
-                                      placeholder="Product Name"
-                                    />
-                                  ) : (
-                                    <div 
-                                      className="font-medium text-gray-900 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded flex-1 min-w-0 flex items-center gap-2"
-                                      onClick={() => toggleProductEdit(index, 'productName')}
-                                      title="Click to edit product name"
-                                    >
-                                      <span className="truncate">{item.productName || 'Unnamed Product'}</span>
-                                      <Edit2 size={12} className="text-gray-400 flex-shrink-0" />
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                {/* Editable Product Code/SKU */}
-                                <div className="flex items-center gap-2">
-                                  {editingProducts[`${index}-productCode`] ? (
-                                    <input
-                                      type="text"
-                                      value={item.productCode}
-                                      onChange={(e) => handleProductNameEdit(index, 'productCode', e.target.value)}
-                                      onBlur={() => saveProductEdit(index, 'productCode')}
-                                      onKeyPress={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.target.blur();
-                                        }
-                                      }}
-                                      className="text-sm text-gray-600 bg-yellow-50 border border-yellow-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-yellow-500 min-w-0 flex-1"
-                                      autoFocus
-                                      placeholder="Product Code/SKU"
-                                    />
-                                  ) : (
-                                    <div 
-                                      className="text-sm text-gray-600 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded flex-1 min-w-0 flex items-center gap-2"
-                                      onClick={() => toggleProductEdit(index, 'productCode')}
-                                      title="Click to edit product code/SKU"
-                                    >
-                                      <span className="truncate">{item.productCode || 'No SKU'}</span>
-                                      <Edit2 size={10} className="text-gray-400 flex-shrink-0" />
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                {/* Lead Time (existing code) */}
-                                {item.leadTime && (
-                                  <div className="text-xs text-gray-500 mt-1">Lead time: {item.leadTime}</div>
-                                )}
-                                
-                                {/* Show edit hint on first item */}
-                                {index === 0 && !editingProducts[`${index}-productName`] && !editingProducts[`${index}-productCode`] && (
-                                  <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                                    <Info size={10} />
-                                    <span>Click to edit</span>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.quantity}
-                                onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                                className={`w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                  errors[`quantity-${index}`] ? 'border-red-500' : 'border-gray-300'
-                                }`}
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.unitPrice}
-                                onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                                className={`w-24 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                                  errors[`price-${index}`] ? 'border-red-500' : 'border-gray-300'
-                                }`}
-                              />
-                            </td>
-                            <td className="px-4 py-2 font-medium">
-                              <div className="flex items-center gap-2">
-                                <span>{formData.currency} {item.totalPrice.toFixed(2)}</span>
-                                {/* ✅ Visual indicator for auto-corrected prices */}
-                                {Math.abs(item.totalPrice - (item.quantity * item.unitPrice)) < 0.01 && (
-                                  <CheckCircle size={14} className="text-green-500" title="Price calculation verified" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveItem(index)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                       {selectedProducts.map((item, index) => (
+  <tr key={item.id || index} className="border-t">
+    {/* EXISTING: Enhanced Product Name/Code Cell (your current implementation) */}
+    <td className="px-4 py-2">
+      <div>
+        {/* Your existing editable product name and code implementation */}
+        {editingProducts[`${index}-productName`] ? (
+          <input
+            type="text"
+            value={item.productName}
+            onChange={(e) => handleProductNameEdit(index, 'productName', e.target.value)}
+            onBlur={() => saveProductEdit(index, 'productName')}
+            onKeyPress={(e) => e.key === 'Enter' && e.target.blur()}
+            className="font-medium text-gray-900 bg-blue-50 border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0 flex-1"
+            autoFocus
+            placeholder="Product Name"
+          />
+        ) : (
+          <div 
+            className="font-medium text-gray-900 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded flex-1 min-w-0 flex items-center gap-2"
+            onClick={() => toggleProductEdit(index, 'productName')}
+            title="Click to edit product name"
+          >
+            <span className="truncate">{item.productName || 'Unnamed Product'}</span>
+            <Edit2 size={12} className="text-gray-400 flex-shrink-0" />
+          </div>
+        )}
+        
+        {/* Editable Product Code */}
+        <div className="flex items-center gap-2 mt-1">
+          {editingProducts[`${index}-productCode`] ? (
+            <input
+              type="text"
+              value={item.productCode}
+              onChange={(e) => handleProductNameEdit(index, 'productCode', e.target.value)}
+              onBlur={() => saveProductEdit(index, 'productCode')}
+              onKeyPress={(e) => e.key === 'Enter' && e.target.blur()}
+              className="text-sm text-gray-600 bg-yellow-50 border border-yellow-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-yellow-500 min-w-0 flex-1"
+              autoFocus
+              placeholder="Product Code/SKU"
+            />
+          ) : (
+            <div 
+              className="text-sm text-gray-600 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded flex-1 min-w-0 flex items-center gap-2"
+              onClick={() => toggleProductEdit(index, 'productCode')}
+              title="Click to edit product code/SKU"
+            >
+              <span className="truncate">{item.productCode || 'No SKU'}</span>
+              <Edit2 size={10} className="text-gray-400 flex-shrink-0" />
+            </div>
+          )}
+        </div>
+        
+        {item.leadTime && (
+          <div className="text-xs text-gray-500 mt-1">Lead time: {item.leadTime}</div>
+        )}
+      </div>
+    </td>
+
+    {/* EXISTING: Quantity */}
+    <td className="px-4 py-2">
+      <input
+        type="number"
+        min="1"
+        value={item.quantity}
+        onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
+        className={`w-20 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+          errors[`quantity-${index}`] ? 'border-red-500' : 'border-gray-300'
+        }`}
+      />
+    </td>
+
+    {/* EXISTING: Unit Price */}
+    <td className="px-4 py-2">
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        value={item.unitPrice}
+        onChange={(e) => handleUpdateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+        className={`w-24 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+          errors[`price-${index}`] ? 'border-red-500' : 'border-gray-300'
+        }`}
+      />
+    </td>
+
+    {/* EXISTING: Total Price */}
+    <td className="px-4 py-2 font-medium">
+      <div className="flex items-center gap-2">
+        <span>{formData.currency} {item.totalPrice.toFixed(2)}</span>
+        {Math.abs(item.totalPrice - (item.quantity * item.unitPrice)) < 0.01 && (
+          <CheckCircle size={14} className="text-green-500" title="Price calculation verified" />
+        )}
+      </div>
+    </td>
+
+    {/* NEW: Client PO Number */}
+    <td className="px-4 py-2">
+      <ClientPOInput
+        value={item.clientPO || ''}
+        onChange={(value) => handleUpdateItem(index, 'clientPO', value)}
+        index={index}
+        className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="PO-2025-001"
+      />
+    </td>
+
+    {/* NEW: Client Line Item */}
+    <td className="px-4 py-2">
+      <input
+        type="text"
+        value={item.clientLineItem || ''}
+        onChange={(e) => handleUpdateItem(index, 'clientLineItem', e.target.value)}
+        className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="LINE-01"
+        title="Line item number in client PO"
+      />
+    </td>
+
+    {/* NEW: Client Item Code */}
+    <td className="px-4 py-2">
+      <input
+        type="text"
+        value={item.clientItemCode || ''}
+        onChange={(e) => handleUpdateItem(index, 'clientItemCode', e.target.value)}
+        className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="400SHA0162"
+        title="Client's part number/item code"
+      />
+    </td>
+
+    {/* NEW: FS Portal Project Code */}
+    <td className="px-4 py-2">
+      <FSPortalProjectInput
+        value={item.fsProjectCode || ''}
+        onChange={(value) => handleUpdateItem(index, 'fsProjectCode', value)}
+        className="w-40 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="BWS-S1046..."
+      />
+    </td>
+
+    {/* EXISTING: Remove Button */}
+    <td className="px-4 py-2">
+      <button
+        type="button"
+        onClick={() => handleRemoveItem(index)}
+        className="text-red-600 hover:text-red-800"
+      >
+        <Trash2 size={16} />
+      </button>
+    </td>
+  </tr>
+))}
                       </tbody>
                       <tfoot className="bg-gray-50">
                         {/* Show financial breakdown if extracted */}
