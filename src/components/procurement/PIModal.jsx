@@ -7,7 +7,6 @@ import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
-import { PIPOMatchingService } from '../../services/PIPOMatchingService';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 
 try {
