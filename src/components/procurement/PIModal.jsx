@@ -1636,22 +1636,28 @@ const saveProductEdit = (index, field) => {
             {proformaInvoice ? 'Edit Proforma Invoice' : 'Create Proforma Invoice'}
           </h2>
           <div className="flex items-center gap-2">
-            {proformaInvoice && (
-              <button
-                onClick={copyShareableLink}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                title="Copy shareable link"
-              >
-                <Link size={20} />
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <X size={24} />
-            </button>
-          </div>
+  {/* Service availability indicator */}
+  {!isServiceAvailable && (
+    <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
+      PO Matching Unavailable
+    </div>
+  )}
+  {proformaInvoice && (
+    <button
+      onClick={copyShareableLink}
+      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+      title="Copy shareable link"
+    >
+      <Link size={20} />
+    </button>
+  )}
+  <button
+    onClick={onClose}
+    className="text-gray-500 hover:text-gray-700"
+  >
+    <X size={24} />
+  </button>
+</div>
         </div>
       </div>
 
