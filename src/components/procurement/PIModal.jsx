@@ -419,11 +419,13 @@ useEffect(() => {
   console.log('onClose:', typeof onClose, onClose ? 'Present' : 'Missing');
   console.log('addSupplier:', typeof addSupplier, addSupplier ? 'Present' : 'Missing');
   console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
+  console.log('PIPOMatchingService available:', isServiceAvailable);
   console.log('=== End Props Debug ===');
 }, [
   proformaInvoice?.id,  // Only re-log when PI ID changes
   suppliers?.length,
-  products?.length
+  products?.length,
+  isServiceAvailable
 ]);
     const [formData, setFormData] = useState({
     piNumber: '',
