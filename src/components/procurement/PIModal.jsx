@@ -10,6 +10,12 @@ import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 import { PIPOMatchingService } from '../../services/PIPOMatchingService';
 
+try {
+  var { PIPOMatchingService } = require('../../services/PIPOMatchingService');
+} catch (e) {
+  console.warn('PIPOMatchingService import failed, using fallback');
+  var PIPOMatchingService = null;
+}
 
 
 
@@ -561,7 +567,6 @@ const handleNavigateToMatching = useCallback((item, action = 'view') => {
     remark: '',
     attachments: []
   });
-  const [showPOMatchingModal, setShowPOMatchingModal] = useState(false);
 
 
   // Supplier creation states
@@ -578,6 +583,7 @@ const handleNavigateToMatching = useCallback((item, action = 'view') => {
   });
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [supplierErrors, setSupplierErrors] = useState({});
+  const [showPOMatchingModal, setShowPOMatchingModal] = useState(false);
 
   const handleAllocationComplete = useCallback(async (allocations) => {
   try {
