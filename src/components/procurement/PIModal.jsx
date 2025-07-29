@@ -473,6 +473,19 @@ useEffect(() => {
   storedAt: ''
 });
 
+
+const handleApplyPOMatches = useCallback((matches) => {
+  const updatedProducts = PIPOMatchingService.applyMatches(selectedProducts, matches);
+  setSelectedProducts(updatedProducts);
+  
+  // Update tracking summary
+  const matchedCount = matches.length;
+  showNotification(
+    `Successfully applied ${matchedCount} PO matches. Tracking fields updated automatically.`,
+    'success'
+  );
+}, [selectedProducts, showNotification]);
+  
 const handleNavigateToMatching = useCallback((item, action = 'view') => {
   try {
     if (!item) {
