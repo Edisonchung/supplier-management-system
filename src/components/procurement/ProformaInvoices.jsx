@@ -1765,9 +1765,7 @@ const ProformaInvoices = ({ showNotification }) => {
             
             <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
               <DocumentViewer
-                //documentId={documentsModal.pi?.id}
-                  documentId={documentsModal.pi?.documentId || documentsModal.pi?.id}
-
+                documentId={documentsModal.pi?.id}
                 documentType="pi"
                 documentNumber={documentsModal.pi?.piNumber}
                 allowDelete={true}
