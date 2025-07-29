@@ -2307,33 +2307,78 @@ const saveProductEdit = (index, field) => {
     </div>
   )}
 
- {/* NEW: AI Matching Tracking Summary */}
+ {/* Enhanced AI Matching Intelligence Dashboard */}
 {selectedProducts.length > 0 && (
-  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-4 text-sm">
-        <span className="font-medium text-green-800">AI Matching Tracking:</span>
-        <span className="text-green-700">
-          📋 {selectedProducts.filter(item => item.clientPO).length} items with Client PO
-        </span>
-        <span className="text-green-700">
-          🏷️ {selectedProducts.filter(item => item.fsProjectCode).length} items with FS Project
-        </span>
-        <span className="text-green-700">
-          🎯 {selectedProducts.filter(item => item.clientItemCode).length} items with Client Item Code
-        </span>
-        <span className="text-green-700">
-          ✅ {selectedProducts.filter(item => item.clientPO && item.fsProjectCode).length} ready for AI matching
+  <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg">
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <Brain className="h-5 w-5 text-green-600" />
+        <span className="font-medium text-green-800">AI Matching Intelligence Dashboard</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => exportAIMatchingData(selectedProducts)}
+        className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"
+      >
+        <Download size={12} />
+        Export Matching Data
+      </button>
+    </div>
+    
+    {/* Status Breakdown */}
+    <div className="grid grid-cols-5 gap-4 text-sm">
+      <div className="text-center">
+        <div className="text-2xl font-bold text-green-600">
+          {selectedProducts.filter(item => getMatchingStatus(item).status === 'complete').length}
+        </div>
+        <div className="text-green-700 text-xs">Fully Matched</div>
+      </div>
+      <div className="text-center">
+        <div className="text-2xl font-bold text-blue-600">
+          {selectedProducts.filter(item => getMatchingStatus(item).status === 'good').length}
+        </div>
+        <div className="text-blue-700 text-xs">Good Matches</div>
+      </div>
+      <div className="text-center">
+        <div className="text-2xl font-bold text-yellow-600">
+          {selectedProducts.filter(item => getMatchingStatus(item).status === 'ready').length}
+        </div>
+        <div className="text-yellow-700 text-xs">Ready to Match</div>
+      </div>
+      <div className="text-center">
+        <div className="text-2xl font-bold text-orange-600">
+          {selectedProducts.filter(item => getMatchingStatus(item).status === 'poor-match').length}
+        </div>
+        <div className="text-orange-700 text-xs">Need Improvement</div>
+      </div>
+      <div className="text-center">
+        <div className="text-2xl font-bold text-gray-600">
+          {selectedProducts.filter(item => getMatchingStatus(item).status === 'incomplete').length}
+        </div>
+        <div className="text-gray-700 text-xs">Incomplete Data</div>
+      </div>
+    </div>
+    
+    {/* Overall Progress */}
+    <div className="mt-3 pt-3 border-t border-green-200">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-green-700 font-medium">Overall Matching Readiness:</span>
+        <span className="text-green-800 font-bold">
+          {Math.round((selectedProducts.filter(item => ['complete', 'good'].includes(getMatchingStatus(item).status)).length / selectedProducts.length) * 100)}%
         </span>
       </div>
       
-      <div className="text-xs text-green-600">
-        {Math.round((selectedProducts.filter(item => item.clientPO && item.fsProjectCode).length / selectedProducts.length) * 100)}% tracking complete
+      <div className="mt-2 w-full bg-green-200 rounded-full h-2">
+        <div 
+          className="bg-green-600 h-2 rounded-full transition-all duration-300"
+          style={{ 
+            width: `${(selectedProducts.filter(item => ['complete', 'good'].includes(getMatchingStatus(item).status)).length / selectedProducts.length) * 100}%` 
+          }}
+        />
       </div>
     </div>
   </div>
 )}
-
 
 
               
