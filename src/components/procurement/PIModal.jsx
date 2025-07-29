@@ -3208,14 +3208,16 @@ const saveProductEdit = (index, field) => {
         </div>
       )}
 
-      {/* PO Matching Modal */}
-      <PIPOMatchingModal
-        isOpen={showPOMatchingModal}
-        onClose={() => setShowPOMatchingModal(false)}
-        piItems={selectedProducts}
-        onApplyMatches={handleApplyPOMatches}
-        showNotification={showNotification}
-      />
+      {/* PO Matching Modal - SAFE VERSION */}
+{isServiceAvailable && (
+  <PIPOMatchingModal
+    isOpen={showPOMatchingModal}
+    onClose={() => setShowPOMatchingModal(false)}
+    piItems={selectedProducts}
+    onApplyMatches={handleApplyPOMatches}
+    showNotification={showNotification}
+  />
+)}
     
     </div>
   );
