@@ -478,7 +478,17 @@ useEffect(() => {
   storedAt: ''
 });
 
-
+const handleApplyPOMatches = useCallback((matches) => {
+  const updatedProducts = PIPOMatchingService.applyMatches(selectedProducts, matches);
+  setSelectedProducts(updatedProducts);
+  
+  // Update tracking summary
+  const matchedCount = matches.length;
+  showNotification(
+    `Successfully applied ${matchedCount} PO matches. Tracking fields updated automatically.`,
+    'success'
+  );
+}, [selectedProducts, showNotification]);
 
 
 const handleNavigateToMatching = useCallback((item, action = 'view') => {
@@ -2297,6 +2307,19 @@ const saveProductEdit = (index, field) => {
         >
           <Download size={14} />
           Export Matching Data
+        </button>
+      )}
+
+      {/* NEW: PO Matching Button */}
+      {selectedProducts.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowPOMatchingModal(true)}
+          className="px-3 py-1.5 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 flex items-center gap-2 shadow-sm transition-all duration-200"
+          title="Match PI items with existing Purchase Orders"
+        >
+          <Brain size={14} />
+          Find PO Matches
         </button>
       )}
 
