@@ -475,16 +475,35 @@ useEffect(() => {
 
 
 const handleApplyPOMatches = useCallback((matches) => {
-  const updatedProducts = PIPOMatchingService.applyMatches(selectedProducts, matches);
-  setSelectedProducts(updatedProducts);
-  
-  // Update tracking summary
-  const matchedCount = matches.length;
-  showNotification(
-    `Successfully applied ${matchedCount} PO matches. Tracking fields updated automatically.`,
-    'success'
-  );
-}, [selectedProducts, showNotification]);
+  try {
+    if (!matches?.length) return;
+    
+    const currentProducts = selectedProducts || [];
+    const updatedProducts = currentProducts.map(item => {
+      const match = matches.find(m => m.piItemId === item.id);
+      
+      if (match) {
+        return {
+          ...item,
+          clientPO: match.poNumber || '',
+          clientLineItem: match.lineItem || '',
+          clientItemCode: match.poItem?.productCode || '',
+          fsProjectCode: match.po?.projectCode || match.po?.orderNumber || '',
+          matchedFromPO: true
+        };
+      }
+      
+      return item;
+    });
+    
+    setSelectedProducts?.(updatedProducts);
+    showNotification?.(`Applied ${matches.length} PO matches successfully`, 'success');
+    
+  } catch (error) {
+    console.error('Error applying matches:', error);
+    showNotification?.('Failed to apply matches', 'error');
+  }
+}, []); // ✅ Empty dependency array
   
 const handleNavigateToMatching = useCallback((item, action = 'view') => {
   try {
