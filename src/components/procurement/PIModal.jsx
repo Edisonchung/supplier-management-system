@@ -10,13 +10,6 @@ import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 import { PIPOMatchingService } from '../../services/PIPOMatchingService';
 
-try {
-  var { PIPOMatchingService } = require('../../services/PIPOMatchingService');
-} catch (e) {
-  console.warn('PIPOMatchingService import failed, using fallback');
-  var PIPOMatchingService = null;
-}
-
 
 
 import { 
