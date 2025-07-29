@@ -489,7 +489,7 @@ const isServiceAvailable = !!PIPOMatchingService;
 
 const handleApplyPOMatches = useCallback((matches) => {
   try {
-    if (!PIPOMatchingService) {
+    if (!isServiceAvailable) {
       showNotification('PO Matching service is not available', 'error');
       return;
     }
@@ -507,7 +507,7 @@ const handleApplyPOMatches = useCallback((matches) => {
     console.error('Error applying PO matches:', error);
     showNotification('Failed to apply PO matches: ' + error.message, 'error');
   }
-}, [selectedProducts, showNotification]);
+}, [selectedProducts, showNotification, isServiceAvailable]);
 
 
 
