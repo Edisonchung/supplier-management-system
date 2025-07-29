@@ -473,30 +473,7 @@ useEffect(() => {
   storedAt: ''
 });
 
-const handleNavigateToMatching = useCallback((item, action = 'view') => {
-  // Save current PI data first
-  const piData = {
-    ...formData,
-    items: selectedProducts
-  };
-  
-  // Store PI data for the matching page
-  sessionStorage.setItem('currentPI', JSON.stringify(piData));
-  sessionStorage.setItem('matchingContext', JSON.stringify({
-    fromPI: true,
-    targetItemId: item.id,
-    action: action,
-    piNumber: formData.piNumber
-  }));
-  
-  // Generate matching page URL
-  const matchingUrl = `/purchase-orders/${formData.piNumber}/supplier-matching?item=${item.id}&action=${action}`;
-  
-  // Open in new tab to preserve current modal state
-  window.open(matchingUrl, '_blank');
-  
-  showNotification?.(`Opening supplier matching for ${item.productName}`, 'info');
-}, [formData, selectedProducts, showNotification]);
+
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
@@ -2415,6 +2392,10 @@ const saveProductEdit = (index, field) => {
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client Item Code</th>
     {/* FS PORTAL PROJECT CODE */}
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">FS Project Code</th>
+    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-60">
+      Matching Status
+      <span className="ml-1 text-xs text-gray-400">(AI Ready)</span>
+    </th>
     <th className="px-4 py-2"></th>
   </tr>
 </thead>
