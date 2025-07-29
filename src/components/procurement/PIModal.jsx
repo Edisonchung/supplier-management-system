@@ -2219,24 +2219,22 @@ const saveProductEdit = (index, field) => {
                 )}
 
                 {/* Selected Products */}
-                {selectedProducts.length > 0 && (
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-50">
-  <tr>
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-    {/* AI MATCHING TRACKING FIELDS */}
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client PO</th>
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Line Item</th>
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client Item Code</th>
-    {/* FS PORTAL PROJECT CODE */}
-    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">FS Project Code</th>
-    <th className="px-4 py-2"></th>
-  </tr>
-</thead>
+               {selectedProducts.length > 0 && (
+  <div className="border rounded-lg overflow-x-auto">  {/* ← CHANGE: Add overflow-x-auto */}
+    <table className="w-full min-w-max">  {/* ← CHANGE: Add min-w-max */}
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client PO</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Line Item</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client Item Code</th>
+          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">FS Project Code</th>
+          <th className="px-4 py-2"></th>
+        </tr>
+      </thead>
 
                       <tbody>
                        {selectedProducts.map((item, index) => (
