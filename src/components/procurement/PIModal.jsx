@@ -2330,18 +2330,25 @@ const saveProductEdit = (index, field) => {
         </button>
       )}
 
-      {/* NEW: PO Matching Button */}
-      {selectedProducts.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowPOMatchingModal(true)}
-          className="px-3 py-1.5 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 flex items-center gap-2 shadow-sm transition-all duration-200"
-          title="Match PI items with existing Purchase Orders"
-        >
-          <Brain size={14} />
-          Find PO Matches
-        </button>
-      )}
+      {/* NEW: PO Matching Button - SAFE VERSION */}
+{selectedProducts.length > 0 && isServiceAvailable && (
+  <button
+    type="button"
+    onClick={() => setShowPOMatchingModal(true)}
+    className="px-3 py-1.5 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 flex items-center gap-2 shadow-sm transition-all duration-200"
+    title="Match PI items with existing Purchase Orders"
+  >
+    <Brain size={14} />
+    Find PO Matches
+  </button>
+)}
+
+{/* Show warning when service not available */}
+{selectedProducts.length > 0 && !isServiceAvailable && (
+  <div className="px-3 py-1.5 text-sm bg-yellow-100 text-yellow-800 rounded-lg">
+    PO Matching service unavailable
+  </div>
+)}
 
       {/* NEW: Bulk FS Project Assignment */}
       {selectedProducts.length > 0 && (
