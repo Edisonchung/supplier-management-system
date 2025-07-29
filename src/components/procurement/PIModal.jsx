@@ -474,29 +474,35 @@ useEffect(() => {
 });
 
 const handleNavigateToMatching = useCallback((item, action = 'view') => {
-  // Save current PI data first
-  const piData = {
-    ...formData,
-    items: selectedProducts
-  };
-  
-  // Store PI data for the matching page
-  sessionStorage.setItem('currentPI', JSON.stringify(piData));
-  sessionStorage.setItem('matchingContext', JSON.stringify({
-    fromPI: true,
-    targetItemId: item.id,
-    action: action,
-    piNumber: formData.piNumber
-  }));
-  
-  // Generate matching page URL
-  const matchingUrl = `/purchase-orders/${formData.piNumber}/supplier-matching?item=${item.id}&action=${action}`;
-  
-  // Open in new tab to preserve current modal state
-  window.open(matchingUrl, '_blank');
-  
-  showNotification?.(`Opening supplier matching for ${item.productName}`, 'info');
-}, [formData, selectedProducts, showNotification]);
+  try {
+    if (!item) {
+      console.warn('No item provided to handleNavigateToMatching');
+      return;
+    }
+
+    // Basic navigation without complex dependencies
+    const itemName = item.productName || item.productCode || 'Unknown Item';
+    const piNumber = formData?.piNumber || 'unknown';
+    
+    // Simple URL generation
+    const baseUrl = window.location.origin;
+    const matchingUrl = `${baseUrl}/supplier-matching?pi=${piNumber}&item=${item.id}&action=${action}`;
+    
+    // Open in new tab
+    window.open(matchingUrl, '_blank');
+    
+    // Safe notification
+    if (showNotification) {
+      showNotification(`Opening supplier matching for ${itemName}`, 'info');
+    }
+  } catch (error) {
+    console.error('Error in handleNavigateToMatching:', error);
+    if (showNotification) {
+      showNotification('Failed to open supplier matching', 'error');
+    }
+  }
+}, []); // ✅ Empty dependency array to avoid circular references
+
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
