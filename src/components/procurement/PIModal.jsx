@@ -2330,6 +2330,19 @@ const saveProductEdit = (index, field) => {
         </button>
       )}
 
+      {/* NEW: PO Matching Button */}
+      {selectedProducts.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowPOMatchingModal(true)}
+          className="px-3 py-1.5 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 flex items-center gap-2 shadow-sm transition-all duration-200"
+          title="Match PI items with existing Purchase Orders"
+        >
+          <Brain size={14} />
+          Find PO Matches
+        </button>
+      )}
+
       {/* NEW: Bulk FS Project Assignment */}
       {selectedProducts.length > 0 && (
         <select
@@ -3189,11 +3202,294 @@ const saveProductEdit = (index, field) => {
           </div>
         </div>
       )}
+    {/* PO Matching Modal */}
+      <PIPOMatchingModal
+        isOpen={showPOMatchingModal}
+        onClose={() => setShowPOMatchingModal(false)}
+        piItems={selectedProducts}
+        onApplyMatches={handleApplyPOMatches}
+        showNotification={showNotification}
+      />
     </div>
   );
 };
 
-// ADD THIS ENTIRE COMPONENT before the export default PIModal; line
+// ✅ PI-PO MATCHING MODAL COMPONENT
+const PIPOMatchingModal = ({ 
+  isOpen, 
+  onClose, 
+  piItems, 
+  onApplyMatches, 
+  showNotification 
+}) => {
+  const [matches, setMatches] = useState([]);
+  const [selectedMatches, setSelectedMatches] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [matchingSummary, setMatchingSummary] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && piItems.length > 0) {
+      runMatching();
+    }
+  }, [isOpen, piItems]);
+
+  const runMatching = async () => {
+    setLoading(true);
+    try {
+      const result = await PIPOMatchingService.findMatchingPOs(piItems);
+      
+      if (result.success) {
+        setMatches(result.matches);
+        setMatchingSummary(result.summary);
+        
+        // Auto-select high confidence matches
+        const autoSelected = {};
+        result.matches.forEach(match => {
+          const bestMatch = match.matches[0];
+          if (bestMatch && bestMatch.confidence >= 80) {
+            autoSelected[match.piItem.id] = bestMatch;
+          }
+        });
+        setSelectedMatches(autoSelected);
+        
+        showNotification(
+          `Found ${result.summary.matchedItems} new matches out of ${result.summary.searchedItems} unmatched items. ${result.summary.alreadyMatchedItems} items were already matched.`,
+          'success'
+        );
+      } else {
+        showNotification('Error running PO matching: ' + result.error, 'error');
+      }
+    } catch (error) {
+      showNotification('Error running PO matching', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectMatch = (piItemId, match) => {
+    setSelectedMatches(prev => ({
+      ...prev,
+      [piItemId]: { ...match, piItemId }
+    }));
+  };
+
+  const handleApplySelected = () => {
+    const matchesToApply = Object.values(selectedMatches);
+    onApplyMatches(matchesToApply);
+    onClose();
+    
+    showNotification(
+      `Applied ${matchesToApply.length} PO matches to PI items`,
+      'success'
+    );
+  };
+
+  const getConfidenceColor = (confidence) => {
+    if (confidence >= 80) return 'text-green-600 bg-green-100';
+    if (confidence >= 60) return 'text-blue-600 bg-blue-100';
+    if (confidence >= 40) return 'text-orange-600 bg-orange-100';
+    return 'text-red-600 bg-red-100';
+  };
+
+  const getMatchTypeIcon = (type) => {
+    switch (type) {
+      case 'exact': return <CheckCircle className="text-green-600" size={16} />;
+      case 'high': return <Target className="text-blue-600" size={16} />;
+      case 'medium': return <AlertTriangle className="text-orange-600" size={16} />;
+      default: return <Search className="text-gray-600" size={16} />;
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-6xl w-full h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-semibold">PI ↔ PO Matching Assistant</h2>
+              <p className="text-gray-600 text-sm mt-1">
+                Automatically match PI items with existing Purchase Orders
+              </p>
+            </div>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X size={24} />
+            </button>
+          </div>
+          
+          {/* Summary */}
+          {matchingSummary && (
+            <div className="mt-4 grid grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{matchingSummary.totalItems}</div>
+                <div className="text-xs text-gray-600">Total Items</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">{matchingSummary.alreadyMatchedItems}</div>
+                <div className="text-xs text-gray-600">Already Matched</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">{matchingSummary.searchedItems}</div>
+                <div className="text-xs text-gray-600">Searched</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">{matchingSummary.matchedItems}</div>
+                <div className="text-xs text-gray-600">New Matches</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-cyan-600">{matchingSummary.matchRate}%</div>
+                <div className="text-xs text-gray-600">Success Rate</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <Loader2 className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-2" />
+                <p className="text-gray-600">Searching for PO matches...</p>
+                <p className="text-sm text-gray-500 mt-1">Excluding already-matched items</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Show already matched items info */}
+              {matchingSummary?.alreadyMatchedItems > 0 && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-800">
+                    <CheckCircle size={16} />
+                    <span className="font-medium">
+                      {matchingSummary.alreadyMatchedItems} items already have PO matches and were skipped
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {matches.length === 0 && matchingSummary?.searchedItems > 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Search className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                  <p className="font-medium mb-1">No new matches found</p>
+                  <p className="text-sm">All searchable items have been checked against available POs</p>
+                </div>
+              ) : (
+                matches.map((match, index) => (
+                  <div key={index} className="border rounded-lg p-4">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="font-medium">{match.piItem.productName}</h3>
+                        <p className="text-sm text-gray-600">{match.piItem.productCode}</p>
+                        <p className="text-xs text-gray-500">
+                          Qty: {match.piItem.quantity} | Price: ${match.piItem.unitPrice}
+                        </p>
+                      </div>
+                      
+                      {match.matches.length === 0 ? (
+                        <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">
+                          No matches found
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                          {match.matches.length} potential match(es)
+                        </span>
+                      )}
+                    </div>
+
+                    {match.matches.length > 0 && (
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm text-gray-700">Potential Matches:</h4>
+                        {match.matches.slice(0, 3).map((poMatch, matchIndex) => (
+                          <div 
+                            key={matchIndex}
+                            className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                              selectedMatches[match.piItem.id]?.poNumber === poMatch.poNumber
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => handleSelectMatch(match.piItem.id, poMatch)}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                {getMatchTypeIcon(poMatch.matchType)}
+                                <span className="font-medium">PO: {poMatch.poNumber}</span>
+                                <span className="text-sm text-gray-600">
+                                  Line: {poMatch.lineItem}
+                                </span>
+                              </div>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getConfidenceColor(poMatch.confidence)}`}>
+                                {poMatch.confidence}% match
+                              </span>
+                            </div>
+                            
+                            <div className="text-sm text-gray-600">
+                              <p><strong>Product:</strong> {poMatch.poItem.productName}</p>
+                              <p><strong>Code:</strong> {poMatch.poItem.productCode}</p>
+                              <p><strong>Client:</strong> {poMatch.po.clientName}</p>
+                              {poMatch.po.projectCode && (
+                                <p><strong>Project:</strong> {poMatch.po.projectCode}</p>
+                              )}
+                            </div>
+                            
+                            {poMatch.matchedFields.length > 0 && (
+                              <div className="mt-2 flex gap-1">
+                                {poMatch.matchedFields.map(field => (
+                                  <span 
+                                    key={field}
+                                    className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs"
+                                  >
+                                    {field}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t bg-gray-50 flex justify-between items-center">
+          <div className="text-sm text-gray-600">
+            {Object.keys(selectedMatches).length} matches selected for application
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={runMatching}
+              disabled={loading}
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              Re-run Matching
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApplySelected}
+              disabled={Object.keys(selectedMatches).length === 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Apply Selected Matches
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Stock Receiving Tab Component with Stock Allocation
 const StockReceivingTab = ({ 
