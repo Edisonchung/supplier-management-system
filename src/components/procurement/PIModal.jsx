@@ -3227,6 +3227,7 @@ const saveProductEdit = (index, field) => {
     onApplyMatches={handleApplyPOMatches}
     showNotification={showNotification}
   />
+  ) : null}
 )}
     
     </div>
