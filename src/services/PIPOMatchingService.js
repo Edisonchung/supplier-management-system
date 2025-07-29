@@ -26,7 +26,28 @@ export class PIPOMatchingService {
       }
 
       // Get all POs from storage/database
-      const purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+      // Get all POs from Firestore
+let purchaseOrders = [];
+try {
+  // Try to get POs from your existing Firestore service
+  if (window.getPurchaseOrders) {
+    purchaseOrders = await window.getPurchaseOrders();
+  } else if (window.firestore) {
+    // Alternative: Direct Firestore query
+    const { collection, getDocs } = await import('firebase/firestore');
+    const querySnapshot = await getDocs(collection(window.firestore, 'purchaseOrders'));
+    purchaseOrders = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } else {
+    // Fallback to localStorage for development
+    purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+  }
+} catch (error) {
+  console.warn('Could not fetch POs from Firestore, using localStorage:', error);
+  purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+}
       console.log('Found Purchase Orders:', purchaseOrders.length);
       
       // ✅ FILTER OUT ALREADY-MATCHED ITEMS
