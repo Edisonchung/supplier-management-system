@@ -3253,7 +3253,7 @@ const PIPOMatchingModal = ({
   }, [isOpen, piItems, serviceAvailable]);
 
   const runMatching = async () => {
-    if (!PIPOMatchingService) {
+    if (!isServiceAvailable) {
       showNotification('PO Matching service is not available', 'error');
       return;
     }
