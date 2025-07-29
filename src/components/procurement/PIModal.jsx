@@ -2221,7 +2221,7 @@ const saveProductEdit = (index, field) => {
                 {/* Selected Products */}
                 {selectedProducts.length > 0 && (
                   <div className="border rounded-lg overflow-x-auto">
-                    <table className="w-full min-w-max">
+                    <table className="w-full" style={{minWidth: '1200px'}}>
                       <thead className="bg-gray-50">
   <tr>
     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
