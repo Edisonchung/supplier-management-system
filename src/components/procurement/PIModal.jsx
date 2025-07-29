@@ -12,7 +12,12 @@ import FSPortalProjectInput from '../common/FSPortalProjectInput';
 // Replace the async import section with:
 import { PIPOMatchingService as ImportedPIPOMatchingService } from '../../services/PIPOMatchingService';
 const PIPOMatchingService = ImportedPIPOMatchingService || null;
-
+console.log('🔍 Service Debug:', {
+  PIPOMatchingService,
+  type: typeof PIPOMatchingService,
+  available: !!PIPOMatchingService,
+  methods: PIPOMatchingService ? Object.getOwnPropertyNames(PIPOMatchingService) : 'N/A'
+});
 import { 
   X, Plus, Trash2, Search, Package, 
   FileText, Calculator, Calendar, Tag,
