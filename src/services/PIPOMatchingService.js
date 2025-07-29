@@ -183,39 +183,46 @@ export class PIPOMatchingService {
     }
   }
 
-  static findItemMatches(piItem, availablePOs) {
-    const matches = [];
-    
-    if (!piItem || !availablePOs || !Array.isArray(availablePOs)) {
-      console.warn('Invalid parameters for findItemMatches');
-      return matches;
-    }
-    
-    availablePOs.forEach(po => {
-      if (po.items && Array.isArray(po.items)) {
-        po.items.forEach(poItem => {
-          const matchScore = this.calculateItemMatchScore(piItem, poItem);
-          
-          console.log(`🔍 Comparing "${piItem.productCode}" vs "${poItem.productCode}" - Score: ${matchScore.toFixed(3)}`);
-          
-          if (matchScore > 0.3) { // 30% minimum match threshold
-            matches.push({
-              po,
-              poItem,
-              poNumber: po.orderNumber || po.poNumber || po.id,
-              lineItem: poItem.lineNumber || poItem.id,
-              matchScore,
-              matchType: this.getMatchType(piItem, poItem, matchScore)
-            });
-            console.log(`✅ Added match: ${poItem.productCode} (${(matchScore * 100).toFixed(1)}%)`);
-          }
-        });
-      }
-    });
-    
-    // Sort by match score (highest first)
-    return matches.sort((a, b) => b.matchScore - a.matchScore);
+  // 🔧 UPDATE: findItemMatches method to pass PO reference
+static findItemMatches(piItem, availablePOs) {
+  const matches = [];
+  
+  if (!piItem || !availablePOs || !Array.isArray(availablePOs)) {
+    console.warn('Invalid parameters for findItemMatches');
+    return matches;
   }
+  
+  availablePOs.forEach(po => {
+    if (po.items && Array.isArray(po.items)) {
+      po.items.forEach(poItem => {
+        // Add PO reference to poItem for matching
+        const enhancedPOItem = {
+          ...poItem,
+          po: po // Add PO reference for manual matching
+        };
+        
+        const matchScore = this.calculateItemMatchScore(piItem, enhancedPOItem);
+        
+        console.log(`🔍 Comparing "${piItem.productCode}" vs "${poItem.productCode}" - Score: ${matchScore.toFixed(3)}`);
+        
+        if (matchScore > 0.3) { // 30% minimum match threshold
+          matches.push({
+            po,
+            poItem,
+            poNumber: po.orderNumber || po.poNumber || po.id,
+            lineItem: poItem.lineNumber || poItem.id,
+            matchScore,
+            matchType: this.getMatchType(piItem, enhancedPOItem, matchScore)
+          });
+          console.log(`✅ Added match: ${poItem.productCode} (${(matchScore * 100).toFixed(1)}%)`);
+        }
+      });
+    }
+  });
+  
+  // Sort by match score (highest first)
+  return matches.sort((a, b) => b.matchScore - a.matchScore);
+}
 
   static calculateItemMatchScore(piItem, poItem) {
   if (!piItem || !poItem) {
@@ -238,10 +245,19 @@ export class PIPOMatchingService {
     let manualScore = 0;
     let manualChecks = 0;
     
-    // Manual Client PO matching (30% of total)
+    // 🔧 FIXED: Manual Client PO matching (30% of total)
     if (hasManualClientPO) {
       manualChecks++;
-      const poNumber = poItem.po?.orderNumber || poItem.po?.clientPONumber || poItem.po?.id;
+      
+      // ✅ CORRECTED: Check all possible PO number fields in the correct order
+      const poNumber = poItem.po?.clientPoNumber ||     // ← Primary: Client PO Number
+                      poItem.po?.orderNumber ||         // ← Secondary: Order Number  
+                      poItem.po?.poNumber ||            // ← Tertiary: Internal PO Number
+                      poItem.po?.id;                    // ← Fallback: Document ID
+                      
+      console.log(`🔍 Checking PO fields: clientPoNumber="${poItem.po?.clientPoNumber}", orderNumber="${poItem.po?.orderNumber}", poNumber="${poItem.po?.poNumber}", id="${poItem.po?.id}"`);
+      console.log(`🎯 Selected PO Number for matching: "${poNumber}"`);
+      
       if (piItem.clientPO.toLowerCase().trim() === poNumber?.toLowerCase().trim()) {
         manualScore += 0.5; // 50% of manual weight
         console.log(`  ✅ Manual Client PO EXACT match: "${piItem.clientPO}" = "${poNumber}"`);
@@ -262,7 +278,7 @@ export class PIPOMatchingService {
     }
     
     score += (manualScore / Math.max(manualChecks, 1)) * manualWeight;
-    console.log(`  📋 Manual matching score: ${((manualScore / Math.max(manualChecks, 1)) * manualWeight).toFixed(3)}`);
+    console.log(`  📋 Manual matching score: ${((manualScore / Math.max(manualChecks, 1)) * manualWeight).toFixed(3)} (${(((manualScore / Math.max(manualChecks, 1)) * manualWeight) * 100).toFixed(1)}%)`);
   }
   
   // Automatic matching gets remaining weight (40% if manual data exists, 100% if no manual data)
@@ -309,47 +325,6 @@ export class PIPOMatchingService {
   console.log(`  🎯 Final score: ${finalScore.toFixed(3)} (${(finalScore * 100).toFixed(1)}%)`);
   
   return finalScore;
-}
-
-// 🔧 UPDATE: findItemMatches method to pass PO reference
-static findItemMatches(piItem, availablePOs) {
-  const matches = [];
-  
-  if (!piItem || !availablePOs || !Array.isArray(availablePOs)) {
-    console.warn('Invalid parameters for findItemMatches');
-    return matches;
-  }
-  
-  availablePOs.forEach(po => {
-    if (po.items && Array.isArray(po.items)) {
-      po.items.forEach(poItem => {
-        // Add PO reference to poItem for matching
-        const enhancedPOItem = {
-          ...poItem,
-          po: po // Add PO reference for manual matching
-        };
-        
-        const matchScore = this.calculateItemMatchScore(piItem, enhancedPOItem);
-        
-        console.log(`🔍 Comparing "${piItem.productCode}" vs "${poItem.productCode}" - Score: ${matchScore.toFixed(3)}`);
-        
-        if (matchScore > 0.3) { // 30% minimum match threshold
-          matches.push({
-            po,
-            poItem,
-            poNumber: po.orderNumber || po.poNumber || po.id,
-            lineItem: poItem.lineNumber || poItem.id,
-            matchScore,
-            matchType: this.getMatchType(piItem, enhancedPOItem, matchScore)
-          });
-          console.log(`✅ Added match: ${poItem.productCode} (${(matchScore * 100).toFixed(1)}%)`);
-        }
-      });
-    }
-  });
-  
-  // Sort by match score (highest first)
-  return matches.sort((a, b) => b.matchScore - a.matchScore);
 }
 
 
