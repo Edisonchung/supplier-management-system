@@ -218,52 +218,180 @@ export class PIPOMatchingService {
   }
 
   static calculateItemMatchScore(piItem, poItem) {
-    if (!piItem || !poItem) {
-      return 0;
-    }
-
-    let score = 0;
-    let maxScore = 0;
-    
-    // Product code matching (40% weight)
-    const codeWeight = 0.4;
-    if (piItem.productCode && poItem.productCode) {
-      maxScore += codeWeight;
-      const codeMatch = this.fuzzyMatch(piItem.productCode, poItem.productCode);
-      score += codeMatch * codeWeight;
-      console.log(`  Code match: "${piItem.productCode}" vs "${poItem.productCode}" = ${codeMatch.toFixed(3)}`);
-    }
-    
-    // Product name matching (35% weight)
-    const nameWeight = 0.35;
-    if (piItem.productName && poItem.productName) {
-      maxScore += nameWeight;
-      const nameMatch = this.fuzzyMatch(piItem.productName, poItem.productName);
-      score += nameMatch * nameWeight;
-      console.log(`  Name match: "${piItem.productName}" vs "${poItem.productName}" = ${nameMatch.toFixed(3)}`);
-    }
-    
-    // Quantity matching (15% weight)
-    const qtyWeight = 0.15;
-    if (piItem.quantity && poItem.quantity) {
-      maxScore += qtyWeight;
-      const qtyMatch = piItem.quantity === poItem.quantity ? 1 : 0.5;
-      score += qtyMatch * qtyWeight;
-      console.log(`  Qty match: ${piItem.quantity} vs ${poItem.quantity} = ${qtyMatch.toFixed(3)}`);
-    }
-    
-    // Price similarity (10% weight)
-    const priceWeight = 0.10;
-    if (piItem.unitPrice && poItem.unitPrice) {
-      maxScore += priceWeight;
-      const priceDiff = Math.abs(piItem.unitPrice - poItem.unitPrice) / Math.max(piItem.unitPrice, poItem.unitPrice);
-      const priceMatch = Math.max(0, 1 - priceDiff);
-      score += priceMatch * priceWeight;
-      console.log(`  Price match: ${piItem.unitPrice} vs ${poItem.unitPrice} = ${priceMatch.toFixed(3)}`);
-    }
-    
-    return maxScore > 0 ? score / maxScore : 0;
+  if (!piItem || !poItem) {
+    return 0;
   }
+
+  let score = 0;
+  let maxScore = 0;
+  
+  // ✅ NEW: Manual Client PO and Item Code Priority (60% weight)
+  const manualWeight = 0.6;
+  
+  // Check if PI item has manually entered Client PO and Client Item Code
+  const hasManualClientPO = piItem.clientPO && piItem.clientPO.trim() !== '';
+  const hasManualClientItemCode = piItem.clientItemCode && piItem.clientItemCode.trim() !== '';
+  
+  if (hasManualClientPO || hasManualClientItemCode) {
+    maxScore += manualWeight;
+    
+    let manualScore = 0;
+    let manualChecks = 0;
+    
+    // Manual Client PO matching (30% of total)
+    if (hasManualClientPO) {
+      manualChecks++;
+      const poNumber = poItem.po?.orderNumber || poItem.po?.clientPONumber || poItem.po?.id;
+      if (piItem.clientPO.toLowerCase().trim() === poNumber?.toLowerCase().trim()) {
+        manualScore += 0.5; // 50% of manual weight
+        console.log(`  ✅ Manual Client PO EXACT match: "${piItem.clientPO}" = "${poNumber}"`);
+      } else {
+        console.log(`  ❌ Manual Client PO mismatch: "${piItem.clientPO}" ≠ "${poNumber}"`);
+      }
+    }
+    
+    // Manual Client Item Code matching (30% of total)
+    if (hasManualClientItemCode) {
+      manualChecks++;
+      if (piItem.clientItemCode.toLowerCase().trim() === poItem.productCode?.toLowerCase().trim()) {
+        manualScore += 0.5; // 50% of manual weight
+        console.log(`  ✅ Manual Client Item Code EXACT match: "${piItem.clientItemCode}" = "${poItem.productCode}"`);
+      } else {
+        console.log(`  ❌ Manual Client Item Code mismatch: "${piItem.clientItemCode}" ≠ "${poItem.productCode}"`);
+      }
+    }
+    
+    score += (manualScore / Math.max(manualChecks, 1)) * manualWeight;
+    console.log(`  📋 Manual matching score: ${((manualScore / Math.max(manualChecks, 1)) * manualWeight).toFixed(3)}`);
+  }
+  
+  // Automatic matching gets remaining weight (40% if manual data exists, 100% if no manual data)
+  const autoWeight = hasManualClientPO || hasManualClientItemCode ? 0.4 : 1.0;
+  
+  // Product code matching (40% of auto weight)
+  const codeWeight = autoWeight * 0.4;
+  if (piItem.productCode && poItem.productCode) {
+    maxScore += codeWeight;
+    const codeMatch = this.fuzzyMatch(piItem.productCode, poItem.productCode);
+    score += codeMatch * codeWeight;
+    console.log(`  Code match: "${piItem.productCode}" vs "${poItem.productCode}" = ${codeMatch.toFixed(3)} (weight: ${codeWeight.toFixed(3)})`);
+  }
+  
+  // Product name matching (35% of auto weight)
+  const nameWeight = autoWeight * 0.35;
+  if (piItem.productName && poItem.productName) {
+    maxScore += nameWeight;
+    const nameMatch = this.fuzzyMatch(piItem.productName, poItem.productName);
+    score += nameMatch * nameWeight;
+    console.log(`  Name match: "${piItem.productName}" vs "${poItem.productName}" = ${nameMatch.toFixed(3)} (weight: ${nameWeight.toFixed(3)})`);
+  }
+  
+  // Quantity matching (15% of auto weight)
+  const qtyWeight = autoWeight * 0.15;
+  if (piItem.quantity && poItem.quantity) {
+    maxScore += qtyWeight;
+    const qtyMatch = piItem.quantity === poItem.quantity ? 1 : 0.5;
+    score += qtyMatch * qtyWeight;
+    console.log(`  Qty match: ${piItem.quantity} vs ${poItem.quantity} = ${qtyMatch.toFixed(3)} (weight: ${qtyWeight.toFixed(3)})`);
+  }
+  
+  // Price similarity (10% of auto weight)
+  const priceWeight = autoWeight * 0.10;
+  if (piItem.unitPrice && poItem.unitPrice) {
+    maxScore += priceWeight;
+    const priceDiff = Math.abs(piItem.unitPrice - poItem.unitPrice) / Math.max(piItem.unitPrice, poItem.unitPrice);
+    const priceMatch = Math.max(0, 1 - priceDiff);
+    score += priceMatch * priceWeight;
+    console.log(`  Price match: ${piItem.unitPrice} vs ${poItem.unitPrice} = ${priceMatch.toFixed(3)} (weight: ${priceWeight.toFixed(3)})`);
+  }
+  
+  const finalScore = maxScore > 0 ? score / maxScore : 0;
+  console.log(`  🎯 Final score: ${finalScore.toFixed(3)} (${(finalScore * 100).toFixed(1)}%)`);
+  
+  return finalScore;
+}
+
+// 🔧 UPDATE: findItemMatches method to pass PO reference
+static findItemMatches(piItem, availablePOs) {
+  const matches = [];
+  
+  if (!piItem || !availablePOs || !Array.isArray(availablePOs)) {
+    console.warn('Invalid parameters for findItemMatches');
+    return matches;
+  }
+  
+  availablePOs.forEach(po => {
+    if (po.items && Array.isArray(po.items)) {
+      po.items.forEach(poItem => {
+        // Add PO reference to poItem for matching
+        const enhancedPOItem = {
+          ...poItem,
+          po: po // Add PO reference for manual matching
+        };
+        
+        const matchScore = this.calculateItemMatchScore(piItem, enhancedPOItem);
+        
+        console.log(`🔍 Comparing "${piItem.productCode}" vs "${poItem.productCode}" - Score: ${matchScore.toFixed(3)}`);
+        
+        if (matchScore > 0.3) { // 30% minimum match threshold
+          matches.push({
+            po,
+            poItem,
+            poNumber: po.orderNumber || po.poNumber || po.id,
+            lineItem: poItem.lineNumber || poItem.id,
+            matchScore,
+            matchType: this.getMatchType(piItem, enhancedPOItem, matchScore)
+          });
+          console.log(`✅ Added match: ${poItem.productCode} (${(matchScore * 100).toFixed(1)}%)`);
+        }
+      });
+    }
+  });
+  
+  // Sort by match score (highest first)
+  return matches.sort((a, b) => b.matchScore - a.matchScore);
+}
+
+// 🔧 UPDATE: getMatchedFields to include manual matching
+static getMatchedFields(piItem, poItem) {
+  const fields = [];
+  
+  // Check manual Client PO matching
+  if (piItem.clientPO && poItem.po) {
+    const poNumber = poItem.po.orderNumber || poItem.po.clientPONumber || poItem.po.id;
+    if (piItem.clientPO.toLowerCase().trim() === poNumber?.toLowerCase().trim()) {
+      fields.push('clientPO');
+    }
+  }
+  
+  // Check manual Client Item Code matching
+  if (piItem.clientItemCode && poItem.productCode && 
+      piItem.clientItemCode.toLowerCase().trim() === poItem.productCode.toLowerCase().trim()) {
+    fields.push('clientItemCode');
+  }
+  
+  // Existing automatic matching checks
+  if (piItem.productCode && poItem.productCode && 
+      this.fuzzyMatch(piItem.productCode, poItem.productCode) > 0.8) {
+    fields.push('productCode');
+  }
+  
+  if (piItem.productName && poItem.productName && 
+      this.fuzzyMatch(piItem.productName, poItem.productName) > 0.7) {
+    fields.push('productName');
+  }
+  
+  if (piItem.quantity && poItem.quantity && piItem.quantity === poItem.quantity) {
+    fields.push('quantity');
+  }
+  
+  if (piItem.unitPrice && poItem.unitPrice && 
+      Math.abs(piItem.unitPrice - poItem.unitPrice) / Math.max(piItem.unitPrice, poItem.unitPrice) < 0.1) {
+    fields.push('unitPrice');
+  }
+  
+  return fields;
+}
 
   static fuzzyMatch(str1, str2) {
     if (!str1 || !str2) return 0;
