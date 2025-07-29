@@ -10,14 +10,17 @@ import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 
 // ✅ CRITICAL FIX: Safe import pattern to prevent uninitialized variable error
-let PIPOMatchingService = null;
-try {
-  const matchingModule = await import('../../services/PIPOMatchingService');
-  PIPOMatchingService = matchingModule.PIPOMatchingService || null;
-} catch (e) {
-  console.warn('PIPOMatchingService not available:', e.message);
-  PIPOMatchingService = null;
-}
+import { PIPOMatchingService as ImportedPIPOMatchingService } from '../../services/PIPOMatchingService';
+
+// Safe null check wrapper
+const PIPOMatchingService = (() => {
+  try {
+    return ImportedPIPOMatchingService || null;
+  } catch (e) {
+    console.warn('PIPOMatchingService not available:', e.message);
+    return null;
+  }
+})();
 
 import { 
   X, Plus, Trash2, Search, Package, 
