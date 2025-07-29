@@ -478,16 +478,27 @@ useEffect(() => {
 });
 
 const handleApplyPOMatches = useCallback((matches) => {
-  const updatedProducts = PIPOMatchingService.applyMatches(selectedProducts, matches);
-  setSelectedProducts(updatedProducts);
-  
-  // Update tracking summary
-  const matchedCount = matches.length;
-  showNotification(
-    `Successfully applied ${matchedCount} PO matches. Tracking fields updated automatically.`,
-    'success'
-  );
+  try {
+    if (!PIPOMatchingService) {
+      showNotification('PO Matching service is not available', 'error');
+      return;
+    }
+
+    const updatedProducts = PIPOMatchingService.applyMatches(selectedProducts, matches);
+    setSelectedProducts(updatedProducts);
+    
+    // Update tracking summary
+    const matchedCount = matches.length;
+    showNotification(
+      `Successfully applied ${matchedCount} PO matches. Tracking fields updated automatically.`,
+      'success'
+    );
+  } catch (error) {
+    console.error('Error applying PO matches:', error);
+    showNotification('Failed to apply PO matches: ' + error.message, 'error');
+  }
 }, [selectedProducts, showNotification]);
+
 
 
 const handleNavigateToMatching = useCallback((item, action = 'view') => {
