@@ -7,10 +7,15 @@ import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
-import FSPortalProjectInput from '../common/FSPortalProjectInput';
 import { PIPOMatchingService } from '../../services/PIPOMatchingService';
+import FSPortalProjectInput from '../common/FSPortalProjectInput';
 
-
+try {
+  var { PIPOMatchingService } = require('../../services/PIPOMatchingService');
+} catch (e) {
+  console.warn('PIPOMatchingService import failed, using fallback');
+  var PIPOMatchingService = null;
+}
 
 import { 
   X, Plus, Trash2, Search, Package, 
