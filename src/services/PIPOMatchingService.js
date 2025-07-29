@@ -1,4 +1,9 @@
 // src/services/PIPOMatchingService.js
+// Updated with working Firestore integration
+
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../services/firebase'; // Adjust path to your firebase config
+
 export class PIPOMatchingService {
   static async findMatchingPOs(piItems) {
     try {
@@ -25,29 +30,42 @@ export class PIPOMatchingService {
         };
       }
 
-      // Get all POs from storage/database
-      // Get all POs from Firestore
-let purchaseOrders = [];
-try {
-  // Try to get POs from your existing Firestore service
-  if (window.getPurchaseOrders) {
-    purchaseOrders = await window.getPurchaseOrders();
-  } else if (window.firestore) {
-    // Alternative: Direct Firestore query
-    const { collection, getDocs } = await import('firebase/firestore');
-    const querySnapshot = await getDocs(collection(window.firestore, 'purchaseOrders'));
-    purchaseOrders = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-  } else {
-    // Fallback to localStorage for development
-    purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-  }
-} catch (error) {
-  console.warn('Could not fetch POs from Firestore, using localStorage:', error);
-  purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-}
+      // ✅ UPDATED: Get all POs from Firestore with proper error handling
+      let purchaseOrders = [];
+      try {
+        console.log('🔍 Attempting to fetch POs from Firestore...');
+        
+        // Try to fetch from Firestore using your existing db connection
+        const posCollection = collection(db, 'purchaseOrders');
+        const querySnapshot = await getDocs(posCollection);
+        
+        purchaseOrders = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            // Ensure we have the right field names
+            orderNumber: data.orderNumber || data.poNumber || data.clientPONumber || doc.id,
+            items: data.items || data.lineItems || []
+          };
+        });
+        
+        console.log('✅ Successfully fetched POs from Firestore:', purchaseOrders.length);
+        console.log('📋 PO Details:', purchaseOrders);
+        
+      } catch (firestoreError) {
+        console.warn('⚠️ Could not fetch POs from Firestore:', firestoreError);
+        console.log('🔄 Falling back to localStorage...');
+        
+        // Fallback to localStorage
+        purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+        
+        if (purchaseOrders.length === 0) {
+          console.log('📝 No POs found in localStorage either');
+          console.log('⚠️ No Purchase Orders available for matching');
+        }
+      }
+      
       console.log('Found Purchase Orders:', purchaseOrders.length);
       
       // ✅ FILTER OUT ALREADY-MATCHED ITEMS
@@ -121,7 +139,16 @@ try {
   static getAvailablePOs(purchaseOrders) {
     try {
       // Get all already-matched PO items to exclude them
-      const allPIs = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
+      let allPIs = [];
+      
+      try {
+        // Try to get from Firestore first
+        allPIs = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
+      } catch (error) {
+        console.warn('Could not get PIs for matching check:', error);
+        allPIs = [];
+      }
+      
       const matchedPOItems = new Set();
       
       allPIs.forEach(pi => {
@@ -169,6 +196,8 @@ try {
         po.items.forEach(poItem => {
           const matchScore = this.calculateItemMatchScore(piItem, poItem);
           
+          console.log(`🔍 Comparing "${piItem.productCode}" vs "${poItem.productCode}" - Score: ${matchScore.toFixed(3)}`);
+          
           if (matchScore > 0.3) { // 30% minimum match threshold
             matches.push({
               po,
@@ -178,6 +207,7 @@ try {
               matchScore,
               matchType: this.getMatchType(piItem, poItem, matchScore)
             });
+            console.log(`✅ Added match: ${poItem.productCode} (${(matchScore * 100).toFixed(1)}%)`);
           }
         });
       }
@@ -201,6 +231,7 @@ try {
       maxScore += codeWeight;
       const codeMatch = this.fuzzyMatch(piItem.productCode, poItem.productCode);
       score += codeMatch * codeWeight;
+      console.log(`  Code match: "${piItem.productCode}" vs "${poItem.productCode}" = ${codeMatch.toFixed(3)}`);
     }
     
     // Product name matching (35% weight)
@@ -209,6 +240,7 @@ try {
       maxScore += nameWeight;
       const nameMatch = this.fuzzyMatch(piItem.productName, poItem.productName);
       score += nameMatch * nameWeight;
+      console.log(`  Name match: "${piItem.productName}" vs "${poItem.productName}" = ${nameMatch.toFixed(3)}`);
     }
     
     // Quantity matching (15% weight)
@@ -217,6 +249,7 @@ try {
       maxScore += qtyWeight;
       const qtyMatch = piItem.quantity === poItem.quantity ? 1 : 0.5;
       score += qtyMatch * qtyWeight;
+      console.log(`  Qty match: ${piItem.quantity} vs ${poItem.quantity} = ${qtyMatch.toFixed(3)}`);
     }
     
     // Price similarity (10% weight)
@@ -226,6 +259,7 @@ try {
       const priceDiff = Math.abs(piItem.unitPrice - poItem.unitPrice) / Math.max(piItem.unitPrice, poItem.unitPrice);
       const priceMatch = Math.max(0, 1 - priceDiff);
       score += priceMatch * priceWeight;
+      console.log(`  Price match: ${piItem.unitPrice} vs ${poItem.unitPrice} = ${priceMatch.toFixed(3)}`);
     }
     
     return maxScore > 0 ? score / maxScore : 0;
@@ -364,38 +398,7 @@ try {
       return item;
     });
   }
-
-  // Helper method to create test data (for debugging)
-  static createTestData() {
-    const testPOs = [
-      {
-        id: 'po-test-1',
-        orderNumber: 'PO-020748',
-        clientName: 'Test Client',
-        projectCode: 'BWS-S1046',
-        items: [
-          {
-            id: 'line-1',
-            lineNumber: 'LINE-001',
-            productName: 'BEARING NJ2214ECP',
-            productCode: 'NJ2214ECP',
-            quantity: 10,
-            unitPrice: 145.00
-          },
-          {
-            id: 'line-2',
-            lineNumber: 'LINE-002',
-            productName: 'BEARING NU2217E',
-            productCode: 'NU2217E',
-            quantity: 5,
-            unitPrice: 89.50
-          }
-        ]
-      }
-    ];
-    
-    localStorage.setItem('purchaseOrders', JSON.stringify(testPOs));
-    console.log('✅ Test PO data created:', testPOs);
-    return testPOs;
-  }
 }
+
+// ✅ ADD THE MISSING EXPORT
+export { PIPOMatchingService };
