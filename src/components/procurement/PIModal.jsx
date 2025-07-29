@@ -9,11 +9,13 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 
+let PIPOMatchingService = null;
 try {
-  var { PIPOMatchingService } = require('../../services/PIPOMatchingService');
+  const matchingModule = await import('../../services/PIPOMatchingService');
+  PIPOMatchingService = matchingModule.PIPOMatchingService || null;
 } catch (e) {
-  console.warn('PIPOMatchingService import failed, using fallback');
-  var PIPOMatchingService = null;
+  console.warn('PIPOMatchingService not available:', e.message);
+  PIPOMatchingService = null;
 }
 
 import { 
