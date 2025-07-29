@@ -473,7 +473,30 @@ useEffect(() => {
   storedAt: ''
 });
 
-
+const handleNavigateToMatching = useCallback((item, action = 'view') => {
+  // Save current PI data first
+  const piData = {
+    ...formData,
+    items: selectedProducts
+  };
+  
+  // Store PI data for the matching page
+  sessionStorage.setItem('currentPI', JSON.stringify(piData));
+  sessionStorage.setItem('matchingContext', JSON.stringify({
+    fromPI: true,
+    targetItemId: item.id,
+    action: action,
+    piNumber: formData.piNumber
+  }));
+  
+  // Generate matching page URL
+  const matchingUrl = `/purchase-orders/${formData.piNumber}/supplier-matching?item=${item.id}&action=${action}`;
+  
+  // Open in new tab to preserve current modal state
+  window.open(matchingUrl, '_blank');
+  
+  showNotification?.(`Opening supplier matching for ${item.productName}`, 'info');
+}, [formData, selectedProducts, showNotification]);
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
@@ -511,6 +534,8 @@ useEffect(() => {
   const [activeTab, setActiveTab] = useState('details'); // details, receiving, payment
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingProducts, setEditingProducts] = useState({});
+  const [showPOMatchingModal, setShowPOMatchingModal] = useState(false);
+
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
