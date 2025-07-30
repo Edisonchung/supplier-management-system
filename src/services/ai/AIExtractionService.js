@@ -1759,7 +1759,11 @@ if (docType.type === 'bank_payment_slip') {
     console.log('📦 Mapping', items.length, 'client PO items...');
     
     return items.map((item, index) => {
-  console.log(`🔍 DEBUG Item ${index + 1} structure:`, {
+  // ✅ SUPER DETAILED DEBUG
+  console.log(`🔍 FULL ITEM ${index + 1} DUMP:`);
+  console.log(JSON.stringify(item, null, 2));
+  
+  console.log(`🔍 Item ${index + 1} field check:`, {
     part_number: item.part_number,
     product_code: item.product_code, 
     code: item.code,
@@ -1767,7 +1771,9 @@ if (docType.type === 'bank_payment_slip') {
     client_code: item.client_code,
     client_item_code: item.client_item_code,
     reference: item.reference,
-    allKeys: Object.keys(item)
+    material_code: item.material_code,
+    pn: item.pn,
+    ALL_KEYS: Object.keys(item)
   });
   
   console.log(`Mapping item ${index + 1}:`, {
