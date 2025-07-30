@@ -108,32 +108,31 @@ const fixPOItemPrices = (items, debug = true) => {
     }
 
     // ✅ CRITICAL FIX: Explicitly preserve clientItemCode and other important fields
-    if (originalItem.clientItemCode) {
-      fixedItem.clientItemCode = originalItem.clientItemCode;
-      if (debug) {
-        console.log(`🔍 Preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
-      }
-    }
+if (originalItem.clientItemCode) {
+  fixedItem.clientItemCode = originalItem.clientItemCode;
+  if (debug) {
+    console.log(`🔍 Preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
+  }
+} else if (debug) {
+  console.log(`⚠️ WARNING: No clientItemCode found in originalItem for item ${index + 1}`);
+  console.log(`Original item keys:`, Object.keys(originalItem));
+}
 
-    // ✅ Also preserve other important fields that might get lost
-    if (originalItem.productCode) {
-      fixedItem.productCode = originalItem.productCode;
-    }
-    
-    if (originalItem.productName) {
-      fixedItem.productName = originalItem.productName;
-    }
+// ✅ Also preserve other important fields that might get lost
+if (originalItem.productCode && !fixedItem.productCode) {
+  fixedItem.productCode = originalItem.productCode;
+}
 
-    // ✅ CRITICAL DEBUG: Log AFTER processing
-    if (debug) {
-      console.log(`🔍 AFTER processing item ${index + 1}:`, {
-        clientItemCode: fixedItem.clientItemCode,
-        productCode: fixedItem.productCode,
-        productName: fixedItem.productName?.substring(0, 30) + '...'
-      });
-    }
+// ✅ CRITICAL DEBUG: Log AFTER processing
+if (debug) {
+  console.log(`🔍 AFTER processing item ${index + 1}:`, {
+    clientItemCode: fixedItem.clientItemCode,
+    productCode: fixedItem.productCode,
+    productName: fixedItem.productName?.substring(0, 30) + '...'
+  });
+}
 
-    return fixedItem;
+return fixedItem;
   });
 };
 
