@@ -830,8 +830,23 @@ const handleBulkProductCodeExtraction = () => {
                 </div>
 
                 {/* Items Section */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Order Items</h3>
+<div>
+  <div className="flex justify-between items-center mb-4">
+    <h3 className="text-lg font-semibold text-gray-800">Order Items</h3>
+    <div className="flex gap-2">
+      {/* ✅ NEW: Bulk Product Code Extraction Button */}
+      {formData.items.length > 0 && (
+        <button
+          type="button"
+          onClick={handleBulkProductCodeExtraction}
+          className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+          title="Extract product codes from all product names"
+        >
+          🔍 Extract Codes
+        </button>
+      )}
+    </div>
+  </div>
                   
                   {/* Add Item Form */}
                   <div className="bg-gray-50 p-4 rounded-lg mb-4">
@@ -924,15 +939,6 @@ const handleBulkProductCodeExtraction = () => {
                       </div>
                     </div>
 
-                     {/* ✅ NEW: Bulk Product Code Extraction Button */}
-    <button
-      type="button"
-      onClick={handleBulkProductCodeExtraction}
-      className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
-      title="Extract product codes from all product names"
-    >
-      🔍 Extract Codes
-    </button>
                     <button
                       type="button"
                       onClick={addItem}
@@ -1044,6 +1050,26 @@ const handleBulkProductCodeExtraction = () => {
                           </div>
                         </div>
 
+                        {/* ✅ ADD THE ENHANCED CODE PREVIEW HERE - RIGHT AFTER THE CLOSING </div> OF THE GRID */}
+{(item.productCode || item.clientItemCode) && (
+  <div className="mt-2 text-xs bg-gray-50 px-2 py-1 rounded space-y-1">
+    {item.productCode && (
+      <div className="text-purple-600">
+        Product Code: <span className="font-mono font-medium">{item.productCode}</span>
+        {item.productName && extractProductCodeFromName(item.productName) === item.productCode && (
+          <span className="ml-2 text-purple-500">🔍 Auto-extracted</span>
+        )}
+      </div>
+    )}
+    {item.clientItemCode && (
+      <div className="text-blue-600">
+        Client Code: <span className="font-mono font-medium">{item.clientItemCode}</span>
+        <span className="ml-2 text-blue-500">🏷️ Client's unique ID</span>
+      </div>
+    )}
+  </div>
+)}
+                        
                         <button
                           type="button"
                           onClick={() => removeItem(index)}
@@ -1058,18 +1084,25 @@ const handleBulkProductCodeExtraction = () => {
 
                   {/* Total */}
                   {formData.items.length > 0 && (
-                    <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <span className="text-lg font-semibold">Total Amount:</span>
-                        <span className="text-2xl font-bold text-blue-600">
-                          ${calculateTotal().toFixed(2)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        * Tax will be calculated at checkout
-                      </p>
-                    </div>
-                  )}
+  <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+    <div className="flex justify-between items-center">
+      <div>
+        <span className="text-lg font-semibold">Total Amount:</span>
+        <div className="text-sm text-gray-600 mt-1">
+          📋 {formData.items.length} items • 
+          🔍 {formData.items.filter(item => item.productCode).length} with product codes • 
+          🏷️ {formData.items.filter(item => item.clientItemCode).length} with client codes
+        </div>
+      </div>
+      <span className="text-2xl font-bold text-blue-600">
+        ${calculateTotal().toFixed(2)}
+      </span>
+    </div>
+    <p className="text-sm text-gray-600 mt-1">
+      * Tax will be calculated at checkout
+    </p>
+  </div>
+)}
                 </div>
 
                 {/* Supplier Matching Tab */}
