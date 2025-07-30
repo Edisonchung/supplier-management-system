@@ -148,12 +148,22 @@ const processExtractedPOData = (extractedData, debug = true) => {
   if (debug) {
     console.log('🚀 PROCESSING EXTRACTED PO DATA');
     console.log('Original extracted data:', extractedData);
+    
+    // ✅ ADD THIS DEBUG FOR CLIENT ITEM CODES
+    if (extractedData.items && extractedData.items.length > 0) {
+      console.log('🔍 BEFORE processing - First item clientItemCode:', extractedData.items[0].clientItemCode);
+    }
   }
 
   let processedData = { ...extractedData };
   
   if (processedData.items && processedData.items.length > 0) {
     processedData.items = fixPOItemPrices(processedData.items, debug);
+    
+    // ✅ ADD THIS DEBUG AFTER PRICE FIXING
+    if (debug && processedData.items.length > 0) {
+      console.log('🔍 AFTER fixPOItemPrices - First item clientItemCode:', processedData.items[0].clientItemCode);
+    }
   }
   
   processedData = validatePOTotals(processedData, debug);
