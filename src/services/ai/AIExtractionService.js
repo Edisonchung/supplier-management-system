@@ -1768,9 +1768,10 @@ if (docType.type === 'bank_payment_slip') {
       });
       
       const mappedItem = {
-        id: `item_${index + 1}`,
-        productCode: item.part_number || item.product_code || item.code || '',
-        productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
+  id: `item_${index + 1}`,
+  productCode: this.extractManufacturerCode(item),  // ✅ CHANGED: Extract from description
+  clientItemCode: item.part_number || item.product_code || item.code || '',  // ✅ NEW: Client codes go here
+  productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
         quantity: this.parseQuantity(item.quantity),
         unit: item.uom || item.unit || 'PCS',
         unitPrice: this.parsePrice(item.unit_price),
@@ -1788,8 +1789,9 @@ if (docType.type === 'bank_payment_slip') {
       };
       
       console.log(`✅ Mapped item ${index + 1}:`, {
-        productCode: mappedItem.productCode,
-        productName: mappedItem.productName.substring(0, 50) + '...',
+  productCode: mappedItem.productCode,
+  clientItemCode: mappedItem.clientItemCode,  // ✅ ADD THIS LINE
+  productName: mappedItem.productName.substring(0, 50) + '...',
         quantity: mappedItem.quantity,
         unitPrice: mappedItem.unitPrice,
         totalPrice: mappedItem.totalPrice
@@ -1841,6 +1843,64 @@ parsePrice(priceValue) {
   }
   
   return 0;
+}
+
+  /**
+ * Extract manufacturer product code from description/specifications
+ */
+extractManufacturerCode(item) {
+  const description = item.description || item.product_name || item.name || '';
+  
+  // Common manufacturer code patterns
+  const patterns = [
+    // Parentheses format: (ABC123) - Priority 10
+    /\(([A-Z0-9\-\.\/]{4,})\)/gi,
+    
+    // Siemens part numbers: 6ES7407-0KA02-0AA0 - Priority 9  
+    /\b([0-9][A-Z]{2}[0-9]{4}[-][0-9][A-Z]{2}[0-9]{2}[-][0-9][A-Z]{2}[0-9]{2})\b/gi,
+    
+    // Standard manufacturer codes: 6XV1830-3EH10
+    /\b([A-Z0-9]{2,}-[A-Z0-9\-]{4,})\b/gi,
+    
+    // Model numbers: RUT240, S7-400
+    /\b([A-Z]{2,}[0-9]+[A-Z]*)\b/gi,
+    
+    // Technical part numbers
+    /\b([0-9][A-Z0-9\-]{6,})\b/gi
+  ];
+  
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match && match[1]) {
+      // Validate it's not a client code pattern (3digits+3letters+4digits)
+      const clientPattern = /^[0-9]{3}[A-Z]{3}[0-9]{4}$/;
+      if (!clientPattern.test(match[1])) {
+        return match[1];
+      }
+    }
+  }
+  
+  return ''; // Return empty if no manufacturer code found
+}
+
+/**
+ * Validate client item code patterns  
+ */
+validateClientItemCode(clientCode) {
+  // Validate it matches client code patterns (like 200RTG0750, 400CON0060)
+  const clientCodePatterns = [
+    /^[0-9]{3}[A-Z]{3}[0-9]{4}$/,  // 200RTG0750 pattern
+    /^[0-9]{3}[A-Z]{3}[0-9]{3}$/,  // Alternative pattern
+    /^[0-9]{3}[A-Z]{2,4}[0-9]{3,5}$/ // Flexible pattern
+  ];
+  
+  for (const pattern of clientCodePatterns) {
+    if (pattern.test(clientCode)) {
+      return true;
+    }
+  }
+  
+  return false;
 }
   
   /**
