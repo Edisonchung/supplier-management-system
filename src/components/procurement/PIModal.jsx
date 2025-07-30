@@ -1,4 +1,4 @@
-//// src/components/procurement/PIModal.jsx
+// src/components/procurement/PIModal.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { collection, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../../services/firebase'; // Adjust path based on your structure
