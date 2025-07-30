@@ -285,7 +285,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         setValidationErrors(validation.errors);
         // Still populate form with partial data
       }
-      
+
+      // ✅ DEBUG: Check extracted items structure
+console.log("🔍 POModal DEBUG: processedData.items:", processedData.items);
+if (processedData.items && processedData.items.length > 0) {
+  console.log("🔍 POModal DEBUG: First item structure:", processedData.items[0]);
+  console.log("🔍 POModal DEBUG: First item clientItemCode:", processedData.items[0].clientItemCode);
+}
+
       // ✅ Update form data with processed (price-fixed) information
       setFormData(prev => ({
         ...prev,
@@ -297,6 +304,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         notes: processedData.notes || prev.notes,
         items: processedData.items || prev.items // Price-fixed items
       }));
+      // ✅ DEBUG: Check form data after setting
+console.log("🔍 POModal DEBUG: Form data items after setting:", processedData.items);
+
 
       // Check if supplier matching data is available
       if (processedData.sourcingPlan || processedData.matchingMetrics) {
