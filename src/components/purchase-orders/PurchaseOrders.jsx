@@ -387,6 +387,7 @@ const PurchaseOrders = () => {
             items: (result.data.items || []).map((item, index) => ({
               productName: item.productName || item.description || '',
               productCode: item.productCode || item.partNumber || '',
+              clientItemCode: item.clientItemCode || item.part_number || '',
               quantity: item.quantity || 0,
               unitPrice: item.unitPrice || 0,
               totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
