@@ -6,6 +6,38 @@ import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDispla
 // ✅ NEW: Add DocumentViewer import
 import DocumentViewer from '../common/DocumentViewer';
 
+// ✅ NEW: Product Code Extraction Utility
+const extractProductCodeFromName = (productName) => {
+  if (!productName) return '';
+  
+  // Common patterns for product codes/part numbers/SKUs
+  const patterns = [
+    // Pattern 1: Alphanumeric codes in parentheses: "SIMATIC S7-400 (6ES7407-0KA02-0AA0)"
+    /\(([A-Z0-9\-\.]{5,})\)/i,
+    
+    // Pattern 2: Standalone alphanumeric codes: "400QCR1068", "200RTG0522"
+    /\b([A-Z]{2,4}[0-9]{2,}[A-Z0-9]*)\b/i,
+    
+    // Pattern 3: Dash-separated codes: "6XV1830-3EH10", "6SE7031-8EF84-1JC2"
+    /\b([A-Z0-9]{2,}-[A-Z0-9\-]{4,})\b/i,
+    
+    // Pattern 4: Model numbers: "RUT240", "S7-400", "PS407"
+    /\b([A-Z]{2,}[0-9]+[A-Z]*)\b/i,
+    
+    // Pattern 5: Part numbers with special chars: "3SE5162-0UB01-1AM4"
+    /\b([0-9][A-Z0-9\-]{6,})\b/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = productName.match(pattern);
+    if (match) {
+      return match[1];
+    }
+  }
+  
+  return '';
+};
+
 // ✅ ENHANCED: Price Fixing Functions (keep existing)
 const fixPOItemPrices = (items, debug = true) => {
   if (!items || !Array.isArray(items)) {
@@ -322,21 +354,59 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 
   // ✅ ENHANCED: Item change handler with price fixing
   const handleItemChange = (index, field, value) => {
-    const newItems = [...formData.items];
-    newItems[index] = {
-      ...newItems[index],
-      [field]: value
-    };
+  const newItems = [...formData.items];
+  const oldValue = newItems[index][field];
+  
+  newItems[index] = {
+    ...newItems[index],
+    [field]: value
+  };
+  
+  // ✅ NEW: Auto-extract product code when product name changes
+  if (field === 'productName' && value !== oldValue) {
+    const extractedCode = extractProductCodeFromName(value);
+    if (extractedCode && !newItems[index].productCode) {
+      newItems[index].productCode = extractedCode;
+      console.log(`🔍 Auto-extracted product code: "${extractedCode}" from "${value}"`);
+    }
+  }
+  
+  // Apply price fixing immediately after any change (your existing logic)
+  const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
+  
+  setFormData(prev => ({
+    ...prev,
+    items: fixedItems
+  }));
+};
+
+
+// ✅ NEW: Product Code Bulk Extraction for all items (compatible with fixPOItemPrices)
+const handleBulkProductCodeExtraction = () => {
+  setFormData(prev => {
+    const updatedItems = prev.items.map(item => {
+      if (!item.productCode && item.productName) {
+        const extractedCode = extractProductCodeFromName(item.productName);
+        if (extractedCode) {
+          console.log(`🔍 Bulk extracted: "${extractedCode}" from "${item.productName}"`);
+          return {
+            ...item,
+            productCode: extractedCode
+          };
+        }
+      }
+      return item;
+    });
     
-    // Apply price fixing immediately after any change
-    const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
+    // Apply your existing price fixing to all updated items
+    const fixedItems = fixPOItemPrices(updatedItems, true); // debug=true for bulk operations
     
-    setFormData(prev => ({
+    return {
       ...prev,
       items: fixedItems
-    }));
-  };
-
+    };
+  });
+};
   // ✅ ENHANCED: Add item with price fixing
   const addItem = () => {
     if (currentItem.productName && currentItem.quantity > 0) {
@@ -854,6 +924,15 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       </div>
                     </div>
 
+                     {/* ✅ NEW: Bulk Product Code Extraction Button */}
+    <button
+      type="button"
+      onClick={handleBulkProductCodeExtraction}
+      className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+      title="Extract product codes from all product names"
+    >
+      🔍 Extract Codes
+    </button>
                     <button
                       type="button"
                       onClick={addItem}
@@ -877,32 +956,52 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   <div className="space-y-3">
                     {formData.items.map((item, index) => (
                       <div key={item.id || index} className="bg-white p-4 rounded-lg border border-gray-200">
-                        <div className="grid grid-cols-6 gap-3">
-                          <div className="col-span-2">
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Product Name
-                            </label>
-                            <input
-                              type="text"
-                              value={item.productName}
-                              onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                              required
-                            />
-                          </div>
+                        <div className="grid grid-cols-8 gap-3">
+  <div className="col-span-2">
+    <label className="block text-xs font-medium text-gray-700 mb-1">
+      Product Name *
+    </label>
+    <input
+      type="text"
+      value={item.productName}
+      onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+      required
+      placeholder="Enter product description"
+    />
+  </div>
 
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Product Code
-                            </label>
-                            <input
-                              type="text"
-                              value={item.productCode}
-                              onChange={(e) => handleItemChange(index, 'productCode', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                            />
-                          </div>
+  {/* ✅ NEW: Product Code/SKU Field */}
+  <div>
+    <label className="block text-xs font-medium text-gray-700 mb-1">
+      Product Code/SKU
+      <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔍</span>
+    </label>
+    <input
+      type="text"
+      value={item.productCode || ''}
+      onChange={(e) => handleItemChange(index, 'productCode', e.target.value)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm font-mono"
+      placeholder="Auto-extracted"
+      title="Manufacturer's product code/part number/SKU"
+    />
+  </div>
 
+  {/* ✅ NEW: Client Item Code Field */}
+  <div>
+    <label className="block text-xs font-medium text-gray-700 mb-1">
+      Client Item Code
+      <span className="text-blue-600 ml-1" title="Client's unique identifier">🏷️</span>
+    </label>
+    <input
+      type="text"
+      value={item.clientItemCode || ''}
+      onChange={(e) => handleItemChange(index, 'clientItemCode', e.target.value)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+      placeholder="e.g. 400RTG0091"
+      title="Client's own unique code for this product (e.g. 400RTG0091, 200SHA0162)"
+    />
+  </div>
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Quantity
