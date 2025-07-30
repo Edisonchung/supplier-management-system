@@ -293,12 +293,13 @@ useEffect(() => {
     if (editingPO.items && editingPO.items.length > 0) {
       console.log('🔍 EDITING PO DEBUG: Items check:');
       editingPO.items.forEach((item, i) => {
-        console.log(`  EditingPO Item ${i + 1}:`, {
-          clientItemCode: item.clientItemCode,
-          productCode: item.productCode,
-          productName: item.productName?.substring(0, 40),
-          hasClientItemCode: !!item.clientItemCode
-        });
+        // ✅ FORCE DETAILED OUTPUT
+        console.log(`  EditingPO Item ${i + 1} DETAILS:`);
+        console.log(`    clientItemCode: "${item.clientItemCode}"`);
+        console.log(`    productCode: "${item.productCode}"`);
+        console.log(`    productName: "${item.productName?.substring(0, 40)}"`);
+        console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
+        console.log(`    ALL KEYS:`, Object.keys(item));
       });
     }
     
@@ -323,11 +324,10 @@ useEffect(() => {
     if (editingPO.items && editingPO.items.length > 0) {
       console.log('🔍 EDITING PO DEBUG: FormData items after setting:');
       editingPO.items.forEach((item, i) => {
-        console.log(`  FormData Item ${i + 1}:`, {
-          clientItemCode: item.clientItemCode,
-          productCode: item.productCode,
-          hasClientItemCode: !!item.clientItemCode
-        });
+        console.log(`  FormData Item ${i + 1} DETAILS:`);
+        console.log(`    clientItemCode: "${item.clientItemCode}"`);
+        console.log(`    productCode: "${item.productCode}"`);
+        console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
       });
     }
     
