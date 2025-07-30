@@ -541,14 +541,14 @@ const handleApplyPOMatches = useCallback((matches) => {
       console.log('✅ setSelectedProducts called successfully');
       
       // ✅ ADDITIONAL: Also update formData.items for persistence
-      if (setFormData) {
+      if (typeof setFormData === 'function') {
         setFormData(prev => ({
           ...prev,
           items: updatedProducts
         }));
         console.log('✅ formData.items also updated');
       } else {
-        console.warn('⚠️ setFormData not available');
+        console.warn('⚠️ setFormData not available, only selectedProducts updated');
       }
     } else {
       console.error('❌ setSelectedProducts is not available!');
@@ -575,7 +575,21 @@ const handleApplyPOMatches = useCallback((matches) => {
     console.error('Error stack:', error.stack);
     showNotification?.('Failed to apply matches', 'error');
   }
-}, [selectedProducts, setSelectedProducts, setFormData, showNotification]); 
+}, [selectedProducts, showNotification]); // ✅ Safe dependencies only
+
+// 🔍 ADDITIONAL DEBUG: Add this useEffect to monitor selectedProducts changes
+useEffect(() => {
+  console.log('👀 selectedProducts changed:', {
+    length: selectedProducts?.length,
+    productsWithClientPO: selectedProducts?.filter(p => p.clientPO && p.clientPO.trim() !== '').length,
+    sampleWithClientPO: selectedProducts?.find(p => p.clientPO && p.clientPO.trim() !== '') ? {
+      id: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').id,
+      productCode: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').productCode,
+      clientPO: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').clientPO,
+      clientItemCode: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').clientItemCode
+    } : 'No products with clientPO found'
+  });
+}, [selectedProducts]);
   
 const handleNavigateToMatching = useCallback((item, action = 'view') => {
   try {
