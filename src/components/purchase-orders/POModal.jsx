@@ -53,20 +53,23 @@ const fixPOItemPrices = (items, debug = true) => {
   return items.map((item, index) => {
     const originalItem = { ...item };
     
+    // ✅ CRITICAL DEBUG: Log BEFORE processing
+    if (debug) {
+      console.log(`🔍 BEFORE processing item ${index + 1}:`, {
+        clientItemCode: originalItem.clientItemCode,
+        productCode: originalItem.productCode,
+        productName: originalItem.productName?.substring(0, 30) + '...'
+      });
+    }
+    
     const quantity = parseFloat(item.quantity) || 0;
     const unitPrice = parseFloat(item.unitPrice) || 0;
     const totalPrice = parseFloat(item.totalPrice) || 0;
     
-    if (debug) {
-      console.log(`Item ${index + 1} (${item.productName || item.productCode || 'Unknown'}):`, {
-        quantity, unitPrice, totalPrice, calculation: quantity * unitPrice,
-        clientItemCode: originalItem.clientItemCode // ✅ ADD THIS DEBUG
-      });
-    }
-
     // ✅ CRITICAL FIX: Start with ALL original fields
     let fixedItem = { ...originalItem };
 
+    // [Keep all your existing Strategy 1-5 code exactly as is]
     // Strategy 1: Calculate total from quantity × unit price
     if (quantity > 0 && unitPrice > 0) {
       const calculatedTotal = quantity * unitPrice;
@@ -121,11 +124,12 @@ const fixPOItemPrices = (items, debug = true) => {
       fixedItem.productName = originalItem.productName;
     }
 
+    // ✅ CRITICAL DEBUG: Log AFTER processing
     if (debug) {
-      console.log(`🔍 Final item ${index + 1}:`, {
+      console.log(`🔍 AFTER processing item ${index + 1}:`, {
         clientItemCode: fixedItem.clientItemCode,
         productCode: fixedItem.productCode,
-        productName: fixedItem.productName
+        productName: fixedItem.productName?.substring(0, 30) + '...'
       });
     }
 
@@ -173,10 +177,16 @@ const processExtractedPOData = (extractedData, debug = true) => {
     console.log('🚀 PROCESSING EXTRACTED PO DATA');
     console.log('Original extracted data:', extractedData);
     
-    // ✅ DEBUG: Check BEFORE processing
+    // ✅ ENHANCED DEBUG
     if (extractedData.items && extractedData.items.length > 0) {
-      console.log('🔍 BEFORE processing - First item clientItemCode:', extractedData.items[0].clientItemCode);
-      console.log('🔍 BEFORE processing - Full first item:', extractedData.items[0]);
+      console.log('🔍 BEFORE processing - Items details:');
+      extractedData.items.forEach((item, index) => {
+        console.log(`  Item ${index + 1}:`, {
+          clientItemCode: item.clientItemCode,
+          productCode: item.productCode,
+          productName: item.productName?.substring(0, 40)
+        });
+      });
     }
   }
 
@@ -185,10 +195,16 @@ const processExtractedPOData = (extractedData, debug = true) => {
   if (processedData.items && processedData.items.length > 0) {
     processedData.items = fixPOItemPrices(processedData.items, debug);
     
-    // ✅ DEBUG: Check AFTER price fixing
+    // ✅ ENHANCED DEBUG
     if (debug && processedData.items.length > 0) {
-      console.log('🔍 AFTER fixPOItemPrices - First item clientItemCode:', processedData.items[0].clientItemCode);
-      console.log('🔍 AFTER fixPOItemPrices - Full first item:', processedData.items[0]);
+      console.log('🔍 AFTER fixPOItemPrices - Items details:');
+      processedData.items.forEach((item, index) => {
+        console.log(`  Item ${index + 1}:`, {
+          clientItemCode: item.clientItemCode,
+          productCode: item.productCode,
+          productName: item.productName?.substring(0, 40)
+        });
+      });
     }
   }
   
