@@ -1787,7 +1787,7 @@ if (docType.type === 'bank_payment_slip') {
       const mappedItem = {
   id: `item_${index + 1}`,
   productCode: this.extractManufacturerCode(item),  // ✅ CHANGED: Extract from description
-  clientItemCode: item.part_number || item.product_code || item.code || '',  // ✅ NEW: Client codes go here
+  clientItemCode: item.part_number || '',  // ✅ NEW: Client codes go here
   productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
         quantity: this.parseQuantity(item.quantity),
         unit: item.uom || item.unit || 'PCS',
