@@ -330,6 +330,27 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       // ✅ Apply price fixing to extracted data
       const processedData = processExtractedPOData(extractedData.data || extractedData, true);
       console.log("✅ PRICE FIX DEBUG: Processed data:", processedData);
+
+      // ✅ CRITICAL DEBUG: Check raw vs processed data
+console.log("🔍 RAW vs PROCESSED comparison:");
+if (extractedData.data?.items || extractedData.items) {
+  const rawItems = extractedData.data?.items || extractedData.items;
+  console.log("Raw backend items:", rawItems.map((item, i) => ({
+    index: i + 1,
+    part_number: item.part_number,
+    clientItemCode: item.clientItemCode,
+    description: item.description?.substring(0, 40)
+  })));
+}
+
+if (processedData.items) {
+  console.log("Processed frontend items:", processedData.items.map((item, i) => ({
+    index: i + 1,
+    clientItemCode: item.clientItemCode,
+    productCode: item.productCode,
+    productName: item.productName?.substring(0, 40)
+  })));
+}
       
       // Validate the extracted data
       const validation = ValidationService.validateExtractedData(processedData);
