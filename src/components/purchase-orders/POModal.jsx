@@ -285,135 +285,161 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   };
 
   // ✅ ENHANCED: useEffect with document field preservation
-  useEffect(() => {
-    if (editingPO) {
-      console.log('🎯 POModal: Setting form data from editing PO:', editingPO);
-      
-      // ✅ PRESERVE DOCUMENT STORAGE FIELDS
-      const documentFields = {
-        documentId: editingPO.documentId || '',
-        documentNumber: editingPO.documentNumber || '',
-        documentType: 'po',
-        hasStoredDocuments: editingPO.hasStoredDocuments || false,
-        storageInfo: editingPO.storageInfo || null,
-        originalFileName: editingPO.originalFileName || ''
-      };
-      
-      console.log('🎯 POModal: Document storage fields set:', documentFields);
-      
-      setFormData({
-        ...editingPO,
-        ...documentFields
+useEffect(() => {
+  if (editingPO) {
+    console.log('🎯 POModal: Setting form data from editing PO:', editingPO);
+    
+    // ✅ CRITICAL DEBUG: Check editingPO items structure
+    if (editingPO.items && editingPO.items.length > 0) {
+      console.log('🔍 EDITING PO DEBUG: Items check:');
+      editingPO.items.forEach((item, i) => {
+        console.log(`  EditingPO Item ${i + 1}:`, {
+          clientItemCode: item.clientItemCode,
+          productCode: item.productCode,
+          productName: item.productName?.substring(0, 40),
+          hasClientItemCode: !!item.clientItemCode
+        });
       });
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        poNumber: generatePONumber()
-      }));
     }
-  }, [editingPO]);
+    
+    // ✅ PRESERVE DOCUMENT STORAGE FIELDS
+    const documentFields = {
+      documentId: editingPO.documentId || '',
+      documentNumber: editingPO.documentNumber || '',
+      documentType: 'po',
+      hasStoredDocuments: editingPO.hasStoredDocuments || false,
+      storageInfo: editingPO.storageInfo || null,
+      originalFileName: editingPO.originalFileName || ''
+    };
+    
+    console.log('🎯 POModal: Document storage fields set:', documentFields);
+    
+    setFormData({
+      ...editingPO,
+      ...documentFields
+    });
+    
+    // ✅ CRITICAL DEBUG: Check formData after setting
+    if (editingPO.items && editingPO.items.length > 0) {
+      console.log('🔍 EDITING PO DEBUG: FormData items after setting:');
+      editingPO.items.forEach((item, i) => {
+        console.log(`  FormData Item ${i + 1}:`, {
+          clientItemCode: item.clientItemCode,
+          productCode: item.productCode,
+          hasClientItemCode: !!item.clientItemCode
+        });
+      });
+    }
+    
+  } else {
+    setFormData(prev => ({
+      ...prev,
+      poNumber: generatePONumber()
+    }));
+  }
+}, [editingPO]);
 
   // ✅ ENHANCED: AI Extraction with Price Fixing
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    console.log('🔍 PRICE FIX DEBUG: Starting PO extraction for:', file.name);
-    setExtracting(true);
-    setValidationErrors([]);
-
-    try {
-      // Use the real AI extraction service
-      const extractedData = await AIExtractionService.extractFromFile(file);
-      console.log("🔍 PRICE FIX DEBUG: Raw extracted data:", extractedData);
-
-      // ✅ Apply price fixing to extracted data
-      const processedData = processExtractedPOData(extractedData.data || extractedData, true);
-      console.log("✅ PRICE FIX DEBUG: Processed data:", processedData);
-
-      // ✅ CRITICAL DEBUG: Check raw vs processed data
-console.log("🔍 RAW vs PROCESSED comparison:");
-if (extractedData.data?.items || extractedData.items) {
-  const rawItems = extractedData.data?.items || extractedData.items;
-  console.log("Raw backend items:", rawItems.map((item, i) => ({
-    index: i + 1,
-    part_number: item.part_number,
-    clientItemCode: item.clientItemCode,
-    description: item.description?.substring(0, 40)
-  })));
-}
-
-if (processedData.items) {
-  console.log("Processed frontend items:", processedData.items.map((item, i) => ({
-    index: i + 1,
-    clientItemCode: item.clientItemCode,
-    productCode: item.productCode,
-    productName: item.productName?.substring(0, 40)
-  })));
-}
-      
-      // Validate the extracted data
-      const validation = ValidationService.validateExtractedData(processedData);
-      
-      if (!validation.isValid) {
-        setValidationErrors(validation.errors);
-        // Still populate form with partial data
+    const handleFileUpload = async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+  
+      console.log('🔍 PRICE FIX DEBUG: Starting PO extraction for:', file.name);
+      setExtracting(true);
+      setValidationErrors([]);
+  
+      try {
+        // Use the real AI extraction service
+        const extractedData = await AIExtractionService.extractFromFile(file);
+        console.log("🔍 PRICE FIX DEBUG: Raw extracted data:", extractedData);
+  
+        // ✅ Apply price fixing to extracted data
+        const processedData = processExtractedPOData(extractedData.data || extractedData, true);
+        console.log("✅ PRICE FIX DEBUG: Processed data:", processedData);
+  
+        // ✅ CRITICAL DEBUG: Check raw vs processed data
+  console.log("🔍 RAW vs PROCESSED comparison:");
+  if (extractedData.data?.items || extractedData.items) {
+    const rawItems = extractedData.data?.items || extractedData.items;
+    console.log("Raw backend items:", rawItems.map((item, i) => ({
+      index: i + 1,
+      part_number: item.part_number,
+      clientItemCode: item.clientItemCode,
+      description: item.description?.substring(0, 40)
+    })));
+  }
+  
+  if (processedData.items) {
+    console.log("Processed frontend items:", processedData.items.map((item, i) => ({
+      index: i + 1,
+      clientItemCode: item.clientItemCode,
+      productCode: item.productCode,
+      productName: item.productName?.substring(0, 40)
+    })));
+  }
+        
+        // Validate the extracted data
+        const validation = ValidationService.validateExtractedData(processedData);
+        
+        if (!validation.isValid) {
+          setValidationErrors(validation.errors);
+          // Still populate form with partial data
+        }
+  
+        // ✅ DEBUG: Check extracted items structure
+  console.log("🔍 POModal DEBUG: processedData.items:", processedData.items);
+  if (processedData.items && processedData.items.length > 0) {
+    console.log("🔍 POModal DEBUG: First item structure:", processedData.items[0]);
+    console.log("🔍 POModal DEBUG: First item clientItemCode:", processedData.items[0].clientItemCode);
+  }
+  
+        // ✅ Update form data with processed (price-fixed) information
+        setFormData(prev => ({
+          ...prev,
+          orderNumber: processedData.orderNumber || prev.orderNumber,
+          clientName: processedData.clientName || prev.clientName,
+          orderDate: processedData.orderDate || prev.orderDate,
+          deliveryDate: processedData.deliveryDate || prev.deliveryDate,
+          paymentTerms: processedData.paymentTerms || prev.paymentTerms,
+          notes: processedData.notes || prev.notes,
+          items: processedData.items || prev.items // Price-fixed items
+        }));
+        // ✅ DEBUG: Check form data after setting
+  console.log("🔍 POModal DEBUG: Form data items after setting:", processedData.items);
+  
+  
+        // Check if supplier matching data is available
+        if (processedData.sourcingPlan || processedData.matchingMetrics) {
+          setSupplierMatchingData({
+            items: processedData.items,
+            sourcingPlan: processedData.sourcingPlan,
+            metrics: processedData.matchingMetrics
+          });
+          setShowSupplierMatching(true);
+        }
+  
+        // Show recommendations if any
+        if (extractedData.recommendations && extractedData.recommendations.length > 0) {
+          const recommendationMessages = extractedData.recommendations
+            .map(rec => rec.message)
+            .join('\n');
+          alert(`AI Recommendations:\n${recommendationMessages}`);
+        }
+        
+        // Show confidence score
+        if (extractedData.metadata?.confidence) {
+          console.log(`Extraction confidence: ${(extractedData.metadata.confidence * 100).toFixed(0)}%`);
+        }
+        
+      } catch (error) {
+        console.error('Extraction failed:', error);
+        setValidationErrors([{ field: 'file', message: error.message || 'Failed to extract data from file' }]);
+      } finally {
+        setExtracting(false);
+        // Reset file input
+        event.target.value = '';
       }
-
-      // ✅ DEBUG: Check extracted items structure
-console.log("🔍 POModal DEBUG: processedData.items:", processedData.items);
-if (processedData.items && processedData.items.length > 0) {
-  console.log("🔍 POModal DEBUG: First item structure:", processedData.items[0]);
-  console.log("🔍 POModal DEBUG: First item clientItemCode:", processedData.items[0].clientItemCode);
-}
-
-      // ✅ Update form data with processed (price-fixed) information
-      setFormData(prev => ({
-        ...prev,
-        orderNumber: processedData.orderNumber || prev.orderNumber,
-        clientName: processedData.clientName || prev.clientName,
-        orderDate: processedData.orderDate || prev.orderDate,
-        deliveryDate: processedData.deliveryDate || prev.deliveryDate,
-        paymentTerms: processedData.paymentTerms || prev.paymentTerms,
-        notes: processedData.notes || prev.notes,
-        items: processedData.items || prev.items // Price-fixed items
-      }));
-      // ✅ DEBUG: Check form data after setting
-console.log("🔍 POModal DEBUG: Form data items after setting:", processedData.items);
-
-
-      // Check if supplier matching data is available
-      if (processedData.sourcingPlan || processedData.matchingMetrics) {
-        setSupplierMatchingData({
-          items: processedData.items,
-          sourcingPlan: processedData.sourcingPlan,
-          metrics: processedData.matchingMetrics
-        });
-        setShowSupplierMatching(true);
-      }
-
-      // Show recommendations if any
-      if (extractedData.recommendations && extractedData.recommendations.length > 0) {
-        const recommendationMessages = extractedData.recommendations
-          .map(rec => rec.message)
-          .join('\n');
-        alert(`AI Recommendations:\n${recommendationMessages}`);
-      }
-      
-      // Show confidence score
-      if (extractedData.metadata?.confidence) {
-        console.log(`Extraction confidence: ${(extractedData.metadata.confidence * 100).toFixed(0)}%`);
-      }
-      
-    } catch (error) {
-      console.error('Extraction failed:', error);
-      setValidationErrors([{ field: 'file', message: error.message || 'Failed to extract data from file' }]);
-    } finally {
-      setExtracting(false);
-      // Reset file input
-      event.target.value = '';
-    }
-  };
+    };
 
   const handleInputChange = (field, value) => {
     // Auto-format project codes
