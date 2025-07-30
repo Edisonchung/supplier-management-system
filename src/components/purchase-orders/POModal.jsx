@@ -59,10 +59,12 @@ const fixPOItemPrices = (items, debug = true) => {
     
     if (debug) {
       console.log(`Item ${index + 1} (${item.productName || item.productCode || 'Unknown'}):`, {
-        quantity, unitPrice, totalPrice, calculation: quantity * unitPrice
+        quantity, unitPrice, totalPrice, calculation: quantity * unitPrice,
+        clientItemCode: originalItem.clientItemCode // ✅ ADD THIS DEBUG
       });
     }
 
+    // ✅ CRITICAL FIX: Start with ALL original fields
     let fixedItem = { ...originalItem };
 
     // Strategy 1: Calculate total from quantity × unit price
@@ -89,20 +91,42 @@ const fixPOItemPrices = (items, debug = true) => {
     } 
     // Strategy 4: Handle only total price existing
     else if (totalPrice > 0 && quantity === 0 && unitPrice === 0) {
-      fixedItem.quantity = 1;
       fixedItem.unitPrice = totalPrice;
-      if (debug) console.log(`  ✅ Fixed: Assumed quantity=1, unit price=${totalPrice}`);
+      fixedItem.quantity = 1;
+      if (debug) console.log(`  ✅ Fixed: Set unit price to total and quantity to 1`);
+    }
+    // Strategy 5: Default missing values
+    else {
+      if (fixedItem.quantity === 0 || !fixedItem.quantity) fixedItem.quantity = 1;
+      if (fixedItem.unitPrice === 0 || !fixedItem.unitPrice) fixedItem.unitPrice = 0;
+      if (fixedItem.totalPrice === 0 || !fixedItem.totalPrice) {
+        fixedItem.totalPrice = fixedItem.quantity * fixedItem.unitPrice;
+      }
     }
 
-    // Ensure proper number formatting
-    fixedItem.quantity = Math.max(parseFloat(fixedItem.quantity) || 1, 1);
-    fixedItem.unitPrice = parseFloat(fixedItem.unitPrice) || 0;
-    fixedItem.totalPrice = parseFloat(fixedItem.totalPrice) || 0;
+    // ✅ CRITICAL FIX: Explicitly preserve clientItemCode and other important fields
+    if (originalItem.clientItemCode) {
+      fixedItem.clientItemCode = originalItem.clientItemCode;
+      if (debug) {
+        console.log(`🔍 Preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
+      }
+    }
 
-    // Final validation
-    const finalCalculation = fixedItem.quantity * fixedItem.unitPrice;
-    if (Math.abs(finalCalculation - fixedItem.totalPrice) > 0.01) {
-      fixedItem.totalPrice = finalCalculation;
+    // ✅ Also preserve other important fields that might get lost
+    if (originalItem.productCode) {
+      fixedItem.productCode = originalItem.productCode;
+    }
+    
+    if (originalItem.productName) {
+      fixedItem.productName = originalItem.productName;
+    }
+
+    if (debug) {
+      console.log(`🔍 Final item ${index + 1}:`, {
+        clientItemCode: fixedItem.clientItemCode,
+        productCode: fixedItem.productCode,
+        productName: fixedItem.productName
+      });
     }
 
     return fixedItem;
@@ -149,9 +173,10 @@ const processExtractedPOData = (extractedData, debug = true) => {
     console.log('🚀 PROCESSING EXTRACTED PO DATA');
     console.log('Original extracted data:', extractedData);
     
-    // ✅ ADD THIS DEBUG FOR CLIENT ITEM CODES
+    // ✅ DEBUG: Check BEFORE processing
     if (extractedData.items && extractedData.items.length > 0) {
       console.log('🔍 BEFORE processing - First item clientItemCode:', extractedData.items[0].clientItemCode);
+      console.log('🔍 BEFORE processing - Full first item:', extractedData.items[0]);
     }
   }
 
@@ -160,9 +185,10 @@ const processExtractedPOData = (extractedData, debug = true) => {
   if (processedData.items && processedData.items.length > 0) {
     processedData.items = fixPOItemPrices(processedData.items, debug);
     
-    // ✅ ADD THIS DEBUG AFTER PRICE FIXING
+    // ✅ DEBUG: Check AFTER price fixing
     if (debug && processedData.items.length > 0) {
       console.log('🔍 AFTER fixPOItemPrices - First item clientItemCode:', processedData.items[0].clientItemCode);
+      console.log('🔍 AFTER fixPOItemPrices - Full first item:', processedData.items[0]);
     }
   }
   
@@ -170,6 +196,7 @@ const processExtractedPOData = (extractedData, debug = true) => {
   
   return processedData;
 };
+
 
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
