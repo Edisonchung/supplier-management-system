@@ -595,3 +595,4 @@ Status: COMPLETED
 }
 
 export default BankPaymentSlipProcessor;
+export { BankPaymentSlipProcessor };
