@@ -14,7 +14,8 @@ import {
   TrendingUp,
   Loader2,
   Eye,
-  Download
+  Download,
+  Percent
 } from 'lucide-react';
 
 const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
@@ -26,6 +27,11 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [autoSuggestions, setAutoSuggestions] = useState([]);
   const [extractionError, setExtractionError] = useState(null);
+  
+  // NEW: Percentage allocation controls
+  const [allocationMode, setAllocationMode] = useState('manual'); // 'manual' or 'percentage'
+  const [paymentPercentage, setPaymentPercentage] = useState(30); // Default 30%
+  const [showPercentageControls, setShowPercentageControls] = useState(true);
 
   // Real AI extraction function
   const performAIExtraction = async (file) => {
@@ -239,15 +245,77 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
     const highConfidenceMatches = suggestions.filter(s => s.confidence >= 0.8);
     if (highConfidenceMatches.length > 0) {
       const newSelectedPIs = highConfidenceMatches.map(s => s.pi.id);
-      const newAllocation = {};
-      
-      highConfidenceMatches.forEach(s => {
-        newAllocation[s.pi.id] = s.suggestedAmount;
-      });
-      
       setSelectedPIs(newSelectedPIs);
-      setAllocation(newAllocation);
+      
+      // NEW: Auto-apply percentage allocation if detected as down payment
+      if (isDownPaymentScenario(extractedData, highConfidenceMatches)) {
+        applyPercentageAllocation(newSelectedPIs, 30); // Default 30%
+        setAllocationMode('percentage');
+        setShowPercentageControls(true);
+      } else {
+        // Use smart allocation for non-percentage scenarios
+        const newAllocation = {};
+        highConfidenceMatches.forEach(s => {
+          newAllocation[s.pi.id] = s.suggestedAmount;
+        });
+        setAllocation(newAllocation);
+      }
     }
+  };
+
+  // NEW: Detect if this is likely a down payment scenario
+  const isDownPaymentScenario = (extractedData, matches) => {
+    if (matches.length < 2) return false; // Need multiple PIs for down payment
+    
+    const totalPIValues = matches.reduce((sum, match) => {
+      return sum + parseFloat(match.pi.totalAmount || 0);
+    }, 0);
+    
+    const paymentRatio = extractedData.paidAmount / totalPIValues;
+    
+    // If payment is 20-40% of total PI values, likely a down payment
+    return paymentRatio >= 0.2 && paymentRatio <= 0.4;
+  };
+
+  // NEW: Apply percentage-based allocation
+  const applyPercentageAllocation = (piIds, percentage) => {
+    const newAllocation = {};
+    
+    piIds.forEach(piId => {
+      const pi = availablePIs.find(p => p.id === piId);
+      if (pi) {
+        const piTotal = parseFloat(pi.totalAmount || 0);
+        const allocatedAmount = (piTotal * percentage) / 100;
+        newAllocation[piId] = Math.round(allocatedAmount * 100) / 100; // Round to 2 decimals
+      }
+    });
+    
+    setAllocation(newAllocation);
+  };
+
+  // NEW: Handle percentage change
+  const handlePercentageChange = (newPercentage) => {
+    setPaymentPercentage(newPercentage);
+    if (allocationMode === 'percentage' && selectedPIs.length > 0) {
+      applyPercentageAllocation(selectedPIs, newPercentage);
+    }
+  };
+
+  // NEW: Smart allocation distribution
+  const distributeEqually = () => {
+    if (selectedPIs.length === 0) return;
+    
+    const amountPerPI = extractedData.paidAmount / selectedPIs.length;
+    const newAllocation = {};
+    
+    selectedPIs.forEach(piId => {
+      const pi = availablePIs.find(p => p.id === piId);
+      const remainingBalance = getRemainingBalance(pi);
+      newAllocation[piId] = Math.min(remainingBalance, amountPerPI);
+    });
+    
+    setAllocation(newAllocation);
+    setAllocationMode('manual');
   };
 
   // Get remaining balance for a PI
@@ -270,19 +338,27 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
         return prev.filter(id => id !== piId);
       } else {
         // Add to selection
-        const pi = availablePIs.find(p => p.id === piId);
-        const remainingBalance = getRemainingBalance(pi);
-        const unallocatedAmount = extractedData.paidAmount - getTotalAllocated();
-        const suggestedAmount = Math.min(remainingBalance, unallocatedAmount);
+        const newPIs = [...prev, piId];
         
-        if (suggestedAmount > 0) {
-          setAllocation(prevAlloc => ({
-            ...prevAlloc,
-            [piId]: suggestedAmount
-          }));
+        // If in percentage mode, recalculate all allocations
+        if (allocationMode === 'percentage') {
+          setTimeout(() => applyPercentageAllocation(newPIs, paymentPercentage), 0);
+        } else {
+          // Manual mode: suggest amount for this PI
+          const pi = availablePIs.find(p => p.id === piId);
+          const remainingBalance = getRemainingBalance(pi);
+          const unallocatedAmount = extractedData.paidAmount - getTotalAllocated();
+          const suggestedAmount = Math.min(remainingBalance, unallocatedAmount);
+          
+          if (suggestedAmount > 0) {
+            setAllocation(prevAlloc => ({
+              ...prevAlloc,
+              [piId]: suggestedAmount
+            }));
+          }
         }
         
-        return [...prev, piId];
+        return newPIs;
       }
     });
   };
@@ -294,6 +370,11 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
       ...prev,
       [piId]: numAmount
     }));
+    
+    // Switch to manual mode when user manually adjusts
+    if (allocationMode === 'percentage') {
+      setAllocationMode('manual');
+    }
   };
 
   // Get total allocated amount
@@ -334,6 +415,10 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
       extractionConfidence: extractedData.confidence,
       extractionMethod: extractedData.extractionMethod,
       
+      // NEW: Allocation metadata
+      allocationMode: allocationMode,
+      paymentPercentage: allocationMode === 'percentage' ? paymentPercentage : null,
+      
       // Attach the original bank slip document
       bankSlipDocument: {
         name: paymentSlip.name,
@@ -349,6 +434,8 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
           const pi = availablePIs.find(p => p.id === piId);
           const allocatedAmount = allocation[piId] || 0;
           const remainingBalance = getRemainingBalance(pi);
+          const piTotal = parseFloat(pi.totalAmount || 0);
+          const actualPercentage = piTotal > 0 ? (allocatedAmount / piTotal) * 100 : 0;
           
           return {
             piId: pi.id,
@@ -358,13 +445,14 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
             supplierName: pi.supplierName,
             previousBalance: remainingBalance + allocatedAmount,
             newBalance: remainingBalance,
-            isPartialPayment: allocatedAmount < remainingBalance,
-            paymentPercentage: ((allocatedAmount / parseFloat(pi.totalAmount || 1)) * 100).toFixed(1)
+            isPartialPayment: allocatedAmount < piTotal,
+            paymentPercentage: actualPercentage.toFixed(1),
+            allocationMethod: allocationMode
           };
         })
     };
     
-    console.log('🎯 Processing payment with real extracted data:', paymentRecord);
+    console.log('🎯 Processing payment with percentage allocation:', paymentRecord);
     onSave(paymentRecord);
   };
 
@@ -380,7 +468,7 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                 <Split className="text-green-600" />
                 Batch Payment Processor
               </h2>
-              <p className="text-gray-600 mt-1">Process bank payment slips with AI extraction</p>
+              <p className="text-gray-600 mt-1">Process bank payment slips with smart allocation</p>
             </div>
             <button
               onClick={onClose}
@@ -665,6 +753,94 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                 </div>
               </div>
 
+              {/* NEW: Allocation Mode Controls */}
+              {showPercentageControls && selectedPIs.length > 1 && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                  <h4 className="font-medium mb-3 flex items-center gap-2">
+                    <Percent className="text-purple-600" />
+                    Smart Allocation Controls
+                  </h4>
+                  
+                  <div className="flex items-center gap-4 mb-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="allocationMode"
+                        value="percentage"
+                        checked={allocationMode === 'percentage'}
+                        onChange={() => setAllocationMode('percentage')}
+                        className="text-purple-600"
+                      />
+                      <span className="text-sm font-medium">Percentage Payment</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="allocationMode"
+                        value="manual"
+                        checked={allocationMode === 'manual'}
+                        onChange={() => setAllocationMode('manual')}
+                        className="text-purple-600"
+                      />
+                      <span className="text-sm font-medium">Manual Allocation</span>
+                    </label>
+                  </div>
+                  
+                  {allocationMode === 'percentage' && (
+                    <div className="flex items-center gap-4">
+                      <label className="text-sm text-gray-600">Payment Percentage:</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={paymentPercentage}
+                          onChange={(e) => handlePercentageChange(parseFloat(e.target.value) || 0)}
+                          min="1"
+                          max="100"
+                          step="0.1"
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-center"
+                        />
+                        <span className="text-sm text-gray-600">%</span>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        {[20, 30, 40, 50].map(percent => (
+                          <button
+                            key={percent}
+                            onClick={() => handlePercentageChange(percent)}
+                            className={`px-2 py-1 text-xs rounded ${
+                              paymentPercentage === percent 
+                                ? 'bg-purple-600 text-white' 
+                                : 'bg-purple-100 text-purple-600 hover:bg-purple-200'
+                            }`}
+                          >
+                            {percent}%
+                          </button>
+                        ))}
+                      </div>
+                      
+                      <button
+                        onClick={() => applyPercentageAllocation(selectedPIs, paymentPercentage)}
+                        className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  )}
+                  
+                  {allocationMode === 'manual' && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={distributeEqually}
+                        className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                      >
+                        Distribute Equally
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Auto Suggestions */}
               {autoSuggestions.length > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -702,6 +878,11 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                 <h4 className="font-medium mb-3">Select PIs and Allocate Amounts</h4>
                 <div className="text-sm text-gray-600 mb-3">
                   {selectedPIs.length} of {availablePIs.length} PIs selected
+                  {allocationMode === 'percentage' && (
+                    <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-600 rounded text-xs">
+                      {paymentPercentage}% allocation mode
+                    </span>
+                  )}
                 </div>
                 
                 <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -709,6 +890,8 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                     const remainingBalance = getRemainingBalance(pi);
                     const isSelected = selectedPIs.includes(pi.id);
                     const allocatedAmount = allocation[pi.id] || 0;
+                    const piTotal = parseFloat(pi.totalAmount || 0);
+                    const actualPercentage = piTotal > 0 ? (allocatedAmount / piTotal) * 100 : 0;
                     
                     return (
                       <div key={pi.id} className={`border rounded-lg p-4 ${
@@ -727,7 +910,7 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                               <div className="text-sm text-gray-600">{pi.supplierName}</div>
                               <div className="text-xs text-gray-500">
                                 Remaining: {pi.currency} {remainingBalance.toLocaleString()} 
-                                | Total: {pi.currency} {parseFloat(pi.totalAmount || 0).toLocaleString()}
+                                | Total: {pi.currency} {piTotal.toLocaleString()}
                               </div>
                             </div>
                           </div>
@@ -743,30 +926,50 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                                   min="0"
                                   max={Math.min(remainingBalance, extractedData.paidAmount)}
                                   step="0.01"
-                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-center"
+                                  className="w-28 px-2 py-1 border border-gray-300 rounded text-center"
                                 />
                                 <div className="text-xs text-gray-500 mt-1">
                                   {extractedData.paidCurrency}
                                 </div>
                               </div>
                               
-                              <button
-                                onClick={() => updateAllocation(pi.id, Math.min(remainingBalance, unallocatedAmount + allocatedAmount))}
-                                className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200"
-                                title="Allocate maximum available"
-                              >
-                                Max
-                              </button>
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => updateAllocation(pi.id, Math.min(remainingBalance, unallocatedAmount + allocatedAmount))}
+                                  className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200"
+                                  title="Allocate maximum available"
+                                >
+                                  Max
+                                </button>
+                                
+                                {/* NEW: Quick percentage buttons */}
+                                {allocationMode === 'manual' && (
+                                  <div className="flex gap-1">
+                                    {[25, 30, 50].map(percent => (
+                                      <button
+                                        key={percent}
+                                        onClick={() => updateAllocation(pi.id, (piTotal * percent) / 100)}
+                                        className="text-xs bg-purple-100 text-purple-600 px-1 py-0.5 rounded hover:bg-purple-200"
+                                        title={`${percent}% of PI total`}
+                                      >
+                                        {percent}%
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
                         
                         {isSelected && allocatedAmount > 0 && (
                           <div className="mt-2 pt-2 border-t border-green-200">
-                            <div className="text-xs text-green-700">
-                              Payment: {((allocatedAmount / parseFloat(pi.totalAmount || 1)) * 100).toFixed(1)}% of total PI amount
+                            <div className="text-xs text-green-700 flex items-center justify-between">
+                              <span>
+                                Payment: {actualPercentage.toFixed(1)}% of total PI amount
+                              </span>
                               {allocatedAmount < remainingBalance && (
-                                <span className="ml-2 px-2 py-0.5 bg-orange-100 text-orange-600 rounded">
+                                <span className="px-2 py-0.5 bg-orange-100 text-orange-600 rounded">
                                   Partial Payment
                                 </span>
                               )}
@@ -877,6 +1080,14 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                           {extractedData.paidCurrency} {totalAllocated.toLocaleString()}
                         </span>
                       </div>
+                      {allocationMode === 'percentage' && (
+                        <div className="flex justify-between">
+                          <span>Allocation Method:</span>
+                          <span className="font-medium text-purple-600">
+                            {paymentPercentage}% Down Payment
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
@@ -904,8 +1115,9 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                     const pi = availablePIs.find(p => p.id === piId);
                     const allocatedAmount = allocation[piId];
                     const remainingBalance = getRemainingBalance(pi);
-                    const paymentPercentage = ((allocatedAmount / parseFloat(pi.totalAmount || 1)) * 100).toFixed(1);
-                    const isPartialPayment = allocatedAmount < remainingBalance + allocatedAmount;
+                    const piTotal = parseFloat(pi.totalAmount || 0);
+                    const paymentPercentage = ((allocatedAmount / piTotal) * 100).toFixed(1);
+                    const isPartialPayment = allocatedAmount < piTotal;
                     
                     return (
                       <div key={piId} className="border border-gray-200 rounded-lg p-4">
@@ -913,6 +1125,9 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                           <div>
                             <div className="font-medium">{pi.piNumber}</div>
                             <div className="text-sm text-gray-600">{pi.supplierName}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Total PI: {pi.currency} {piTotal.toLocaleString()}
+                            </div>
                           </div>
                           <div className="text-right">
                             <div className="font-bold text-green-600">
@@ -921,8 +1136,11 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                             <div className="text-sm text-gray-600">
                               {paymentPercentage}% of PI total
                             </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Remaining: {pi.currency} {(piTotal - allocatedAmount).toLocaleString()}
+                            </div>
                             {isPartialPayment && (
-                              <div className="text-xs text-orange-600 mt-1">
+                              <div className="text-xs text-orange-600 mt-1 px-2 py-0.5 bg-orange-100 rounded">
                                 Partial Payment
                               </div>
                             )}
