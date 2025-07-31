@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AIExtractionService } from '../../services/ai/AIExtractionService';
 import { 
   Upload, 
@@ -16,10 +16,9 @@ import {
   Loader2,
   Eye,
   Download,
-  Percent
+  Percent,
+  CloudUpload // ✅ Added for drag & drop
 } from 'lucide-react';
-
-
 
 const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   const [step, setStep] = useState(1); // 1: Upload, 2: Extract, 3: Allocate, 4: Confirm
@@ -31,326 +30,182 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   const [autoSuggestions, setAutoSuggestions] = useState([]);
   const [extractionError, setExtractionError] = useState(null);
   
-  // NEW: Percentage allocation controls
+  // Percentage allocation controls
   const [allocationMode, setAllocationMode] = useState('manual'); // 'manual' or 'percentage'
   const [paymentPercentage, setPaymentPercentage] = useState(30); // Default 30%
   const [showPercentageControls, setShowPercentageControls] = useState(true);
   
+  // ✅ NEW: Drag & Drop state
   const [isDragOver, setIsDragOver] = useState(false);
-const [dragCounter, setDragCounter] = useState(0);
-// Add these drag and drop handlers
-const handleDragEnter = useCallback((e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  setDragCounter(prev => prev + 1);
-  
-  if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-    setIsDragOver(true);
-  }
-}, []);
+  const [dragCounter, setDragCounter] = useState(0);
 
-const handleDragLeave = useCallback((e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  setDragCounter(prev => prev - 1);
-  
-  // Only set drag over to false when we've left all drag targets
-  if (dragCounter - 1 === 0) {
+  // ✅ NEW: Drag and drop handlers
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev + 1);
+    
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev - 1);
+    
+    // Only set drag over to false when we've left all drag targets
+    if (dragCounter - 1 === 0) {
+      setIsDragOver(false);
+    }
+  }, [dragCounter]);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
     setIsDragOver(false);
-  }
-}, [dragCounter]);
-
-const handleDragOver = useCallback((e) => {
-  e.preventDefault();
-  e.stopPropagation();
-}, []);
-
-const handleDrop = useCallback((e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  setIsDragOver(false);
-  setDragCounter(0);
-  
-  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-    const file = e.dataTransfer.files[0];
+    setDragCounter(0);
     
-    // Validate file type
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-    if (!validTypes.includes(file.type)) {
-      setExtractionError('Please upload a PDF, JPG, or PNG file.');
-      return;
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      
+      // Validate file type
+      const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+      if (!validTypes.includes(file.type)) {
+        setExtractionError('Please upload a PDF, JPG, or PNG file.');
+        return;
+      }
+      
+      // Validate file size (10MB limit)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        setExtractionError('File size must be less than 10MB.');
+        return;
+      }
+      
+      // Process the dropped file
+      handleFileUpload(file);
+      
+      // Clear the dataTransfer
+      e.dataTransfer.clearData();
     }
-    
-    // Validate file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      setExtractionError('File size must be less than 10MB.');
-      return;
-    }
-    
-    // Process the dropped file
-    handleFileUpload(file);
-    
-    // Clear the dataTransfer
-    e.dataTransfer.clearData();
-  }
-}, []);
+  }, []);
 
-// Enhanced file input handler
-const handleFileInputChange = (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    handleFileUpload(file);
-  }
-};
-
-
-  
-  // Real AI extraction function
-  const performAIExtraction = async (file) => {
-    try {
-      // Create form data for file upload
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('documentType', 'bank_payment_slip');
-      formData.append('extractionType', 'payment_data');
-
-      // In production, this would call your actual AI service
-      // For now, we'll use OCR-like extraction logic
-      const fileText = await extractTextFromFile(file);
-      
-      // Parse the extracted text for payment information
-      const extracted = parsePaymentSlipData(fileText, file.name);
-      
-      return extracted;
-      
-    } catch (error) {
-      console.error('AI extraction failed:', error);
-      throw new Error('Failed to extract payment data from document. Please check the file format and try again.');
+  // Enhanced file input handler
+  const handleFileInputChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      handleFileUpload(file);
     }
   };
 
-  // Extract text from PDF/image files
-  const extractTextFromFile = async (file) => {
-    return new Promise((resolve, reject) => {
-      if (file.type === 'application/pdf') {
-        // For PDF files, you'd use a PDF parser like pdf-parse or PDF.js
-        // This is a simplified simulation
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          // Simulate OCR extraction - in production, use actual OCR service
-          const simulatedText = `
-            Cross Border Payment
-            Reference Number: C723151124133258
-            Payment Date: 15/11/2024
-            Bank Name: Hong Leong Bank
-            Account Number: 17301010259
-            Account Name: FLOW SOLUTION SDN BH
-            
-            Beneficiary Name: HEBEI MICKEY BADGER ENGINEERING MATERIALS SALES CO.,LTD
-            Beneficiary Bank: DBS Bank Hong Kong Limited
-            
-            Payment Amount: 21492.22 MYR
-            Debit Amount: 4905.78 USD
-            Exchange Rate: 4.3814
-            Bank Charges: 50.00 MYR
-            
-            Payment Details: PI-HBMH24111301A, HBMH24102903A
-            Status: Completed
-          `;
-          resolve(simulatedText);
-        };
-        reader.onerror = reject;
-        reader.readAsText(file);
-      } else {
-        // For image files, you'd use OCR service like Tesseract.js
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          // Simulate OCR text extraction
-          resolve("Simulated OCR text extraction from image");
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      }
-    });
-  };
-
-  // Parse extracted text to structured data
-  const parsePaymentSlipData = (text, filename) => {
-    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  // ✅ Helper function to extract PI references
+  const extractPIReferences = (paymentDetails) => {
+    if (!paymentDetails || typeof paymentDetails !== 'string') return [];
     
-    const extractField = (pattern, defaultValue = '') => {
-      for (const line of lines) {
-        const match = line.match(pattern);
-        if (match) return match[1]?.trim() || defaultValue;
-      }
-      return defaultValue;
-    };
-
-    const extractAmount = (pattern) => {
-      const amountStr = extractField(pattern);
-      const amount = parseFloat(amountStr.replace(/[^\d.-]/g, ''));
-      return isNaN(amount) ? 0 : amount;
-    };
-
-    const extractDate = (pattern) => {
-      const dateStr = extractField(pattern);
-      if (dateStr) {
-        // Convert DD/MM/YYYY to YYYY-MM-DD
-        const parts = dateStr.split('/');
-        if (parts.length === 3) {
-          return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        }
-      }
-      return new Date().toISOString().split('T')[0];
-    };
-
-    // Extract PI numbers from payment details
-    const paymentDetails = extractField(/Payment Details[:\s]*(.+)/i);
-    const piNumbers = paymentDetails.match(/[A-Z]+-[A-Z0-9]+/g) || [];
-
-    return {
-      documentType: 'bank_payment_slip',
-      fileName: filename,
-      extractedAt: new Date().toISOString(),
-      
-      // Transaction identification
-      referenceNumber: extractField(/Reference Number[:\s]*([A-Z0-9]+)/i) || `C${Date.now()}`,
-      paymentDate: extractDate(/Payment Date[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i),
-      
-      // Bank details
-      bankName: extractField(/Bank Name[:\s]*(.+)/i) || 'Hong Leong Bank',
-      accountNumber: extractField(/Account Number[:\s]*(\d+)/i),
-      accountName: extractField(/Account Name[:\s]*(.+)/i) || 'FLOW SOLUTION SDN BH',
-      
-      // Payment amounts
-      paidCurrency: 'USD', // Assuming USD as primary currency
-      paidAmount: extractAmount(/Debit Amount[:\s]*([0-9,.-]+)\s*USD/i) || extractAmount(/([0-9,.-]+)\s*USD/i),
-      debitCurrency: 'MYR',
-      debitAmount: extractAmount(/Payment Amount[:\s]*([0-9,.-]+)\s*MYR/i) || extractAmount(/([0-9,.-]+)\s*MYR/i),
-      
-      // Exchange information
-      exchangeRate: extractAmount(/Exchange Rate[:\s]*([0-9,.-]+)/i) || 4.44,
-      
-      // Beneficiary information
-      beneficiaryName: extractField(/Beneficiary Name[:\s]*(.+)/i),
-      beneficiaryBank: extractField(/Beneficiary Bank[:\s]*(.+)/i),
-      beneficiaryCountry: extractField(/Country[:\s]*(.+)/i) || 'HONG KONG',
-      
-      // Additional details
-      bankCharges: extractAmount(/Bank Charges[:\s]*([0-9,.-]+)/i) || 50.00,
-      status: extractField(/Status[:\s]*(.+)/i) || 'Completed',
-      paymentPurpose: extractField(/BOP Code[:\s]*(.+)/i) || '300-Goods',
-      
-      // PI references found in payment details
-      piReferences: piNumbers,
-      
-      confidence: 0.85,
-      extractionMethod: 'text_parsing'
-    };
+    // Match patterns like TH-202500135, PI-HBMH24111301A, etc.
+    const patterns = [
+      /TH-[0-9]{9}/g,           // TH-202500135 pattern
+      /PI-[A-Z0-9]+/g,          // PI-ABC123 pattern  
+      /[A-Z]+-[0-9A-Z]+/g       // General pattern
+    ];
+    
+    let piNumbers = [];
+    for (const pattern of patterns) {
+      const matches = paymentDetails.match(pattern) || [];
+      piNumbers = [...piNumbers, ...matches];
+    }
+    
+    return [...new Set(piNumbers)]; // Remove duplicates
   };
 
   // Handle payment slip upload and AI extraction
   const handleFileUpload = async (file) => {
-  setIsProcessing(true);
-  setPaymentSlip(file);
-  setExtractionError(null);
-  
-  try {
-    console.log('🚀 Starting Railway backend extraction for:', file.name);
+    setIsProcessing(true);
+    setPaymentSlip(file);
+    setExtractionError(null);
     
-    const extracted = await AIExtractionService.extractBankPaymentSlip(file);
-    
-    if (!extracted.success) {
-      throw new Error(extracted.error || 'Railway backend extraction failed');
+    try {
+      console.log('🚀 Starting Railway backend extraction for:', file.name);
+      
+      const extracted = await AIExtractionService.extractBankPaymentSlip(file);
+      
+      if (!extracted.success) {
+        throw new Error(extracted.error || 'Railway backend extraction failed');
+      }
+      
+      console.log('✅ Railway backend extraction successful:', extracted.data);
+      
+      // ✅ CRITICAL FIX: Extract the bank_payment object from Railway response
+      const bankPaymentData = extracted.data.bank_payment || extracted.data;
+      
+      // ✅ Transform Railway response to expected format
+      const processedData = {
+        documentType: 'bank_payment_slip',
+        fileName: file.name,
+        extractedAt: new Date().toISOString(),
+        
+        // Transaction details - map from Railway backend response
+        referenceNumber: bankPaymentData.reference_number || bankPaymentData.referenceNumber || 'Unknown',
+        paymentDate: bankPaymentData.payment_date || bankPaymentData.paymentDate || new Date().toISOString().split('T')[0],
+        
+        // Bank information
+        bankName: bankPaymentData.bank_name || bankPaymentData.bankName || 'Hong Leong Bank',
+        accountNumber: bankPaymentData.account_number || bankPaymentData.accountNumber || '',
+        accountName: bankPaymentData.account_name || bankPaymentData.accountName || 'FLOW SOLUTION SDN BH',
+        
+        // Payment amounts - CRITICAL: These fields must exist for UI
+        paidCurrency: bankPaymentData.paid_currency || bankPaymentData.paidCurrency || 'USD',
+        paidAmount: parseFloat(bankPaymentData.payment_amount || bankPaymentData.paidAmount || bankPaymentData.debit_amount || 0),
+        debitCurrency: bankPaymentData.debit_currency || bankPaymentData.debitCurrency || 'MYR',
+        debitAmount: parseFloat(bankPaymentData.myr_amount || bankPaymentData.debitAmount || 0),
+        exchangeRate: parseFloat(bankPaymentData.exchange_rate || bankPaymentData.exchangeRate || 4.44),
+        
+        // Beneficiary details
+        beneficiaryName: bankPaymentData.beneficiary_name || bankPaymentData.beneficiaryName || bankPaymentData.beneficiary || 'Unknown Beneficiary',
+        beneficiaryBank: bankPaymentData.beneficiary_bank || bankPaymentData.beneficiaryBank || 'Unknown Bank',
+        beneficiaryCountry: bankPaymentData.beneficiary_country || bankPaymentData.beneficiaryCountry || 'HONG KONG',
+        
+        // Additional details
+        bankCharges: parseFloat(bankPaymentData.bank_charges || bankPaymentData.bankCharges || 50.00),
+        status: bankPaymentData.status || 'Completed',
+        paymentPurpose: bankPaymentData.payment_purpose || bankPaymentData.paymentPurpose || '300-Goods',
+        
+        // Extract PI references from payment details
+        piReferences: extractPIReferences(bankPaymentData.payment_details || bankPaymentData.paymentDetails || ''),
+        
+        // Metadata
+        confidence: extracted.data.confidence || 0.9,
+        extractionMethod: 'railway_backend_ai'
+      };
+      
+      console.log('✅ Processed payment data for UI:', processedData);
+      
+      // Validate critical fields before proceeding
+      if (!processedData.referenceNumber || processedData.paidAmount <= 0) {
+        console.warn('⚠️ Missing critical payment data:', {
+          referenceNumber: processedData.referenceNumber,
+          paidAmount: processedData.paidAmount
+        });
+      }
+      
+      setExtractedData(processedData);
+      generateAutoSuggestions(processedData);
+      setStep(2);
+      
+    } catch (error) {
+      console.error('❌ Railway backend extraction failed:', error);
+      setExtractionError(error.message || 'Failed to extract payment data. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
-    
-    console.log('✅ Railway backend extraction successful:', extracted.data);
-    
-    // ✅ CRITICAL FIX: Extract the bank_payment object from Railway response
-    const bankPaymentData = extracted.data.bank_payment || extracted.data;
-    
-    // ✅ Transform Railway response to expected format
-    const processedData = {
-      documentType: 'bank_payment_slip',
-      fileName: file.name,
-      extractedAt: new Date().toISOString(),
-      
-      // Transaction details - map from Railway backend response
-      referenceNumber: bankPaymentData.reference_number || bankPaymentData.referenceNumber || 'Unknown',
-      paymentDate: bankPaymentData.payment_date || bankPaymentData.paymentDate || new Date().toISOString().split('T')[0],
-      
-      // Bank information
-      bankName: bankPaymentData.bank_name || bankPaymentData.bankName || 'Hong Leong Bank',
-      accountNumber: bankPaymentData.account_number || bankPaymentData.accountNumber || '',
-      accountName: bankPaymentData.account_name || bankPaymentData.accountName || 'FLOW SOLUTION SDN BH',
-      
-      // Payment amounts - CRITICAL: These fields must exist for UI
-      paidCurrency: bankPaymentData.paid_currency || bankPaymentData.paidCurrency || 'USD',
-      paidAmount: parseFloat(bankPaymentData.payment_amount || bankPaymentData.paidAmount || bankPaymentData.debit_amount || 0),
-      debitCurrency: bankPaymentData.debit_currency || bankPaymentData.debitCurrency || 'MYR',
-      debitAmount: parseFloat(bankPaymentData.myr_amount || bankPaymentData.debitAmount || 0),
-      exchangeRate: parseFloat(bankPaymentData.exchange_rate || bankPaymentData.exchangeRate || 4.44),
-      
-      // Beneficiary details
-      beneficiaryName: bankPaymentData.beneficiary_name || bankPaymentData.beneficiaryName || bankPaymentData.beneficiary || 'Unknown Beneficiary',
-      beneficiaryBank: bankPaymentData.beneficiary_bank || bankPaymentData.beneficiaryBank || 'Unknown Bank',
-      beneficiaryCountry: bankPaymentData.beneficiary_country || bankPaymentData.beneficiaryCountry || 'HONG KONG',
-      
-      // Additional details
-      bankCharges: parseFloat(bankPaymentData.bank_charges || bankPaymentData.bankCharges || 50.00),
-      status: bankPaymentData.status || 'Completed',
-      paymentPurpose: bankPaymentData.payment_purpose || bankPaymentData.paymentPurpose || '300-Goods',
-      
-      // Extract PI references from payment details
-      piReferences: extractPIReferences(bankPaymentData.payment_details || bankPaymentData.paymentDetails || ''),
-      
-      // Metadata
-      confidence: extracted.data.confidence || 0.9,
-      extractionMethod: 'railway_backend_ai'
-    };
-    
-    console.log('✅ Processed payment data for UI:', processedData);
-    
-    // Validate critical fields before proceeding
-    if (!processedData.referenceNumber || processedData.paidAmount <= 0) {
-      console.warn('⚠️ Missing critical payment data:', {
-        referenceNumber: processedData.referenceNumber,
-        paidAmount: processedData.paidAmount
-      });
-    }
-    
-    setExtractedData(processedData);
-    generateAutoSuggestions(processedData);
-    setStep(2);
-    
-  } catch (error) {
-    console.error('❌ Railway backend extraction failed:', error);
-    setExtractionError(error.message || 'Failed to extract payment data. Please try again.');
-  } finally {
-    setIsProcessing(false);
-  }
-};
-
-// ✅ Helper function to extract PI references
-const extractPIReferences = (paymentDetails) => {
-  if (!paymentDetails || typeof paymentDetails !== 'string') return [];
-  
-  // Match patterns like TH-202500135, PI-HBMH24111301A, etc.
-  const patterns = [
-    /TH-[0-9]{9}/g,           // TH-202500135 pattern
-    /PI-[A-Z0-9]+/g,          // PI-ABC123 pattern  
-    /[A-Z]+-[0-9A-Z]+/g       // General pattern
-  ];
-  
-  let piNumbers = [];
-  for (const pattern of patterns) {
-    const matches = paymentDetails.match(pattern) || [];
-    piNumbers = [...piNumbers, ...matches];
-  }
-  
-  return [...new Set(piNumbers)]; // Remove duplicates
-};
+  };
 
   // Generate smart PI suggestions based on extracted data
   const generateAutoSuggestions = (extractedData) => {
@@ -654,240 +509,183 @@ const extractPIReferences = (paymentDetails) => {
         {/* Content */}
         <div className="p-6">
           {/* Step 1: Enhanced Upload with Drag & Drop */}
-{step === 1 && (
-  <div>
-    <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-      <Upload className="text-blue-600" />
-      Upload Bank Payment Slip
-    </h3>
-    
-    {/* Enhanced Drop Zone */}
-    <div 
-      className={`
-        relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200
-        ${isDragOver 
-          ? 'border-blue-500 bg-blue-50 scale-105' 
-          : 'border-gray-300 hover:border-gray-400'
-        }
-        ${isProcessing ? 'pointer-events-none opacity-75' : 'cursor-pointer'}
-      `}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {/* Drag Overlay */}
-      {isDragOver && (
-        <div className="absolute inset-0 bg-blue-500 bg-opacity-10 border-2 border-blue-500 border-dashed rounded-lg flex items-center justify-center z-10">
-          <div className="text-center">
-            <CloudUpload className="mx-auto mb-2 text-blue-500" size={48} />
-            <p className="text-lg font-medium text-blue-600">
-              Drop your payment slip here
-            </p>
-          </div>
-        </div>
-      )}
-      
-      <input
-        type="file"
-        id="paymentSlip"
-        accept=".pdf,.jpg,.jpeg,.png"
-        onChange={handleFileInputChange}
-        className="hidden"
-        disabled={isProcessing}
-      />
-      
-      {!isProcessing ? (
-        <label htmlFor="paymentSlip" className="cursor-pointer block">
-          <div className="flex flex-col items-center">
-            {/* Icon Animation */}
-            <div className={`transition-transform duration-200 ${isDragOver ? 'scale-110' : ''}`}>
-              <Upload className="mx-auto mb-4 text-gray-400" size={48} />
+          {step === 1 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
+                <Upload className="text-blue-600" />
+                Upload Bank Payment Slip
+              </h3>
+              
+              {/* Enhanced Drop Zone */}
+              <div 
+                className={`
+                  relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200
+                  ${isDragOver 
+                    ? 'border-blue-500 bg-blue-50 scale-105' 
+                    : 'border-gray-300 hover:border-gray-400'
+                  }
+                  ${isProcessing ? 'pointer-events-none opacity-75' : 'cursor-pointer'}
+                `}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                {/* Drag Overlay */}
+                {isDragOver && (
+                  <div className="absolute inset-0 bg-blue-500 bg-opacity-10 border-2 border-blue-500 border-dashed rounded-lg flex items-center justify-center z-10">
+                    <div className="text-center">
+                      <CloudUpload className="mx-auto mb-2 text-blue-500" size={48} />
+                      <p className="text-lg font-medium text-blue-600">
+                        Drop your payment slip here
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                <input
+                  type="file"
+                  id="paymentSlip"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                  disabled={isProcessing}
+                />
+                
+                {!isProcessing ? (
+                  <label htmlFor="paymentSlip" className="cursor-pointer block">
+                    <div className="flex flex-col items-center">
+                      {/* Icon Animation */}
+                      <div className={`transition-transform duration-200 ${isDragOver ? 'scale-110' : ''}`}>
+                        <Upload className="mx-auto mb-4 text-gray-400" size={48} />
+                      </div>
+                      
+                      <p className="text-lg font-medium text-gray-700 mb-2">
+                        Drag & Drop or Click to Upload
+                      </p>
+                      <p className="text-gray-500 mb-4">
+                        Bank payment slip (PDF, JPG, PNG • Max 10MB)
+                      </p>
+                      
+                      {/* Enhanced Upload Button */}
+                      <div className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg">
+                        <Upload size={20} className="mr-2" />
+                        Choose File
+                      </div>
+                      
+                      {/* Or Drag Text */}
+                      <div className="mt-4 flex items-center gap-3 text-sm text-gray-500">
+                        <div className="h-px bg-gray-300 flex-1"></div>
+                        <span>or drag and drop</span>
+                        <div className="h-px bg-gray-300 flex-1"></div>
+                      </div>
+                    </div>
+                  </label>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+                    <p className="text-lg font-medium text-blue-600 mb-2">
+                      Processing Payment Slip...
+                    </p>
+                    <p className="text-gray-500">
+                      Using AI to extract payment data from your document
+                    </p>
+                    
+                    {/* Processing Progress Bar */}
+                    <div className="w-64 bg-gray-200 rounded-full h-2 mt-4">
+                      <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Error Display */}
+                {extractionError && (
+                  <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-red-700">
+                      <AlertCircle size={20} />
+                      <span className="font-medium">Upload Failed</span>
+                    </div>
+                    <p className="text-red-600 mt-1">{extractionError}</p>
+                    <button
+                      onClick={() => setExtractionError(null)}
+                      className="mt-2 text-red-600 hover:text-red-800 underline text-sm"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                )}
+                
+                {/* File Drop Hints */}
+                {!isProcessing && !extractionError && (
+                  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span>HongLeong Bank payment advice</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <span>Wire transfer receipts</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                      <span>Cross-border payment slips</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Enhanced Support Information */}
+              <div className="mt-8 bg-gray-50 rounded-lg p-4">
+                <h4 className="font-medium mb-3 flex items-center gap-2">
+                  <FileText className="text-gray-600" size={16} />
+                  Supported Document Types
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                  <div>
+                    <p className="font-medium mb-2">File Formats:</p>
+                    <ul className="space-y-1">
+                      <li className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                        PDF documents (.pdf)
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                        JPEG images (.jpg, .jpeg)
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                        PNG images (.png)
+                      </li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-medium mb-2">Bank Types:</p>
+                    <ul className="space-y-1">
+                      <li className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-green-500 rounded-full"></span>
+                        Hong Leong Bank (Primary)
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-orange-400 rounded-full"></span>
+                        Maybank (Coming Soon)
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-blue-400 rounded-full"></span>
+                        CIMB Bank (Coming Soon)
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                  <p className="text-sm text-blue-700">
+                    <strong>Tip:</strong> For best results, ensure the document is clear and all text is readable. 
+                    The AI extraction works better with high-quality scans or original PDFs.
+                  </p>
+                </div>
+              </div>
             </div>
-            
-            <p className="text-lg font-medium text-gray-700 mb-2">
-              Drag & Drop or Click to Upload
-            </p>
-            <p className="text-gray-500 mb-4">
-              Bank payment slip (PDF, JPG, PNG • Max 10MB)
-            </p>
-            
-            {/* Enhanced Upload Button */}
-            <div className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg">
-              <Upload size={20} className="mr-2" />
-              Choose File
-            </div>
-            
-            {/* Or Drag Text */}
-            <div className="mt-4 flex items-center gap-3 text-sm text-gray-500">
-              <div className="h-px bg-gray-300 flex-1"></div>
-              <span>or drag and drop</span>
-              <div className="h-px bg-gray-300 flex-1"></div>
-            </div>
-          </div>
-        </label>
-      ) : (
-        <div className="flex flex-col items-center">
-          <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
-          <p className="text-lg font-medium text-blue-600 mb-2">
-            Processing Payment Slip...
-          </p>
-          <p className="text-gray-500">
-            Using AI to extract payment data from your document
-          </p>
-          
-          {/* Processing Progress Bar */}
-          <div className="w-64 bg-gray-200 rounded-full h-2 mt-4">
-            <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
-          </div>
-        </div>
-      )}
-      
-      {/* Error Display */}
-      {extractionError && (
-        <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center gap-2 text-red-700">
-            <AlertCircle size={20} />
-            <span className="font-medium">Upload Failed</span>
-          </div>
-          <p className="text-red-600 mt-1">{extractionError}</p>
-          <button
-            onClick={() => setExtractionError(null)}
-            className="mt-2 text-red-600 hover:text-red-800 underline text-sm"
-          >
-            Try Again
-          </button>
-        </div>
-      )}
-      
-      {/* File Drop Hints */}
-      {!isProcessing && !extractionError && (
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-600">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span>HongLeong Bank payment advice</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <span>Wire transfer receipts</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-            <span>Cross-border payment slips</span>
-          </div>
-        </div>
-      )}
-    </div>
-    
-    {/* Enhanced Support Information */}
-    <div className="mt-8 bg-gray-50 rounded-lg p-4">
-      <h4 className="font-medium mb-3 flex items-center gap-2">
-        <FileText className="text-gray-600" size={16} />
-        Supported Document Types
-      </h4>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-        <div>
-          <p className="font-medium mb-2">File Formats:</p>
-          <ul className="space-y-1">
-            <li className="flex items-center gap-2">
-              <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-              PDF documents (.pdf)
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-              JPEG images (.jpg, .jpeg)
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-              PNG images (.png)
-            </li>
-          </ul>
-        </div>
-        <div>
-          <p className="font-medium mb-2">Bank Types:</p>
-          <ul className="space-y-1">
-            <li className="flex items-center gap-2">
-              <span className="w-1 h-1 bg-green-500 rounded-full"></span>
-              Hong Leong Bank (Primary)
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="w-1 h-1 bg-orange-400 rounded-full"></span>
-              Maybank (Coming Soon)
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="w-1 h-1 bg-blue-400 rounded-full"></span>
-              CIMB Bank (Coming Soon)
-            </li>
-          </ul>
-        </div>
-      </div>
-      <div className="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
-        <p className="text-sm text-blue-700">
-          <strong>Tip:</strong> For best results, ensure the document is clear and all text is readable. 
-          The AI extraction works better with high-quality scans or original PDFs.
-        </p>
-      </div>
-    </div>
-  </div>
-)}
+          )}
 
-// Additional CSS styles to add to your component or global styles
-const additionalStyles = `
-  /* Drag and drop animations */
-  .drag-enter {
-    transform: scale(1.02);
-    transition: transform 0.2s ease;
-  }
-  
-  .drag-over {
-    border-color: #3b82f6;
-    background-color: #eff6ff;
-    transform: scale(1.02);
-  }
-  
-  /* File upload button hover effects */
-  .upload-button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-  }
-  
-  /* Processing animation */
-  @keyframes pulse-bg {
-    0%, 100% { background-color: #3b82f6; }
-    50% { background-color: #1d4ed8; }
-  }
-  
-  .processing-bar {
-    animation: pulse-bg 2s ease-in-out infinite;
-  }
-`;
-
-// Optional: Advanced drag and drop with multiple file preview
-const MultiFilePreview = ({ files, onRemoveFile }) => (
-  <div className="mt-4 space-y-2">
-    {files.map((file, index) => (
-      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center">
-            <FileText className="text-red-600" size={16} />
-          </div>
-          <div>
-            <div className="font-medium text-sm">{file.name}</div>
-            <div className="text-xs text-gray-500">
-              {(file.size / 1024 / 1024).toFixed(2)} MB
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={() => onRemoveFile(index)}
-          className="text-gray-400 hover:text-red-500 p-1"
-        >
-          <X size={16} />
-        </button>
-      </div>
-    ))}
-  </div>
-);
           {/* Step 2: Review Extracted Data */}
           {step === 2 && extractedData && (
             <div>
