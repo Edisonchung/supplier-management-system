@@ -19,6 +19,8 @@ import {
   Percent
 } from 'lucide-react';
 
+
+
 const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   const [step, setStep] = useState(1); // 1: Upload, 2: Extract, 3: Allocate, 4: Confirm
   const [paymentSlip, setPaymentSlip] = useState(null);
@@ -34,7 +36,76 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   const [paymentPercentage, setPaymentPercentage] = useState(30); // Default 30%
   const [showPercentageControls, setShowPercentageControls] = useState(true);
   
+  const [isDragOver, setIsDragOver] = useState(false);
+const [dragCounter, setDragCounter] = useState(0);
+// Add these drag and drop handlers
+const handleDragEnter = useCallback((e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  setDragCounter(prev => prev + 1);
+  
+  if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+    setIsDragOver(true);
+  }
+}, []);
 
+const handleDragLeave = useCallback((e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  setDragCounter(prev => prev - 1);
+  
+  // Only set drag over to false when we've left all drag targets
+  if (dragCounter - 1 === 0) {
+    setIsDragOver(false);
+  }
+}, [dragCounter]);
+
+const handleDragOver = useCallback((e) => {
+  e.preventDefault();
+  e.stopPropagation();
+}, []);
+
+const handleDrop = useCallback((e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  setIsDragOver(false);
+  setDragCounter(0);
+  
+  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    const file = e.dataTransfer.files[0];
+    
+    // Validate file type
+    const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!validTypes.includes(file.type)) {
+      setExtractionError('Please upload a PDF, JPG, or PNG file.');
+      return;
+    }
+    
+    // Validate file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      setExtractionError('File size must be less than 10MB.');
+      return;
+    }
+    
+    // Process the dropped file
+    handleFileUpload(file);
+    
+    // Clear the dataTransfer
+    e.dataTransfer.clearData();
+  }
+}, []);
+
+// Enhanced file input handler
+const handleFileInputChange = (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    handleFileUpload(file);
+  }
+};
+
+
+  
   // Real AI extraction function
   const performAIExtraction = async (file) => {
     try {
@@ -582,80 +653,241 @@ const extractPIReferences = (paymentDetails) => {
 
         {/* Content */}
         <div className="p-6">
-          {/* Step 1: Upload */}
-          {step === 1 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                <Upload className="text-blue-600" />
-                Upload Bank Payment Slip
-              </h3>
-              
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                <input
-                  type="file"
-                  id="paymentSlip"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) handleFileUpload(file);
-                  }}
-                  className="hidden"
-                />
-                
-                {!isProcessing ? (
-                  <label htmlFor="paymentSlip" className="cursor-pointer">
-                    <Upload className="mx-auto mb-4 text-gray-400" size={48} />
-                    <p className="text-lg font-medium text-gray-700 mb-2">
-                      Upload Bank Payment Slip
-                    </p>
-                    <p className="text-gray-500 mb-4">
-                      PDF, JPG, or PNG files up to 10MB
-                    </p>
-                    <div className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                      <Upload size={20} className="mr-2" />
-                      Choose File
-                    </div>
-                  </label>
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
-                    <p className="text-lg font-medium text-blue-600 mb-2">
-                      Processing Payment Slip...
-                    </p>
-                    <p className="text-gray-500">
-                      Using AI to extract payment data from your document
-                    </p>
-                  </div>
-                )}
-                
-                {extractionError && (
-                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-red-700">
-                      <AlertCircle size={20} />
-                      <span className="font-medium">Extraction Failed</span>
-                    </div>
-                    <p className="text-red-600 mt-1">{extractionError}</p>
-                    <button
-                      onClick={() => setExtractionError(null)}
-                      className="mt-2 text-red-600 hover:text-red-800 underline"
-                    >
-                      Try Again
-                    </button>
-                  </div>
-                )}
-              </div>
-              
-              <div className="mt-6 text-sm text-gray-600">
-                <p className="font-medium mb-2">Supported formats:</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>HongLeong Bank payment advice (PDF)</li>
-                  <li>Wire transfer receipts (PDF, Image)</li>
-                  <li>Cross-border payment confirmations</li>
-                </ul>
-              </div>
+          {/* Step 1: Enhanced Upload with Drag & Drop */}
+{step === 1 && (
+  <div>
+    <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
+      <Upload className="text-blue-600" />
+      Upload Bank Payment Slip
+    </h3>
+    
+    {/* Enhanced Drop Zone */}
+    <div 
+      className={`
+        relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200
+        ${isDragOver 
+          ? 'border-blue-500 bg-blue-50 scale-105' 
+          : 'border-gray-300 hover:border-gray-400'
+        }
+        ${isProcessing ? 'pointer-events-none opacity-75' : 'cursor-pointer'}
+      `}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag Overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-blue-500 bg-opacity-10 border-2 border-blue-500 border-dashed rounded-lg flex items-center justify-center z-10">
+          <div className="text-center">
+            <CloudUpload className="mx-auto mb-2 text-blue-500" size={48} />
+            <p className="text-lg font-medium text-blue-600">
+              Drop your payment slip here
+            </p>
+          </div>
+        </div>
+      )}
+      
+      <input
+        type="file"
+        id="paymentSlip"
+        accept=".pdf,.jpg,.jpeg,.png"
+        onChange={handleFileInputChange}
+        className="hidden"
+        disabled={isProcessing}
+      />
+      
+      {!isProcessing ? (
+        <label htmlFor="paymentSlip" className="cursor-pointer block">
+          <div className="flex flex-col items-center">
+            {/* Icon Animation */}
+            <div className={`transition-transform duration-200 ${isDragOver ? 'scale-110' : ''}`}>
+              <Upload className="mx-auto mb-4 text-gray-400" size={48} />
             </div>
-          )}
+            
+            <p className="text-lg font-medium text-gray-700 mb-2">
+              Drag & Drop or Click to Upload
+            </p>
+            <p className="text-gray-500 mb-4">
+              Bank payment slip (PDF, JPG, PNG • Max 10MB)
+            </p>
+            
+            {/* Enhanced Upload Button */}
+            <div className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg">
+              <Upload size={20} className="mr-2" />
+              Choose File
+            </div>
+            
+            {/* Or Drag Text */}
+            <div className="mt-4 flex items-center gap-3 text-sm text-gray-500">
+              <div className="h-px bg-gray-300 flex-1"></div>
+              <span>or drag and drop</span>
+              <div className="h-px bg-gray-300 flex-1"></div>
+            </div>
+          </div>
+        </label>
+      ) : (
+        <div className="flex flex-col items-center">
+          <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+          <p className="text-lg font-medium text-blue-600 mb-2">
+            Processing Payment Slip...
+          </p>
+          <p className="text-gray-500">
+            Using AI to extract payment data from your document
+          </p>
+          
+          {/* Processing Progress Bar */}
+          <div className="w-64 bg-gray-200 rounded-full h-2 mt-4">
+            <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+          </div>
+        </div>
+      )}
+      
+      {/* Error Display */}
+      {extractionError && (
+        <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle size={20} />
+            <span className="font-medium">Upload Failed</span>
+          </div>
+          <p className="text-red-600 mt-1">{extractionError}</p>
+          <button
+            onClick={() => setExtractionError(null)}
+            className="mt-2 text-red-600 hover:text-red-800 underline text-sm"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+      
+      {/* File Drop Hints */}
+      {!isProcessing && !extractionError && (
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-600">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <span>HongLeong Bank payment advice</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            <span>Wire transfer receipts</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <span>Cross-border payment slips</span>
+          </div>
+        </div>
+      )}
+    </div>
+    
+    {/* Enhanced Support Information */}
+    <div className="mt-8 bg-gray-50 rounded-lg p-4">
+      <h4 className="font-medium mb-3 flex items-center gap-2">
+        <FileText className="text-gray-600" size={16} />
+        Supported Document Types
+      </h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+        <div>
+          <p className="font-medium mb-2">File Formats:</p>
+          <ul className="space-y-1">
+            <li className="flex items-center gap-2">
+              <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+              PDF documents (.pdf)
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+              JPEG images (.jpg, .jpeg)
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+              PNG images (.png)
+            </li>
+          </ul>
+        </div>
+        <div>
+          <p className="font-medium mb-2">Bank Types:</p>
+          <ul className="space-y-1">
+            <li className="flex items-center gap-2">
+              <span className="w-1 h-1 bg-green-500 rounded-full"></span>
+              Hong Leong Bank (Primary)
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="w-1 h-1 bg-orange-400 rounded-full"></span>
+              Maybank (Coming Soon)
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="w-1 h-1 bg-blue-400 rounded-full"></span>
+              CIMB Bank (Coming Soon)
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div className="mt-3 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+        <p className="text-sm text-blue-700">
+          <strong>Tip:</strong> For best results, ensure the document is clear and all text is readable. 
+          The AI extraction works better with high-quality scans or original PDFs.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
 
+// Additional CSS styles to add to your component or global styles
+const additionalStyles = `
+  /* Drag and drop animations */
+  .drag-enter {
+    transform: scale(1.02);
+    transition: transform 0.2s ease;
+  }
+  
+  .drag-over {
+    border-color: #3b82f6;
+    background-color: #eff6ff;
+    transform: scale(1.02);
+  }
+  
+  /* File upload button hover effects */
+  .upload-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  }
+  
+  /* Processing animation */
+  @keyframes pulse-bg {
+    0%, 100% { background-color: #3b82f6; }
+    50% { background-color: #1d4ed8; }
+  }
+  
+  .processing-bar {
+    animation: pulse-bg 2s ease-in-out infinite;
+  }
+`;
+
+// Optional: Advanced drag and drop with multiple file preview
+const MultiFilePreview = ({ files, onRemoveFile }) => (
+  <div className="mt-4 space-y-2">
+    {files.map((file, index) => (
+      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center">
+            <FileText className="text-red-600" size={16} />
+          </div>
+          <div>
+            <div className="font-medium text-sm">{file.name}</div>
+            <div className="text-xs text-gray-500">
+              {(file.size / 1024 / 1024).toFixed(2)} MB
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => onRemoveFile(index)}
+          className="text-gray-400 hover:text-red-500 p-1"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    ))}
+  </div>
+);
           {/* Step 2: Review Extracted Data */}
           {step === 2 && extractedData && (
             <div>
