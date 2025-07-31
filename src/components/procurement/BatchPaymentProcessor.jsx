@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AIExtractionService } from '../../services/ai/AIExtractionService';
 import { 
   Upload, 
   FileText, 
@@ -32,6 +33,7 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   const [allocationMode, setAllocationMode] = useState('manual'); // 'manual' or 'percentage'
   const [paymentPercentage, setPaymentPercentage] = useState(30); // Default 30%
   const [showPercentageControls, setShowPercentageControls] = useState(true);
+  
 
   // Real AI extraction function
   const performAIExtraction = async (file) => {
@@ -179,28 +181,34 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
 
   // Handle payment slip upload and AI extraction
   const handleFileUpload = async (file) => {
-    setIsProcessing(true);
-    setPaymentSlip(file);
-    setExtractionError(null);
+  setIsProcessing(true);
+  setPaymentSlip(file);
+  setExtractionError(null);
+  
+  try {
+    console.log('🚀 Starting Railway backend extraction for:', file.name);
     
-    try {
-      console.log('🚀 Starting real AI extraction for:', file.name);
-      
-      const extracted = await performAIExtraction(file);
-      
-      console.log('✅ Extraction successful:', extracted);
-      
-      setExtractedData(extracted);
-      generateAutoSuggestions(extracted);
-      setStep(2);
-      
-    } catch (error) {
-      console.error('❌ Extraction failed:', error);
-      setExtractionError(error.message);
-    } finally {
-      setIsProcessing(false);
+    // ✅ CRITICAL FIX: Call Railway backend directly instead of mock extraction
+    const extracted = await AIExtractionService.extractBankPaymentSlip(file);
+    
+    if (!extracted.success) {
+      throw new Error(extracted.error || 'Railway backend extraction failed');
     }
-  };
+    
+    console.log('✅ Railway backend extraction successful:', extracted.data);
+    
+    // Use the real data from Railway backend
+    setExtractedData(extracted.data);
+    generateAutoSuggestions(extracted.data);
+    setStep(2);
+    
+  } catch (error) {
+    console.error('❌ Railway backend extraction failed:', error);
+    setExtractionError(error.message || 'Failed to extract payment data. Please try again.');
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   // Generate smart PI suggestions based on extracted data
   const generateAutoSuggestions = (extractedData) => {
