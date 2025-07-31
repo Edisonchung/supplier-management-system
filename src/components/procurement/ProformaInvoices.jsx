@@ -953,43 +953,147 @@ const ProformaInvoices = ({ showNotification }) => {
     showNotification('Share link copied to clipboard', 'success');
   };
 
-  const handlePaymentProcessed = async (paymentData) => {
-  try {
-    console.log('Processing batch payment data:', paymentData);
+  // Enhanced PI filtering for BatchPaymentProcessor
+const getAvailablePIsForBatchPayment = () => {
+  return proformaInvoices.filter(pi => {
+    const totalAmount = parseFloat(pi.totalAmount || 0);
+    const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    const remainingBalance = totalAmount - totalPaid;
     
-    // Update PIs with payment information
+    return (
+      totalAmount > 0 && 
+      remainingBalance > 0.01 && 
+      pi.paymentStatus !== 'paid' &&
+      pi.status !== 'cancelled' &&
+      pi.status !== 'draft'
+    );
+  });
+};
+
+// Enhanced batch payment audit function
+const saveBatchPaymentAudit = async (auditRecord) => {
+  try {
+    // Save to localStorage as fallback
+    const existingAudits = JSON.parse(localStorage.getItem('batchPaymentAudits') || '[]');
+    existingAudits.push(auditRecord);
+    
+    // Keep only last 100 audit records
+    if (existingAudits.length > 100) {
+      existingAudits.splice(0, existingAudits.length - 100);
+    }
+    
+    localStorage.setItem('batchPaymentAudits', JSON.stringify(existingAudits));
+    
+    // TODO: In production, also save to Firebase/database
+    // await addDoc(collection(db, 'batchPaymentAudits'), auditRecord);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to save batch payment audit:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Payment status display enhancement for PI cards
+const renderPaymentStatus = (pi) => {
+  const totalAmount = parseFloat(pi.totalAmount || 0);
+  const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+  const remainingBalance = totalAmount - totalPaid;
+  const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount * 100) : 0;
+  
+  const statusConfig = {
+    paid: { color: 'bg-green-100 text-green-800', label: 'Paid' },
+    partial: { color: 'bg-yellow-100 text-yellow-800', label: `${paymentPercentage.toFixed(0)}% Paid` },
+    pending: { color: 'bg-gray-100 text-gray-800', label: 'Pending' }
+  };
+  
+  const config = statusConfig[pi.paymentStatus] || statusConfig.pending;
+  
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
+        {config.label}
+      </span>
+      {pi.paymentStatus === 'partial' && (
+        <span className="text-xs text-gray-500">
+          {pi.currency} {remainingBalance.toLocaleString()} remaining
+        </span>
+      )}
+    </div>
+  );
+};
+
+  const handlePaymentProcessed = async (paymentRecord) => {
+  try {
+    console.log('🎯 Processing batch payment record with real extraction:', paymentRecord);
+    
     let updatedCount = 0;
     let errorCount = 0;
+    const processedPIs = [];
     
-    for (const payment of paymentData.payments) {
+    // Process each PI allocation from the BatchPaymentProcessor
+    for (const allocation of paymentRecord.piAllocations) {
       try {
-        const pi = proformaInvoices.find(p => p.id === payment.piId);
+        const pi = proformaInvoices.find(p => p.id === allocation.piId);
+        
         if (pi) {
-          const newPayment = {
-            id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            amount: parseFloat(payment.amount),
-            date: paymentData.paymentDate,
-            type: 'bank-transfer',
-            reference: paymentData.referenceNumber,
-            bankSlip: paymentData.bankSlip || null,
-            remark: `Bank payment processed from ${paymentData.bankName || 'Bank'}`,
+          // Create detailed payment record with real extracted data
+          const paymentEntry = {
+            id: `batch-${paymentRecord.paymentSlipRef}-${allocation.piId}`,
+            amount: allocation.allocatedAmount,
+            date: paymentRecord.paymentDate,
+            type: 'batch-payment',
+            method: 'bank-transfer',
+            reference: paymentRecord.paymentSlipRef,
+            
+            // Enhanced payment details from real AI extraction
+            bankName: paymentRecord.bankName,
+            beneficiaryName: paymentRecord.beneficiaryName,
+            beneficiaryBank: paymentRecord.beneficiaryBank,
+            exchangeRate: paymentRecord.exchangeRate,
+            bankCharges: paymentRecord.bankCharges,
+            
+            // Currency information
+            currency: allocation.currency,
+            debitAmount: paymentRecord.debitAmount,
+            debitCurrency: paymentRecord.debitCurrency,
+            
+            // Payment metadata
+            paymentPercentage: allocation.paymentPercentage,
+            isPartialPayment: allocation.isPartialPayment,
+            previousBalance: allocation.previousBalance,
+            newBalance: allocation.newBalance,
+            
+            // Bank slip document attachment (real document)
+            attachments: paymentRecord.bankSlipDocument ? [{
+              name: paymentRecord.bankSlipDocument.name,
+              url: paymentRecord.bankSlipDocument.url,
+              type: paymentRecord.bankSlipDocument.type,
+              size: paymentRecord.bankSlipDocument.size,
+              uploadedAt: paymentRecord.bankSlipDocument.uploadedAt,
+              category: 'bank_slip'
+            }] : [],
+            
+            // AI extraction metadata
+            extractionConfidence: paymentRecord.extractionConfidence,
+            extractionMethod: paymentRecord.extractionMethod,
+            batchProcessed: true,
+            
+            // Audit trail
             createdAt: new Date().toISOString(),
-            // Additional bank payment details
-            exchangeRate: paymentData.exchangeRate || 1,
-            originalCurrency: paymentData.paidCurrency || 'USD',
-            localAmount: paymentData.debitAmount || payment.amount,
-            localCurrency: paymentData.debitCurrency || 'MYR',
-            beneficiaryName: paymentData.beneficiaryName || '',
-            swiftCode: paymentData.swiftCode || ''
+            createdBy: 'system', // You can update this with actual user info
+            remark: `Batch payment processed via AI extraction. ${allocation.isPartialPayment ? 'Partial payment (' + allocation.paymentPercentage + '% of total)' : 'Payment allocated'}`
           };
-          
+
+          // Add payment to PI's payment history
           const updatedPI = {
             ...pi,
-            payments: [...(pi.payments || []), newPayment],
-            updatedAt: new Date().toISOString()
+            payments: [...(pi.payments || []), paymentEntry],
+            lastModified: new Date().toISOString(),
+            lastModifiedBy: 'system' // Update with actual user
           };
           
-          // Calculate payment status
+          // Recalculate payment status based on total payments
           const totalPaid = updatedPI.payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
           const totalAmount = parseFloat(pi.totalAmount || 0);
           
@@ -1001,39 +1105,78 @@ const ProformaInvoices = ({ showNotification }) => {
             updatedPI.paymentStatus = 'pending';
           }
           
+          // Update PI in database
           const result = await updateProformaInvoice(pi.id, updatedPI);
           if (result.success) {
             updatedCount++;
-            console.log(`✅ Updated PI ${pi.piNumber} with payment`);
+            processedPIs.push({
+              piNumber: pi.piNumber,
+              amount: allocation.allocatedAmount,
+              currency: allocation.currency,
+              status: updatedPI.paymentStatus,
+              isPartial: allocation.isPartialPayment
+            });
+            console.log(`✅ Updated PI ${pi.piNumber} with batch payment`);
           } else {
             throw new Error(result.error || 'Failed to update PI');
           }
         } else {
-          console.warn(`PI not found for payment: ${payment.piId}`);
+          console.warn(`❌ PI not found for allocation: ${allocation.piId}`);
           errorCount++;
         }
       } catch (error) {
-        console.error(`Error updating PI ${payment.piId}:`, error);
+        console.error(`❌ Error processing PI ${allocation.piId}:`, error);
         errorCount++;
       }
     }
     
-    // Show success notification
+    // Show comprehensive success notification
     if (updatedCount > 0) {
+      const partialPayments = processedPIs.filter(p => p.isPartial).length;
+      const fullPayments = processedPIs.filter(p => !p.isPartial).length;
+      
+      let successMessage = `Batch payment processed successfully!\n`;
+      successMessage += `• Updated ${updatedCount} PI${updatedCount > 1 ? 's' : ''}\n`;
+      successMessage += `• Total: ${paymentRecord.currency} ${paymentRecord.totalPaid.toLocaleString()}\n`;
+      successMessage += `• Reference: ${paymentRecord.paymentSlipRef}\n`;
+      if (partialPayments > 0) {
+        successMessage += `• Partial payments: ${partialPayments}\n`;
+      }
+      if (fullPayments > 0) {
+        successMessage += `• Full payments: ${fullPayments}\n`;
+      }
+      if (errorCount > 0) {
+        successMessage += `• ${errorCount} failed to process`;
+      }
+      
       showNotification(
-        `Batch payment processed successfully! Updated ${updatedCount} PI${updatedCount > 1 ? 's' : ''}${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
-        errorCount > 0 ? 'warning' : 'success'
+        successMessage,
+        errorCount > 0 ? 'warning' : 'success',
+        8000 // Show for 8 seconds
       );
+      
+      // Log detailed breakdown
+      console.log('📊 Batch Payment Summary:', {
+        totalProcessed: processedPIs.length,
+        partialPayments,
+        fullPayments,
+        breakdown: processedPIs,
+        bankSlip: paymentRecord.bankSlipDocument?.name
+      });
     } else {
-      showNotification('No PIs were updated', 'warning');
+      showNotification('No PIs were updated. Please check the allocations.', 'warning');
     }
     
     // Close the modal
     setShowBatchPaymentModal(false);
     
   } catch (error) {
-    console.error('Error processing batch payment:', error);
-    showNotification('Failed to process batch payment', 'error');
+    console.error('❌ Error processing batch payment:', error);
+    showNotification(
+      `Failed to process batch payment: ${error.message}`,
+      'error',
+      10000
+    );
   }
 };
 
@@ -1270,15 +1413,32 @@ const ProformaInvoices = ({ showNotification }) => {
             </button>
           )}
 
-          {canEdit && proformaInvoices.some(pi => pi.status !== 'paid') && (
+          {canEdit && proformaInvoices.some(pi => {
+  const totalAmount = parseFloat(pi.totalAmount || 0);
+  const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+  return totalAmount > 0 && totalPaid < totalAmount && pi.status !== 'cancelled';
+}) && (
   <button
     onClick={() => setShowBatchPaymentModal(true)}
     className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 inline-flex items-center gap-2"
+    title={`Process payments for ${proformaInvoices.filter(pi => {
+      const totalAmount = parseFloat(pi.totalAmount || 0);
+      const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      return totalAmount > 0 && totalPaid < totalAmount && pi.status !== 'cancelled';
+    }).length} unpaid PIs`}
   >
     <CreditCard className="w-4 h-4" />
     Process Payments
+    <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full ml-1">
+      {proformaInvoices.filter(pi => {
+        const totalAmount = parseFloat(pi.totalAmount || 0);
+        const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+        return totalAmount > 0 && totalPaid < totalAmount && pi.status !== 'cancelled';
+      }).length}
+    </span>
   </button>
 )}
+
 
 
           {canEdit && (
@@ -1740,9 +1900,20 @@ const ProformaInvoices = ({ showNotification }) => {
     onClose={() => setShowBatchPaymentModal(false)}
     onSave={handlePaymentProcessed}
     availablePIs={proformaInvoices.filter(pi => {
-      const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
       const totalAmount = parseFloat(pi.totalAmount || 0);
-      return totalPaid < totalAmount; // Only show PIs that aren't fully paid
+      const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+      const remainingBalance = totalAmount - totalPaid;
+      
+      // Include PIs that:
+      // 1. Have a positive total amount and remaining balance
+      // 2. Are not fully paid  
+      // 3. Are in active status (not cancelled/draft)
+      return (
+        totalAmount > 0 && 
+        remainingBalance > 0.01 && 
+        pi.paymentStatus !== 'paid' &&
+        pi.status !== 'cancelled'
+      );
     })}
   />
 )}
