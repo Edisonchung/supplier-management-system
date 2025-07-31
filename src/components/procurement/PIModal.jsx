@@ -805,6 +805,13 @@ useEffect(() => {
 
   // Get selected supplier details
   const selectedSupplier = suppliers.find(s => s.id === formData.supplierId);
+    // ✅ ENHANCED useEffect for Real-time Total Calculation with Validation
+  const calculatedTotals = useMemo(() => {
+  if (selectedProducts && selectedProducts.length > 0) {
+    return validatePITotals(formData, selectedProducts, false);
+  }
+  return { subtotal: 0, totalAmount: 0 };
+}, [selectedProducts, formData.discount, formData.shipping, formData.tax]);
 
   useEffect(() => {
     if (proformaInvoice) {
@@ -1049,13 +1056,6 @@ useEffect(() => {
   products?.length
 ]);
 
-  // ✅ ENHANCED useEffect for Real-time Total Calculation with Validation
-  const calculatedTotals = useMemo(() => {
-  if (selectedProducts && selectedProducts.length > 0) {
-    return validatePITotals(formData, selectedProducts, false);
-  }
-  return { subtotal: 0, totalAmount: 0 };
-}, [selectedProducts, formData.discount, formData.shipping, formData.tax]);
 
 // Update totals only when calculated values actually change
 useEffect(() => {
