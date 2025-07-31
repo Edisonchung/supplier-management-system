@@ -478,34 +478,102 @@ useEffect(() => {
 
 const handleApplyPOMatches = useCallback((matches) => {
   try {
-    if (!matches?.length) return;
+    console.log('🔗 handleApplyPOMatches called with', matches?.length, 'matches');
+    console.log('📊 Match data:', matches);
+    console.log('📦 Current selectedProducts:', selectedProducts?.length);
+    
+    if (!matches?.length) {
+      console.log('❌ No matches to apply');
+      return;
+    }
     
     const currentProducts = selectedProducts || [];
+    console.log('📋 Current products before mapping:', currentProducts.map(p => ({
+      id: p.id,
+      productCode: p.productCode,
+      clientPO: p.clientPO,
+      clientItemCode: p.clientItemCode
+    })));
+    
     const updatedProducts = currentProducts.map(item => {
       const match = matches.find(m => m.piItemId === item.id);
       
       if (match) {
-        return {
+        console.log(`✅ Applying match for ${item.productCode}:`, {
+          piItemId: match.piItemId,
+          clientPO: match.poNumber,
+          clientLineItem: match.lineItem,
+          clientItemCode: match.poItem?.productCode,
+          fsProjectCode: match.po?.projectCode || match.po?.orderNumber
+        });
+        
+        const updatedItem = {
           ...item,
           clientPO: match.poNumber || '',
           clientLineItem: match.lineItem || '',
           clientItemCode: match.poItem?.productCode || '',
           fsProjectCode: match.po?.projectCode || match.po?.orderNumber || '',
-          matchedFromPO: true
+          matchedFromPO: true,
+          // Add metadata for debugging
+          matchConfidence: match.matchScore,
+          matchType: match.matchType,
+          linkedPOId: match.po?.id
         };
+        
+        console.log('📋 Updated item:', updatedItem);
+        return updatedItem;
       }
       
       return item;
     });
     
+    console.log('📊 Updated products with matches:', updatedProducts.filter(p => p.clientPO).length);
+    console.log('📋 Sample updated item:', updatedProducts.find(p => p.clientPO));
+    console.log('📋 All updated products:', updatedProducts.map(p => ({
+      id: p.id,
+      productCode: p.productCode,
+      clientPO: p.clientPO,
+      clientItemCode: p.clientItemCode,
+      matchedFromPO: p.matchedFromPO
+    })));
+    
+    // Update state
+    console.log('🔄 Calling setSelectedProducts...');
     setSelectedProducts?.(updatedProducts);
+    
+    // Also update formData if it exists
+    if (typeof setFormData === 'function') {
+      setFormData(prev => ({
+        ...prev,
+        items: updatedProducts
+      }));
+      console.log('✅ formData.items also updated');
+    }
+    
     showNotification?.(`Applied ${matches.length} PO matches successfully`, 'success');
     
   } catch (error) {
-    console.error('Error applying matches:', error);
+    console.error('❌ Error applying matches:', error);
     showNotification?.('Failed to apply matches', 'error');
   }
-}, []); // ✅ Keep empty dependency array for now
+}, [selectedProducts, setSelectedProducts, setFormData, showNotification]);
+
+// Add this useEffect to monitor selectedProducts changes
+useEffect(() => {
+  const itemsWithClientPO = selectedProducts?.filter(p => p.clientPO && p.clientPO.trim() !== '') || [];
+  console.log('👀 selectedProducts changed - Items with clientPO:', itemsWithClientPO.length);
+  console.log('👀 selectedProducts total items:', selectedProducts?.length || 0);
+  
+  if (itemsWithClientPO.length > 0) {
+    console.log('📋 Sample item with clientPO:', itemsWithClientPO[0]);
+  } else {
+    console.log('⚠️ No items have clientPO set');
+    // Debug: Show what values are actually in the items
+    selectedProducts?.forEach((item, index) => {
+      console.log(`Item ${index}: clientPO="${item.clientPO}", clientItemCode="${item.clientItemCode}", matchedFromPO="${item.matchedFromPO}"`);
+    });
+  }
+}, [selectedProducts]);
 
   const handleNavigateToMatching = useCallback((item, action = 'view') => {
   try {
