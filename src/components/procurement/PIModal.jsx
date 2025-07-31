@@ -400,22 +400,7 @@ const normalizeDate = (dateValue) => {
 
 
 const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
-  // Only log props debug when component mounts or key props change
-useEffect(() => {
-  console.log('=== PIModal Props Debug ===');
-  console.log('proformaInvoice:', proformaInvoice ? 'Present' : 'Missing');
-  console.log('suppliers:', suppliers ? `Array with ${suppliers.length} items` : 'Missing');
-  console.log('products:', products ? `Array with ${products.length} items` : 'Missing');
-  console.log('onSave:', typeof onSave, onSave ? 'Present' : 'Missing');
-  console.log('onClose:', typeof onClose, onClose ? 'Present' : 'Missing');
-  console.log('addSupplier:', typeof addSupplier, addSupplier ? 'Present' : 'Missing');
-  console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
-  console.log('=== End Props Debug ===');
-}, [
-  proformaInvoice?.id,  // Only re-log when PI ID changes
-  suppliers?.length,
-  products?.length
-]);
+ 
     const [formData, setFormData] = useState({
     piNumber: '',
     supplierId: '',
@@ -1044,6 +1029,23 @@ useEffect(() => {
       }));
     }
   }, [proformaInvoice]);
+
+   // Only log props debug when component mounts or key props change
+useEffect(() => {
+  console.log('=== PIModal Props Debug ===');
+  console.log('proformaInvoice:', proformaInvoice ? 'Present' : 'Missing');
+  console.log('suppliers:', suppliers ? `Array with ${suppliers.length} items` : 'Missing');
+  console.log('products:', products ? `Array with ${products.length} items` : 'Missing');
+  console.log('onSave:', typeof onSave, onSave ? 'Present' : 'Missing');
+  console.log('onClose:', typeof onClose, onClose ? 'Present' : 'Missing');
+  console.log('addSupplier:', typeof addSupplier, addSupplier ? 'Present' : 'Missing');
+  console.log('showNotification:', typeof showNotification, showNotification ? 'Present' : 'Missing');
+  console.log('=== End Props Debug ===');
+}, [
+  proformaInvoice?.id,  // Only re-log when PI ID changes
+  suppliers?.length,
+  products?.length
+]);
 
   // ✅ ENHANCED useEffect for Real-time Total Calculation with Validation
   const calculatedTotals = useMemo(() => {
