@@ -478,33 +478,14 @@ useEffect(() => {
 
 const handleApplyPOMatches = useCallback((matches) => {
   try {
-    console.log('🚀 handleApplyPOMatches called with:', {
-      matchesLength: matches?.length,
-      matchesData: matches,
-      selectedProductsLength: selectedProducts?.length,
-      selectedProductsData: selectedProducts?.map(p => ({ id: p.id, productCode: p.productCode, clientPO: p.clientPO }))
-    });
-    
-    if (!matches?.length) {
-      console.warn('❌ No matches provided to handleApplyPOMatches');
-      return;
-    }
+    if (!matches?.length) return;
     
     const currentProducts = selectedProducts || [];
-    console.log('📦 Current products before update:', currentProducts.length);
-    
     const updatedProducts = currentProducts.map(item => {
       const match = matches.find(m => m.piItemId === item.id);
       
       if (match) {
-        console.log(`✅ Found match for item ${item.id} (${item.productCode}):`, {
-          poNumber: match.poNumber,
-          lineItem: match.lineItem,
-          productCode: match.poItem?.productCode,
-          projectCode: match.po?.projectCode || match.po?.orderNumber
-        });
-        
-        const updatedItem = {
+        return {
           ...item,
           clientPO: match.poNumber || '',
           clientLineItem: match.lineItem || '',
@@ -512,84 +493,19 @@ const handleApplyPOMatches = useCallback((matches) => {
           fsProjectCode: match.po?.projectCode || match.po?.orderNumber || '',
           matchedFromPO: true
         };
-        
-        console.log(`🔄 Updated item ${item.id}:`, {
-          before: { clientPO: item.clientPO, clientLineItem: item.clientLineItem, clientItemCode: item.clientItemCode },
-          after: { clientPO: updatedItem.clientPO, clientLineItem: updatedItem.clientLineItem, clientItemCode: updatedItem.clientItemCode }
-        });
-        
-        return updatedItem;
-      } else {
-        console.log(`⚠️ No match found for item ${item.id} (${item.productCode})`);
       }
       
       return item;
     });
     
-    console.log('📊 Products update summary:', {
-      totalProducts: updatedProducts.length,
-      matchedProducts: updatedProducts.filter(p => p.matchedFromPO).length,
-      samplesWithClientPO: updatedProducts.filter(p => p.clientPO).map(p => ({ id: p.id, clientPO: p.clientPO, clientItemCode: p.clientItemCode }))
-    });
-    
-    console.log('🔧 About to call setSelectedProducts with updated products');
-    console.log('🔍 setSelectedProducts function exists:', typeof setSelectedProducts);
-    
-    // ✅ CRITICAL: Check if setSelectedProducts is working
-    if (setSelectedProducts) {
-      setSelectedProducts(updatedProducts);
-      console.log('✅ setSelectedProducts called successfully');
-      
-      // ✅ ADDITIONAL: Also update formData.items for persistence
-      if (typeof setFormData === 'function') {
-        setFormData(prev => ({
-          ...prev,
-          items: updatedProducts
-        }));
-        console.log('✅ formData.items also updated');
-      } else {
-        console.warn('⚠️ setFormData not available, only selectedProducts updated');
-      }
-    } else {
-      console.error('❌ setSelectedProducts is not available!');
-    }
-    
+    setSelectedProducts?.(updatedProducts);
     showNotification?.(`Applied ${matches.length} PO matches successfully`, 'success');
     
-    // ✅ VERIFICATION: Check if state was actually updated
-    setTimeout(() => {
-      console.log('🔍 State verification after 100ms:', {
-        selectedProductsLength: selectedProducts?.length,
-        productsWithClientPO: selectedProducts?.filter(p => p.clientPO).length,
-        sampleProduct: selectedProducts?.[0] ? {
-          id: selectedProducts[0].id,
-          productCode: selectedProducts[0].productCode,
-          clientPO: selectedProducts[0].clientPO,
-          clientItemCode: selectedProducts[0].clientItemCode
-        } : 'No products'
-      });
-    }, 100);
-    
   } catch (error) {
-    console.error('❌ Error in handleApplyPOMatches:', error);
-    console.error('Error stack:', error.stack);
+    console.error('Error applying matches:', error);
     showNotification?.('Failed to apply matches', 'error');
   }
-}, [selectedProducts, showNotification]); // ✅ Safe dependencies only
-
-// 🔍 ADDITIONAL DEBUG: Add this useEffect to monitor selectedProducts changes
-useEffect(() => {
-  console.log('👀 selectedProducts changed:', {
-    length: selectedProducts?.length,
-    productsWithClientPO: selectedProducts?.filter(p => p.clientPO && p.clientPO.trim() !== '').length,
-    sampleWithClientPO: selectedProducts?.find(p => p.clientPO && p.clientPO.trim() !== '') ? {
-      id: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').id,
-      productCode: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').productCode,
-      clientPO: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').clientPO,
-      clientItemCode: selectedProducts.find(p => p.clientPO && p.clientPO.trim() !== '').clientItemCode
-    } : 'No products with clientPO found'
-  });
-}, [selectedProducts]);
+}, []); // ✅ Keep empty dependency array for now
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
