@@ -3340,11 +3340,21 @@ const PIPOMatchingModal = ({
   };
 
   const handleSelectMatch = (piItemId, match) => {
-    setSelectedMatches(prev => ({
+  setSelectedMatches(prev => {
+    // If this match is already selected, unselect it
+    if (prev[piItemId]) {
+      const newMatches = { ...prev };
+      delete newMatches[piItemId];
+      return newMatches;
+    }
+    
+    // Otherwise, select it
+    return {
       ...prev,
       [piItemId]: { ...match, piItemId }
-    }));
-  };
+    };
+  });
+};
 
   const handleApplySelected = () => {
     const matchesToApply = Object.values(selectedMatches);
