@@ -590,37 +590,6 @@ useEffect(() => {
     } : 'No products with clientPO found'
   });
 }, [selectedProducts]);
-  
-const handleNavigateToMatching = useCallback((item, action = 'view') => {
-  try {
-    if (!item) {
-      console.warn('No item provided to handleNavigateToMatching');
-      return;
-    }
-
-    // Basic navigation without complex dependencies
-    const itemName = item.productName || item.productCode || 'Unknown Item';
-    const piNumber = formData?.piNumber || 'unknown';
-    
-    // Simple URL generation
-    const baseUrl = window.location.origin;
-    const matchingUrl = `${baseUrl}/supplier-matching?pi=${piNumber}&item=${item.id}&action=${action}`;
-    
-    // Open in new tab
-    window.open(matchingUrl, '_blank');
-    
-    // Safe notification
-    if (showNotification) {
-      showNotification(`Opening supplier matching for ${itemName}`, 'info');
-    }
-  } catch (error) {
-    console.error('Error in handleNavigateToMatching:', error);
-    if (showNotification) {
-      showNotification('Failed to open supplier matching', 'error');
-    }
-  }
-}, []); // ✅ Empty dependency array to avoid circular references
-
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
