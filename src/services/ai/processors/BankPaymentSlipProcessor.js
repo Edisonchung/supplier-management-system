@@ -1,30 +1,26 @@
-// Updated BankPaymentSlipProcessor.js - Unified with AIExtractionService
+// Updated BankPaymentSlipProcessor.js - Fixed to use Railway Backend
 // src/services/ai/processors/BankPaymentSlipProcessor.js
 
 import { AIExtractionService } from '../AIExtractionService';
 
 class BankPaymentSlipProcessor {
   /**
-   * Process bank payment slip using the unified AIExtractionService
+   * Process bank payment slip using the Railway backend directly
    */
   static async process(file) {
-    console.log('🏦 Processing Bank Payment Slip via unified AI service:', file.name);
+    console.log('🏦 Processing Bank Payment Slip via Railway backend:', file.name);
 
     try {
-      // Step 1: Use the main AIExtractionService (same as POModal/PIModal)
-      const extractionResult = await AIExtractionService.extractFromFile(file, {
-        documentType: 'bank_payment_slip',
-        extractionMode: 'bank_payment',
-        includeMetadata: true
-      });
+      // Step 1: Call the specific bank payment extraction method (NOT the general extractFromFile)
+      const extractionResult = await AIExtractionService.extractBankPaymentSlip(file);
 
       if (!extractionResult.success) {
-        throw new Error(extractionResult.error || 'AI extraction failed');
+        throw new Error(extractionResult.error || 'Railway backend extraction failed');
       }
 
-      console.log('✅ AI extraction successful:', extractionResult.data);
+      console.log('✅ Railway backend extraction successful:', extractionResult.data);
 
-      // Step 2: Process and validate the AI-extracted data
+      // Step 2: Process and validate the AI-extracted data from Railway
       const processedData = this.processAIExtractedData(extractionResult.data, file);
 
       // Step 3: Enhance with business logic
@@ -34,7 +30,7 @@ class BankPaymentSlipProcessor {
       return enhancedData;
 
     } catch (error) {
-      console.error('❌ Unified AI extraction failed:', error);
+      console.error('❌ Railway backend extraction failed:', error);
       
       // Fallback to local processing only in development
       if (import.meta.env.MODE === 'development') {
@@ -50,15 +46,15 @@ class BankPaymentSlipProcessor {
    * Process AI-extracted data from Railway backend
    */
   static processAIExtractedData(aiData, file) {
-    console.log('🔍 Processing AI extracted bank payment data...');
+    console.log('🔍 Processing Railway backend extracted data...');
 
-    // The Railway backend will return structured data like:
+    // The Railway backend returns structured data like:
     // {
     //   "bank_payment": {
     //     "reference_number": "C716200525115916",
     //     "payment_amount": 1860.00,
-    //     "currency": "USD",
-    //     "beneficiary": "Qingzhou Tianhong Electromechanical Co. LTD",
+    //     "paid_currency": "USD",
+    //     "beneficiary_name": "Qingzhou Tianhong Electromechanical Co. LTD",
     //     "payment_details": "TH-202500135,202500134,202500182"
     //   }
     // }
@@ -70,7 +66,7 @@ class BankPaymentSlipProcessor {
       fileName: file.name,
       extractedAt: new Date().toISOString(),
       
-      // Transaction details - mapped from AI extraction
+      // Transaction details - mapped from Railway AI extraction
       referenceNumber: bankPayment.reference_number || bankPayment.referenceNumber,
       paymentDate: this.parseDate(bankPayment.payment_date || bankPayment.paymentDate),
       
@@ -100,7 +96,7 @@ class BankPaymentSlipProcessor {
       
       // AI metadata
       confidence: aiData.confidence || 0.9,
-      extractionMethod: 'unified_ai_service'
+      extractionMethod: 'railway_backend_ai'
     };
   }
 
@@ -175,7 +171,7 @@ class BankPaymentSlipProcessor {
       
       // Processing metadata
       processedAt: new Date().toISOString(),
-      extractionMethod: 'unified_ai_service'
+      extractionMethod: 'railway_backend_ai'
     };
   }
 
@@ -189,6 +185,10 @@ class BankPaymentSlipProcessor {
     const hasAmount = file.name.match(/(\d+[.,]?\d*)/);
     const extractedAmount = hasAmount ? parseFloat(hasAmount[1].replace(',', '')) : 1860.00;
     
+    // Try to extract beneficiary name from filename
+    const beneficiaryMatch = file.name.match(/-(.*?)\s+TH-/);
+    const beneficiaryName = beneficiaryMatch ? beneficiaryMatch[1].trim() : 'Development Beneficiary';
+    
     // Try to extract PI references from filename
     const piMatches = file.name.match(/[A-Z]+-?[0-9]+/g) || [];
     
@@ -197,7 +197,7 @@ class BankPaymentSlipProcessor {
       fileName: file.name,
       extractedAt: new Date().toISOString(),
       
-      // Fallback data with some intelligence from filename
+      // Fallback data with intelligence from filename
       referenceNumber: `DEV${Date.now().toString().slice(-10)}`,
       paymentDate: new Date().toISOString().split('T')[0],
       bankName: 'Hong Leong Bank',
@@ -210,7 +210,7 @@ class BankPaymentSlipProcessor {
       debitAmount: extractedAmount * 4.44,
       exchangeRate: 4.44,
       
-      beneficiaryName: 'Development Beneficiary',
+      beneficiaryName: beneficiaryName,
       beneficiaryBank: 'JPMorgan Chase Bank NA',
       beneficiaryCountry: 'HONG KONG',
       
