@@ -461,7 +461,72 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
 });
 
 
-const handleApplyPOMatches = useCallback((matches) => {
+
+
+  // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
+  const handleFixAllPrices = () => {
+    console.log('🔧 Manual price fix triggered for PI');
+    
+    const fixedProducts = fixPIItemPrices(selectedProducts, true); // Enable debug for manual fix
+    setSelectedProducts(fixedProducts);
+    
+    // ✅ Recalculate totals with validation
+    const validatedData = validatePITotals(formData, fixedProducts, true);
+    
+    setFormData(prev => ({
+      ...prev,
+      subtotal: validatedData.subtotal,
+      totalAmount: validatedData.totalAmount
+    }));
+    
+    // ✅ Enhanced user feedback
+    const corrections = fixedProducts.filter((item, index) => {
+      const original = selectedProducts[index];
+      return original && Math.abs(item.totalPrice - (original.totalPrice || 0)) > 0.01;
+    });
+    
+    if (corrections.length > 0) {
+      showNotification?.(`Fixed ${corrections.length} price calculation(s)`, 'success');
+    } else {
+      showNotification?.('All prices are already correct', 'info');
+    }
+  };
+
+  const [searchProduct, setSearchProduct] = useState('');
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [errors, setErrors] = useState({});
+  const [activeTab, setActiveTab] = useState('details'); // details, receiving, payment
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [editingProducts, setEditingProducts] = useState({});
+  const [showPOMatchingModal, setShowPOMatchingModal] = useState(false);
+
+  const [newPayment, setNewPayment] = useState({
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    type: 'down-payment', // down-payment, balance, partial
+    method: 'bank-transfer',
+    reference: '',
+    remark: '',
+    attachments: []
+  });
+
+  // Supplier creation states
+  const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [showCreateSupplier, setShowCreateSupplier] = useState(false);
+  const [newSupplierData, setNewSupplierData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    contactPerson: '',
+    status: 'active'
+  });
+  const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
+  const [supplierErrors, setSupplierErrors] = useState({});
+
+  const handleApplyPOMatches = useCallback((matches) => {
   try {
     console.log('🔗 handleApplyPOMatches called with', matches?.length, 'matches');
     console.log('📊 Match data:', matches);
@@ -589,69 +654,6 @@ useEffect(() => {
     }
   }
 }, []); // Empty dependency array to avoid circular references
-
-  // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
-  const handleFixAllPrices = () => {
-    console.log('🔧 Manual price fix triggered for PI');
-    
-    const fixedProducts = fixPIItemPrices(selectedProducts, true); // Enable debug for manual fix
-    setSelectedProducts(fixedProducts);
-    
-    // ✅ Recalculate totals with validation
-    const validatedData = validatePITotals(formData, fixedProducts, true);
-    
-    setFormData(prev => ({
-      ...prev,
-      subtotal: validatedData.subtotal,
-      totalAmount: validatedData.totalAmount
-    }));
-    
-    // ✅ Enhanced user feedback
-    const corrections = fixedProducts.filter((item, index) => {
-      const original = selectedProducts[index];
-      return original && Math.abs(item.totalPrice - (original.totalPrice || 0)) > 0.01;
-    });
-    
-    if (corrections.length > 0) {
-      showNotification?.(`Fixed ${corrections.length} price calculation(s)`, 'success');
-    } else {
-      showNotification?.('All prices are already correct', 'info');
-    }
-  };
-
-  const [searchProduct, setSearchProduct] = useState('');
-  const [showProductSearch, setShowProductSearch] = useState(false);
-  const [selectedProducts, setSelectedProducts] = useState([]);
-  const [errors, setErrors] = useState({});
-  const [activeTab, setActiveTab] = useState('details'); // details, receiving, payment
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [editingProducts, setEditingProducts] = useState({});
-  const [showPOMatchingModal, setShowPOMatchingModal] = useState(false);
-
-  const [newPayment, setNewPayment] = useState({
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    type: 'down-payment', // down-payment, balance, partial
-    method: 'bank-transfer',
-    reference: '',
-    remark: '',
-    attachments: []
-  });
-
-  // Supplier creation states
-  const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
-  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
-  const [showCreateSupplier, setShowCreateSupplier] = useState(false);
-  const [newSupplierData, setNewSupplierData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    contactPerson: '',
-    status: 'active'
-  });
-  const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
-  const [supplierErrors, setSupplierErrors] = useState({});
 
   const handleAllocationComplete = useCallback(async (allocations) => {
   try {
