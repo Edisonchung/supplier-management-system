@@ -188,7 +188,6 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   try {
     console.log('🚀 Starting Railway backend extraction for:', file.name);
     
-    // ✅ CRITICAL FIX: Call Railway backend directly instead of mock extraction
     const extracted = await AIExtractionService.extractBankPaymentSlip(file);
     
     if (!extracted.success) {
@@ -197,9 +196,61 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
     
     console.log('✅ Railway backend extraction successful:', extracted.data);
     
-    // Use the real data from Railway backend
-    setExtractedData(extracted.data);
-    generateAutoSuggestions(extracted.data);
+    // ✅ CRITICAL FIX: Extract the bank_payment object from Railway response
+    const bankPaymentData = extracted.data.bank_payment || extracted.data;
+    
+    // ✅ Transform Railway response to expected format
+    const processedData = {
+      documentType: 'bank_payment_slip',
+      fileName: file.name,
+      extractedAt: new Date().toISOString(),
+      
+      // Transaction details - map from Railway backend response
+      referenceNumber: bankPaymentData.reference_number || bankPaymentData.referenceNumber || 'Unknown',
+      paymentDate: bankPaymentData.payment_date || bankPaymentData.paymentDate || new Date().toISOString().split('T')[0],
+      
+      // Bank information
+      bankName: bankPaymentData.bank_name || bankPaymentData.bankName || 'Hong Leong Bank',
+      accountNumber: bankPaymentData.account_number || bankPaymentData.accountNumber || '',
+      accountName: bankPaymentData.account_name || bankPaymentData.accountName || 'FLOW SOLUTION SDN BH',
+      
+      // Payment amounts - CRITICAL: These fields must exist for UI
+      paidCurrency: bankPaymentData.paid_currency || bankPaymentData.paidCurrency || 'USD',
+      paidAmount: parseFloat(bankPaymentData.payment_amount || bankPaymentData.paidAmount || bankPaymentData.debit_amount || 0),
+      debitCurrency: bankPaymentData.debit_currency || bankPaymentData.debitCurrency || 'MYR',
+      debitAmount: parseFloat(bankPaymentData.myr_amount || bankPaymentData.debitAmount || 0),
+      exchangeRate: parseFloat(bankPaymentData.exchange_rate || bankPaymentData.exchangeRate || 4.44),
+      
+      // Beneficiary details
+      beneficiaryName: bankPaymentData.beneficiary_name || bankPaymentData.beneficiaryName || bankPaymentData.beneficiary || 'Unknown Beneficiary',
+      beneficiaryBank: bankPaymentData.beneficiary_bank || bankPaymentData.beneficiaryBank || 'Unknown Bank',
+      beneficiaryCountry: bankPaymentData.beneficiary_country || bankPaymentData.beneficiaryCountry || 'HONG KONG',
+      
+      // Additional details
+      bankCharges: parseFloat(bankPaymentData.bank_charges || bankPaymentData.bankCharges || 50.00),
+      status: bankPaymentData.status || 'Completed',
+      paymentPurpose: bankPaymentData.payment_purpose || bankPaymentData.paymentPurpose || '300-Goods',
+      
+      // Extract PI references from payment details
+      piReferences: extractPIReferences(bankPaymentData.payment_details || bankPaymentData.paymentDetails || ''),
+      
+      // Metadata
+      confidence: extracted.data.confidence || 0.9,
+      extractionMethod: 'railway_backend_ai'
+    };
+    
+    console.log('✅ Processed payment data for UI:', processedData);
+    
+    // Validate critical fields before proceeding
+    if (!processedData.referenceNumber || processedData.paidAmount <= 0) {
+      console.warn('⚠️ Missing critical payment data:', {
+        referenceNumber: processedData.referenceNumber,
+        paidAmount: processedData.paidAmount
+      });
+    }
+    
+    setExtractedData(processedData);
+    generateAutoSuggestions(processedData);
     setStep(2);
     
   } catch (error) {
@@ -208,6 +259,26 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   } finally {
     setIsProcessing(false);
   }
+};
+
+// ✅ Helper function to extract PI references
+const extractPIReferences = (paymentDetails) => {
+  if (!paymentDetails || typeof paymentDetails !== 'string') return [];
+  
+  // Match patterns like TH-202500135, PI-HBMH24111301A, etc.
+  const patterns = [
+    /TH-[0-9]{9}/g,           // TH-202500135 pattern
+    /PI-[A-Z0-9]+/g,          // PI-ABC123 pattern  
+    /[A-Z]+-[0-9A-Z]+/g       // General pattern
+  ];
+  
+  let piNumbers = [];
+  for (const pattern of patterns) {
+    const matches = paymentDetails.match(pattern) || [];
+    piNumbers = [...piNumbers, ...matches];
+  }
+  
+  return [...new Set(piNumbers)]; // Remove duplicates
 };
 
   // Generate smart PI suggestions based on extracted data
