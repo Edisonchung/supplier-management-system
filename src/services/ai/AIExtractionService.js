@@ -2635,74 +2635,90 @@ validateClientItemCode(clientCode) {
    * Extract bank payment slip - NEW METHOD
    */
   static async extractBankPaymentSlip(file) {
-    const instance = new AIExtractionService();
+  try {
+    console.log('🏦 Extracting bank payment slip via Railway backend:', file.name);
     
-    try {
-      console.log('🏦 Extracting bank payment slip:', file.name);
-      
-      // Validate file first
-      const validation = instance.validateFile(file);
-      if (!validation.isValid) {
-        throw new Error(validation.error);
+    // Validate file first
+    const instance = new AIExtractionService();
+    const validation = instance.validateFile(file);
+    if (!validation.isValid) {
+      throw new Error(validation.error);
+    }
+    
+    // Call the specific bank payment backend endpoint
+    const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || 'https://supplier-mcp-server-production.up.railway.app';
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('documentType', 'bank_payment_slip');
+    
+    console.log('📡 Calling backend endpoint:', `${AI_BACKEND_URL}/api/bank-payments/extract`);
+    
+    const response = await fetch(`${AI_BACKEND_URL}/api/bank-payments/extract`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json'
       }
-      
-      // Use the main extraction method
-      const result = await instance.extractFromFile(file);
-      
-      if (result.success && result.data.documentType === 'bank_payment_slip') {
-        return result;
-      } else {
-        // Force bank payment processing if auto-detection failed
-        console.log('🔄 Auto-detection failed, forcing bank payment slip processing...');
-        
-        const rawData = await instance.extractRawData(file);
-        const processedData = await BankPaymentSlipProcessor.process(rawData, file);
-        
-        return {
-          success: true,
-          data: processedData,
-          confidence: 0.8,
-          metadata: {
-            fileName: file.name,
-            fileSize: file.size,
-            documentType: 'bank_payment_slip',
-            forcedProcessing: true,
-            extractedAt: new Date().toISOString()
-          }
-        };
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to extract bank payment data' }));
+      throw new Error(error.message || error.error || 'Bank payment extraction failed');
+    }
+
+    const result = await response.json();
+    console.log('✅ Backend extraction successful:', result);
+    
+    // Return in the format expected by your system
+    return {
+      success: true,
+      data: result.data, // This contains the bank_payment object from backend
+      confidence: result.data.confidence || 0.9,
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        documentType: 'bank_payment_slip',
+        extractionMethod: 'backend_ai_service',
+        processingTime: result.processing_time,
+        extractedAt: new Date().toISOString(),
+        ...result.metadata
       }
-    } catch (error) {
-      console.error('❌ Bank payment slip extraction failed:', error);
-      
-      // Development fallback with mock data
-      if (import.meta.env.MODE === 'development' || import.meta.env.VITE_USE_MOCK_DATA === 'true') {
-        console.log('🔄 Using mock bank payment data for development');
-        return {
-          success: true,
-          data: AIExtractionService.getMockBankPaymentData(file),
-          confidence: 0.9,
-          metadata: {
-            fileName: file.name,
-            fileSize: file.size,
-            documentType: 'bank_payment_slip',
-            mockData: true,
-            extractedAt: new Date().toISOString()
-          }
-        };
-      }
-      
+    };
+
+  } catch (error) {
+    console.error('❌ Bank payment extraction failed:', error);
+    
+    // Only fall back to mock data if in development AND backend is unreachable
+    if (import.meta.env.MODE === 'development' || import.meta.env.VITE_USE_MOCK_DATA === 'true') {
+      console.log('🔄 Backend failed, using development fallback');
       return {
-        success: false,
-        error: error.message,
-        data: null,
+        success: true,
+        data: AIExtractionService.getMockBankPaymentData(file),
+        confidence: 0.7,
         metadata: {
           fileName: file.name,
           fileSize: file.size,
-          errorType: 'bank_payment_extraction_failed'
+          documentType: 'bank_payment_slip',
+          mockData: true,
+          extractedAt: new Date().toISOString(),
+          fallbackReason: error.message
         }
       };
     }
+    
+    return {
+      success: false,
+      error: error.message,
+      data: null,
+      metadata: {
+        fileName: file.name,
+        fileSize: file.size,
+        errorType: 'bank_payment_extraction_failed'
+      }
+    };
   }
+}
 
   /**
    * Generate mock bank payment data for development
