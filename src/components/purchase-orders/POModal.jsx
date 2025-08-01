@@ -190,6 +190,9 @@ const processExtractedPOData = (extractedData, debug = true) => {
   }
 
   let processedData = { ...extractedData };
+
+    // ✅ NEW: Extract project codes from PO data
+  processedData = extractProjectCodesFromPO(processedData);
   
   if (processedData.items && processedData.items.length > 0) {
     processedData.items = fixPOItemPrices(processedData.items, debug);
@@ -201,6 +204,7 @@ const processExtractedPOData = (extractedData, debug = true) => {
         console.log(`  Item ${index + 1}:`, {
           clientItemCode: item.clientItemCode,
           productCode: item.productCode,
+          projectCode: item.projectCode, 
           productName: item.productName?.substring(0, 40)
         });
       });
@@ -211,7 +215,62 @@ const processExtractedPOData = (extractedData, debug = true) => {
   
   return processedData;
 };
-
+// ✅ ADD THIS FUNCTION RIGHT AFTER processExtractedPOData
+const extractProjectCodesFromPO = (extractedData) => {
+  // Look for project codes in various formats from PTP PO
+  const projectCodePatterns = [
+    /FS-S\d+/gi,        // FS-S3798, FS-S3845 (from PTP)
+    /BWS-S\d+/gi,       // BWS-S1046 
+    /[A-Z]{2,3}-[A-Z]\d+/gi, // General pattern XX-X1234
+    /Project\s*Code[:\s]+([A-Z0-9-]+)/gi,
+    /Job\s*No[:\s]+([A-Z0-9-]+)/gi
+  ];
+  
+  console.log('🏢 EXTRACTING PROJECT CODES from PO data');
+  
+  if (extractedData.items) {
+    extractedData.items = extractedData.items.map((item, index) => {
+      let projectCode = '';
+      
+      // Check if project code is already extracted
+      if (item.projectCode) {
+        projectCode = item.projectCode;
+        console.log(`  ✅ Item ${index + 1}: Found existing project code: ${projectCode}`);
+      } else {
+        // Try to extract from description, notes, or part number
+        const textToSearch = [
+          item.description || '',
+          item.notes || '',
+          item.partNumber || '',
+          item.productName || '',
+          item.clientItemCode || ''
+        ].join(' ');
+        
+        console.log(`  🔍 Item ${index + 1}: Searching in text: "${textToSearch.substring(0, 100)}..."`);
+        
+        for (const pattern of projectCodePatterns) {
+          const match = textToSearch.match(pattern);
+          if (match) {
+            projectCode = match[0];
+            console.log(`  ✅ Item ${index + 1}: Extracted project code: ${projectCode}`);
+            break;
+          }
+        }
+        
+        if (!projectCode) {
+          console.log(`  ⚠️ Item ${index + 1}: No project code found`);
+        }
+      }
+      
+      return {
+        ...item,
+        projectCode: projectCode || ''
+      };
+    });
+  }
+  
+  return extractedData;
+};
 
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
