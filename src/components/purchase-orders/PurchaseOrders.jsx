@@ -386,8 +386,8 @@ const PurchaseOrders = () => {
             // Items array - ensure it matches POModal's expected structure
             items: (result.data.items || []).map((item, index) => ({
               productName: item.productName || item.description || '',
-              productCode: item.productCode || item.partNumber || '', 
-              clientItemCode: item.clientItemCode || item.part_number || '',
+              productCode: item.partNumber || '', 
+              clientItemCode: item.productCode || '', 
               projectCode: item.projectCode || '',
               quantity: item.quantity || 0,
               unitPrice: item.unitPrice || 0,
