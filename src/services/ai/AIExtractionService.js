@@ -1770,6 +1770,8 @@ if (docType.type === 'bank_payment_slip') {
     item_code: item.item_code,
     client_code: item.client_code,
     client_item_code: item.client_item_code,
+      projectCode: item.projectCode, // ✅ ADD THIS
+  project_code: item.project_code, // ✅ ADD THIS  
     reference: item.reference,
     material_code: item.material_code,
     pn: item.pn,
@@ -1789,6 +1791,7 @@ if (docType.type === 'bank_payment_slip') {
   productCode: this.extractManufacturerCode(item),  // ✅ CHANGED: Extract from description
   clientItemCode: item.part_number || '',  // ✅ NEW: Client codes go here
   productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
+        projectCode: item.projectCode || item.project_code || '',
         quantity: this.parseQuantity(item.quantity),
         unit: item.uom || item.unit || 'PCS',
         unitPrice: this.parsePrice(item.unit_price),
@@ -1808,6 +1811,7 @@ if (docType.type === 'bank_payment_slip') {
       console.log(`✅ Mapped item ${index + 1}:`, {
   productCode: mappedItem.productCode,
   clientItemCode: mappedItem.clientItemCode,  // ✅ ADD THIS LINE
+        projectCode: mappedItem.projectCode,
   productName: mappedItem.productName.substring(0, 50) + '...',
         quantity: mappedItem.quantity,
         unitPrice: mappedItem.unitPrice,
