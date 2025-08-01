@@ -50,6 +50,17 @@ const fixPOItemPrices = (items, debug = true) => {
     console.log('Original items:', items);
   }
 
+  // ✅ ADD THIS DEBUG TO TRACK PROJECT CODES
+  console.log('🏢 DEBUG: Items entering fixPOItemPrices:');
+  items.forEach((item, i) => {
+    console.log(`  Item ${i + 1}: projectCode = "${item.projectCode || 'MISSING'}"`);
+  });
+
+  if (debug) {
+    console.log('🔧 FIXING PO ITEM PRICES...');
+    console.log('Original items:', items);
+  }
+
   return items.map((item, index) => {
     const originalItem = { ...item };
     
@@ -58,6 +69,7 @@ const fixPOItemPrices = (items, debug = true) => {
       console.log(`🔍 BEFORE processing item ${index + 1}:`, {
         clientItemCode: originalItem.clientItemCode,
         productCode: originalItem.productCode,
+        projectCode: originalItem.projectCode,
         productName: originalItem.productName?.substring(0, 30) + '...'
       });
     }
@@ -123,11 +135,22 @@ if (originalItem.productCode && !fixedItem.productCode) {
   fixedItem.productCode = originalItem.productCode;
 }
 
+// ✅ ADD THIS: Preserve project code
+if (originalItem.projectCode) {
+  fixedItem.projectCode = originalItem.projectCode;
+  if (debug) {
+    console.log(`🏢 Preserving projectCode for item ${index + 1}:`, originalItem.projectCode);
+  }
+} else if (debug) {
+  console.log(`⚠️ WARNING: No projectCode found in originalItem for item ${index + 1}`);
+}
+
 // ✅ CRITICAL DEBUG: Log AFTER processing
 if (debug) {
   console.log(`🔍 AFTER processing item ${index + 1}:`, {
     clientItemCode: fixedItem.clientItemCode,
     productCode: fixedItem.productCode,
+    projectCode: fixedItem.projectCode,
     productName: fixedItem.productName?.substring(0, 30) + '...'
   });
 }
