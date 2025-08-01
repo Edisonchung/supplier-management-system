@@ -2733,6 +2733,12 @@ validateClientItemCode(clientCode) {
 
     const result = await response.json();
     console.log('✅ Backend extraction successful:', result);
+
+    // ✅ ADD PROJECT CODE EXTRACTION HERE
+if (result.success && result.data) {
+  result.data = this.extractProjectCodesFromPO(result.data);
+  console.log('🏢 Project codes extracted and added to result');
+}
     
     // Return in the format expected by your system
     return {
