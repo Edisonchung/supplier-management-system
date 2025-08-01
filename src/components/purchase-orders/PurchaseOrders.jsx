@@ -43,6 +43,26 @@ import {
   UserPresence 
 } from '../common/LoadingFeedbackSystem';
 
+const extractPartNumberFromDescription = (description) => {
+  if (!description) return '';
+  
+  // Extract P/N codes from descriptions
+  const patterns = [
+    /P\/N\s+([A-Z0-9\-\.\/]{4,})/i,  // "P/N 3NA7124-6"
+    /\(([A-Z0-9\-\.\/]{4,})\)/i,     // "(6XV1830-3EH10)"
+  ];
+  
+  for (const pattern of patterns) {
+    const match = description.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return '';
+};
+
+
 // Simple date formatter
 const formatDate = (dateString) => {
   if (!dateString) return '-';
@@ -386,7 +406,7 @@ const PurchaseOrders = () => {
             // Items array - ensure it matches POModal's expected structure
             items: (result.data.items || []).map((item, index) => ({
               productName: item.productName || item.description || '',
-              productCode: item.partNumber || '', 
+              productCode: extractPartNumberFromDescription(item.productName || item.description || ''),
               clientItemCode: item.productCode || '', 
               projectCode: item.projectCode || '',
               quantity: item.quantity || 0,
