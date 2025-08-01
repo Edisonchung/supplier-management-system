@@ -255,6 +255,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [currentItem, setCurrentItem] = useState({
     productName: '',
     productCode: '',
+    projectCode: '',
     quantity: 1,
     unitPrice: 0,
     totalPrice: 0
@@ -536,6 +537,7 @@ const handleBulkProductCodeExtraction = () => {
       setCurrentItem({
         productName: '',
         productCode: '',
+        projectCode: '',
         quantity: 1,
         unitPrice: 0,
         totalPrice: 0
@@ -959,7 +961,7 @@ const handleBulkProductCodeExtraction = () => {
                   
                   {/* Add Item Form */}
                   <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                    <div className="grid grid-cols-5 gap-3 mb-3">
+                    <div className="grid grid-cols-6 gap-3 mb-3"> {/* Change from 5 to 6 */}
                       <div className="col-span-2 relative">
                         <label className="block text-xs font-medium text-gray-700 mb-1">
                           Product Search
@@ -1048,6 +1050,22 @@ const handleBulkProductCodeExtraction = () => {
                       </div>
                     </div>
 
+                    <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Project Code
+                        </label>
+                        <input
+                          type="text"
+                          value={currentItem.projectCode}
+                          onChange={(e) => setCurrentItem({
+                            ...currentItem,
+                            projectCode: e.target.value
+                          })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          placeholder="BWS-S1046"
+                        />
+                      </div>
+
                     <button
                       type="button"
                       onClick={addItem}
@@ -1071,7 +1089,7 @@ const handleBulkProductCodeExtraction = () => {
                   <div className="space-y-3">
                     {formData.items.map((item, index) => (
                       <div key={item.id || index} className="bg-white p-4 rounded-lg border border-gray-200">
-                        <div className="grid grid-cols-8 gap-3">
+                        <div className="grid grid-cols-9 gap-3"> {/* ✅ CHANGE FROM 8 TO 9 COLUMNS */}
   <div className="col-span-2">
     <label className="block text-xs font-medium text-gray-700 mb-1">
       Product Name *
@@ -1117,6 +1135,22 @@ const handleBulkProductCodeExtraction = () => {
       title="Client's own unique code for this product (e.g. 400RTG0091, 200SHA0162)"
     />
   </div>
+                         
+                          {/* ✅ NEW: Project Code Field */}
+  <div>
+    <label className="block text-xs font-medium text-gray-700 mb-1">
+      Project Code
+      <span className="text-green-600 ml-1" title="Project code for this item">🏢</span>
+    </label>
+    <input
+      type="text"
+      value={item.projectCode || ''}
+      onChange={(e) => handleItemChange(index, 'projectCode', e.target.value)}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm font-mono"
+      placeholder="e.g. BWS-S1046"
+      title="Project code for this specific item"
+    />
+  </div>
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Quantity
@@ -1160,7 +1194,7 @@ const handleBulkProductCodeExtraction = () => {
                         </div>
 
                         {/* ✅ ADD THE ENHANCED CODE PREVIEW HERE - RIGHT AFTER THE CLOSING </div> OF THE GRID */}
-{(item.productCode || item.clientItemCode) && (
+{(item.productCode || item.clientItemCode || item.projectCode) && (
   <div className="mt-2 text-xs bg-gray-50 px-2 py-1 rounded space-y-1">
     {item.productCode && (
       <div className="text-purple-600">
@@ -1178,6 +1212,12 @@ const handleBulkProductCodeExtraction = () => {
     )}
   </div>
 )}
+    {item.projectCode && (
+      <div className="text-green-600">
+        Project Code: <span className="font-mono font-medium">{item.projectCode}</span>
+        <span className="ml-2 text-green-500">🏢 Project reference</span>
+      </div>
+    )}
                         
                         <button
                           type="button"
@@ -1200,7 +1240,8 @@ const handleBulkProductCodeExtraction = () => {
         <div className="text-sm text-gray-600 mt-1">
           📋 {formData.items.length} items • 
           🔍 {formData.items.filter(item => item.productCode).length} with product codes • 
-          🏷️ {formData.items.filter(item => item.clientItemCode).length} with client codes
+          🏷️ {formData.items.filter(item => item.clientItemCode).length} with client codes • 
+          🏢 {formData.items.filter(item => item.projectCode).length} with project codes
         </div>
       </div>
       <span className="text-2xl font-bold text-blue-600">
