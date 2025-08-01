@@ -2192,6 +2192,70 @@ validateClientItemCode(clientCode) {
     return null;
   }
 
+
+  // ✅ ADD THIS NEW METHOD RIGHT HERE
+  /**
+   * Extract project codes from PO data
+   */
+  extractProjectCodesFromPO(extractedData) {
+    // Look for project codes in various formats from PTP PO and other formats
+    const projectCodePatterns = [
+      /FS-S\d+/gi,        // FS-S3798, FS-S3845 (from PTP)
+      /BWS-S\d+/gi,       // BWS-S1046 
+      /[A-Z]{2,3}-[A-Z]\d+/gi, // General pattern XX-X1234
+      /Project\s*Code[:\s]+([A-Z0-9-]+)/gi,
+      /Job\s*No[:\s]+([A-Z0-9-]+)/gi,
+      /Ref[:\s]+([A-Z0-9-]+)/gi
+    ];
+    
+    console.log('🏢 EXTRACTING PROJECT CODES from PO data');
+    
+    if (extractedData.items) {
+      extractedData.items = extractedData.items.map((item, index) => {
+        let projectCode = '';
+        
+        // Check if project code is already extracted
+        if (item.projectCode) {
+          projectCode = item.projectCode;
+          console.log(`  ✅ Item ${index + 1}: Found existing project code: ${projectCode}`);
+        } else {
+          // Try to extract from description, notes, or part number
+          const textToSearch = [
+            item.description || '',
+            item.notes || '',
+            item.partNumber || '',
+            item.productName || '',
+            item.clientItemCode || '',
+            item.part_number || '', // Backend might use snake_case
+            JSON.stringify(item) // Search entire item object
+          ].join(' ');
+          
+          console.log(`  🔍 Item ${index + 1}: Searching in text: "${textToSearch.substring(0, 100)}..."`);
+          
+          for (const pattern of projectCodePatterns) {
+            const matches = textToSearch.match(pattern);
+            if (matches) {
+              projectCode = matches[0];
+              console.log(`  ✅ Item ${index + 1}: Extracted project code: ${projectCode}`);
+              break;
+            }
+          }
+          
+          if (!projectCode) {
+            console.log(`  ⚠️ Item ${index + 1}: No project code found`);
+          }
+        }
+        
+        return {
+          ...item,
+          projectCode: projectCode || ''
+        };
+      });
+    }
+    
+    return extractedData;
+  }
+  
   /**
    * Generate cache key for file
    */
