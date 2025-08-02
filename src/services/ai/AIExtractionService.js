@@ -1907,7 +1907,7 @@ if (docType.type === 'bank_payment_slip') {
       productCode: this.extractManufacturerCode(item),
       
       // Product name cleaning (this was working)
-      productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
+      productName: this.cleanProductName(item.productName || item.description || item.product_name || item.name || ''),
       
       // Quantities and pricing (these were working)
       quantity: this.parseQuantity(item.quantity),
