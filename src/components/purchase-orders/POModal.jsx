@@ -562,7 +562,16 @@ useEffect(() => {
       console.log(`🔍 Auto-extracted product code: "${extractedCode}" from "${value}"`);
     }
   }
+   // ✅ CRITICAL: Ensure project code changes are preserved
+  if (field === 'projectCode') {
+    console.log(`✅ Project code for item ${index} changed from "${oldValue}" to "${value}"`);
+  }
   
+  // Auto-format project codes
+  if (field === 'projectCode' && value) {
+    value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    newItems[index][field] = value;
+  }
   // Apply price fixing immediately after any change (your existing logic)
   const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
   
@@ -1219,20 +1228,25 @@ const handleBulkProductCodeExtraction = () => {
   </div>
                          
                           {/* ✅ NEW: Project Code Field */}
-  <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      Project Code
-      <span className="text-green-600 ml-1" title="Project code for this item">🏢</span>
-    </label>
-    <input
-      type="text"
-      value={item.projectCode || ''}
-      onChange={(e) => handleItemChange(index, 'projectCode', e.target.value)}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm font-mono"
-      placeholder="e.g. BWS-S1046"
-      title="Project code for this specific item"
-    />
-  </div>
+ <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Project Code 
+    <span className="text-blue-500 text-xs ml-1">📋</span>
+  </label>
+  <input
+    type="text"
+    placeholder="e.g., BWS-S1046"
+    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+    value={item.projectCode || ''} // ✅ CRITICAL FIX: Make sure this binds to item.projectCode
+    onChange={(e) => handleItemChange(index, 'projectCode', e.target.value)}
+  />
+  {/* Debug indicator to show if project code exists */}
+  {item.projectCode && (
+    <div className="text-xs text-green-600 mt-1">
+      ✅ Project code: {item.projectCode}
+    </div>
+  )}
+</div>
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Quantity
