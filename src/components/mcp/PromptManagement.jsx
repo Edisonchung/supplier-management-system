@@ -1,5 +1,5 @@
-// src/components/prompts/PromptManagement.jsx
-import React, { useState, useEffect } from 'react';
+// src/components/mcp/PromptManagement.jsx - FIXED VERSION
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   FileEdit, 
   Plus, 
@@ -41,62 +41,13 @@ const PromptManagement = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [testInput, setTestInput] = useState('');
   const [testResult, setTestResult] = useState(null);
+  const [mounted, setMounted] = useState(true);
 
   // API base URL
   const API_BASE = import.meta.env.VITE_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
 
-  // Load prompts from API
-  const loadPrompts = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/api/ai/prompts`);
-      if (response.ok) {
-        const data = await response.json();
-        const promptList = data.prompts || [];
-        setPrompts(promptList);
-        setFilteredPrompts(promptList);
-        console.log('✅ Loaded prompts:', promptList.length);
-      } else {
-        throw new Error('API call failed');
-      }
-    } catch (error) {
-      console.warn('API unavailable, using mock data:', error);
-      const mockPrompts = getMockPrompts();
-      setPrompts(mockPrompts);
-      setFilteredPrompts(mockPrompts);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Filter prompts
-  useEffect(() => {
-    let filtered = prompts;
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(prompt => 
-        prompt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        prompt.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        prompt.category.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Category filter
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(prompt => prompt.category === selectedCategory);
-    }
-
-    setFilteredPrompts(filtered);
-  }, [prompts, searchTerm, selectedCategory]);
-
-  // Initialize
-  useEffect(() => {
-    loadPrompts();
-  }, []);
-
-  // Mock prompts data
-  const getMockPrompts = () => [
+  // Memoize mock prompts to prevent recreating on every render
+  const mockPrompts = useMemo(() => [
     {
       id: 'legacy_base_extraction',
       name: 'Base Legacy Template',
@@ -234,16 +185,86 @@ Provide actionable recommendations for supplier relationships.`,
       suppliers: ['ALL'],
       documentTypes: ['analysis_report']
     }
-  ];
+  ], []);
+
+  // Load prompts from API
+  const loadPrompts = useCallback(async () => {
+    if (!mounted) return;
+    
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/ai/prompts`);
+      if (response.ok) {
+        const data = await response.json();
+        const promptList = data.prompts || [];
+        if (mounted) {
+          setPrompts(promptList);
+          setFilteredPrompts(promptList);
+          console.log('✅ Loaded prompts:', promptList.length);
+        }
+      } else {
+        throw new Error('API call failed');
+      }
+    } catch (error) {
+      console.warn('API unavailable, using mock data:', error);
+      if (mounted) {
+        setPrompts(mockPrompts);
+        setFilteredPrompts(mockPrompts);
+        console.log('✅ Loaded prompts:', mockPrompts.length);
+      }
+    } finally {
+      if (mounted) {
+        setIsLoading(false);
+      }
+    }
+  }, [API_BASE, mockPrompts, mounted]);
+
+  // Filter prompts
+  useEffect(() => {
+    if (!mounted) return;
+    
+    let filtered = prompts;
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(prompt => 
+        prompt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prompt.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prompt.category.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Category filter
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(prompt => prompt.category === selectedCategory);
+    }
+
+    setFilteredPrompts(filtered);
+  }, [prompts, searchTerm, selectedCategory, mounted]);
+
+  // Initialize
+  useEffect(() => {
+    if (!mounted) return;
+    loadPrompts();
+  }, [loadPrompts, mounted]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setMounted(false);
+    };
+  }, []);
 
   // Get categories for filter
-  const getCategories = () => {
+  const getCategories = useCallback(() => {
     const categories = [...new Set(prompts.map(p => p.category))];
     return categories.sort();
-  };
+  }, [prompts]);
 
   // Save/Update prompt
-  const savePrompt = async (promptData) => {
+  const savePrompt = useCallback(async (promptData) => {
+    if (!mounted) return;
+    
     setIsLoading(true);
     try {
       const method = promptData.id ? 'PUT' : 'POST';
@@ -272,20 +293,25 @@ Provide actionable recommendations for supplier relationships.`,
     } catch (error) {
       console.warn('Save failed, updating local data:', error);
       // Update local state for demo
-      if (promptData.id) {
-        setPrompts(prev => prev.map(p => p.id === promptData.id ? promptData : p));
-      } else {
-        const newPrompt = { ...promptData, id: `custom_${Date.now()}` };
-        setPrompts(prev => [...prev, newPrompt]);
+      if (mounted) {
+        if (promptData.id) {
+          setPrompts(prev => prev.map(p => p.id === promptData.id ? promptData : p));
+        } else {
+          const newPrompt = { ...promptData, id: `custom_${Date.now()}` };
+          setPrompts(prev => [...prev, newPrompt]);
+        }
       }
     } finally {
-      setIsLoading(false);
+      if (mounted) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [API_BASE, user?.email, loadPrompts, mounted]);
 
   // Delete prompt
-  const deletePrompt = async (promptId) => {
+  const deletePrompt = useCallback(async (promptId) => {
     if (!confirm('Are you sure you want to delete this prompt?')) return;
+    if (!mounted) return;
     
     setIsLoading(true);
     try {
@@ -301,14 +327,20 @@ Provide actionable recommendations for supplier relationships.`,
       }
     } catch (error) {
       console.warn('Delete failed, updating local data:', error);
-      setPrompts(prev => prev.filter(p => p.id !== promptId));
+      if (mounted) {
+        setPrompts(prev => prev.filter(p => p.id !== promptId));
+      }
     } finally {
-      setIsLoading(false);
+      if (mounted) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [API_BASE, loadPrompts, mounted]);
 
   // Test prompt
-  const testPrompt = async (prompt, input) => {
+  const testPrompt = useCallback(async (prompt, input) => {
+    if (!mounted) return;
+    
     setIsLoading(true);
     try {
       const response = await fetch(`${API_BASE}/api/ai/prompts/${prompt.id}/test`, {
@@ -321,22 +353,33 @@ Provide actionable recommendations for supplier relationships.`,
 
       if (response.ok) {
         const result = await response.json();
-        setTestResult(result);
+        if (mounted) {
+          setTestResult(result);
+        }
       } else {
         throw new Error('Test failed');
       }
     } catch (error) {
       console.warn('Test failed, using mock result:', error);
-      setTestResult({
-        success: true,
-        confidence: Math.random() * 0.3 + 0.7,
-        result: { message: 'Mock test result - prompt would process this input successfully' },
-        processingTime: Math.random() * 2000 + 1000
-      });
+      if (mounted) {
+        setTestResult({
+          success: true,
+          confidence: Math.random() * 0.3 + 0.7,
+          result: { message: 'Mock test result - prompt would process this input successfully' },
+          processingTime: Math.random() * 2000 + 1000
+        });
+      }
     } finally {
-      setIsLoading(false);
+      if (mounted) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [API_BASE, mounted]);
+
+  // Prevent rendering if not mounted
+  if (!mounted) {
+    return null;
+  }
 
   // Render prompt card
   const renderPromptCard = (prompt) => (
@@ -432,11 +475,8 @@ Provide actionable recommendations for supplier relationships.`,
     </div>
   );
 
-  // Create/Edit Modal
-  const renderCreateModal = () => {
-    if (!isCreateModalOpen) return null;
-
-    const isEdit = selectedPrompt?.id;
+  // Create/Edit Modal Component
+  const CreateEditModal = () => {
     const [formData, setFormData] = useState(selectedPrompt || {
       name: '',
       description: '',
@@ -455,6 +495,10 @@ Provide actionable recommendations for supplier relationships.`,
       setIsCreateModalOpen(false);
       setSelectedPrompt(null);
     };
+
+    if (!isCreateModalOpen) return null;
+
+    const isEdit = selectedPrompt?.id;
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -597,7 +641,7 @@ Provide actionable recommendations for supplier relationships.`,
             <textarea
               value={formData.prompt}
               onChange={(e) => setFormData(prev => ({ ...prev, prompt: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
               rows="12"
               placeholder="Enter your prompt instructions here..."
             />
@@ -616,7 +660,7 @@ Provide actionable recommendations for supplier relationships.`,
             <button
               onClick={handleSave}
               disabled={isLoading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center disabled:opacity-50"
             >
               {isLoading ? (
                 <Loader className="w-4 h-4 mr-2 animate-spin" />
@@ -647,7 +691,7 @@ Provide actionable recommendations for supplier relationships.`,
             <button
               onClick={loadPrompts}
               disabled={isLoading}
-              className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
@@ -730,7 +774,7 @@ Provide actionable recommendations for supplier relationships.`,
         )}
 
         {/* Create/Edit Modal */}
-        {renderCreateModal()}
+        <CreateEditModal />
 
         {/* Summary Stats */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
