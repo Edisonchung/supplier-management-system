@@ -1467,6 +1467,20 @@ if (ptpDetection.isClientPO) {
       const docType = preDetectedType 
         ? { type: preDetectedType, confidence: confidence, preDetected: true }
         : DocumentDetector.detectDocumentType(rawData);
+      
+      // Check if backend extracted project codes - if so, it's definitely a client PO
+if (docType.type === 'unknown' && rawData.data && rawData.data.items) {
+  const hasProjectCodes = rawData.data.items.some(item => 
+    item.projectCode && (item.projectCode.startsWith('FS-S') || item.projectCode.startsWith('BWS-S'))
+  );
+  
+  if (hasProjectCodes) {
+    console.log('🔧 FORCE OVERRIDE: Document has PTP project codes, forcing client_purchase_order type');
+    docType.type = 'client_purchase_order';
+    docType.confidence = 0.9;
+    docType.preDetected = true;
+  }
+}
         
       console.log('Final detected document type:', docType.type, 'with confidence:', docType.confidence);
       
