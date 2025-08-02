@@ -239,6 +239,12 @@ export const usePermissions = () => {
                  ['admin'].includes(userRole)) ||
                  isGroupAdmin ||
                  hasCompanyPermission('manage_companies'),
+    
+    canManagePrompts: (PERMISSIONS?.canManagePrompts?.includes(userRole) ?? 
+                  ['admin'].includes(userRole)) ||
+                  user?.email === 'edisonchung@flowsolution.net' ||
+                  isGroupAdmin ||
+                  hasCompanyPermission('manage_companies'),
                  
     canViewMCP: (PERMISSIONS?.canViewMCP?.includes(userRole) ?? 
                 ['admin', 'manager', 'employee'].includes(userRole)) ||
