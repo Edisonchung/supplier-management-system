@@ -1,5 +1,5 @@
-// src/components/dual-system/DualSystemDashboard.jsx
-import React, { useState, useEffect } from 'react';
+// src/components/mcp/DualSystemDashboard.jsx - FIXED VERSION
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   GitBranch, 
   Zap, 
@@ -32,91 +32,13 @@ const DualSystemDashboard = () => {
   const [userPreference, setUserPreference] = useState('auto');
   const [isLoadingDualSystem, setIsLoadingDualSystem] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [mounted, setMounted] = useState(true);
 
   // API base URL from your environment
   const API_BASE = import.meta.env.VITE_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
 
-  // Load Dual System Status
-  const loadDualSystemStatus = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/prompt-system-status?userEmail=${user?.email || 'anonymous'}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setDualSystemStatus(data);
-        setUserPreference(data.current_system || 'auto');
-        console.log('✅ Dual system status loaded:', data.current_system);
-      } else {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    } catch (error) {
-      console.warn('Dual system status unavailable, using mock data:', error);
-      setDualSystemStatus(getMockDualSystemStatus());
-    }
-  };
-
-  // Load Dual System Analytics
-  const loadDualSystemAnalytics = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/prompt-system-analytics`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setDualSystemAnalytics(data.analytics);
-        console.log('✅ Dual system analytics loaded');
-      } else {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    } catch (error) {
-      console.warn('Analytics unavailable, using mock data:', error);
-      setDualSystemAnalytics(getMockAnalytics());
-    }
-  };
-
-  // Set Prompt System Preference
-  const setPromptSystemPreference = async (preferenceType) => {
-    setIsLoadingDualSystem(true);
-    try {
-      const response = await fetch(`${API_BASE}/api/set-prompt-system-preference`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userEmail: user?.email || 'demo@example.com',
-          promptSystem: preferenceType,
-          permanent: true
-        })
-      });
-
-      if (response.ok) {
-        setUserPreference(preferenceType);
-        await loadDualSystemStatus(); // Refresh status
-        console.log(`✅ Preference updated to: ${preferenceType}`);
-      } else {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    } catch (error) {
-      console.warn('Failed to set preference:', error);
-      // Still update UI for demo purposes
-      setUserPreference(preferenceType);
-    } finally {
-      setIsLoadingDualSystem(false);
-    }
-  };
-
-  // Mock data functions
-  const getMockDualSystemStatus = () => ({
+  // Memoize mock data to prevent recreating on every render
+  const mockDualSystemStatus = useMemo(() => ({
     success: true,
     current_system: userPreference || 'legacy',
     selected_prompt: {
@@ -141,9 +63,9 @@ const DualSystemDashboard = () => {
       ab_testing_enabled: true,
       fallback_enabled: true
     }
-  });
+  }), [user?.email, userPreference]);
 
-  const getMockAnalytics = () => ({
+  const mockAnalytics = useMemo(() => ({
     daily_extractions: {
       legacy_system: { count: 45, avg_accuracy: 92, avg_speed: 2.3 },
       mcp_system: { count: 12, avg_accuracy: 96, avg_speed: 2.1 }
@@ -162,24 +84,112 @@ const DualSystemDashboard = () => {
       { id: 'legacy_base_extraction', name: 'Base Legacy Template', usage: 45, accuracy: 92 },
       { id: 'legacy_ptp_specific', name: 'PTP Legacy Template', usage: 12, accuracy: 96 }
     ]
-  });
+  }), []);
 
-  // Initialize data
-  useEffect(() => {
-    loadDualSystemStatus();
-    loadDualSystemAnalytics();
+  // Load Dual System Status
+  const loadDualSystemStatus = useCallback(async () => {
+    if (!mounted) return;
     
-    // Set up periodic refresh
-    const interval = setInterval(() => {
-      loadDualSystemStatus();
-      loadDualSystemAnalytics();
-      setLastUpdated(new Date());
-    }, 30000); // Refresh every 30 seconds
-    
-    return () => clearInterval(interval);
-  }, []);
+    try {
+      const response = await fetch(`${API_BASE}/api/prompt-system-status?userEmail=${user?.email || 'anonymous'}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (mounted) {
+          setDualSystemStatus(data);
+          setUserPreference(data.current_system || 'auto');
+          console.log('✅ Dual system status loaded:', data.current_system);
+        }
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Dual system status unavailable, using mock data:', error);
+      if (mounted) {
+        setDualSystemStatus(mockDualSystemStatus);
+      }
+    }
+  }, [API_BASE, user?.email, mockDualSystemStatus, mounted]);
 
-  const refreshData = async () => {
+  // Load Dual System Analytics
+  const loadDualSystemAnalytics = useCallback(async () => {
+    if (!mounted) return;
+    
+    try {
+      const response = await fetch(`${API_BASE}/api/prompt-system-analytics`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (mounted) {
+          setDualSystemAnalytics(data.analytics);
+          console.log('✅ Dual system analytics loaded');
+        }
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Analytics unavailable, using mock data:', error);
+      if (mounted) {
+        setDualSystemAnalytics(mockAnalytics);
+      }
+    }
+  }, [API_BASE, mockAnalytics, mounted]);
+
+  // Set Prompt System Preference
+  const setPromptSystemPreference = useCallback(async (preferenceType) => {
+    if (!mounted) return;
+    
+    setIsLoadingDualSystem(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/set-prompt-system-preference`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userEmail: user?.email || 'demo@example.com',
+          promptSystem: preferenceType,
+          permanent: true
+        })
+      });
+
+      if (response.ok) {
+        if (mounted) {
+          setUserPreference(preferenceType);
+          console.log(`✅ Preference updated to: ${preferenceType}`);
+          // Don't automatically reload status to prevent loops
+        }
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('Failed to set preference:', error);
+      // Still update UI for demo purposes
+      if (mounted) {
+        setUserPreference(preferenceType);
+        console.log(`✅ Preference updated to: ${preferenceType}`);
+      }
+    } finally {
+      if (mounted) {
+        setIsLoadingDualSystem(false);
+      }
+    }
+  }, [API_BASE, user?.email, mounted]);
+
+  // Refresh data
+  const refreshData = useCallback(async () => {
+    if (!mounted) return;
+    
     setIsLoadingDualSystem(true);
     await Promise.all([
       loadDualSystemStatus(),
@@ -187,7 +197,40 @@ const DualSystemDashboard = () => {
     ]);
     setLastUpdated(new Date());
     setIsLoadingDualSystem(false);
-  };
+  }, [loadDualSystemStatus, loadDualSystemAnalytics, mounted]);
+
+  // Initialize data - only once
+  useEffect(() => {
+    if (!mounted) return;
+    
+    loadDualSystemStatus();
+    loadDualSystemAnalytics();
+    
+    // Set up periodic refresh with cleanup
+    const interval = setInterval(() => {
+      if (mounted) {
+        loadDualSystemStatus();
+        loadDualSystemAnalytics();
+        setLastUpdated(new Date());
+      }
+    }, 30000); // Refresh every 30 seconds
+    
+    return () => {
+      clearInterval(interval);
+    };
+  }, [loadDualSystemStatus, loadDualSystemAnalytics, mounted]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setMounted(false);
+    };
+  }, []);
+
+  // Prevent rendering if not mounted
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pt-16">
@@ -206,7 +249,7 @@ const DualSystemDashboard = () => {
               <button
                 onClick={refreshData}
                 disabled={isLoadingDualSystem}
-                className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingDualSystem ? 'animate-spin' : ''}`} />
                 Refresh
@@ -414,7 +457,7 @@ const DualSystemDashboard = () => {
               <button
                 onClick={() => setPromptSystemPreference('legacy')}
                 disabled={isLoadingDualSystem}
-                className={`p-4 border rounded-lg text-left transition-all ${
+                className={`p-4 border rounded-lg text-left transition-all disabled:opacity-50 ${
                   userPreference === 'legacy' 
                     ? 'border-blue-500 bg-blue-50' 
                     : 'border-gray-200 hover:border-gray-300'
@@ -434,7 +477,7 @@ const DualSystemDashboard = () => {
               <button
                 onClick={() => setPromptSystemPreference('auto')}
                 disabled={isLoadingDualSystem}
-                className={`p-4 border rounded-lg text-left transition-all ${
+                className={`p-4 border rounded-lg text-left transition-all disabled:opacity-50 ${
                   userPreference === 'auto' 
                     ? 'border-purple-500 bg-purple-50' 
                     : 'border-gray-200 hover:border-gray-300'
@@ -454,7 +497,7 @@ const DualSystemDashboard = () => {
               <button
                 onClick={() => setPromptSystemPreference('mcp')}
                 disabled={isLoadingDualSystem}
-                className={`p-4 border rounded-lg text-left transition-all ${
+                className={`p-4 border rounded-lg text-left transition-all disabled:opacity-50 ${
                   userPreference === 'mcp' 
                     ? 'border-green-500 bg-green-50' 
                     : 'border-gray-200 hover:border-gray-300'
