@@ -306,6 +306,17 @@ const extractProjectCodesFromPO = (extractedData) => {
   
   if (extractedData.items) {
     extractedData.items = extractedData.items.map((item, index) => {
+      // ✅ CRITICAL: Start with ALL original fields
+      let updatedItem = { ...item };
+      
+      // ✅ CRITICAL DEBUG: Log what we're starting with
+      console.log(`🔍 extractProjectCodesFromPO - Item ${index + 1} BEFORE:`, {
+        clientItemCode: item.clientItemCode,
+        productCode: item.productCode,
+        projectCode: item.projectCode,
+        productName: item.productName?.substring(0, 40)
+      });
+      
       let projectCode = '';
       
       // Check if project code is already extracted
@@ -314,36 +325,51 @@ const extractProjectCodesFromPO = (extractedData) => {
         console.log(`  ✅ Item ${index + 1}: Found existing project code: ${projectCode}`);
       } else {
         // Try to extract from description, notes, or part number
-        const textToSearch = [
+        const searchableText = [
           item.description || '',
-          item.notes || '',
-          item.partNumber || '',
           item.productName || '',
-          item.clientItemCode || ''
-        ].join(' ');
-        
-        console.log(`  🔍 Item ${index + 1}: Searching in text: "${textToSearch.substring(0, 100)}..."`);
-        
+          item.specifications || '',
+          item.notes || '',
+          item.remarks || '',
+          item.clientItemCode || '',
+          item.partNumber || '',
+          item.part_number || '',
+          item.productCode || '',
+          item.product_code || ''
+        ].filter(Boolean).join(' ');
+
+        console.log(`  📝 Searchable text for item ${index + 1}:`, searchableText.substring(0, 100));
+
+        // Try each pattern
         for (const pattern of projectCodePatterns) {
-          const match = textToSearch.match(pattern);
-          if (match) {
-            projectCode = match[0];
-            console.log(`  ✅ Item ${index + 1}: Extracted project code: ${projectCode}`);
+          const matches = searchableText.match(pattern);
+          if (matches && matches[0]) {
+            projectCode = matches[0].toUpperCase();
+            console.log(`  ✅ Found project code "${projectCode}" using pattern: ${pattern}`);
             break;
           }
         }
-        
-        if (!projectCode) {
-          console.log(`  ⚠️ Item ${index + 1}: No project code found`);
-        }
       }
       
-      return {
-        ...item,
-        projectCode: projectCode || ''
-      };
+      // ✅ Update only the projectCode, preserve everything else
+      if (projectCode) {
+        updatedItem.projectCode = projectCode;
+      }
+      
+      // ✅ CRITICAL DEBUG: Log what we're returning
+      console.log(`🔍 extractProjectCodesFromPO - Item ${index + 1} AFTER:`, {
+        clientItemCode: updatedItem.clientItemCode,
+        productCode: updatedItem.productCode,
+        projectCode: updatedItem.projectCode,
+        productName: updatedItem.productName?.substring(0, 40)
+      });
+      
+      return updatedItem;
     });
   }
+  
+  const foundCodes = extractedData.items?.filter(item => item.projectCode).length || 0;
+  console.log(`🏢 Project code extraction complete: ${foundCodes}/${extractedData.items?.length || 0} items have project codes`);
   
   return extractedData;
 };
