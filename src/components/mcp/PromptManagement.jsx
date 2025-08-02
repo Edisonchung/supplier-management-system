@@ -1,70 +1,116 @@
-//src/components/mcp/PromptManagement.jsx
+// src/components/prompts/PromptManagement.jsx
 import React, { useState, useEffect } from 'react';
 import { 
+  FileEdit, 
   Plus, 
+  Search, 
+  Filter, 
   Edit, 
   Trash2, 
+  Eye, 
   Copy, 
   Play, 
   Save, 
   X, 
+  CheckCircle, 
+  AlertCircle, 
+  Clock, 
+  Zap, 
+  Brain, 
   FileText, 
   Settings, 
-  TestTube,
-  CheckCircle,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Zap,
-  Brain,
-  Target,
-  Clock
+  BarChart3,
+  Loader,
+  RefreshCw,
+  Star,
+  TrendingUp,
+  Users,
+  Globe
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const PromptManagement = () => {
+  const { user } = useAuth();
   const [prompts, setPrompts] = useState([]);
+  const [filteredPrompts, setFilteredPrompts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedPrompt, setSelectedPrompt] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [testResults, setTestResults] = useState(null);
-  const [filterCategory, setFilterCategory] = useState('all');
-  const [filterSupplier, setFilterSupplier] = useState('all');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [testInput, setTestInput] = useState('');
+  const [testResult, setTestResult] = useState(null);
 
   // API base URL
   const API_BASE = import.meta.env.VITE_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
 
-  useEffect(() => {
-    loadPrompts();
-  }, []);
-
+  // Load prompts from API
   const loadPrompts = async () => {
+    setIsLoading(true);
     try {
       const response = await fetch(`${API_BASE}/api/ai/prompts`);
       if (response.ok) {
         const data = await response.json();
-        setPrompts(data.data || data.prompts || []);
+        const promptList = data.prompts || [];
+        setPrompts(promptList);
+        setFilteredPrompts(promptList);
+        console.log('✅ Loaded prompts:', promptList.length);
       } else {
-        // Fallback to mock prompts
-        setPrompts(getMockPrompts());
+        throw new Error('API call failed');
       }
     } catch (error) {
-      console.warn('Prompts API not available, using mock data:', error);
-      setPrompts(getMockPrompts());
+      console.warn('API unavailable, using mock data:', error);
+      const mockPrompts = getMockPrompts();
+      setPrompts(mockPrompts);
+      setFilteredPrompts(mockPrompts);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Filter prompts
+  useEffect(() => {
+    let filtered = prompts;
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(prompt => 
+        prompt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prompt.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prompt.category.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Category filter
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(prompt => prompt.category === selectedCategory);
+    }
+
+    setFilteredPrompts(filtered);
+  }, [prompts, searchTerm, selectedCategory]);
+
+  // Initialize
+  useEffect(() => {
+    loadPrompts();
+  }, []);
+
+  // Mock prompts data
   const getMockPrompts = () => [
     {
-      id: 'po_extraction_base',
-      name: 'Purchase Order - Base Extraction',
-      category: 'purchase_order',
-      version: '1.2.0',
+      id: 'legacy_base_extraction',
+      name: 'Base Legacy Template',
+      description: 'Generic document extraction template with proven reliability',
+      category: 'extraction',
+      version: '1.3.0',
       isActive: true,
-      suppliers: ['ALL'],
+      usage: 45,
+      accuracy: 92,
+      lastUsed: '2025-01-08T10:30:00Z',
+      createdBy: 'System',
       aiProvider: 'deepseek',
       temperature: 0.1,
       maxTokens: 2000,
-      description: 'Standard purchase order extraction with precise table parsing',
       prompt: `Extract purchase order information with PRECISE table column identification.
 
 CRITICAL TABLE PARSING RULES:
@@ -77,463 +123,507 @@ CRITICAL TABLE PARSING RULES:
    - Unit Price: Usually larger monetary values with decimals
    - Look for currency patterns: "100.00", "2,200.00"
 
-4. VALIDATION RULES:
-   - quantity × unitPrice should ≈ totalPrice
-   - If calculation mismatch > 10%, SWAP values and re-check
-
-RETURN STRUCTURED JSON:
-{
-  "purchase_order": {
-    "poNumber": "string",
-    "dateIssued": "string",
-    "supplier": { "name": "string", "address": "string" },
-    "items": [
-      {
-        "lineNumber": number,
-        "productCode": "string",
-        "productName": "string",
-        "quantity": number,
-        "unit": "string",
-        "unitPrice": number,
-        "totalPrice": number
-      }
-    ],
-    "totalAmount": number
-  }
-}`,
-      performance: { accuracy: 92, speed: 2.3, tokens: 1250, lastTested: '2025-01-07' },
-      createdAt: '2025-01-01',
-      lastModified: '2025-01-07'
+Return structured JSON with purchase order details.`,
+      suppliers: ['ALL'],
+      documentTypes: ['purchase_order', 'general']
     },
     {
-      id: 'ptp_supplier_specific',
-      name: 'PTP Supplier - Enhanced Extraction',
-      category: 'purchase_order',
-      version: '1.0.0',
+      id: 'mcp_advanced_extraction',
+      name: 'Advanced MCP Extraction',
+      description: 'Next-generation AI extraction with enhanced accuracy',
+      category: 'extraction',
+      version: '2.1.0',
       isActive: true,
-      suppliers: ['PTP', 'PT. PERINTIS TEKNOLOGI PERDANA'],
+      usage: 12,
+      accuracy: 96,
+      lastUsed: '2025-01-08T09:15:00Z',
+      createdBy: 'AI System',
       aiProvider: 'deepseek',
-      temperature: 0.1,
-      maxTokens: 2000,
-      description: 'Specialized prompt for PTP supplier with multi-line format handling',
-      prompt: `PTP Purchase Order - Table Structure Analysis Required
+      temperature: 0.05,
+      maxTokens: 2500,
+      prompt: `Enhanced document extraction using advanced AI reasoning.
 
-TABLE LAYOUT: Line | Part Number | Delivery Date | Quantity | UOM | Unit Price | TAX | Amount
+INTELLIGENT PARSING APPROACH:
+1. Context-aware field identification
+2. Multi-language support
+3. Fuzzy matching for variations
+4. Confidence scoring for each field
+5. Auto-correction of common errors
 
-CRITICAL PTP RULES:
-1. Quantity appears in column 4 (after Delivery Date)
-2. Unit Price appears in column 6 (after UOM) 
-3. Amount appears in column 8 (final column)
-4. Part numbers follow patterns: 200RTG*, 400CON*, 400SHA*, 400RTG*
-5. MULTI-LINE FORMAT: Product names often appear on the line BELOW part numbers
-
-SPECIAL PTP HANDLING:
-- Line 1: "400QCR1068    1.00   PCS   20,500.00"
-- Line 2: "THRUSTER" <- This is the actual product name
-- DO NOT extract UOM values (PCS, UNI, SET, EA) as product names
-
-RETURN ENHANCED JSON with PTP metadata:
-{
-  "purchase_order": {
-    "supplier": {
-      "name": "PT. PERINTIS TEKNOLOGI PERDANA",
-      "type": "PTP_TEMPLATE"
-    },
-    "items": [
-      {
-        "productName": "THRUSTER",
-        "productCode": "400QCR1068",
-        "quantity": 1,
-        "unitPrice": 20500,
-        "extractionNotes": "Multi-line format detected"
-      }
-    ]
-  },
-  "metadata": {
-    "supplier": "PTP",
-    "extractionMethod": "PTP_TEMPLATE",
-    "confidence": 0.95
-  }
-}`,
-      performance: { accuracy: 96, speed: 2.1, tokens: 980, lastTested: '2025-01-06' },
-      createdAt: '2024-12-15',
-      lastModified: '2025-01-06'
+Apply sophisticated analysis to extract maximum information with highest accuracy.`,
+      suppliers: ['ALL'],
+      documentTypes: ['purchase_order', 'proforma_invoice', 'quote']
     },
     {
-      id: 'pi_extraction_base',
-      name: 'Proforma Invoice - Base Extraction',
-      category: 'proforma_invoice',
+      id: 'ptp_specialized',
+      name: 'PTP Specialized Template',
+      description: 'Optimized for PT. PERINTIS TEKNOLOGI PERDANA documents',
+      category: 'supplier_specific',
       version: '1.1.0',
       isActive: true,
-      suppliers: ['ALL'],
+      usage: 8,
+      accuracy: 98,
+      lastUsed: '2025-01-08T08:45:00Z',
+      createdBy: 'Edison Chung',
       aiProvider: 'deepseek',
       temperature: 0.1,
-      maxTokens: 2000,
-      description: 'Standard proforma invoice extraction with enhanced accuracy',
-      prompt: `Extract proforma invoice information with enhanced accuracy.
+      maxTokens: 1800,
+      prompt: `Extract PTP-specific purchase order format.
 
-PROFORMA INVOICE PARSING RULES:
-1. Identify PI number, date, validity period
-2. Extract complete supplier and buyer information
-3. Parse itemized products with specifications
+PTP FORMAT RULES:
+1. Multi-line product format: Part number on first line, description on second line
+2. Never use UOM values (PCS, UNI, SET) as product names
+3. Look for THRUSTER, RUBBER HOSE type descriptions below part numbers
+4. Format: Line | Part Number | Quantity | UOM | Price
 
-RETURN STRUCTURED JSON:
-{
-  "proforma_invoice": {
-    "piNumber": "string",
-    "date": "string",
-    "supplier": { "name": "string", "address": "string" },
-    "items": [
-      {
-        "productCode": "string",
-        "productName": "string",
-        "quantity": number,
-        "unitPrice": number,
-        "totalPrice": number
-      }
-    ]
-  }
-}`,
-      performance: { accuracy: 88, speed: 2.1, tokens: 980, lastTested: '2025-01-05' },
-      createdAt: '2024-11-20',
-      lastModified: '2025-01-05'
+Extract with PTP-specific understanding.`,
+      suppliers: ['PTP', 'PERINTIS TEKNOLOGI PERDANA'],
+      documentTypes: ['purchase_order']
     },
     {
-      id: 'supplier_analysis_advanced',
-      name: 'Advanced Supplier Performance Analysis',
-      category: 'supplier_analysis',
-      version: '2.0.0',
+      id: 'chinese_supplier_pi',
+      name: 'Chinese Supplier PI Template',
+      description: 'Specialized for Chinese supplier proforma invoices',
+      category: 'supplier_specific',
+      version: '1.2.0',
       isActive: true,
-      suppliers: ['ALL'],
+      usage: 15,
+      accuracy: 94,
+      lastUsed: '2025-01-08T07:20:00Z',
+      createdBy: 'AI System',
+      aiProvider: 'deepseek',
+      temperature: 0.1,
+      maxTokens: 2200,
+      prompt: `Extract Chinese supplier proforma invoice information.
+
+CHINESE PI SPECIFIC RULES:
+1. Table format: Sr NO | ITEMS NAME | MODEL | BRAND | QUANTITY | UNIT PRICE | TOTAL PRICE
+2. Extract ALL items, not just first one
+3. Items format: BEARING 32222 SKF 100 $13.00 $1,300.00
+4. Currency is USD with $ symbol
+5. Look for SHIPPER and RECEIVER sections
+
+Handle Chinese supplier formatting conventions.`,
+      suppliers: ['Chinese Suppliers'],
+      documentTypes: ['proforma_invoice']
+    },
+    {
+      id: 'analytics_template',
+      name: 'Supplier Analytics Template',
+      description: 'AI template for supplier performance analysis',
+      category: 'analytics',
+      version: '1.0.0',
+      isActive: false,
+      usage: 3,
+      accuracy: 89,
+      lastUsed: '2025-01-07T16:30:00Z',
+      createdBy: 'Data Team',
       aiProvider: 'anthropic',
       temperature: 0.2,
       maxTokens: 3000,
-      description: 'Comprehensive supplier performance analysis with predictive insights',
-      prompt: `Analyze supplier performance data and provide comprehensive insights.
+      prompt: `Analyze supplier performance data and provide insights.
 
 ANALYSIS FRAMEWORK:
-1. Performance Metrics Analysis
-2. Risk Assessment
-3. Trend Identification
-4. Predictive Insights
-5. Actionable Recommendations
+1. On-time delivery metrics
+2. Quality assessment scores
+3. Price competitiveness analysis
+4. Communication effectiveness
+5. Risk factors identification
 
-RETURN DETAILED JSON:
-{
-  "supplier_analysis": {
-    "overall_score": number,
-    "performance_metrics": {
-      "delivery_performance": number,
-      "quality_score": number,
-      "cost_effectiveness": number,
-      "communication_rating": number
-    },
-    "risk_assessment": {
-      "overall_risk": "low|medium|high",
-      "risk_factors": ["factor1", "factor2"],
-      "mitigation_strategies": ["strategy1", "strategy2"]
-    },
-    "recommendations": [
-      {
-        "type": "improvement|cost_saving|risk_mitigation",
-        "description": "string",
-        "priority": "high|medium|low",
-        "estimated_impact": "string"
-      }
-    ]
-  }
-}`,
-      performance: { accuracy: 89, speed: 3.5, tokens: 2100, lastTested: '2025-01-08' },
-      createdAt: '2024-12-01',
-      lastModified: '2025-01-08'
+Provide actionable recommendations for supplier relationships.`,
+      suppliers: ['ALL'],
+      documentTypes: ['analysis_report']
     }
   ];
 
-  const savePrompt = async (promptData) => {
-    try {
-      const response = await fetch(`${API_BASE}/api/ai/prompts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(promptData)
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        await loadPrompts(); // Reload prompts
-        return result;
-      } else {
-        throw new Error('Failed to save prompt');
-      }
-    } catch (error) {
-      console.warn('Save prompt API not available:', error);
-      // Mock save - update local state
-      if (promptData.id) {
-        setPrompts(prev => prev.map(p => p.id === promptData.id ? { ...promptData, lastModified: new Date().toISOString() } : p));
-      } else {
-        const newPrompt = {
-          ...promptData,
-          id: `prompt_${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          lastModified: new Date().toISOString()
-        };
-        setPrompts(prev => [...prev, newPrompt]);
-      }
-      return { success: true };
-    }
+  // Get categories for filter
+  const getCategories = () => {
+    const categories = [...new Set(prompts.map(p => p.category))];
+    return categories.sort();
   };
 
-  const testPrompt = async (prompt, testData) => {
+  // Save/Update prompt
+  const savePrompt = async (promptData) => {
+    setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/ai/prompts/test`, {
-        method: 'POST',
+      const method = promptData.id ? 'PUT' : 'POST';
+      const url = promptData.id 
+        ? `${API_BASE}/api/ai/prompts/${promptData.id}`
+        : `${API_BASE}/api/ai/prompts`;
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          promptId: prompt.id,
-          testData: testData || 'Sample test data for prompt validation'
+          ...promptData,
+          createdBy: user?.email || 'Unknown User',
+          lastModified: new Date().toISOString()
         })
       });
 
       if (response.ok) {
+        await loadPrompts(); // Reload prompts
+        console.log('✅ Prompt saved successfully');
+      } else {
+        throw new Error('Save failed');
+      }
+    } catch (error) {
+      console.warn('Save failed, updating local data:', error);
+      // Update local state for demo
+      if (promptData.id) {
+        setPrompts(prev => prev.map(p => p.id === promptData.id ? promptData : p));
+      } else {
+        const newPrompt = { ...promptData, id: `custom_${Date.now()}` };
+        setPrompts(prev => [...prev, newPrompt]);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Delete prompt
+  const deletePrompt = async (promptId) => {
+    if (!confirm('Are you sure you want to delete this prompt?')) return;
+    
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/ai/prompts/${promptId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        await loadPrompts();
+        console.log('✅ Prompt deleted successfully');
+      } else {
+        throw new Error('Delete failed');
+      }
+    } catch (error) {
+      console.warn('Delete failed, updating local data:', error);
+      setPrompts(prev => prev.filter(p => p.id !== promptId));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Test prompt
+  const testPrompt = async (prompt, input) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/ai/prompts/${prompt.id}/test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ testData: input })
+      });
+
+      if (response.ok) {
         const result = await response.json();
-        setTestResults(result);
-        return result;
+        setTestResult(result);
       } else {
         throw new Error('Test failed');
       }
     } catch (error) {
-      console.warn('Test prompt API not available:', error);
-      // Mock test result
-      const mockResult = {
+      console.warn('Test failed, using mock result:', error);
+      setTestResult({
         success: true,
-        promptId: prompt.id,
-        accuracy: Math.random() * 0.2 + 0.8, // 80-100%
-        responseTime: Math.random() * 2000 + 1000, // 1-3 seconds
-        tokens: Math.floor(prompt.prompt.length * 1.2),
-        confidence: Math.random() * 0.3 + 0.7, // 70-100%
-        timestamp: new Date().toISOString()
-      };
-      setTestResults(mockResult);
-      return mockResult;
+        confidence: Math.random() * 0.3 + 0.7,
+        result: { message: 'Mock test result - prompt would process this input successfully' },
+        processingTime: Math.random() * 2000 + 1000
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const duplicatePrompt = (prompt) => {
-    const duplicated = {
-      ...prompt,
-      id: `${prompt.id}_copy_${Date.now()}`,
-      name: `${prompt.name} (Copy)`,
-      version: '1.0.0',
-      isActive: false,
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString()
-    };
-    setSelectedPrompt(duplicated);
-    setIsEditing(true);
-  };
-
-  const deletePrompt = async (promptId) => {
-    if (confirm('Are you sure you want to delete this prompt?')) {
-      try {
-        const response = await fetch(`${API_BASE}/api/ai/prompts/${promptId}`, {
-          method: 'DELETE'
-        });
+  // Render prompt card
+  const renderPromptCard = (prompt) => (
+    <div key={prompt.id} className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <div className="flex items-center mb-2">
+            <h3 className="text-lg font-semibold text-gray-900">{prompt.name}</h3>
+            {prompt.isActive && (
+              <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">
+                Active
+              </span>
+            )}
+            {prompt.accuracy >= 95 && (
+              <Star className="w-4 h-4 text-yellow-500 ml-2" />
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mb-3">{prompt.description}</p>
+          
+          <div className="flex items-center space-x-4 text-xs text-gray-500">
+            <span className="flex items-center">
+              <BarChart3 className="w-3 h-3 mr-1" />
+              {prompt.accuracy}% accuracy
+            </span>
+            <span className="flex items-center">
+              <Users className="w-3 h-3 mr-1" />
+              {prompt.usage} uses
+            </span>
+            <span className="flex items-center">
+              <Clock className="w-3 h-3 mr-1" />
+              v{prompt.version}
+            </span>
+          </div>
+        </div>
         
-        if (response.ok) {
-          await loadPrompts();
-        } else {
-          throw new Error('Delete failed');
-        }
-      } catch (error) {
-        console.warn('Delete prompt API not available:', error);
-        // Mock delete
-        setPrompts(prev => prev.filter(p => p.id !== promptId));
-      }
-    }
-  };
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setSelectedPrompt(prompt)}
+            className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
+            title="View Details"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
+              setSelectedPrompt(prompt);
+              setIsTestModalOpen(true);
+            }}
+            className="p-2 text-gray-500 hover:text-green-600 transition-colors"
+            title="Test Prompt"
+          >
+            <Play className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
+              setSelectedPrompt({ ...prompt });
+              setIsCreateModalOpen(true);
+            }}
+            className="p-2 text-gray-500 hover:text-orange-600 transition-colors"
+            title="Edit Prompt"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => deletePrompt(prompt.id)}
+            className="p-2 text-gray-500 hover:text-red-600 transition-colors"
+            title="Delete Prompt"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+            prompt.category === 'extraction' ? 'bg-blue-100 text-blue-700' :
+            prompt.category === 'supplier_specific' ? 'bg-purple-100 text-purple-700' :
+            prompt.category === 'analytics' ? 'bg-green-100 text-green-700' :
+            'bg-gray-100 text-gray-700'
+          }`}>
+            {prompt.category.replace('_', ' ')}
+          </span>
+          <span className="text-xs text-gray-500">
+            by {prompt.createdBy}
+          </span>
+        </div>
+        
+        <div className="text-xs text-gray-500">
+          {new Date(prompt.lastUsed).toLocaleDateString()}
+        </div>
+      </div>
+    </div>
+  );
 
-  const filteredPrompts = prompts.filter(prompt => {
-    const categoryMatch = filterCategory === 'all' || prompt.category === filterCategory;
-    const supplierMatch = filterSupplier === 'all' || 
-                         prompt.suppliers.includes('ALL') || 
-                         prompt.suppliers.includes(filterSupplier);
-    return categoryMatch && supplierMatch;
-  });
+  // Create/Edit Modal
+  const renderCreateModal = () => {
+    if (!isCreateModalOpen) return null;
 
-  const PromptForm = ({ prompt, onSave, onCancel }) => {
-    const [formData, setFormData] = useState(
-      prompt || {
-        name: '',
-        category: 'purchase_order',
-        suppliers: ['ALL'],
-        aiProvider: 'deepseek',
-        temperature: 0.1,
-        maxTokens: 2000,
-        description: '',
-        prompt: '',
-        isActive: true
-      }
-    );
+    const isEdit = selectedPrompt?.id;
+    const [formData, setFormData] = useState(selectedPrompt || {
+      name: '',
+      description: '',
+      category: 'extraction',
+      aiProvider: 'deepseek',
+      temperature: 0.1,
+      maxTokens: 2000,
+      prompt: '',
+      suppliers: ['ALL'],
+      documentTypes: ['purchase_order'],
+      isActive: true
+    });
 
     const handleSave = async () => {
       await savePrompt(formData);
-      onSave();
+      setIsCreateModalOpen(false);
+      setSelectedPrompt(null);
     };
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-semibold">
-              {prompt ? 'Edit Prompt' : 'Create New Prompt'}
+              {isEdit ? 'Edit Prompt' : 'Create New Prompt'}
             </h3>
-            <button onClick={onCancel} className="text-gray-500 hover:text-gray-700">
+            <button
+              onClick={() => {
+                setIsCreateModalOpen(false);
+                setSelectedPrompt(null);
+              }}
+              className="text-gray-500 hover:text-gray-700"
+            >
               <X className="w-6 h-6" />
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left Column - Metadata */}
+            {/* Basic Info */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Prompt Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name
+                </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="e.g., PO Extraction - Advanced"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter prompt name"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  rows="3"
+                  placeholder="Describe what this prompt does"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category
+                </label>
                 <select
                   value={formData.category}
                   onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="purchase_order">Purchase Order</option>
-                  <option value="proforma_invoice">Proforma Invoice</option>
-                  <option value="supplier_analysis">Supplier Analysis</option>
-                  <option value="document_classification">Document Classification</option>
+                  <option value="extraction">Extraction</option>
+                  <option value="supplier_specific">Supplier Specific</option>
+                  <option value="analytics">Analytics</option>
+                  <option value="classification">Classification</option>
                   <option value="general">General</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">AI Provider</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  AI Provider
+                </label>
                 <select
                   value={formData.aiProvider}
                   onChange={(e) => setFormData(prev => ({ ...prev, aiProvider: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="deepseek">DeepSeek (Fast & Cost-effective)</option>
-                  <option value="openai">OpenAI (Balanced)</option>
-                  <option value="anthropic">Anthropic (Advanced Reasoning)</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="google">Google AI</option>
                 </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Temperature</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="2"
-                    value={formData.temperature}
-                    onChange={(e) => setFormData(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Max Tokens</label>
-                  <input
-                    type="number"
-                    value={formData.maxTokens}
-                    onChange={(e) => setFormData(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Suppliers</label>
-                <input
-                  type="text"
-                  value={formData.suppliers.join(', ')}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    suppliers: e.target.value.split(',').map(s => s.trim()) 
-                  }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="ALL, PTP, Supplier Name"
-                />
-                <p className="text-xs text-gray-500 mt-1">Comma-separated. Use "ALL" for universal prompt.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                  rows="3"
-                  placeholder="Brief description of this prompt's purpose..."
-                />
-              </div>
-
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={formData.isActive}
-                  onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
-                  className="mr-2"
-                />
-                <label className="text-sm">Active (use this prompt in production)</label>
               </div>
             </div>
 
-            {/* Right Column - Prompt Content */}
-            <div>
-              <label className="block text-sm font-medium mb-1">Prompt Content</label>
-              <textarea
-                value={formData.prompt}
-                onChange={(e) => setFormData(prev => ({ ...prev, prompt: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 font-mono text-sm"
-                rows="20"
-                placeholder="Enter your AI prompt here..."
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {formData.prompt.length} characters (~{Math.ceil(formData.prompt.length / 4)} tokens)
-              </p>
+            {/* Advanced Settings */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Temperature ({formData.temperature})
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={formData.temperature}
+                  onChange={(e) => setFormData(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Focused</span>
+                  <span>Creative</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max Tokens
+                </label>
+                <input
+                  type="number"
+                  value={formData.maxTokens}
+                  onChange={(e) => setFormData(prev => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                  min="100"
+                  max="4000"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.isActive}
+                    onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Active</span>
+                </label>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6 pt-6 border-t">
+          {/* Prompt Content */}
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Prompt Content
+            </label>
+            <textarea
+              value={formData.prompt}
+              onChange={(e) => setFormData(prev => ({ ...prev, prompt: e.target.value }))}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+              rows="12"
+              placeholder="Enter your prompt instructions here..."
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
             <button
-              onClick={() => testPrompt(formData)}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center"
-            >
-              <TestTube className="w-4 h-4 mr-2" />
-              Test Prompt
-            </button>
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              onClick={() => {
+                setIsCreateModalOpen(false);
+                setSelectedPrompt(null);
+              }}
+              className="px-4 py-2 text-gray-600 border rounded-lg hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
+              disabled={isLoading}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
             >
-              <Save className="w-4 h-4 mr-2" />
-              Save Prompt
+              {isLoading ? (
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
+              {isEdit ? 'Update' : 'Create'} Prompt
             </button>
           </div>
         </div>
@@ -542,213 +632,155 @@ RETURN DETAILED JSON:
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">AI Prompt Management</h2>
-          <p className="text-gray-600">Create and manage AI prompts for different tools and suppliers</p>
-        </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Prompt
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex gap-4 items-center bg-white p-4 rounded-lg border">
-        <div>
-          <label className="block text-sm font-medium mb-1">Category</label>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="border rounded px-3 py-1"
-          >
-            <option value="all">All Categories</option>
-            <option value="purchase_order">Purchase Orders</option>
-            <option value="proforma_invoice">Proforma Invoices</option>
-            <option value="supplier_analysis">Supplier Analysis</option>
-            <option value="document_classification">Document Classification</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Supplier</label>
-          <select
-            value={filterSupplier}
-            onChange={(e) => setFilterSupplier(e.target.value)}
-            className="border rounded px-3 py-1"
-          >
-            <option value="all">All Suppliers</option>
-            <option value="ALL">Universal (ALL)</option>
-            <option value="PTP">PTP</option>
-            <option value="PT. PERINTIS TEKNOLOGI PERDANA">PT. PERINTIS TEKNOLOGI PERDANA</option>
-          </select>
-        </div>
-        <div className="ml-auto text-sm text-gray-500">
-          {filteredPrompts.length} of {prompts.length} prompts
-        </div>
-      </div>
-
-      {/* Prompts Table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left p-4 font-medium">Name</th>
-                <th className="text-left p-4 font-medium">Category</th>
-                <th className="text-left p-4 font-medium">Suppliers</th>
-                <th className="text-left p-4 font-medium">Provider</th>
-                <th className="text-left p-4 font-medium">Performance</th>
-                <th className="text-left p-4 font-medium">Status</th>
-                <th className="text-left p-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPrompts.map((prompt) => (
-                <tr key={prompt.id} className="border-b hover:bg-gray-50">
-                  <td className="p-4">
-                    <div>
-                      <div className="font-medium">{prompt.name}</div>
-                      <div className="text-sm text-gray-500">v{prompt.version}</div>
-                      {prompt.description && (
-                        <div className="text-xs text-gray-500 mt-1">{prompt.description}</div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">
-                      {prompt.category.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex flex-wrap gap-1">
-                      {prompt.suppliers.slice(0, 2).map((supplier, idx) => (
-                        <span key={idx} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
-                          {supplier}
-                        </span>
-                      ))}
-                      {prompt.suppliers.length > 2 && (
-                        <span className="text-xs text-gray-500">+{prompt.suppliers.length - 2}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="text-sm">
-                      <div className="font-medium">{prompt.aiProvider}</div>
-                      <div className="text-gray-500">T:{prompt.temperature} | {prompt.maxTokens}t</div>
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    {prompt.performance && (
-                      <div className="text-sm">
-                        <div>Accuracy: {prompt.performance.accuracy}%</div>
-                        <div className="text-gray-500">Speed: {prompt.performance.speed}s</div>
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      prompt.isActive 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {prompt.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {setSelectedPrompt(prompt); setIsEditing(true);}}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="Edit"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => duplicatePrompt(prompt)}
-                        className="text-green-600 hover:text-green-800"
-                        title="Duplicate"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => testPrompt(prompt)}
-                        className="text-purple-600 hover:text-purple-800"
-                        title="Test"
-                      >
-                        <Play className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => deletePrompt(prompt.id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Test Results */}
-      {testResults && (
-        <div className="bg-white p-6 rounded-lg border">
-          <h3 className="text-lg font-semibold mb-4 flex items-center">
-            <TestTube className="w-5 h-5 mr-2" />
-            Test Results
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div className="min-h-screen bg-gray-50 pt-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center">
+            <FileEdit className="w-8 h-8 text-blue-600 mr-3" />
             <div>
-              <div className="text-sm text-gray-600">Accuracy</div>
-              <div className="text-xl font-semibold text-green-600">
-                {(testResults.accuracy * 100).toFixed(1)}%
+              <h1 className="text-3xl font-bold">Prompt Management</h1>
+              <p className="text-gray-600">Create and manage AI prompts for document extraction</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={loadPrompts}
+              disabled={isLoading}
+              className="flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <button
+              onClick={() => {
+                setSelectedPrompt(null);
+                setIsCreateModalOpen(true);
+              }}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create Prompt
+            </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="w-5 h-5 absolute left-3 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search prompts..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                />
               </div>
             </div>
-            <div>
-              <div className="text-sm text-gray-600">Response Time</div>
-              <div className="text-xl font-semibold text-blue-600">
-                {(testResults.responseTime / 1000).toFixed(1)}s
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600">Tokens Used</div>
-              <div className="text-xl font-semibold text-purple-600">
-                {testResults.tokens}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600">Confidence</div>
-              <div className="text-xl font-semibold text-orange-600">
-                {(testResults.confidence * 100).toFixed(1)}%
-              </div>
+            <div className="md:w-48">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">All Categories</option>
+                {getCategories().map(category => (
+                  <option key={category} value={category}>
+                    {category.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Modals */}
-      {showCreateModal && (
-        <PromptForm
-          onSave={() => setShowCreateModal(false)}
-          onCancel={() => setShowCreateModal(false)}
-        />
-      )}
+        {/* Prompts Grid */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader className="w-8 h-8 animate-spin text-blue-600 mr-3" />
+            <span className="text-gray-600">Loading prompts...</span>
+          </div>
+        ) : filteredPrompts.length === 0 ? (
+          <div className="bg-white p-12 rounded-lg shadow-sm border text-center">
+            <FileEdit className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No prompts found</h3>
+            <p className="text-gray-600 mb-4">
+              {searchTerm || selectedCategory !== 'all' 
+                ? 'Try adjusting your search or filter criteria.'
+                : 'Get started by creating your first prompt template.'}
+            </p>
+            <button
+              onClick={() => {
+                setSelectedPrompt(null);
+                setIsCreateModalOpen(true);
+              }}
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create First Prompt
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredPrompts.map(renderPromptCard)}
+          </div>
+        )}
 
-      {isEditing && selectedPrompt && (
-        <PromptForm
-          prompt={selectedPrompt}
-          onSave={() => {setIsEditing(false); setSelectedPrompt(null);}}
-          onCancel={() => {setIsEditing(false); setSelectedPrompt(null);}}
-        />
-      )}
+        {/* Create/Edit Modal */}
+        {renderCreateModal()}
+
+        {/* Summary Stats */}
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Prompts</p>
+                <p className="text-2xl font-bold text-blue-600">{prompts.length}</p>
+              </div>
+              <FileText className="w-8 h-8 text-blue-600" />
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Active Prompts</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {prompts.filter(p => p.isActive).length}
+                </p>
+              </div>
+              <CheckCircle className="w-8 h-8 text-green-600" />
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Avg Accuracy</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {prompts.length > 0 ? Math.round(prompts.reduce((sum, p) => sum + p.accuracy, 0) / prompts.length) : 0}%
+                </p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-purple-600" />
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Usage</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {prompts.reduce((sum, p) => sum + p.usage, 0)}
+                </p>
+              </div>
+              <BarChart3 className="w-8 h-8 text-orange-600" />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
