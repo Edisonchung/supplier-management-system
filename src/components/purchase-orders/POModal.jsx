@@ -448,19 +448,29 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   // ✅ ENHANCED: useEffect with document field preservation
 useEffect(() => {
   if (editingPO) {
+    // ✅ CRITICAL DEBUG: Check both arrays
     console.log('🎯 POModal: Setting form data from editing PO:', editingPO);
     
-    // ✅ CRITICAL DEBUG: Check editingPO items structure
     if (editingPO.items && editingPO.items.length > 0) {
-      console.log('🔍 EDITING PO DEBUG: Items check:');
+      console.log('🔍 EDITING PO DEBUG: editingPO.items check:');
       editingPO.items.forEach((item, i) => {
-        // ✅ FORCE DETAILED OUTPUT
         console.log(`  EditingPO Item ${i + 1} DETAILS:`);
         console.log(`    clientItemCode: "${item.clientItemCode}"`);
         console.log(`    productCode: "${item.productCode}"`);
-        console.log(`    productName: "${item.productName?.substring(0, 40)}"`);
+        console.log(`    productName: "${item.productName}"`);
         console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
         console.log(`    ALL KEYS:`, Object.keys(item));
+      });
+    }
+    
+    if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
+      console.log('🔍 EDITING PO DEBUG: extractedData.items check:');
+      editingPO.extractedData.items.forEach((item, i) => {
+        console.log(`  ExtractedData Item ${i + 1} DETAILS:`);
+        console.log(`    clientItemCode: "${item.clientItemCode}"`);
+        console.log(`    productCode: "${item.productCode}"`);
+        console.log(`    productName: "${item.productName}"`);
+        console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
       });
     }
     
@@ -476,21 +486,37 @@ useEffect(() => {
     
     console.log('🎯 POModal: Document storage fields set:', documentFields);
     
+    // ✅ CRITICAL FIX: Use extractedData.items if it has clientItemCode, otherwise use editingPO.items
+    let itemsToUse = editingPO.items;
+    
+    if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
+      // Check if extractedData.items has clientItemCode that editingPO.items is missing
+      const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
+      const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
+      
+      if (extractedHasClientCode && !editingHasClientCode) {
+        console.log('🚨 CRITICAL FIX: Using extractedData.items because it has clientItemCode');
+        itemsToUse = editingPO.extractedData.items;
+      }
+    }
+    
+    console.log('🔧 Items array selected:', itemsToUse.length, 'items');
+    console.log('🔧 First item clientItemCode:', itemsToUse[0]?.clientItemCode);
+    
     setFormData({
       ...editingPO,
-      ...documentFields
+      ...documentFields,
+      items: itemsToUse  // ✅ Use the correct items array
     });
     
     // ✅ CRITICAL DEBUG: Check formData after setting
-    if (editingPO.items && editingPO.items.length > 0) {
-      console.log('🔍 EDITING PO DEBUG: FormData items after setting:');
-      editingPO.items.forEach((item, i) => {
-        console.log(`  FormData Item ${i + 1} DETAILS:`);
-        console.log(`    clientItemCode: "${item.clientItemCode}"`);
-        console.log(`    productCode: "${item.productCode}"`);
-        console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
-      });
-    }
+    console.log('🔍 EDITING PO DEBUG: FormData items after setting:');
+    itemsToUse.forEach((item, i) => {
+      console.log(`  FormData Item ${i + 1} DETAILS:`);
+      console.log(`    clientItemCode: "${item.clientItemCode}"`);
+      console.log(`    productCode: "${item.productCode}"`);
+      console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
+    });
     
   } else {
     setFormData(prev => ({
