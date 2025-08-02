@@ -223,6 +223,37 @@ export const usePermissions = () => {
     canManageSettings: (PERMISSIONS?.canManageSettings?.includes(userRole) ?? isAdmin) ||
                        isGroupAdmin ||
                        hasCompanyPermission('manage_companies')
+
+    // AI & MCP Tool permissions - NEW SECTION
+    canViewAI: (PERMISSIONS?.canViewAI?.includes(userRole) ?? 
+               ['admin', 'manager', 'employee'].includes(userRole)) ||
+               isGroupAdmin ||
+               hasCompanyPermission('view_all'),
+               
+    canExecuteAI: (PERMISSIONS?.canExecuteAI?.includes(userRole) ?? 
+                  ['admin', 'manager', 'employee'].includes(userRole)) ||
+                  isGroupAdmin ||
+                  hasCompanyPermission('edit_all'),
+                  
+    canManageAI: (PERMISSIONS?.canManageAI?.includes(userRole) ?? 
+                 ['admin'].includes(userRole)) ||
+                 isGroupAdmin ||
+                 hasCompanyPermission('manage_companies'),
+                 
+    canViewMCP: (PERMISSIONS?.canViewMCP?.includes(userRole) ?? 
+                ['admin', 'manager', 'employee'].includes(userRole)) ||
+                isGroupAdmin ||
+                hasCompanyPermission('view_all'),
+                
+    canExecuteMCP: (PERMISSIONS?.canExecuteMCP?.includes(userRole) ?? 
+                   ['admin', 'manager', 'employee'].includes(userRole)) ||
+                   isGroupAdmin ||
+                   hasCompanyPermission('edit_all'),
+                   
+    canManageMCP: (PERMISSIONS?.canManageMCP?.includes(userRole) ?? 
+                  ['admin'].includes(userRole)) ||
+                  isGroupAdmin ||
+                  hasCompanyPermission('manage_companies')
   };
 
   // Multi-company specific permissions
