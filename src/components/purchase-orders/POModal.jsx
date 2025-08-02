@@ -214,7 +214,7 @@ const processExtractedPOData = (extractedData, debug = true) => {
     console.log('🚀 PROCESSING EXTRACTED PO DATA');
     console.log('Original extracted data:', extractedData);
     
-    // ✅ ENHANCED DEBUG
+    // ✅ CRITICAL DEBUG: Check clientItemCode at the START
     if (extractedData.items && extractedData.items.length > 0) {
       console.log('🔍 BEFORE processing - Items details:');
       extractedData.items.forEach((item, index) => {
@@ -228,9 +228,34 @@ const processExtractedPOData = (extractedData, debug = true) => {
   }
 
   let processedData = { ...extractedData };
+  
+  // ✅ CRITICAL DEBUG: Check AFTER copying extractedData
+  if (debug && processedData.items && processedData.items.length > 0) {
+    console.log('🔍 AFTER copying extractedData - Items details:');
+    processedData.items.forEach((item, index) => {
+      console.log(`  Item ${index + 1}:`, {
+        clientItemCode: item.clientItemCode,
+        productCode: item.productCode,
+        productName: item.productName?.substring(0, 40)
+      });
+    });
+  }
 
-    // ✅ NEW: Extract project codes from PO data
+  // ✅ NEW: Extract project codes from PO data
   processedData = extractProjectCodesFromPO(processedData);
+  
+  // ✅ CRITICAL DEBUG: Check AFTER extractProjectCodesFromPO
+  if (debug && processedData.items && processedData.items.length > 0) {
+    console.log('🔍 AFTER extractProjectCodesFromPO - Items details:');
+    processedData.items.forEach((item, index) => {
+      console.log(`  Item ${index + 1}:`, {
+        clientItemCode: item.clientItemCode,
+        productCode: item.productCode,
+        projectCode: item.projectCode,
+        productName: item.productName?.substring(0, 40)
+      });
+    });
+  }
   
   if (processedData.items && processedData.items.length > 0) {
     processedData.items = fixPOItemPrices(processedData.items, debug);
@@ -250,6 +275,19 @@ const processExtractedPOData = (extractedData, debug = true) => {
   }
   
   processedData = validatePOTotals(processedData, debug);
+  
+  // ✅ FINAL DEBUG: Check AFTER validatePOTotals
+  if (debug && processedData.items && processedData.items.length > 0) {
+    console.log('🔍 FINAL - AFTER validatePOTotals - Items details:');
+    processedData.items.forEach((item, index) => {
+      console.log(`  Item ${index + 1}:`, {
+        clientItemCode: item.clientItemCode,
+        productCode: item.productCode,
+        projectCode: item.projectCode,
+        productName: item.productName?.substring(0, 40)
+      });
+    });
+  }
   
   return processedData;
 };
