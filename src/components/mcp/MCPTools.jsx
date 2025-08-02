@@ -1,4 +1,4 @@
-// src/components/mcp/MCPTools.jsx
+// src/components/mcp/MCPTools.jsx - FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import { 
   Zap, 
@@ -25,8 +25,8 @@ import {
   Eye
 } from 'lucide-react';
 
-// Import your existing services
-import { showNotification } from '../../services/notificationService';
+// FIXED: Remove the non-existent import and use a simple notification function
+// import { showNotification } from '../../services/notificationService';
 
 const MCPTools = () => {
   const [availableTools, setAvailableTools] = useState([]);
@@ -39,6 +39,13 @@ const MCPTools = () => {
 
   // API base URL from your environment
   const API_BASE = import.meta.env.VITE_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
+
+  // FIXED: Simple notification function instead of importing non-existent service
+  const showNotification = (notification) => {
+    console.log(`${notification.type?.toUpperCase() || 'INFO'}: ${notification.title}`, notification.message);
+    // You can replace this with your actual notification system later
+    // For now, we'll just use console.log to avoid build errors
+  };
 
   // Initialize MCP connection and load tools
   useEffect(() => {
