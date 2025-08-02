@@ -77,6 +77,37 @@ const MCPTools = () => {
     }
   };
 
+  / Add these helper functions after loadMCPTools:
+
+const getCategoryFromName = (name) => {
+  if (name.includes('extract')) return 'extraction';
+  if (name.includes('analyze')) return 'analytics';
+  if (name.includes('classify')) return 'classification';
+  if (name.includes('batch')) return 'batch';
+  if (name.includes('health')) return 'monitoring';
+  if (name.includes('recommend')) return 'intelligence';
+  return 'general';
+};
+
+const getIconFromName = (name) => {
+  if (name.includes('extract')) return '📄';
+  if (name.includes('analyze')) return '🧠';
+  if (name.includes('classify')) return '🏷️';
+  if (name.includes('batch')) return '⚡';
+  if (name.includes('health')) return '🏥';
+  if (name.includes('recommend')) return '💡';
+  return '🔧';
+};
+
+const getRandomLastUsed = () => {
+  const options = ['Just now', '2 minutes ago', '15 minutes ago', '1 hour ago', '3 hours ago'];
+  return options[Math.floor(Math.random() * options.length)];
+};
+
+const getRandomSuccessRate = () => {
+  return `${Math.floor(Math.random() * 20) + 80}%`;
+};
+
   const loadSystemHealth = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/mcp/status`);
