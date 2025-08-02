@@ -1,4 +1,4 @@
-// src/components/common/Navigation.jsx - Enhanced with Multi-Company Admin
+// src/components/common/Navigation.jsx - Enhanced with DualSystemDashboard and PromptManagement
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -30,7 +30,10 @@ import {
   Globe,
   TreePine,
   Factory,
-  Bot
+  Bot,
+  GitBranch,
+  FileEdit,
+  Layers
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -237,29 +240,49 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // Tools & AI Section
-{
-  name: 'Tools & AI',
-  section: true,
-  children: [
+    // Tools & AI Section - UPDATED with new items
     {
-      name: 'Quick Import',
-      href: '/quick-import',
-      icon: Upload,
-      description: 'Bulk data import utilities',
-      permission: 'canImportData'
+      name: 'Tools & AI',
+      section: true,
+      children: [
+        {
+          name: 'Quick Import',
+          href: '/quick-import',
+          icon: Upload,
+          description: 'Bulk data import utilities',
+          permission: 'canImportData'
+        },
+        {
+          name: 'MCP Tools',
+          href: '/mcp-tools',
+          icon: Bot,
+          description: 'AI-powered universal tools',
+          permission: 'canViewAI',
+          badge: 'AI',
+          badgeColor: 'bg-purple-500'
+        },
+        // NEW: Dual System Dashboard
+        {
+          name: 'Dual System',
+          href: '/dual-system-dashboard',
+          icon: GitBranch,
+          description: 'Revolutionary AI prompt management',
+          permission: 'canViewAI',
+          badge: 'NEW',
+          badgeColor: 'bg-green-500'
+        },
+        // NEW: Prompt Management
+        {
+          name: 'Prompt Management',
+          href: '/prompt-management',
+          icon: FileEdit,
+          description: 'Create and manage AI prompts',
+          permission: 'canManagePrompts',
+          badge: 'BETA',
+          badgeColor: 'bg-blue-500'
+        }
+      ]
     },
-    {
-      name: 'MCP Tools',
-      href: '/mcp-tools',
-      icon: Bot,
-      description: 'AI-powered universal tools',
-      permission: 'canViewAI',
-      badge: 'AI',
-      badgeColor: 'bg-purple-500'
-    }
-  ]
-},
 
     // 🆕 NEW: Multi-Company Administration Section
     {
