@@ -1467,20 +1467,6 @@ if (ptpDetection.isClientPO) {
       const docType = preDetectedType 
         ? { type: preDetectedType, confidence: confidence, preDetected: true }
         : DocumentDetector.detectDocumentType(rawData);
-      
-      // Check if backend extracted project codes - if so, it's definitely a client PO
-if (docType.type === 'unknown' && rawData.data && rawData.data.items) {
-  const hasProjectCodes = rawData.data.items.some(item => 
-    item.projectCode && (item.projectCode.startsWith('FS-S') || item.projectCode.startsWith('BWS-S'))
-  );
-  
-  if (hasProjectCodes) {
-    console.log('🔧 FORCE OVERRIDE: Document has PTP project codes, forcing client_purchase_order type');
-    docType.type = 'client_purchase_order';
-    docType.confidence = 0.9;
-    docType.preDetected = true;
-  }
-}
         
       console.log('Final detected document type:', docType.type, 'with confidence:', docType.confidence);
       
@@ -1501,6 +1487,7 @@ if (docType.type === 'bank_payment_slip') {
   }
   
 } else if (docType.type === 'client_purchase_order') {
+
   
   // NEW: Process Client Purchase Order (like PTP)
   console.log('Processing Client Purchase Order from:', 
@@ -1546,61 +1533,47 @@ if (docType.type === 'bank_payment_slip') {
 
   console.log(`📦 Final items array found: ${itemsArray.length} items`);
 
-  // ✅ FIRST: Map the items normally
-  const mappedItems = this.mapClientPOItems(itemsArray);
-
-  // ✅ CRITICAL FIX: Create initial processedData structure
-  let processedData = {
-    documentType: 'client_purchase_order',
-    confidence: docType.confidence,
-    
-    // Client info (the one sending us the PO)
-    clientName: this.extractClientName(data),
-    clientPONumber: data.order_number || data.po_number || '',
-    clientAddress: data.supplier?.address || data.ship_to?.address || '',
-    prNumber: data.pr_number || (data.pr_numbers && data.pr_numbers.length > 0 ? data.pr_numbers.join(', ') : ''),
-    
-    // Our info (Flow Solution as recipient)  
-    recipientName: data.bill_to?.name || 'Flow Solution Sdn. Bhd.',
-    recipientAddress: data.bill_to?.address || '',
-    
-    // Order details
-    orderDate: data.order_date ? data.order_date.split(' ')[0] : new Date().toISOString().split('T')[0],
-    requiredDate: data.required_date || data.delivery_date || '',
-    
-    // ✅ Items (will be enhanced with project codes)
-    items: mappedItems,
-
-    // Financial totals
-    totalAmount: parseFloat(data.grand_total || data.total_amount || data.subtotal || 0),
-    subtotal: parseFloat(data.subtotal || data.sub_total || 0),
-    tax: parseFloat(data.tax || data.gst || 0),
-    
-    // Status
-    status: 'sourcing_required',
-    sourcingStatus: 'pending',
-    priority: 'normal',
-    
-    // Notes
-    notes: data.notes || data.remarks || '',
-    termsAndConditions: data.terms_and_conditions || data.terms || '',
-    
-    // Metadata
-    extractedAt: new Date().toISOString(),
-    sourceFile: file?.name || 'unknown'
-  };
-
-  // ✅ CRITICAL FIX: Now extract project codes from the complete structure
-  console.log('🏢 Extracting project codes from Client PO...');
-  processedData = AIExtractionService.extractProjectCodesFromPO(processedData);
+  processedData = {
+  documentType: 'client_purchase_order',
+  confidence: docType.confidence,
   
-  console.log('✅ Successfully processed Client PO with project codes:', {
-    clientPONumber: processedData.clientPONumber,
-    itemsWithProjectCodes: processedData.items.filter(item => item.projectCode).length,
-    totalItems: processedData.items.length,
-    sampleProjectCodes: processedData.items.filter(item => item.projectCode).map(item => item.projectCode).slice(0, 3)
-  });
+  // FIXED: Client info (the one sending us the PO)
+  clientName: this.extractClientName(data),
+  clientPONumber: data.order_number || data.po_number || '',
+  clientAddress: data.supplier?.address || data.ship_to?.address || '',
+  prNumber: data.pr_number || (data.pr_numbers && data.pr_numbers.length > 0 ? data.pr_numbers.join(', ') : ''),
+  
+  // FIXED: Our info (Flow Solution as recipient)  
+  recipientName: data.bill_to?.name || 'Flow Solution Sdn. Bhd.',
+  recipientAddress: data.bill_to?.address || '',
+  
+  // FIXED: Order details
+  orderDate: data.order_date ? data.order_date.split(' ')[0] : new Date().toISOString().split('T')[0], // Remove time part
+  requiredDate: data.required_date || data.delivery_date || '', // Not specified in PTP POs
+  
+  // ✅ Items to source using the found items array (this is working)
+  items: this.mapClientPOItems(itemsArray),
 
+  // FIXED: Financial totals
+  totalAmount: parseFloat(data.grand_total || data.total_amount || data.subtotal || 0),
+  subtotal: parseFloat(data.subtotal || data.sub_total || 0),
+  tax: parseFloat(data.tax || data.gst || 0),
+  
+  // Status
+  status: 'sourcing_required',
+  sourcingStatus: 'pending',
+  priority: 'normal',
+  
+  // Notes
+  notes: data.notes || data.remarks || '',
+  termsAndConditions: data.terms_and_conditions || data.terms || '',
+  
+  // Metadata
+  extractedAt: new Date().toISOString(),
+  sourceFile: file?.name || 'unknown'
+};
+  
+  console.log('✅ Successfully processed Client PO:', processedData.clientPONumber);
   
 } else if (docType.type === 'supplier_proforma' || docType.type === 'supplier_invoice') {
   // Use enhanced Chinese supplier extraction for both proforma and invoice
@@ -1837,14 +1810,12 @@ if (docType.type === 'bank_payment_slip') {
       
       console.log(`✅ Mapped item ${index + 1}:`, {
   productCode: mappedItem.productCode,
-  projectCode: mappedItem.projectCode,
   clientItemCode: mappedItem.clientItemCode,  // ✅ ADD THIS LINE
         projectCode: mappedItem.projectCode,
   productName: mappedItem.productName.substring(0, 50) + '...',
         quantity: mappedItem.quantity,
         unitPrice: mappedItem.unitPrice,
-        totalPrice: mappedItem.totalPrice,
-        hasProjectCode: !!mappedItem.projectCode 
+        totalPrice: mappedItem.totalPrice
       });
       
       return mappedItem;
