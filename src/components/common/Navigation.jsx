@@ -29,7 +29,8 @@ import {
   MapPin,
   Globe,
   TreePine,
-  Factory
+  Factory,
+  Bot
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -236,20 +237,29 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // Tools Section
+    // Tools & AI Section
+{
+  name: 'Tools & AI',
+  section: true,
+  children: [
     {
-      name: 'Tools',
-      section: true,
-      children: [
-        {
-          name: 'Quick Import',
-          href: '/quick-import',
-          icon: Upload,
-          description: 'Bulk data import utilities',
-          permission: 'canImportData'
-        }
-      ]
+      name: 'Quick Import',
+      href: '/quick-import',
+      icon: Upload,
+      description: 'Bulk data import utilities',
+      permission: 'canImportData'
     },
+    {
+      name: 'MCP Tools',
+      href: '/mcp-tools',
+      icon: Bot,
+      description: 'AI-powered universal tools',
+      permission: 'canViewAI',
+      badge: 'AI',
+      badgeColor: 'bg-purple-500'
+    }
+  ]
+},
 
     // 🆕 NEW: Multi-Company Administration Section
     {
