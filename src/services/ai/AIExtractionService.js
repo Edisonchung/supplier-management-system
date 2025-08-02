@@ -372,6 +372,9 @@ static mapChineseProduct(item, index) {
   
   const mappedItem = {
     id: `item_${index + 1}`,
+
+    // ✅ CRITICAL FIX: PRESERVE PROJECT CODE FROM BACKEND EXTRACTION
+    projectCode: item.projectCode || item.project_code || '',
     
     // ✅ FIXED: Use the correct field names from backend response
     productCode: item.productCode || item.model || item.part_number || item.product_code || item.code || item.item_code || '',
@@ -399,6 +402,10 @@ static mapChineseProduct(item, index) {
   }
   
   console.log(`✅ Fixed mapped item ${index + 1}:`, mappedItem);
+
+  // ✅ CRITICAL DEBUG: Log project code specifically
+  console.log(`🏢 Item ${index + 1} PROJECT CODE: "${mappedItem.projectCode}"`);
+  
   return mappedItem;
 }
   
