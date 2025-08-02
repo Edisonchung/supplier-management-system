@@ -1,4 +1,4 @@
-// src/App.jsx - UPDATED VERSION - Added missing Company Structure routes
+// src/App.jsx - UPDATED VERSION - Added DualSystemDashboard and PromptManagement routes
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -42,6 +42,10 @@ const LazyMigrationPage = lazy(() => import('./components/migration/MigrationPag
 
 // ✅ NEW: Add missing Company Structure Manager component
 const LazyCompanyStructureManager = lazy(() => import('./components/admin/CompanyStructureManager'));
+
+// ✅ NEW: Add DualSystemDashboard and PromptManagement components
+const LazyDualSystemDashboard = lazy(() => import('./components/mcp/DualSystemDashboard'));
+const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagement'));
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -370,18 +374,42 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
-                        {/* MCP Routes */}
 
+            {/* MCP Routes */}
             <Route 
-  path="/mcp-tools" 
-  element={
-    <ProtectedRoute permission="canViewAI">
-      <LazyWrapper componentName="MCP Tools">
-        <LazyMCPTools />
-      </LazyWrapper>
-    </ProtectedRoute>
-  } 
-/>
+              path="/mcp-tools" 
+              element={
+                <ProtectedRoute permission="canViewAI">
+                  <LazyWrapper componentName="MCP Tools">
+                    <LazyMCPTools />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* ✅ NEW: Dual System Dashboard Route */}
+            <Route 
+              path="/dual-system-dashboard" 
+              element={
+                <ProtectedRoute permission="canViewAI">
+                  <LazyWrapper componentName="Dual System Dashboard">
+                    <LazyDualSystemDashboard />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* ✅ NEW: Prompt Management Route */}
+            <Route 
+              path="/prompt-management" 
+              element={
+                <ProtectedRoute permission="canManagePrompts">
+                  <LazyWrapper componentName="Prompt Management">
+                    <LazyPromptManagement />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
             
             {/* ✅ FIXED: Administration Routes - Added missing Company Structure routes */}
             
