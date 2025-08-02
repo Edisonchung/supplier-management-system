@@ -2201,64 +2201,133 @@ validateClientItemCode(clientCode) {
   /**
    * Extract project codes from PO data
    */
-  extractProjectCodesFromPO(extractedData) {
-    // Look for project codes in various formats from PTP PO and other formats
-    const projectCodePatterns = [
-      /FS-S\d+/gi,        // FS-S3798, FS-S3845 (from PTP)
-      /BWS-S\d+/gi,       // BWS-S1046 
-      /[A-Z]{2,3}-[A-Z]\d+/gi, // General pattern XX-X1234
-      /Project\s*Code[:\s]+([A-Z0-9-]+)/gi,
-      /Job\s*No[:\s]+([A-Z0-9-]+)/gi,
-      /Ref[:\s]+([A-Z0-9-]+)/gi
-    ];
-    
-    console.log('🏢 EXTRACTING PROJECT CODES from PO data');
-    
-    if (extractedData.items) {
-      extractedData.items = extractedData.items.map((item, index) => {
-        let projectCode = '';
-        
-        // Check if project code is already extracted
-        if (item.projectCode) {
-          projectCode = item.projectCode;
-          console.log(`  ✅ Item ${index + 1}: Found existing project code: ${projectCode}`);
-        } else {
-          // Try to extract from description, notes, or part number
-          const textToSearch = [
-            item.description || '',
-            item.notes || '',
-            item.partNumber || '',
-            item.productName || '',
-            item.clientItemCode || '',
-            item.part_number || '', // Backend might use snake_case
-            JSON.stringify(item) // Search entire item object
-          ].join(' ');
-          
-          console.log(`  🔍 Item ${index + 1}: Searching in text: "${textToSearch.substring(0, 100)}..."`);
-          
-          for (const pattern of projectCodePatterns) {
-            const matches = textToSearch.match(pattern);
-            if (matches) {
-              projectCode = matches[0];
-              console.log(`  ✅ Item ${index + 1}: Extracted project code: ${projectCode}`);
-              break;
-            }
-          }
-          
-          if (!projectCode) {
-            console.log(`  ⚠️ Item ${index + 1}: No project code found`);
-          }
-        }
-        
-        return {
-          ...item,
-          projectCode: projectCode || ''
-        };
-      });
-    }
-    
+  static extractProjectCodesFromPO(extractedData) {
+  console.log('🏢 ENHANCED PROJECT CODE EXTRACTION');
+  
+  if (!extractedData.items || extractedData.items.length === 0) {
+    console.log('❌ No items found for project code extraction');
     return extractedData;
   }
+
+  // Enhanced patterns including common variations
+  const projectCodePatterns = [
+    /FS-S\d+/gi,                    // FS-S3798, FS-S3845 (PTP format)
+    /BWS-S\d+/gi,                   // BWS-S1046 
+    /[A-Z]{2,3}-[A-Z]\d+/gi,        // Generic: XX-X1234
+    /Project\s*Code[:\s]+([A-Z0-9-]+)/gi,
+    /Job\s*No[:\s]+([A-Z0-9-]+)/gi,
+    /Ref[:\s]+([A-Z0-9-]+)/gi,
+    /REF\s*[:\s]*([A-Z]{2,3}-[A-Z]\d+)/gi,
+    /\b([A-Z]{2,3}-[A-Z]\d{3,})\b/gi, // Pattern in text blocks
+    /Project[:\s]*([A-Z0-9-]{4,})/gi,
+    /Job[:\s]*([A-Z0-9-]{4,})/gi
+  ];
+
+  // Get full document text if available for global search
+  const fullDocumentText = JSON.stringify(extractedData).toLowerCase();
+  console.log('🔍 Full document contains project codes?', /fs-s\d+|bws-s\d+/.test(fullDocumentText));
+
+  extractedData.items = extractedData.items.map((item, index) => {
+    let projectCode = item.projectCode || item.project_code || '';
+    
+    console.log(`🔍 Processing item ${index + 1}:`, {
+      existing: projectCode,
+      clientItemCode: item.clientItemCode,
+      productCode: item.productCode,
+      productName: item.productName?.substring(0, 50)
+    });
+
+    if (!projectCode) {
+      // Strategy 1: Search in item-specific fields
+      const searchableText = [
+        item.description || '',
+        item.productName || '',
+        item.specifications || '',
+        item.notes || '',
+        item.remarks || '',
+        item.clientItemCode || '',
+        item.partNumber || '',
+        item.part_number || '',
+        item.productCode || '',
+        item.product_code || '',
+        // Check if there's a reference field
+        item.reference || '',
+        item.ref || '',
+        item.project || '',
+        item.job || '',
+        // Sometimes project codes are in separate fields
+        item.projectRef || '',
+        item.jobNumber || '',
+        item.workOrder || ''
+      ].filter(Boolean).join(' ');
+
+      console.log(`  📝 Searchable text for item ${index + 1}:`, searchableText.substring(0, 100));
+
+      // Try each pattern
+      for (const pattern of projectCodePatterns) {
+        const matches = searchableText.match(pattern);
+        if (matches && matches[0]) {
+          projectCode = matches[0].toUpperCase();
+          console.log(`  ✅ Found project code "${projectCode}" using pattern: ${pattern}`);
+          break;
+        }
+      }
+
+      // Strategy 2: If still no code, try extracting from client item code pattern
+      if (!projectCode && item.clientItemCode) {
+        // Some systems encode project info in client codes
+        // Example: 200RTG0750 might contain project reference
+        const clientCode = item.clientItemCode;
+        
+        // Check if client code has project-like patterns
+        const clientPatterns = [
+          /^(\d{3})[A-Z]{3}\d+$/,  // 200RTG0750 -> extract 200
+          /^([A-Z]{2,3})\d+/,      // RTG0750 -> extract RTG
+        ];
+
+        for (const pattern of clientPatterns) {
+          const match = clientCode.match(pattern);
+          if (match && match[1]) {
+            // This is a fallback - you might want to map these to actual project codes
+            console.log(`  🔍 Potential project reference in client code: ${match[1]}`);
+            // Don't assign this unless you have a mapping table
+          }
+        }
+      }
+
+      // Strategy 3: Global document search for project codes near this item
+      if (!projectCode) {
+        // Search for project codes in the general document text
+        // This catches cases where project codes are listed separately
+        for (const pattern of projectCodePatterns) {
+          const globalMatches = fullDocumentText.match(pattern);
+          if (globalMatches && globalMatches.length > 0) {
+            // If we found project codes in the document but not item-specific,
+            // we might need manual assignment or better context matching
+            console.log(`  📋 Document contains project codes: ${globalMatches.join(', ')}`);
+            
+            // For now, don't auto-assign global codes to items
+            // This needs business logic to determine which code belongs to which item
+          }
+        }
+      }
+    }
+
+    const finalProjectCode = projectCode || '';
+    console.log(`  ${finalProjectCode ? '✅' : '❌'} Item ${index + 1} final project code: "${finalProjectCode}"`);
+
+    return {
+      ...item,
+      projectCode: finalProjectCode
+    };
+  });
+
+  // Summary
+  const itemsWithProjectCodes = extractedData.items.filter(item => item.projectCode).length;
+  console.log(`🎯 Project code extraction complete: ${itemsWithProjectCodes}/${extractedData.items.length} items have project codes`);
+
+  return extractedData;
+}
   
   /**
    * Generate cache key for file
