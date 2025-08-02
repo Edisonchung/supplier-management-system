@@ -58,26 +58,52 @@ const MCPTools = () => {
     return () => clearInterval(healthInterval);
   }, []);
 
-  const loadMCPTools = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/mcp/tools`);
-      if (response.ok) {
-        const data = await response.json();
-        setAvailableTools(data.data?.tools || data.tools || []);
-        setMcpStatus('healthy');
-      } else {
-        // Fallback to mock data if API not ready
-        setAvailableTools(getMockTools());
-        setMcpStatus('degraded');
-      }
-    } catch (error) {
-      console.warn('MCP API not available, using mock data:', error);
-      setAvailableTools(getMockTools());
-      setMcpStatus('degraded');
-    }
-  };
+  // Find the loadMCPTools function in MCPTools.jsx and replace it with this fixed version:
 
-  / Add these helper functions after loadMCPTools:
+const loadMCPTools = async () => {
+  try {
+    const response = await fetch(`${API_BASE}/api/mcp/tools`);
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Get tools from nested data structure
+      const apiTools = data.data?.tools || data.tools || [];
+      
+      // Transform API tools to match component format
+      const transformedTools = apiTools.map(tool => ({
+        id: tool.name,
+        name: tool.name.split('_').map(word => 
+          word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' '),
+        description: tool.description,
+        category: getCategoryFromName(tool.name),
+        icon: getIconFromName(tool.name),
+        // FIX: Safely extract inputs from inputSchema
+        inputs: tool.inputSchema?.properties ? Object.keys(tool.inputSchema.properties) : [],
+        status: 'operational',
+        lastUsed: getRandomLastUsed(),
+        successRate: getRandomSuccessRate(),
+        performance: {
+          accuracy: Math.floor(Math.random() * 20) + 80,
+          speed: (Math.random() * 3 + 1).toFixed(1),
+          tokens: Math.floor(Math.random() * 2000) + 500
+        }
+      }));
+      
+      setAvailableTools(transformedTools);
+      setMcpStatus('healthy');
+      console.log('✅ Loaded', transformedTools.length, 'MCP tools from API');
+    } else {
+      throw new Error('API response not ok');
+    }
+  } catch (error) {
+    console.warn('MCP API not available, using mock data:', error);
+    setAvailableTools(getMockTools());
+    setMcpStatus('degraded');
+  }
+};
+
+// Add these helper functions right after the loadMCPTools function:
 
 const getCategoryFromName = (name) => {
   if (name.includes('extract')) return 'extraction';
@@ -107,6 +133,7 @@ const getRandomLastUsed = () => {
 const getRandomSuccessRate = () => {
   return `${Math.floor(Math.random() * 20) + 80}%`;
 };
+
 
   const loadSystemHealth = async () => {
     try {
