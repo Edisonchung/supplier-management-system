@@ -863,23 +863,27 @@ static mapChineseProduct(item, index) {
 
 class PTPClientPODetector {
   /**
-   * Detect if this is a PTP Client Purchase Order
+   * Detect if this is a PTP Client Purchase Order - ENHANCED VERSION
    */
   static detectPTPClientPO(rawData) {
     const data = rawData.data?.purchase_order || rawData.purchase_order || rawData.data || rawData;
     const textContent = JSON.stringify(rawData).toLowerCase();
     
-    console.log('🔍 PTP Client PO Detection Starting...');
+    console.log('🔍 Enhanced PTP Client PO Detection Starting...');
     console.log('Data structure:', {
       hasPurchaseOrder: !!data,
       billTo: data.bill_to?.name,
       supplier: data.supplier?.name,
       shipTo: data.ship_to?.name,
-      orderNumber: data.order_number
+      orderNumber: data.order_number,
+      poNumber: data.poNumber,
+      hasItems: data.items?.length || 0
     });
     
-    // Key indicators for PTP Client PO
+    // Enhanced indicators for broader PO detection
     const indicators = [
+      // ===== ORIGINAL PTP-SPECIFIC INDICATORS ===== //
+      
       // 1. Flow Solution is the bill_to (WE are receiving the order)
       {
         test: data.bill_to?.name?.toLowerCase().includes('flow solution'),
@@ -903,21 +907,7 @@ class PTPClientPODetector {
         weight: 8
       },
       
-      // 4. PO number structure
-      {
-        test: data.order_number?.startsWith('PO-'),
-        name: 'PO number format',
-        weight: 5
-      },
-      
-      // 5. Has PR number (internal requisition) - handles both single and array
-      {
-        test: !!data.pr_number || (data.pr_numbers && Array.isArray(data.pr_numbers) && data.pr_numbers.length > 0),
-        name: 'Has PR number',
-        weight: 5
-      },
-      
-      // 6. Contains PTP domain/references
+      // 4. Contains PTP domain/references
       {
         test: textContent.includes('ptp.com.my') ||
               textContent.includes('pelabuhan tanjung pelepas'),
@@ -925,22 +915,96 @@ class PTPClientPODetector {
         weight: 8
       },
       
-      // 7. Order structure (not invoice/proforma structure)
+      // ===== ENHANCED GENERIC PO INDICATORS ===== //
+      
+      // 5. Document contains PO number (multiple patterns)
+      {
+        test: data.order_number?.startsWith('PO-') ||
+              data.poNumber?.startsWith('PO-') ||
+              textContent.includes('po-') ||
+              /po[-\s]*\d{6,}/.test(textContent),
+        name: 'PO number format',
+        weight: 12 // ✅ INCREASED WEIGHT for generic PO detection
+      },
+      
+      // 6. Has PR number (internal requisition)
+      {
+        test: !!data.pr_number || (data.pr_numbers && Array.isArray(data.pr_numbers) && data.pr_numbers.length > 0),
+        name: 'Has PR number',
+        weight: 5
+      },
+      
+      // 7. Purchase order structure (not invoice/proforma)
       {
         test: (textContent.includes('purchase order') || textContent.includes('purchase_order')) &&
               !textContent.includes('proforma') &&
               !textContent.includes('invoice'),
         name: 'Purchase order structure',
-        weight: 7
+        weight: 8 // ✅ INCREASED WEIGHT
       },
       
-      // 8. Has items array
+      // 8. Has items array with valid structure
       {
         test: (data.items && Array.isArray(data.items) && data.items.length > 0) ||
               (data.purchase_order?.items && Array.isArray(data.purchase_order.items) && data.purchase_order.items.length > 0) ||
               (data.line_items && Array.isArray(data.line_items) && data.line_items.length > 0),
         name: 'Has items array',
-        weight: 5
+        weight: 10 // ✅ INCREASED WEIGHT - critical for POs
+      },
+      
+      // ===== NEW ENHANCED INDICATORS ===== //
+      
+      // 9. Contains Flow Solution project codes (strong PO indicator)
+      {
+        test: textContent.includes('fs-s') || textContent.includes('bws-s') ||
+              (data.items && data.items.some(item => 
+                item.projectCode && (item.projectCode.startsWith('FS-S') || item.projectCode.startsWith('BWS-S'))
+              )),
+        name: 'Contains Flow Solution project codes',
+        weight: 12 // ✅ NEW - very strong indicator
+      },
+      
+      // 10. Contains client product code patterns (200RTG, 400CON, etc.)
+      {
+        test: /[0-9]{3}[a-z]{3}[0-9]{4}/.test(textContent) ||
+              (data.items && data.items.some(item => 
+                item.productCode && /^[0-9]{3}[A-Z]{3}[0-9]+$/.test(item.productCode)
+              )),
+        name: 'Contains client product code patterns',
+        weight: 10 // ✅ NEW - strong indicator for client POs
+      },
+      
+      // 11. Contains supplier information (indicates we're the client)
+      {
+        test: textContent.includes('flow solution') || 
+              textContent.includes('supplier') ||
+              textContent.includes('jalan tanjung') ||
+              data.supplier?.name || data.supplier?.address,
+        name: 'Contains supplier/client references',
+        weight: 8 // ✅ NEW
+      },
+      
+      // 12. Has pricing structure typical of POs
+      {
+        test: (data.items && data.items.some(item => 
+                item.quantity && (item.unitPrice || item.unit_price) && (item.totalPrice || item.total_price)
+              )) ||
+              textContent.includes('unit price') ||
+              textContent.includes('total price') ||
+              textContent.includes('quantity'),
+        name: 'Has complete pricing structure',
+        weight: 8 // ✅ NEW
+      },
+      
+      // 13. Document totaling structure
+      {
+        test: textContent.includes('total amount') ||
+              textContent.includes('subtotal') ||
+              textContent.includes('grand total') ||
+              data.totalAmount ||
+              data.total_amount,
+        name: 'Has document totaling structure',
+        weight: 6 // ✅ NEW
       }
     ];
     
@@ -951,29 +1015,62 @@ class PTPClientPODetector {
       if (indicator.test) {
         totalScore += indicator.weight;
         matchedIndicators.push(`✅ ${indicator.name} (${indicator.weight})`);
+        console.log(`✅ ${indicator.name}: +${indicator.weight} points`);
       } else {
-        console.log(`❌ ${indicator.name}`);
+        console.log(`❌ ${indicator.name}: 0 points`);
       }
     });
     
-    console.log('PTP Client PO Detection Results:');
+    console.log('Enhanced PTP Client PO Detection Results:');
     console.log('Matched indicators:', matchedIndicators);
-    console.log('Total score:', totalScore, '/ 58 possible');
+    console.log('Total score:', totalScore, '/ 115 possible'); // ✅ UPDATED max score
     
-    const isClientPO = totalScore >= 25; // Need at least 25 points
-    const confidence = Math.min(totalScore / 58, 0.95);
+    // ✅ ENHANCED SCORING LOGIC with multiple thresholds
+    let isClientPO = false;
+    let confidence = 0;
+    let detectionReason = '';
+    
+    if (totalScore >= 50) {
+      // High confidence detection
+      isClientPO = true;
+      confidence = Math.min(totalScore / 115, 0.95);
+      detectionReason = 'High confidence based on multiple indicators';
+    } else if (totalScore >= 25) {
+      // Medium confidence detection
+      isClientPO = true;
+      confidence = Math.min(totalScore / 115, 0.80);
+      detectionReason = 'Medium confidence based on key indicators';
+    } else if (totalScore >= 15) {
+      // Low confidence but still detected (for documents with clear PO structure)
+      const hasStrongIndicators = matchedIndicators.some(indicator => 
+        indicator.includes('project codes') || 
+        indicator.includes('product code patterns') ||
+        indicator.includes('PO number format')
+      );
+      
+      if (hasStrongIndicators) {
+        isClientPO = true;
+        confidence = Math.min(totalScore / 115, 0.70);
+        detectionReason = 'Low confidence but has strong PO indicators';
+      }
+    }
     
     if (isClientPO) {
-      console.log('🎯 DETECTED: PTP Client Purchase Order');
-      console.log('Confidence:', confidence);
+      console.log('🎯 DETECTED: Client Purchase Order (Enhanced Detection)');
+      console.log('Detection reason:', detectionReason);
+      console.log('Confidence:', confidence.toFixed(2));
+    } else {
+      console.log('❌ Not detected as client PO - will use fallback detection');
+      console.log('Score too low:', totalScore, '< 15 minimum threshold');
     }
     
     return {
       isClientPO,
       confidence,
       score: totalScore,
-      maxScore: 58,
-      matchedIndicators
+      maxScore: 115, // ✅ UPDATED
+      matchedIndicators,
+      detectionReason
     };
   }
 }
