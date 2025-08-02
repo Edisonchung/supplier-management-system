@@ -30,6 +30,7 @@ import {
   LazySmartNotifications,
   LazyWrapper 
 } from './components/LazyComponents';
+const LazyMCPTools = lazy(() => import('./components/mcp/MCPTools'));
 
 // Lazy load additional components that exist
 import { lazy } from 'react';
@@ -369,6 +370,18 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+                        {/* MCP Routes */}
+
+            <Route 
+  path="/mcp-tools" 
+  element={
+    <ProtectedRoute permission="canViewAI">
+      <LazyWrapper componentName="MCP Tools">
+        <LazyMCPTools />
+      </LazyWrapper>
+    </ProtectedRoute>
+  } 
+/>
             
             {/* ✅ FIXED: Administration Routes - Added missing Company Structure routes */}
             
