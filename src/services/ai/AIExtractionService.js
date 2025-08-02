@@ -1823,12 +1823,14 @@ if (docType.type === 'bank_payment_slip') {
       
       console.log(`✅ Mapped item ${index + 1}:`, {
   productCode: mappedItem.productCode,
+  projectCode: mappedItem.projectCode,
   clientItemCode: mappedItem.clientItemCode,  // ✅ ADD THIS LINE
         projectCode: mappedItem.projectCode,
   productName: mappedItem.productName.substring(0, 50) + '...',
         quantity: mappedItem.quantity,
         unitPrice: mappedItem.unitPrice,
-        totalPrice: mappedItem.totalPrice
+        totalPrice: mappedItem.totalPrice,
+        hasProjectCode: !!mappedItem.projectCode 
       });
       
       return mappedItem;
