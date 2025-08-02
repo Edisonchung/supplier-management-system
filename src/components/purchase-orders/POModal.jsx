@@ -53,13 +53,8 @@ const fixPOItemPrices = (items, debug = true) => {
   // ✅ ADD THIS DEBUG TO TRACK PROJECT CODES
   console.log('🏢 DEBUG: Items entering fixPOItemPrices:');
   items.forEach((item, i) => {
-    console.log(`  Item ${i + 1}: projectCode = "${item.projectCode || 'MISSING'}"`);
+    console.log(`  Item ${i + 1}: projectCode = "${item.projectCode || 'MISSING'}", clientItemCode = "${item.clientItemCode || 'MISSING'}"`);
   });
-
-  if (debug) {
-    console.log('🔧 FIXING PO ITEM PRICES...');
-    console.log('Original items:', items);
-  }
 
   return items.map((item, index) => {
     const originalItem = { ...item };
@@ -78,10 +73,24 @@ const fixPOItemPrices = (items, debug = true) => {
     const unitPrice = parseFloat(item.unitPrice) || 0;
     const totalPrice = parseFloat(item.totalPrice) || 0;
     
-    // ✅ CRITICAL FIX: Start with ALL original fields
+    // ✅ CRITICAL FIX: Start with ALL original fields AND immediately preserve critical fields
     let fixedItem = { ...originalItem };
+    
+    // ✅ IMMEDIATELY preserve critical fields before ANY processing
+    fixedItem.clientItemCode = originalItem.clientItemCode || '';
+    fixedItem.productCode = originalItem.productCode || '';
+    fixedItem.projectCode = originalItem.projectCode || '';
+    fixedItem.productName = originalItem.productName || '';
+    fixedItem.id = originalItem.id || `item_${index + 1}`;
+    
+    if (debug) {
+      console.log(`🔒 IMMEDIATELY PRESERVED fields for item ${index + 1}:`, {
+        clientItemCode: fixedItem.clientItemCode,
+        productCode: fixedItem.productCode,
+        projectCode: fixedItem.projectCode
+      });
+    }
 
-    // [Keep all your existing Strategy 1-5 code exactly as is]
     // Strategy 1: Calculate total from quantity × unit price
     if (quantity > 0 && unitPrice > 0) {
       const calculatedTotal = quantity * unitPrice;
@@ -119,43 +128,49 @@ const fixPOItemPrices = (items, debug = true) => {
       }
     }
 
-    // ✅ CRITICAL FIX: Explicitly preserve clientItemCode and other important fields
-if (originalItem.clientItemCode) {
-  fixedItem.clientItemCode = originalItem.clientItemCode;
-  if (debug) {
-    console.log(`🔍 Preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
-  }
-} else if (debug) {
-  console.log(`⚠️ WARNING: No clientItemCode found in originalItem for item ${index + 1}`);
-  console.log(`Original item keys:`, Object.keys(originalItem));
-}
+    // ✅ DOUBLE-CHECK: Preserve critical fields again as safety net
+    if (originalItem.clientItemCode) {
+      fixedItem.clientItemCode = originalItem.clientItemCode;
+      if (debug) {
+        console.log(`🔍 Double-check preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
+      }
+    } else if (debug) {
+      console.log(`⚠️ WARNING: No clientItemCode found in originalItem for item ${index + 1}`);
+      console.log(`Original item keys:`, Object.keys(originalItem));
+    }
 
-// ✅ Also preserve other important fields that might get lost
-if (originalItem.productCode && !fixedItem.productCode) {
-  fixedItem.productCode = originalItem.productCode;
-}
+    // ✅ Also preserve other important fields that might get lost
+    if (originalItem.productCode && !fixedItem.productCode) {
+      fixedItem.productCode = originalItem.productCode;
+    }
 
-// ✅ ADD THIS: Preserve project code
-if (originalItem.projectCode) {
-  fixedItem.projectCode = originalItem.projectCode;
-  if (debug) {
-    console.log(`🏢 Preserving projectCode for item ${index + 1}:`, originalItem.projectCode);
-  }
-} else if (debug) {
-  console.log(`⚠️ WARNING: No projectCode found in originalItem for item ${index + 1}`);
-}
+    // ✅ Preserve project code
+    if (originalItem.projectCode) {
+      fixedItem.projectCode = originalItem.projectCode;
+      if (debug) {
+        console.log(`🏢 Double-check preserving projectCode for item ${index + 1}:`, originalItem.projectCode);
+      }
+    } else if (debug) {
+      console.log(`⚠️ WARNING: No projectCode found in originalItem for item ${index + 1}`);
+    }
 
-// ✅ CRITICAL DEBUG: Log AFTER processing
-if (debug) {
-  console.log(`🔍 AFTER processing item ${index + 1}:`, {
-    clientItemCode: fixedItem.clientItemCode,
-    productCode: fixedItem.productCode,
-    projectCode: fixedItem.projectCode,
-    productName: fixedItem.productName?.substring(0, 30) + '...'
-  });
-}
+    // ✅ FINAL SAFETY CHECK: Ensure nothing got lost
+    if (originalItem.clientItemCode && !fixedItem.clientItemCode) {
+      fixedItem.clientItemCode = originalItem.clientItemCode;
+      if (debug) console.log(`🚨 EMERGENCY RESCUE: clientItemCode restored for item ${index + 1}`);
+    }
 
-return fixedItem;
+    // ✅ CRITICAL DEBUG: Log AFTER processing
+    if (debug) {
+      console.log(`🔍 AFTER processing item ${index + 1}:`, {
+        clientItemCode: fixedItem.clientItemCode,
+        productCode: fixedItem.productCode,
+        projectCode: fixedItem.projectCode,
+        productName: fixedItem.productName?.substring(0, 30) + '...'
+      });
+    }
+
+    return fixedItem;
   });
 };
 
