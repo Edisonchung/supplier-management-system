@@ -1851,10 +1851,10 @@ if (docType.type === 'bank_payment_slip') {
   }
   
   
-  /**
-   * Map items from client PO format
-   */
-  mapClientPOItems(items) {
+ /**
+ * Map items from client PO format
+ */
+mapClientPOItems(items) {
   if (!items || !Array.isArray(items)) {
     console.warn('No items array provided to mapClientPOItems');
     return [];
@@ -1868,15 +1868,21 @@ if (docType.type === 'bank_payment_slip') {
     console.log(JSON.stringify(item, null, 2));
     
     console.log(`🔍 Item ${index + 1} field check:`, {
+      // ✅ ENHANCED: Check backend fields that are actually sent
+      productCode: item.productCode,        // ← Backend sends this (should become clientItemCode)
+      productName: item.productName,        // ← Backend sends this (should become productName)
+      unitPrice: item.unitPrice,            // ← Backend sends this
+      totalPrice: item.totalPrice,          // ← Backend sends this
+      projectCode: item.projectCode,        // ← Backend sends this
+      description: item.description,        // ← Usually empty
+      // Legacy fields:
       part_number: item.part_number,
-      product_code: item.product_code, 
+      product_code: item.product_code,   
       code: item.code,
       item_code: item.item_code,
       client_code: item.client_code,
       client_item_code: item.client_item_code,
-      productCode: item.productCode, // ✅ CRITICAL: This is where project codes are stored
       project_code: item.project_code,
-      projectCode: item.projectCode, // ✅ CRITICAL: Check BOTH variations
       reference: item.reference,
       material_code: item.material_code,
       pn: item.pn,
@@ -1886,50 +1892,54 @@ if (docType.type === 'bank_payment_slip') {
     console.log(`Mapping item ${index + 1}:`, {
       part_number: item.part_number,
       description: item.description,
+      productName: item.productName,      // ✅ ADD: Backend field
+      productCode: item.productCode,      // ✅ ADD: Backend field (becomes clientItemCode)
       quantity: item.quantity,
       unit_price: item.unit_price,
+      unitPrice: item.unitPrice,          // ✅ ADD: Backend field
       amount: item.amount,
-      projectCode: item.projectCode, // ✅ ADD THIS DEBUG LINE
-      project_code: item.project_code // ✅ ADD THIS DEBUG LINE
+      totalPrice: item.totalPrice,        // ✅ ADD: Backend field
+      projectCode: item.projectCode,      // ✅ EXISTING
+      project_code: item.project_code     // ✅ EXISTING
     });
         
     const mappedItem = {
       id: `item_${index + 1}`,
       
       // ✅ CRITICAL FIX: Preserve project codes from backend extraction
-      // The backend returns project codes in either projectCode or project_code fields
       projectCode: item.projectCode || item.project_code || '',
       
-      // Client item codes (from the original data structure)
+      // ✅ FIXED: Client item codes - backend sends productCode which becomes clientItemCode
       clientItemCode: item.productCode || item.product_code || item.client_item_code || item.part_number || '',
       
-      // Extract manufacturer code from description (this was working)
-      productCode: this.extractManufacturerCode(item),
+      // ✅ FIXED: Extract manufacturer code from productName (not just item)
+      productCode: this.extractManufacturerCode(item.productName || item.description || ''),
       
-      // Product name cleaning (this was working)
+      // ✅ FIXED: Product name from correct backend field
       productName: this.cleanProductName(item.productName || item.description || item.product_name || item.name || ''),
       
-      // Quantities and pricing (these were working)
+      // ✅ FIXED: Quantities and pricing with correct backend field names
       quantity: this.parseQuantity(item.quantity),
       unit: item.uom || item.unit || 'PCS',
-      unitPrice: this.parsePrice(item.unit_price),
-      totalPrice: this.parsePrice(item.amount) || (this.parseQuantity(item.quantity) * this.parsePrice(item.unit_price)),
+      unitPrice: this.parsePrice(item.unitPrice || item.unit_price),     // ✅ ADD: item.unitPrice first
+      totalPrice: this.parsePrice(item.totalPrice || item.amount) ||     // ✅ ADD: item.totalPrice first
+                  (this.parseQuantity(item.quantity) * this.parsePrice(item.unitPrice || item.unit_price)),
       
       // Sourcing status
       sourcingStatus: 'pending',
       supplierMatches: [],
       recommendedSupplier: null,
       
-      // Additional fields
-      category: this.categorizeProduct(item.description || ''),
-      specifications: item.description || '',
+      // ✅ FIXED: Additional fields - use productName for categorization
+      category: this.categorizeProduct(item.productName || item.description || ''),
+      specifications: item.productName || item.description || '',
       urgency: 'normal'
     };
     
     console.log(`✅ Mapped item ${index + 1}:`, {
       productCode: mappedItem.productCode,
       clientItemCode: mappedItem.clientItemCode,
-      projectCode: mappedItem.projectCode, // ✅ CRITICAL: Verify project code is preserved
+      projectCode: mappedItem.projectCode,
       productName: mappedItem.productName.substring(0, 50) + '...',
       quantity: mappedItem.quantity,
       unitPrice: mappedItem.unitPrice,
