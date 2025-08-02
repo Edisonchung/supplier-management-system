@@ -1751,76 +1751,90 @@ if (docType.type === 'bank_payment_slip') {
    * Map items from client PO format
    */
   mapClientPOItems(items) {
-    if (!items || !Array.isArray(items)) {
-      console.warn('No items array provided to mapClientPOItems');
-      return [];
-    }
-    
-    console.log('📦 Mapping', items.length, 'client PO items...');
-    
-    return items.map((item, index) => {
-  // ✅ SUPER DETAILED DEBUG
-  console.log(`🔍 FULL ITEM ${index + 1} DUMP:`);
-  console.log(JSON.stringify(item, null, 2));
-  
-  console.log(`🔍 Item ${index + 1} field check:`, {
-    part_number: item.part_number,
-    product_code: item.product_code, 
-    code: item.code,
-    item_code: item.item_code,
-    client_code: item.client_code,
-    client_item_code: item.client_item_code,
-      projectCode: item.projectCode, // ✅ ADD THIS
-  project_code: item.project_code, // ✅ ADD THIS  
-    reference: item.reference,
-    material_code: item.material_code,
-    pn: item.pn,
-    ALL_KEYS: Object.keys(item)
-  });
-  
-  console.log(`Mapping item ${index + 1}:`, {
-    part_number: item.part_number,
-    description: item.description,
-    quantity: item.quantity,
-    unit_price: item.unit_price,
-    amount: item.amount
-  });
-      
-      const mappedItem = {
-  id: `item_${index + 1}`,
-  clientItemCode: item.productCode || item.product_code || '',   // ✅ NEW: Client codes go here
-  productCode: this.extractManufacturerCode(item),  // ✅ CHANGED: Extract from description
-  productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
-        projectCode: item.projectCode || item.project_code || '',
-        quantity: this.parseQuantity(item.quantity),
-        unit: item.uom || item.unit || 'PCS',
-        unitPrice: this.parsePrice(item.unit_price),
-        totalPrice: this.parsePrice(item.amount) || (this.parseQuantity(item.quantity) * this.parsePrice(item.unit_price)),
-        
-        // Sourcing status
-        sourcingStatus: 'pending',
-        supplierMatches: [],
-        recommendedSupplier: null,
-        
-        // Additional fields
-        category: this.categorizeProduct(item.description || ''),
-        specifications: item.description || '',
-        urgency: 'normal'
-      };
-      
-      console.log(`✅ Mapped item ${index + 1}:`, {
-  productCode: mappedItem.productCode,
-  clientItemCode: mappedItem.clientItemCode,  // ✅ ADD THIS LINE
-        projectCode: mappedItem.projectCode,
-  productName: mappedItem.productName.substring(0, 50) + '...',
-        quantity: mappedItem.quantity,
-        unitPrice: mappedItem.unitPrice,
-        totalPrice: mappedItem.totalPrice
-      });
-      
-      return mappedItem;
-    });
+  if (!items || !Array.isArray(items)) {
+    console.warn('No items array provided to mapClientPOItems');
+    return [];
   }
+  
+  console.log('📦 Mapping', items.length, 'client PO items...');
+  
+  return items.map((item, index) => {
+    // ✅ SUPER DETAILED DEBUG
+    console.log(`🔍 FULL ITEM ${index + 1} DUMP:`);
+    console.log(JSON.stringify(item, null, 2));
+    
+    console.log(`🔍 Item ${index + 1} field check:`, {
+      part_number: item.part_number,
+      product_code: item.product_code, 
+      code: item.code,
+      item_code: item.item_code,
+      client_code: item.client_code,
+      client_item_code: item.client_item_code,
+      productCode: item.productCode, // ✅ CRITICAL: This is where project codes are stored
+      project_code: item.project_code,
+      projectCode: item.projectCode, // ✅ CRITICAL: Check BOTH variations
+      reference: item.reference,
+      material_code: item.material_code,
+      pn: item.pn,
+      ALL_KEYS: Object.keys(item)
+    });
+    
+    console.log(`Mapping item ${index + 1}:`, {
+      part_number: item.part_number,
+      description: item.description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      amount: item.amount,
+      projectCode: item.projectCode, // ✅ ADD THIS DEBUG LINE
+      project_code: item.project_code // ✅ ADD THIS DEBUG LINE
+    });
+        
+    const mappedItem = {
+      id: `item_${index + 1}`,
+      
+      // ✅ CRITICAL FIX: Preserve project codes from backend extraction
+      // The backend returns project codes in either projectCode or project_code fields
+      projectCode: item.projectCode || item.project_code || '',
+      
+      // Client item codes (from the original data structure)
+      clientItemCode: item.productCode || item.product_code || item.client_item_code || item.part_number || '',
+      
+      // Extract manufacturer code from description (this was working)
+      productCode: this.extractManufacturerCode(item),
+      
+      // Product name cleaning (this was working)
+      productName: this.cleanProductName(item.description || item.product_name || item.name || ''),
+      
+      // Quantities and pricing (these were working)
+      quantity: this.parseQuantity(item.quantity),
+      unit: item.uom || item.unit || 'PCS',
+      unitPrice: this.parsePrice(item.unit_price),
+      totalPrice: this.parsePrice(item.amount) || (this.parseQuantity(item.quantity) * this.parsePrice(item.unit_price)),
+      
+      // Sourcing status
+      sourcingStatus: 'pending',
+      supplierMatches: [],
+      recommendedSupplier: null,
+      
+      // Additional fields
+      category: this.categorizeProduct(item.description || ''),
+      specifications: item.description || '',
+      urgency: 'normal'
+    };
+    
+    console.log(`✅ Mapped item ${index + 1}:`, {
+      productCode: mappedItem.productCode,
+      clientItemCode: mappedItem.clientItemCode,
+      projectCode: mappedItem.projectCode, // ✅ CRITICAL: Verify project code is preserved
+      productName: mappedItem.productName.substring(0, 50) + '...',
+      quantity: mappedItem.quantity,
+      unitPrice: mappedItem.unitPrice,
+      totalPrice: mappedItem.totalPrice
+    });
+    
+    return mappedItem;
+  });
+}
 
   /**
  * Parse quantity from various formats
