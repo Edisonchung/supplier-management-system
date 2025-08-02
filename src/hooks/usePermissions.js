@@ -222,7 +222,7 @@ export const usePermissions = () => {
                      
     canManageSettings: (PERMISSIONS?.canManageSettings?.includes(userRole) ?? isAdmin) ||
                        isGroupAdmin ||
-                       hasCompanyPermission('manage_companies')
+                       hasCompanyPermission('manage_companies'),
 
     // AI & MCP Tool permissions - NEW SECTION
     canViewAI: (PERMISSIONS?.canViewAI?.includes(userRole) ?? 
