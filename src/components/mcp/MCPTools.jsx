@@ -63,7 +63,7 @@ const MCPTools = () => {
       const response = await fetch(`${API_BASE}/api/mcp/tools`);
       if (response.ok) {
         const data = await response.json();
-        setAvailableTools(data.tools || []);
+        setAvailableTools(data.data?.tools || data.tools || []);
         setMcpStatus('healthy');
       } else {
         // Fallback to mock data if API not ready
