@@ -1,18 +1,66 @@
 // src/services/ai/ExtractionService.js
-// Handle all API extraction calls
+// Handle all API extraction calls with user context for dual prompt system
 
 const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || 'https://supplier-mcp-server-production.up.railway.app';
 const DEFAULT_TIMEOUT = 120000;
 
 export class ExtractionService {
   /**
-   * Call the backend extraction API
+   * Get current user from localStorage or context
    */
-  static async callExtractionAPI(file) {
+  static getCurrentUser() {
+    try {
+      const userStr = localStorage.getItem('currentUser');
+      if (userStr) {
+        return JSON.parse(userStr);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Add user context to FormData for dual prompt system
+   */
+  static addUserContextToFormData(formData, user = null) {
+    const currentUser = user || this.getCurrentUser();
+    
+    if (currentUser) {
+      // Add user context fields expected by backend dual prompt system
+      formData.append('userEmail', currentUser.email);
+      formData.append('user_email', currentUser.email);
+      formData.append('user', JSON.stringify({
+        email: currentUser.email,
+        role: currentUser.role || 'user',
+        uid: currentUser.uid,
+        displayName: currentUser.displayName
+      }));
+      
+      console.log('🔧 Added user context to FormData:', {
+        email: currentUser.email,
+        role: currentUser.role,
+        uid: currentUser.uid
+      });
+    } else {
+      console.warn('⚠️ No user context found - extraction will use legacy system');
+    }
+    
+    return formData;
+  }
+
+  /**
+   * Call the backend extraction API with user context
+   */
+  static async callExtractionAPI(file, user = null) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('extractionMode', 'enhanced');
     formData.append('includeOCR', 'true');
+    
+    // Add user context for dual prompt system
+    this.addUserContextToFormData(formData, user);
     
     // Determine the appropriate endpoint based on file type
     const endpoint = this.getEndpointForFileType(file);
@@ -21,10 +69,15 @@ export class ExtractionService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
       
+      console.log(`🌐 Calling extraction API: ${AI_BACKEND_URL}${endpoint}`);
+      
       const response = await fetch(`${AI_BACKEND_URL}${endpoint}`, {
         method: 'POST',
         body: formData,
-        signal: controller.signal
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json'
+        }
       });
       
       clearTimeout(timeoutId);
@@ -35,6 +88,18 @@ export class ExtractionService {
       }
       
       const result = await response.json();
+      
+      // Log dual system metadata
+      if (result.extraction_metadata) {
+        console.log('📊 Extraction Metadata:', {
+          system_used: result.extraction_metadata.system_used,
+          user_email: result.extraction_metadata.user_email,
+          user_is_test_user: result.extraction_metadata.user_is_test_user,
+          prompt_name: result.extraction_metadata.prompt_name,
+          processing_time: result.extraction_metadata.processing_time
+        });
+      }
+      
       return result;
       
     } catch (error) {
@@ -46,13 +111,16 @@ export class ExtractionService {
   }
 
   /**
-   * Extract from PDF files
+   * Extract from PDF files with user context
    */
-  static async extractFromPDF(file) {
+  static async extractFromPDF(file, user = null) {
     const formData = new FormData();
     formData.append('pdf', file);
     formData.append('enhancedMode', 'true');
     formData.append('validateData', 'true');
+
+    // Add user context for dual prompt system
+    this.addUserContextToFormData(formData, user);
 
     const response = await fetch(`${AI_BACKEND_URL}/api/extract-po`, {
       method: 'POST',
@@ -67,16 +135,26 @@ export class ExtractionService {
       throw new Error(error.error || 'Failed to extract from PDF');
     }
 
-    return response.json();
+    const result = await response.json();
+    
+    // Log dual system results
+    if (result.extraction_metadata) {
+      console.log('📊 PDF Extraction Results:', result.extraction_metadata);
+    }
+    
+    return result;
   }
 
   /**
-   * Extract from image files (PNG, JPG, etc.)
+   * Extract from image files (PNG, JPG, etc.) with user context
    */
-  static async extractFromImage(file) {
+  static async extractFromImage(file, user = null) {
     const formData = new FormData();
     formData.append('image', file);
     formData.append('ocrMode', 'advanced');
+
+    // Add user context for dual prompt system
+    this.addUserContextToFormData(formData, user);
 
     const response = await fetch(`${AI_BACKEND_URL}/api/extract-image`, {
       method: 'POST',
@@ -91,12 +169,15 @@ export class ExtractionService {
   }
 
   /**
-   * Extract from Excel files
+   * Extract from Excel files with user context
    */
-  static async extractFromExcel(file) {
+  static async extractFromExcel(file, user = null) {
     const formData = new FormData();
     formData.append('excel', file);
     formData.append('parseFormat', 'auto');
+
+    // Add user context for dual prompt system
+    this.addUserContextToFormData(formData, user);
 
     const response = await fetch(`${AI_BACKEND_URL}/api/extract-excel`, {
       method: 'POST',
@@ -111,12 +192,15 @@ export class ExtractionService {
   }
 
   /**
-   * Extract from email files (.eml, .msg)
+   * Extract from email files (.eml, .msg) with user context
    */
-  static async extractFromEmail(file) {
+  static async extractFromEmail(file, user = null) {
     const formData = new FormData();
     formData.append('email', file);
     formData.append('extractAttachments', 'true');
+
+    // Add user context for dual prompt system
+    this.addUserContextToFormData(formData, user);
 
     const response = await fetch(`${AI_BACKEND_URL}/api/extract-email`, {
       method: 'POST',
@@ -166,14 +250,15 @@ export class ExtractionService {
   }
 
   /**
-   * Batch extraction for multiple files
+   * Batch extraction for multiple files with user context
    */
-  static async batchExtract(files) {
+  static async batchExtract(files, user = null) {
     const results = [];
+    const currentUser = user || this.getCurrentUser();
     
     for (const file of files) {
       try {
-        const result = await this.callExtractionAPI(file);
+        const result = await this.callExtractionAPI(file, currentUser);
         results.push({
           file: file.name,
           success: true,
