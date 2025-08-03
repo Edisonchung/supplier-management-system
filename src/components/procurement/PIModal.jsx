@@ -9,6 +9,8 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 import { PIPOMatchingService } from '../../services/PIPOMatchingService';
+import TradeDocumentUpload from '../common/TradeDocumentUpload';
+import TradeDocumentViewer from '../common/TradeDocumentViewer';
 
 
 
@@ -330,7 +332,7 @@ const validatePITotals = (formData, selectedProducts, debug = false) => {
   const discount = parseFloat(formData.discount) || 0;
   const shipping = parseFloat(formData.shipping) || 0;
   const tax = parseFloat(formData.tax) || 0;
-  const calculatedTotal = calculatedSubtotal - discount + shipping + tax;
+  const calculatedTotal = calculatedSubtotal - discount + shipping + (formData.tradeDocumentationFee || 0) + tax;
 
   if (debug) {
     console.log('💰 PI TOTAL VALIDATION:', {
@@ -430,6 +432,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     subtotal: 0,
     discount: 0,
     shipping: 0,
+    tradeDocumentationFee: 0,
     tax: 0,
     totalAmount: 0,
     // Banking details for international suppliers
@@ -857,6 +860,7 @@ useEffect(() => {
         subtotal: proformaInvoice.subtotal || 0,
         discount: proformaInvoice.discount || 0,
         shipping: proformaInvoice.shipping || 0,
+        tradeDocumentationFee: proformaInvoice.tradeDocumentationFee || 0,
         tax: proformaInvoice.tax || 0,
         totalAmount: proformaInvoice.totalAmount || proformaInvoice.grandTotal || 0,
         
@@ -2258,7 +2262,28 @@ const saveProductEdit = (index, field) => {
                     placeholder="0.00"
                   />
                 </div>
-                
+                {/* ✅ NEW: Trade Documentation Fee Field */}
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">
+      Trade Documentation Fee ({formData.currency})
+    </label>
+    <input
+      type="number"
+      step="0.01"
+      value={formData.tradeDocumentationFee || 0}
+      onChange={(e) => setFormData({ 
+        ...formData, 
+        tradeDocumentationFee: parseFloat(e.target.value) || 0 
+      })}
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      placeholder="0.00"
+    />
+    <small className="text-xs text-gray-500 mt-1">
+      Form E (ASEAN-China FTA Certificate)
+    </small>
+  </div>
+                                {/* Tax Field */}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Tax ({formData.currency})
@@ -2782,6 +2807,13 @@ const saveProductEdit = (index, field) => {
                                 <td></td>
                               </tr>
                             )}
+                            {formData.tradeDocumentationFee > 0 && (
+  <tr>
+    <td colSpan="3" className="px-4 py-2 text-right text-sm">Trade Documentation Fee:</td>
+    <td className="px-4 py-2 font-medium">{formData.currency} {formData.tradeDocumentationFee.toFixed(2)}</td>
+    <td></td>
+  </tr>
+)}
                             {formData.tax > 0 && (
                               <tr>
                                 <td colSpan="3" className="px-4 py-2 text-right text-sm">Tax:</td>
@@ -3073,6 +3105,62 @@ const saveProductEdit = (index, field) => {
                 </div>
               )}
             </div>
+
+    ) : activeTab === 'Trade Documents' ? (
+  <div className="space-y-6">
+    {/* Trade Documentation Fee Summary */}
+    <div className="bg-blue-50 p-4 rounded-lg">
+      <h3 className="font-medium text-blue-900 mb-2">Trade Documentation</h3>
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <span className="text-blue-700">Documentation Fee:</span>
+          <span className="font-medium ml-2">
+            {formData.currency} {(formData.tradeDocumentationFee || 0).toFixed(2)}
+          </span>
+        </div>
+        <div>
+          <span className="text-blue-700">Certificate Type:</span>
+          <span className="font-medium ml-2">Form E (ASEAN-China FTA)</span>
+        </div>
+      </div>
+    </div>
+
+    {/* Trade Document Upload Interface */}
+    <div className="space-y-4">
+      <h4 className="font-medium text-gray-900">Upload Trade Documents</h4>
+      
+      {/* File Upload Area */}
+      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+        <input
+          type="file"
+          multiple
+          accept=".pdf,.jpg,.jpeg,.png"
+          className="hidden"
+          id="trade-document-upload"
+        />
+        
+        <label htmlFor="trade-document-upload" className="cursor-pointer">
+          <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+          <p className="text-gray-600 mb-1">Click to upload or drag and drop</p>
+          <p className="text-xs text-gray-500">
+            Form E, Commercial Invoice, Packing List, B/L (PDF, JPG, PNG)
+          </p>
+        </label>
+      </div>
+
+      {/* Document Type Guidelines */}
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h5 className="font-medium text-gray-900 mb-2">Required Trade Documents:</h5>
+        <ul className="text-sm text-gray-600 space-y-1">
+          <li>• <strong>Form E Certificate:</strong> ASEAN-China Free Trade Agreement Certificate of Origin</li>
+          <li>• <strong>Commercial Invoice:</strong> Detailed invoice with HS codes</li>
+          <li>• <strong>Packing List:</strong> Complete item manifest</li>
+          <li>• <strong>Bill of Lading:</strong> Shipping documentation</li>
+          <li>• <strong>Insurance Certificate:</strong> Cargo insurance (if applicable)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
           ) : null}
        </div>
 
