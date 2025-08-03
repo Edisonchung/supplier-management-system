@@ -199,6 +199,17 @@ const PublicPIView = () => {
     return (pi?.totalAmount || 0) - calculateTotalPaid();
   };
 
+  const calculateTotalWithTradeFee = () => {
+    const subtotal = pi?.subtotal || 0;
+    const discount = pi?.discount || 0;
+    const shipping = pi?.shipping || 0;
+    const tradeDocFee = pi?.tradeDocumentationFee || 0;
+    const tax = pi?.tax || 0;
+    
+    return subtotal - discount + shipping + tradeDocFee + tax;
+  };
+
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -387,6 +398,12 @@ const PublicPIView = () => {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Shipping</span>
                     <span className="font-medium">{formatCurrency(pi.shipping, pi.currency)}</span>
+                  </div>
+                )}
+                 {(pi.tradeDocumentationFee || 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Trade Documentation Fee</span>
+                    <span className="font-medium">{formatCurrency(pi.tradeDocumentationFee, pi.currency)}</span>
                   </div>
                 )}
                 {pi.tax > 0 && (
