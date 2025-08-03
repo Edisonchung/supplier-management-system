@@ -7,6 +7,7 @@ class DocumentStorageService {
     this.bucketPaths = {
       po: 'documents/purchase-orders',
       pi: 'documents/proforma-invoices',
+      trade: 'documents/trade-documents',
       temp: 'documents/temp'
     };
     this.isInitialized = false;
@@ -256,6 +257,92 @@ class DocumentStorageService {
   }
 
   /**
+   * Generic document storage method for any document type
+   * @param {File} file - The uploaded file
+   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @param {string} documentNumber - Document number for organizing
+   * @param {string} documentId - Unique document ID
+   * @returns {Promise<Object>} - Storage result with download URL
+   */
+  async storeDocument(file, documentType, documentNumber, documentId) {
+    if (!this.isReady()) {
+      throw new Error('DocumentStorageService is not ready. Check Firebase configuration.');
+    }
+
+    if (!this.bucketPaths[documentType]) {
+      throw new Error(`Unsupported document type: ${documentType}`);
+    }
+
+    try {
+      console.log(`📁 Storing ${documentType.toUpperCase()} document:`, {
+        fileName: file.name,
+        size: file.size,
+        type: file.type,
+        documentNumber,
+        documentId
+      });
+
+      // Generate unique filename with timestamp
+      const timestamp = Date.now();
+      const fileExtension = this.getFileExtension(file.name);
+      const sanitizedDocNumber = this.sanitizeFileName(documentNumber);
+      const fileName = `${sanitizedDocNumber}_${timestamp}_${documentType}${fileExtension}`;
+      
+      // Create storage path
+      const storagePath = `${this.bucketPaths[documentType]}/${documentId}/${fileName}`;
+      const storageRef = ref(storage, storagePath);
+
+      // Add metadata
+      const metadata = {
+        customMetadata: {
+          originalFileName: file.name,
+          documentType: documentType.toUpperCase(),
+          documentNumber: documentNumber,
+          documentId: documentId,
+          uploadedAt: new Date().toISOString(),
+          fileSize: file.size.toString(),
+          contentType: file.type
+        }
+      };
+
+      // Upload file
+      console.log(`📤 Uploading to: ${storagePath}`);
+      const uploadResult = await uploadBytes(storageRef, file, metadata);
+      
+      // Get download URL
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+      
+      console.log(`✅ Document stored successfully:`, {
+        path: storagePath,
+        downloadURL,
+        size: file.size
+      });
+
+      return {
+        success: true,
+        data: {
+          fileName: fileName,
+          originalFileName: file.name,
+          storagePath: storagePath,
+          downloadURL: downloadURL,
+          fileSize: file.size,
+          contentType: file.type,
+          uploadedAt: new Date().toISOString(),
+          documentType: documentType.toUpperCase(),
+          documentNumber: documentNumber,
+          documentId: documentId
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error storing document:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+  /**
    * Retrieve all documents for a specific PO/PI
    * @param {string} documentId - Document ID
    * @param {string} documentType - 'po' or 'pi'
@@ -338,7 +425,20 @@ class DocumentStorageService {
       };
     }
   }
-
+  /**
+   * Retrieve documents with consistent interface
+   * @param {string} documentId - Document ID
+   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @returns {Promise<Object>} - Documents result
+   */
+  async getDocuments(documentId, documentType) {
+    const result = await this.getDocumentFiles(documentId, documentType);
+    return {
+      success: result.success,
+      error: result.error,
+      documents: result.data || []
+    };
+  }
   /**
    * Delete specific document file
    * @param {string} filePath - Full storage path to the file
@@ -411,7 +511,35 @@ class DocumentStorageService {
       };
     }
   }
+  /**
+   * Delete a specific document by filename
+   * @param {string} documentId - Document ID
+   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @param {string} fileName - Name of file to delete
+   * @returns {Promise<Object>} - Deletion result
+   */
+  async deleteDocument(documentId, documentType, fileName) {
+    if (!this.isReady()) {
+      return {
+        success: false,
+        error: 'DocumentStorageService not ready'
+      };
+    }
 
+    try {
+      const filePath = `${this.bucketPaths[documentType]}/${documentId}/${fileName}`;
+      const result = await this.deleteDocumentFile(filePath);
+      
+      return result;
+
+    } catch (error) {
+      console.error('❌ Error deleting specific document:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
   /**
    * Generate document download link with authentication
    * @param {string} storagePath - Full storage path
@@ -431,7 +559,39 @@ class DocumentStorageService {
       throw error;
     }
   }
+  /**
+   * Download document by filename
+   * @param {string} documentId - Document ID
+   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @param {string} fileName - Name of file to download
+   * @returns {Promise<Object>} - Download result with URL
+   */
+  async downloadDocument(documentId, documentType, fileName) {
+    if (!this.isReady()) {
+      return {
+        success: false,
+        error: 'DocumentStorageService not ready'
+      };
+    }
 
+    try {
+      const filePath = `${this.bucketPaths[documentType]}/${documentId}/${fileName}`;
+      const downloadURL = await this.getAuthenticatedDownloadURL(filePath);
+      
+      return {
+        success: true,
+        downloadURL,
+        fileName
+      };
+
+    } catch (error) {
+      console.error('❌ Error downloading document:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
   /**
    * Utility functions
    */
