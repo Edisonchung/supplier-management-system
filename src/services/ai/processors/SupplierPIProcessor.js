@@ -42,6 +42,7 @@ export class SupplierPIProcessor {
       discount: parseAmount(pi.discount || 0),
       discountPercent: parseNumber(pi.discount_percent || 0),
       shipping: this.extractShippingCost(pi),
+      tradeDocumentationFee: this.extractTradeDocumentationFee(pi), 
       tax: parseAmount(pi.tax || pi.gst || pi.vat || 0),
       taxPercent: parseNumber(pi.tax_percent || pi.gst_percent || 0),
       grandTotal: parseAmount(pi.grand_total || pi.total || pi.total_amount || 0),
@@ -157,6 +158,73 @@ export class SupplierPIProcessor {
     return 0;
   }
 
+  /**
+   * Extract trade documentation fee
+   */
+  static extractTradeDocumentationFee(data) {
+    console.log('📋 Extracting trade documentation fee from:', data);
+    
+    // Check direct trade documentation fee fields
+    const directTradeFee = parseAmount(
+      data.trade_documentation_fee || 
+      data.documentation_fee ||
+      data.form_e_fee || 
+      data.certificate_fee ||
+      data.fta_fee ||
+      data.origin_certificate_fee ||
+      data.customs_clearance_fee ||
+      data['trade documentation fee'] ||
+      data['form e fee'] ||
+      data['certificate fee'] ||
+      0
+    );
+    
+    if (directTradeFee > 0) {
+      console.log('✅ Found direct trade documentation fee:', directTradeFee);
+      return directTradeFee;
+    }
+    
+    // Check in purchase_order structure
+    if (data.purchase_order) {
+      const poTradeFee = parseAmount(
+        data.purchase_order.trade_documentation_fee ||
+        data.purchase_order.documentation_fee ||
+        data.purchase_order.form_e_fee ||
+        data.purchase_order.certificate_fee ||
+        0
+      );
+      if (poTradeFee > 0) {
+        console.log('✅ Found PO trade documentation fee:', poTradeFee);
+        return poTradeFee;
+      }
+    }
+    
+    // Text pattern matching for trade documentation fees
+    const text = JSON.stringify(data).toLowerCase();
+    const tradeDocPatterns = [
+      /trade\s+documentation\s+fee[\s:$]+([0-9,]+\.?[0-9]*)/,
+      /form\s+e\s+fee[\s:$]+([0-9,]+\.?[0-9]*)/,
+      /certificate\s+fee[\s:$]+([0-9,]+\.?[0-9]*)/,
+      /documentation\s+charge[\s:$]+([0-9,]+\.?[0-9]*)/,
+      /origin\s+certificate[\s:$]+([0-9,]+\.?[0-9]*)/,
+      /fta\s+certificate[\s:$]+([0-9,]+\.?[0-9]*)/,
+      /customs\s+clearance[\s:$]+([0-9,]+\.?[0-9]*)/
+    ];
+    
+    for (const pattern of tradeDocPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const amount = parseAmount(match[1]);
+        if (amount > 0) {
+          console.log(`✅ Found trade documentation fee via pattern matching: ${amount}`);
+          return amount;
+        }
+      }
+    }
+    
+    console.log('❌ No trade documentation fee found');
+    return 0;
+  }
 
 
   
@@ -372,6 +440,7 @@ export class SupplierPIProcessor {
       data.grandTotal = data.subtotal + 
                        (taxAmount || 0) + 
                        (data.shipping || 0) - 
+                       (data.tradeDocumentationFee || 0) -  
                        (discountAmount || 0);
     }
     
