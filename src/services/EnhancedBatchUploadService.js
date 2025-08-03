@@ -13,11 +13,29 @@ class EnhancedBatchUploadService {
     this.notifications = [];
     this.showNotification = null; // Will be set by component
     this.processedFiles = new Set(); // Track processed files to prevent duplicates
-    this.documentStorageService = null; // ✅ NEW: Document storage service
+    this.documentStorageService = null; // Document storage service
+    this.extractionService = ExtractionService; // ✅ NEW: Reference to extraction service
+
     
     this.init();
   }
 
+  /**
+   * ✅ NEW: Get current user from localStorage or context
+   */
+  getCurrentUser() {
+    try {
+      const userStr = localStorage.getItem('currentUser');
+      if (userStr) {
+        return JSON.parse(userStr);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting current user for batch processing:', error);
+      return null;
+    }
+  }
+  
   /**
    * ✅ NEW: Initialize document storage service
    */
@@ -314,9 +332,16 @@ class EnhancedBatchUploadService {
       batch.startedAt = new Date().toISOString();
       this.persistQueue(queueKey, batch);
       
-      // Convert files to base64 strings (safer for Web Worker transfer)
-      const processableFiles = [];
+// ✅ NEW: Get current user context for dual prompt system
+      const userContext = this.getCurrentUser();
+      console.log('🔧 User context for batch processing:', {
+        hasUser: !!userContext,
+        email: userContext?.email,
+        role: userContext?.role
+      });
       
+      // Convert files to base64 strings (safer for Web Worker transfer)
+      const processableFiles = [];      
       for (let i = 0; i < batch.files.length; i++) {
         const fileItem = batch.files[i];
         
@@ -352,22 +377,23 @@ class EnhancedBatchUploadService {
         throw new Error('No files could be converted for processing');
       }
       
-      // Send files to worker for processing (using regular postMessage, not transferable)
+      // ✅ UPDATED: Send files to worker with user context for dual prompt system
       const workerPayload = {
         files: processableFiles,
         batchId: batch.id,
-        options: batch.options
+        options: batch.options,
+        userContext: userContext // ← ADD THIS LINE
       };
       
-      console.log(`📤 Sending START_BATCH to worker with ${processableFiles.length} files`);
+      console.log(`📤 Sending START_BATCH to worker with ${processableFiles.length} files and user context`);
       
-      // Send without transferable objects
+      // Send to worker with user context
       worker.postMessage({
         type: 'START_BATCH',
         payload: workerPayload
       });
       
-      console.log(`✅ Started Web Worker processing for batch ${batch.id}`);
+      console.log(`✅ Started Web Worker processing for batch ${batch.id} with dual prompt system support`);
       
     } catch (error) {
       console.error('Failed to start Web Worker:', error);
@@ -419,10 +445,20 @@ class EnhancedBatchUploadService {
     });
   }
 
-  /**
-   * Process batch in main thread (traditional approach)
+ /**
+   * ✅ UPDATED: Process batch in main thread with user context
    */
   async processWithMainThread(queueKey, batch) {
+    console.log(`🔄 Processing batch ${batch.id} in main thread`);
+    
+    // Get user context for dual prompt system
+    const userContext = this.getCurrentUser();
+    console.log('🔧 User context for main thread processing:', {
+      hasUser: !!userContext,
+      email: userContext?.email,
+      role: userContext?.role
+    });
+    
     batch.status = 'processing';
     batch.processingMethod = 'main-thread';
     batch.startedAt = new Date().toISOString();
@@ -443,14 +479,27 @@ class EnhancedBatchUploadService {
         
         console.log(`Processing file: ${fileItem.name}`);
         
-        // Use AI extraction service
-        const result = await AIExtractionService.extractFromFile(fileItem.file);
+        // ✅ UPDATED: Use ExtractionService with user context for dual prompt system
+        const result = await this.extractionService.callExtractionAPI(
+          fileItem.file, 
+          userContext // ← ADD THIS PARAMETER
+        );
         
-        if (result.success) {
+       if (result && result.success !== false) {
           fileItem.status = 'completed';
           fileItem.result = result;
           fileItem.progress = 100;
           fileItem.completedAt = new Date().toISOString();
+          
+          // ✅ UPDATED: Store extraction metadata including dual system info
+          if (result.extraction_metadata) {
+            fileItem.extractionMetadata = result.extraction_metadata;
+            console.log(`📊 Dual system metadata for ${fileItem.name}:`, {
+              system_used: result.extraction_metadata.system_used,
+              user_email: result.extraction_metadata.user_email,
+              prompt_name: result.extraction_metadata.prompt_name
+            });
+          }
           
           // ✅ CRITICAL FIX: Store extracted data including document storage
           if (result.data) {
@@ -459,9 +508,6 @@ class EnhancedBatchUploadService {
             // Store document storage information if available
             if (result.data.documentStorage) {
               fileItem.documentStorage = result.data.documentStorage;
-            }
-            if (result.data.extractionMetadata) {
-              fileItem.extractionMetadata = result.data.extractionMetadata;
             }
           }
           
