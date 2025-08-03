@@ -2,6 +2,7 @@
 // Enhanced batch upload service with Web Worker support, duplicate prevention, and DOCUMENT STORAGE
 
 import { AIExtractionService } from './ai/AIExtractionService';
+import { ExtractionService } from './ai/ExtractionService'; // ✅ NEW: Import for dual prompt system
 
 class EnhancedBatchUploadService {
   constructor() {
