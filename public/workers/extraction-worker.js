@@ -1,12 +1,13 @@
-// Fixed public/workers/extraction-worker.js
-// This version calls the REAL Railway API instead of using mock data
+// public/workers/extraction-worker.js
+// Web Worker for batch file processing with user context support
 
 let isProcessing = false;
 let currentQueue = [];
 let processingIndex = 0;
 
-// Railway backend URL (same as single upload uses)
+// Configuration
 const API_BASE_URL = 'https://supplier-mcp-server-production.up.railway.app';
+const MAX_CONCURRENT = 3;
 
 // Listen for messages from main thread
 self.addEventListener('message', async function(e) {
@@ -21,15 +22,15 @@ self.addEventListener('message', async function(e) {
             timestamp: new Date().toISOString(),
             status: 'ready'
           }
-    
-    // Small delay to prevent overwhelming the system
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
         });
         break;
         
       case 'START_BATCH':
         await startBatchProcessing(payload);
+        break;
+        
+      case 'PROCESS_BATCH':
+        await processBatch(payload.files, payload.userContext);
         break;
         
       case 'CANCEL_BATCH':
@@ -41,7 +42,7 @@ self.addEventListener('message', async function(e) {
         break;
         
       default:
-        console.warn('Unknown message type:', type);
+        console.warn('🔧 WORKER: Unknown message type:', type);
         postMessage({
           type: 'WORKER_ERROR',
           payload: {
@@ -51,7 +52,7 @@ self.addEventListener('message', async function(e) {
         });
     }
   } catch (error) {
-    console.error('Worker message handling error:', error);
+    console.error('🔧 WORKER: Error handling message:', error);
     postMessage({
       type: 'WORKER_ERROR',
       payload: {
@@ -64,13 +65,18 @@ self.addEventListener('message', async function(e) {
 });
 
 async function startBatchProcessing(batchData) {
-  const { files, batchId, options } = batchData;
+  const { files, batchId, options, userContext } = batchData;
   
   isProcessing = true;
   currentQueue = files;
   processingIndex = 0;
   
-  console.log(`🚀 Worker starting batch processing: ${batchId} with ${files.length} files`);
+  console.log(`🚀 Worker starting batch processing: ${batchId} with ${files.length} files`, {
+    userContext: userContext ? {
+      email: userContext.email,
+      role: userContext.role
+    } : 'No user context'
+  });
   
   // Send initial status
   postMessage({
@@ -104,8 +110,8 @@ async function startBatchProcessing(batchData) {
         }
       });
       
-      // 🔧 FIX: Process file using REAL API instead of mock data
-      const result = await processFileWithRealAPI(file);
+      // 🔧 FIX: Process file using REAL API with user context
+      const result = await processFileWithRealAPI(file, userContext);
       
       console.log(`✅ Worker completed file: ${file.name}`);
       
@@ -138,6 +144,9 @@ async function startBatchProcessing(batchData) {
         }
       });
     }
+    
+    // Small delay to prevent overwhelming the system
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
   
   // Mark batch as completed
@@ -157,14 +166,16 @@ async function startBatchProcessing(batchData) {
 }
 
 /**
- * 🔧 FIXED: Process file using the REAL Railway API (same as single upload)
+ * 🔧 UPDATED: Process file using the REAL Railway API with user context
  */
-async function processFileWithRealAPI(file) {
+async function processFileWithRealAPI(file, userContext = null) {
   try {
     console.log(`📄 Processing file ${file.name} with base64 data (${file.base64Data.length} chars)`);
     
     // Convert base64 back to File object for API call
-    const byteCharacters = atob(file.base64Data.split(',')[1]);
+    const base64Data = file.base64Data.includes(',') ? 
+      file.base64Data.split(',')[1] : file.base64Data;
+    const byteCharacters = atob(base64Data);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
       byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -173,11 +184,30 @@ async function processFileWithRealAPI(file) {
     const blob = new Blob([byteArray], { type: file.type });
     const apiFile = new File([blob], file.name, { type: file.type });
     
-    // Create FormData for API call (same format as single upload)
+    // Create FormData for API call
     const formData = new FormData();
     formData.append('file', apiFile);
     formData.append('extractionMode', 'enhanced');
     formData.append('includeOCR', 'true');
+    
+    // Add user context for dual prompt system
+    if (userContext) {
+      formData.append('userEmail', userContext.email);
+      formData.append('user_email', userContext.email);
+      formData.append('user', JSON.stringify({
+        email: userContext.email,
+        role: userContext.role || 'user',
+        uid: userContext.uid,
+        displayName: userContext.displayName
+      }));
+      
+      console.log(`🔧 WORKER: Added user context for ${file.name}:`, {
+        email: userContext.email,
+        role: userContext.role
+      });
+    } else {
+      console.warn(`⚠️ WORKER: No user context for ${file.name} - will use legacy system`);
+    }
     
     console.log(`🔧 WORKER: Calling Railway API at ${API_BASE_URL}/api/extract-po`);
     
@@ -195,12 +225,24 @@ async function processFileWithRealAPI(file) {
     }
     
     const result = await response.json();
+    
+    // Log dual system metadata
+    if (result.extraction_metadata) {
+      console.log(`🔧 WORKER: Extraction metadata for ${file.name}:`, {
+        system_used: result.extraction_metadata.system_used,
+        user_email: result.extraction_metadata.user_email,
+        user_is_test_user: result.extraction_metadata.user_is_test_user,
+        prompt_name: result.extraction_metadata.prompt_name,
+        processing_time: result.extraction_metadata.processing_time
+      });
+    }
+    
     console.log(`🔧 WORKER: Railway API response received for ${file.name}`);
     
-    // Return the real API result (not mock data)
+    // Return the real API result
     return {
       success: true,
-      data: result.data || result, // Handle different response formats
+      data: result.data || result,
       metadata: {
         documentType: 'proforma_invoice',
         confidence: result.confidence || 0.85,
@@ -209,7 +251,12 @@ async function processFileWithRealAPI(file) {
         fileSize: file.size,
         dataLength: file.base64Data.length,
         apiEndpoint: `${API_BASE_URL}/api/extract-po`,
-        processingMethod: 'real-api'
+        processingMethod: 'real-api',
+        // Include dual system metadata
+        systemUsed: result.extraction_metadata?.system_used || 'unknown',
+        userEmail: result.extraction_metadata?.user_email || 'anonymous',
+        promptName: result.extraction_metadata?.prompt_name || 'unknown',
+        processingTime: result.extraction_metadata?.processing_time
       }
     };
     
@@ -239,48 +286,110 @@ function sendStatus() {
       isProcessing,
       currentIndex: processingIndex,
       totalFiles: currentQueue.length,
-      progress: currentQueue.length > 0 ? 
-        Math.round((processingIndex / currentQueue.length) * 100) : 0
+      progress: currentQueue.length > 0 ? processingIndex / currentQueue.length : 0
     }
   });
 }
 
-// Enhanced error handling for the worker
-self.addEventListener('error', function(error) {
-  console.error('Worker global error:', error);
-  postMessage({
-    type: 'WORKER_ERROR',
-    payload: {
-      message: error.message,
-      filename: error.filename,
-      lineno: error.lineno,
-      colno: error.colno,
-      type: 'GLOBAL_ERROR'
-    }
-  });
-});
+// Configuration
+const MAX_CONCURRENT = 3;
 
-// Handle unhandled promise rejections
-self.addEventListener('unhandledrejection', function(event) {
-  console.error('Worker unhandled promise rejection:', event.reason);
-  postMessage({
-    type: 'WORKER_ERROR',
-    payload: {
-      message: event.reason?.message || 'Unhandled promise rejection',
-      type: 'UNHANDLED_REJECTION'
-    }
-  });
-  event.preventDefault();
-});
-
-// Notify that worker is ready
-console.log('✅ Web Worker initialized and ready for REAL API processing');
-postMessage({
-  type: 'WORKER_READY',
-  payload: {
-    timestamp: new Date().toISOString(),
-    status: 'initialized',
-    apiEndpoint: `${API_BASE_URL}/api/extract-po`,
-    processingMethod: 'real-api'
+console.log('🔧 WORKER: Extraction worker initialized with user context support');
+async function processBatch(files, userContext = null) {
+  if (isProcessing) {
+    console.log('🔧 WORKER: Batch processing already in progress');
+    return;
   }
-});
+  
+  console.log(`🔧 WORKER: Starting batch processing of ${files.length} files`, {
+    userContext: userContext ? {
+      email: userContext.email,
+      role: userContext.role
+    } : 'No user context'
+  });
+  
+  isProcessing = true;
+  currentQueue = files;
+  processingIndex = 0;
+  
+  const results = [];
+  
+  try {
+    // Process files with concurrency control
+    for (let i = 0; i < files.length; i += MAX_CONCURRENT) {
+      if (!isProcessing) break; // Check for cancellation
+      
+      const batch = files.slice(i, i + MAX_CONCURRENT);
+      const batchPromises = batch.map(file => processFileWithRealAPI(file, userContext));
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      batchResults.forEach((result, index) => {
+        processingIndex = i + index + 1;
+        
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+          postMessage({
+            type: 'FILE_PROCESSED',
+            payload: {
+              result: result.value,
+              progress: processingIndex / files.length,
+              currentIndex: processingIndex,
+              totalFiles: files.length
+            }
+          });
+        } else {
+          const failureResult = {
+            success: false,
+            fileName: batch[index].name,
+            error: result.reason?.message || 'Processing failed',
+            metadata: {
+              fileName: batch[index].name,
+              processingMethod: 'worker-failed'
+            }
+          };
+          
+          results.push(failureResult);
+          postMessage({
+            type: 'FILE_FAILED',
+            payload: {
+              result: failureResult,
+              progress: processingIndex / files.length,
+              currentIndex: processingIndex,
+              totalFiles: files.length
+            }
+          });
+        }
+      });
+      
+      // Small delay between batches
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // Send completion message
+    postMessage({
+      type: 'BATCH_COMPLETE',
+      payload: {
+        results,
+        totalFiles: files.length,
+        successful: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length
+      }
+    });
+    
+  } catch (error) {
+    console.error('🔧 WORKER: Batch processing error:', error);
+    postMessage({
+      type: 'BATCH_ERROR',
+      payload: {
+        error: error.message,
+        results,
+        processedFiles: processingIndex
+      }
+    });
+  } finally {
+    isProcessing = false;
+    currentQueue = [];
+    processingIndex = 0;
+  }
+}
