@@ -1,9 +1,10 @@
 // src/components/common/Header.jsx - Enhanced with Smart Notifications
-import React, { useState, useEffect } from 'react';
-import { Menu, Bell, LogOut, User, ChevronDown, AlertTriangle, DollarSign, Package, Brain } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Menu, Bell, LogOut, User, ChevronDown, AlertTriangle, DollarSign, Package, Brain, Settings } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { NotificationManager } from './Notification';
+import SmartNotificationsService from '../../services/notifications/SmartNotificationsService';
 
 const Header = ({ toggleMobileMenu }) => {
   const { user, logout } = useAuth();
@@ -11,141 +12,167 @@ const Header = ({ toggleMobileMenu }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [smartNotifications, setSmartNotifications] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      NotificationManager.error('Failed to logout', { title: 'Error' });
+    }
   };
 
-  // Smart Notifications Logic
-  useEffect(() => {
-    const loadSmartNotifications = () => {
-      try {
-        const deliveryTracking = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
-        const paymentTracking = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
-        
-        const alerts = [];
-        const now = new Date();
-        let hasNewUrgent = false;
+  // ✅ ENHANCED: Load notifications from SmartNotificationsService
+  const loadSmartNotifications = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Loading smart notifications in header...');
+      
+      // Get notifications from the service
+      const serviceNotifications = await SmartNotificationsService.getAllNotifications();
+      
+      // Convert service notifications to header format
+      const headerNotifications = serviceNotifications.map(notification => ({
+        id: notification.id,
+        message: notification.title,
+        time: formatTime(notification.timestamp),
+        unread: true,
+        type: notification.type,
+        priority: notification.severity === 'critical' ? 'high' : 
+                 notification.severity === 'high' ? 'medium' : 'low',
+        icon: getNotificationIcon(notification.type),
+        color: getNotificationColor(notification.severity),
+        isNew: isRecentNotification(notification.timestamp),
+        details: notification.details
+      }));
 
-        // Check for overdue deliveries
-        Object.entries(deliveryTracking).forEach(([poId, delivery]) => {
-          if (delivery.estimatedDelivery) {
-            const expectedDate = new Date(delivery.estimatedDelivery);
-            const daysOverdue = Math.floor((now - expectedDate) / (1000 * 60 * 60 * 24));
-            
-            if (daysOverdue > 0 && delivery.status !== 'completed') {
-              const isJustOverdue = daysOverdue === 1; // Just became overdue today
-              
-              alerts.push({
-                id: `overdue-${poId}`,
-                message: `PO ${delivery.poNumber || poId} is ${daysOverdue} days overdue`,
-                time: `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`,
-                unread: true,
-                type: 'delivery',
-                priority: daysOverdue > 7 ? 'high' : 'medium',
-                icon: AlertTriangle,
-                color: 'text-red-500',
-                isNew: isJustOverdue
-              });
+      // Also load legacy localStorage notifications for backward compatibility
+      const legacyNotifications = loadLegacyNotifications();
+      
+      // Combine and deduplicate
+      const allNotifications = [...headerNotifications, ...legacyNotifications];
+      const uniqueNotifications = allNotifications.filter((notification, index, self) => 
+        index === self.findIndex(n => n.id === notification.id)
+      );
 
-              // Trigger toast notification for newly overdue items
-              if (isJustOverdue) {
-                hasNewUrgent = true;
-                NotificationManager.warning(
-                  `PO ${delivery.poNumber || poId} delivery is now overdue`, 
-                  {
-                    title: '⚠️ Delivery Alert',
-                    action: {
-                      label: 'View Details',
-                      onClick: () => navigate('/notifications')
-                    },
-                    duration: 8000
-                  }
-                );
-              }
-            }
+      setSmartNotifications(uniqueNotifications);
+      console.log(`✅ Loaded ${uniqueNotifications.length} notifications in header`);
+      
+    } catch (error) {
+      console.error('❌ Error loading smart notifications in header:', error);
+      // Fallback to legacy method
+      const legacyNotifications = loadLegacyNotifications();
+      setSmartNotifications(legacyNotifications);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Helper functions
+  const formatTime = (timestamp) => {
+    if (!timestamp) return 'Just now';
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diffMs = now - time;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
+  };
+
+  const getNotificationIcon = (type) => {
+    switch (type) {
+      case 'delivery': return AlertTriangle;
+      case 'payment': return DollarSign;
+      case 'procurement': return Package;
+      case 'urgent': return AlertTriangle;
+      default: return Bell;
+    }
+  };
+
+  const getNotificationColor = (severity) => {
+    switch (severity) {
+      case 'critical': return 'text-red-500';
+      case 'high': return 'text-amber-500';
+      case 'medium': return 'text-blue-500';
+      case 'low': return 'text-green-500';
+      default: return 'text-gray-500';
+    }
+  };
+
+  const isRecentNotification = (timestamp) => {
+    if (!timestamp) return true;
+    const now = new Date();
+    const time = new Date(timestamp);
+    return (now - time) < 300000; // 5 minutes
+  };
+
+  // ✅ LEGACY: Keep existing localStorage logic as fallback
+  const loadLegacyNotifications = () => {
+    try {
+      const deliveryTracking = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
+      const paymentTracking = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
+      
+      const alerts = [];
+      const now = new Date();
+
+      // Check for overdue deliveries
+      Object.entries(deliveryTracking).forEach(([poId, delivery]) => {
+        if (delivery.estimatedDelivery) {
+          const expectedDate = new Date(delivery.estimatedDelivery);
+          const daysOverdue = Math.floor((now - expectedDate) / (1000 * 60 * 60 * 24));
+          
+          if (daysOverdue > 0 && delivery.status !== 'completed') {
+            alerts.push({
+              id: `legacy-overdue-${poId}`,
+              message: `PO ${delivery.poNumber || poId} is ${daysOverdue} days overdue`,
+              time: `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`,
+              unread: true,
+              type: 'delivery',
+              priority: daysOverdue > 7 ? 'high' : 'medium',
+              icon: AlertTriangle,
+              color: 'text-red-500',
+              isNew: daysOverdue === 1
+            });
           }
-        });
-
-        // Check for payment due dates
-        Object.entries(paymentTracking).forEach(([supplierId, payment]) => {
-          if (payment.dueDate) {
-            const dueDate = new Date(payment.dueDate);
-            const daysUntilDue = Math.floor((dueDate - now) / (1000 * 60 * 60 * 24));
-            
-            if (daysUntilDue <= 3 && daysUntilDue >= 0 && payment.status === 'pending') {
-              const isDueToday = daysUntilDue === 0;
-              const isDueTomorrow = daysUntilDue === 1;
-              
-              alerts.push({
-                id: `payment-${supplierId}`,
-                message: `Payment of $${payment.totalAmount?.toLocaleString() || '0'} due ${isDueToday ? 'today' : `in ${daysUntilDue} days`}`,
-                time: isDueToday ? 'Due today' : `Due in ${daysUntilDue} days`,
-                unread: true,
-                type: 'payment',
-                priority: daysUntilDue <= 1 ? 'high' : 'medium',
-                icon: DollarSign,
-                color: daysUntilDue <= 1 ? 'text-red-500' : 'text-amber-500',
-                isNew: isDueToday || isDueTomorrow
-              });
-
-              // Trigger toast notifications for urgent payments
-              if (isDueToday) {
-                hasNewUrgent = true;
-                NotificationManager.error(
-                  `Payment of $${payment.totalAmount?.toLocaleString()} is due today`, 
-                  {
-                    title: '🚨 Urgent Payment Due',
-                    action: {
-                      label: 'Process Payment',
-                      onClick: () => navigate('/notifications')
-                    },
-                    duration: 10000
-                  }
-                );
-              } else if (isDueTomorrow) {
-                NotificationManager.warning(
-                  `Payment of $${payment.totalAmount?.toLocaleString()} due tomorrow`, 
-                  {
-                    title: '💰 Payment Reminder',
-                    action: {
-                      label: 'Schedule Payment',
-                      onClick: () => navigate('/notifications')
-                    },
-                    duration: 6000
-                  }
-                );
-              }
-            }
-          }
-        });
-
-        // Show AI summary for multiple urgent items
-        const urgentCount = alerts.filter(a => a.priority === 'high').length;
-        if (hasNewUrgent && urgentCount > 1) {
-          NotificationManager.ai(
-            `Found ${urgentCount} urgent procurement alerts requiring immediate attention`, 
-            {
-              title: '🧠 Smart Procurement Alert',
-              action: {
-                label: 'Review All Alerts',
-                onClick: () => navigate('/notifications')
-              },
-              duration: 8000
-            }
-          );
         }
+      });
 
-        setSmartNotifications(alerts);
-      } catch (error) {
-        console.error('Error loading smart notifications:', error);
-        NotificationManager.error('Failed to load smart notifications', {
-          title: 'System Error'
-        });
-      }
-    };
+      // Check for payment due dates
+      Object.entries(paymentTracking).forEach(([supplierId, payment]) => {
+        if (payment.dueDate) {
+          const dueDate = new Date(payment.dueDate);
+          const daysUntilDue = Math.floor((dueDate - now) / (1000 * 60 * 60 * 24));
+          
+          if (daysUntilDue <= 3 && daysUntilDue >= 0 && payment.status === 'pending') {
+            alerts.push({
+              id: `legacy-payment-${supplierId}`,
+              message: `Payment of $${payment.totalAmount?.toLocaleString() || '0'} due ${daysUntilDue === 0 ? 'today' : `in ${daysUntilDue} days`}`,
+              time: daysUntilDue === 0 ? 'Due today' : `Due in ${daysUntilDue} days`,
+              unread: true,
+              type: 'payment',
+              priority: daysUntilDue <= 1 ? 'high' : 'medium',
+              icon: DollarSign,
+              color: daysUntilDue <= 1 ? 'text-red-500' : 'text-amber-500',
+              isNew: daysUntilDue <= 1
+            });
+          }
+        }
+      });
 
+      return alerts;
+    } catch (error) {
+      console.error('Error loading legacy notifications:', error);
+      return [];
+    }
+  };
+
+  // ✅ ENHANCED: Smart notification loading with error handling
+  useEffect(() => {
     // Initial load
     loadSmartNotifications();
     
@@ -153,34 +180,37 @@ const Header = ({ toggleMobileMenu }) => {
     const interval = setInterval(loadSmartNotifications, 30000);
     
     return () => clearInterval(interval);
-  }, [navigate]);
+  }, [loadSmartNotifications]);
 
   // Regular notifications (your existing ones)
   const regularNotifications = [
     { 
-      id: 1, 
+      id: 'regular-1', 
       message: 'New order received', 
       time: '5 minutes ago', 
       unread: true, 
       type: 'order',
+      priority: 'low',
       icon: Bell,
       color: 'text-blue-500'
     },
     { 
-      id: 2, 
+      id: 'regular-2', 
       message: 'Low stock alert: Product ABC', 
       time: '1 hour ago', 
       unread: true, 
       type: 'stock',
+      priority: 'medium',
       icon: AlertTriangle,
       color: 'text-amber-500'
     },
     { 
-      id: 3, 
+      id: 'regular-3', 
       message: 'Supplier updated catalog', 
       time: '2 hours ago', 
       unread: false, 
       type: 'update',
+      priority: 'low',
       icon: Package,
       color: 'text-gray-500'
     },
@@ -202,7 +232,7 @@ const Header = ({ toggleMobileMenu }) => {
   });
 
   const unreadCount = allNotifications.filter(n => n.unread).length;
-  const highPriorityCount = smartNotifications.filter(n => n.priority === 'high').length;
+  const highPriorityCount = allNotifications.filter(n => n.priority === 'high').length;
 
   // Enhanced notification badge styling
   const getNotificationBadgeStyle = () => {
@@ -215,24 +245,64 @@ const Header = ({ toggleMobileMenu }) => {
     return "";
   };
 
+  // ✅ FIXED: Enhanced click handlers with proper event handling
+  const handleNotificationIconClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🔔 Notification icon clicked');
+    setShowNotifications(!showNotifications);
+    setShowUserMenu(false);
+  };
+
   const handleNotificationClick = (notification) => {
-    // Mark as read
-    if (notification.type === 'delivery' || notification.type === 'payment') {
-      NotificationManager.success('Navigating to Smart Notifications dashboard', {
-        title: 'Opening Notifications...'
-      });
-      navigate('/notifications');
-    }
+    console.log('📱 Notification clicked:', notification.message);
+    // Mark as read and navigate
+    NotificationManager.success('Navigating to Smart Notifications dashboard', {
+      title: 'Opening Notifications...'
+    });
+    navigate('/notifications');
     setShowNotifications(false);
   };
 
-  const handleViewAllNotifications = () => {
+  const handleViewAllNotifications = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('📋 View all notifications clicked');
     NotificationManager.ai('Opening comprehensive notifications dashboard with smart insights', {
       title: '🚀 Loading Smart Dashboard'
     });
     navigate('/notifications');
     setShowNotifications(false);
   };
+
+  const handleSettingsClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('⚙️ Settings clicked');
+    navigate('/settings');
+    setShowNotifications(false);
+    setShowUserMenu(false);
+  };
+
+  const handleUserMenuClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowUserMenu(!showUserMenu);
+    setShowNotifications(false);
+  };
+
+  // ✅ ENHANCED: Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showNotifications || showUserMenu) {
+        setShowNotifications(false);
+        setShowUserMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showNotifications, showUserMenu]);
 
   return (
     <header className="fixed top-0 z-50 w-full bg-white border-b border-gray-200">
@@ -257,19 +327,20 @@ const Header = ({ toggleMobileMenu }) => {
             </div>
           </div>
 
-          {/* Right side - Enhanced Notifications and User menu */}
-          <div className="flex items-center space-x-4">
-            {/* Enhanced Notifications */}
+          {/* Right side - Enhanced Notifications, Settings, and User menu */}
+          <div className="flex items-center space-x-2">
+            {/* ✅ ENHANCED: Notifications with proper click handling */}
             <div className="relative">
               <button
-                onClick={() => {
-                  setShowNotifications(!showNotifications);
-                  setShowUserMenu(false);
-                }}
+                onClick={handleNotificationIconClick}
                 className="relative p-2 text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full transition-colors"
+                aria-label="Notifications"
               >
                 <Bell className="h-6 w-6" />
-                {unreadCount > 0 && (
+                {loading && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                )}
+                {!loading && unreadCount > 0 && (
                   <span className={getNotificationBadgeStyle()}>
                     {highPriorityCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : ''}
                   </span>
@@ -278,12 +349,16 @@ const Header = ({ toggleMobileMenu }) => {
 
               {/* Enhanced Notifications Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-100 z-50 backdrop-blur-sm">
+                <div 
+                  className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-100 z-50 backdrop-blur-sm"
+                  onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+                >
                   {/* Header */}
                   <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                       <Bell className="h-4 w-4" />
                       Notifications
+                      {loading && <div className="animate-spin h-3 w-3 border border-blue-500 border-t-transparent rounded-full"></div>}
                     </h3>
                     <button 
                       onClick={handleViewAllNotifications}
@@ -375,13 +450,19 @@ const Header = ({ toggleMobileMenu }) => {
               )}
             </div>
 
-            {/* User Menu - Keep existing */}
+            {/* ✅ NEW: Settings Button */}
+            <button
+              onClick={handleSettingsClick}
+              className="p-2 text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full transition-colors"
+              aria-label="Settings"
+            >
+              <Settings className="h-6 w-6" />
+            </button>
+
+            {/* ✅ ENHANCED: User Menu with proper click handling */}
             <div className="relative">
               <button
-                onClick={() => {
-                  setShowUserMenu(!showUserMenu);
-                  setShowNotifications(false);
-                }}
+                onClick={handleUserMenuClick}
                 className="flex items-center space-x-3 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
@@ -395,13 +476,23 @@ const Header = ({ toggleMobileMenu }) => {
                 <ChevronDown className="hidden md:block h-4 w-4 text-gray-400" />
               </button>
 
-              {/* User Dropdown - Keep existing */}
+              {/* User Dropdown */}
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-50">
+                <div 
+                  className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-50"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="px-4 py-2 border-b border-gray-200">
                     <p className="text-sm text-gray-900">{user?.email}</p>
                     <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
                   </div>
+                  <button
+                    onClick={handleSettingsClick}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -428,17 +519,6 @@ const Header = ({ toggleMobileMenu }) => {
           </div>
         </div>
       </div>
-
-      {/* Click outside to close dropdowns */}
-      {(showUserMenu || showNotifications) && (
-        <div
-          className="fixed inset-0 z-30"
-          onClick={() => {
-            setShowUserMenu(false);
-            setShowNotifications(false);
-          }}
-        />
-      )}
     </header>
   );
 };
