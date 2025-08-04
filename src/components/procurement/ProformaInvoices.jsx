@@ -1085,25 +1085,39 @@ const renderPaymentStatus = (pi) => {
             remark: `Batch payment processed via AI extraction. ${allocation.isPartialPayment ? 'Partial payment (' + allocation.paymentPercentage + '% of total)' : 'Payment allocated'}`
           };
 
-          // Add payment to PI's payment history
-          const updatedPI = {
-            ...pi,
-            payments: [...(pi.payments || []), paymentEntry],
-            lastModified: new Date().toISOString(),
-            lastModifiedBy: 'system' // Update with actual user
-          };
-          
-          // Recalculate payment status based on total payments
-          const totalPaid = updatedPI.payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-          const totalAmount = parseFloat(pi.totalAmount || 0);
-          
-          if (totalPaid >= totalAmount) {
-            updatedPI.paymentStatus = 'paid';
-          } else if (totalPaid > 0) {
-            updatedPI.paymentStatus = 'partial';
-          } else {
-            updatedPI.paymentStatus = 'pending';
-          }
+         // Add payment to PI's payment history
+const updatedPayments = [...(pi.payments || []), paymentEntry];
+
+// ✅ CRITICAL FIX: Calculate totalPaid and include it in updatedPI
+const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+const totalAmount = parseFloat(pi.totalAmount || 0);
+
+// Determine new payment status
+let newPaymentStatus = 'pending';
+if (totalPaid >= totalAmount) {
+  newPaymentStatus = 'paid';
+} else if (totalPaid > 0) {
+  newPaymentStatus = 'partial';
+}
+
+const updatedPI = {
+  ...pi,
+  payments: updatedPayments,
+  totalPaid: totalPaid, // ✅ THIS WAS MISSING!
+  paymentStatus: newPaymentStatus,
+  lastPaymentDate: paymentRecord.paymentDate,
+  lastModified: new Date().toISOString(),
+  lastModifiedBy: 'batch-payment-system'
+};
+
+console.log('🔍 Updating PI with payment data:', {
+  piNumber: pi.piNumber,
+  previousTotalPaid: pi.totalPaid || 0,
+  newTotalPaid: totalPaid,
+  paymentAmount: allocation.allocatedAmount,
+  newStatus: newPaymentStatus,
+  paymentsCount: updatedPayments.length
+});
           
           // Update PI in database
           const result = await updateProformaInvoice(pi.id, updatedPI);
