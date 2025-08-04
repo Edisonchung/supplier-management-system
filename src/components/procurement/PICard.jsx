@@ -1,5 +1,5 @@
 // src/components/procurement/PICard.jsx
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   FileText, Calendar, DollarSign, Package, 
   Edit, Trash2, Eye, Truck, MoreVertical,
@@ -77,10 +77,71 @@ const PICard = ({
   const totalOrdered = proformaInvoice.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
   const totalReceived = proformaInvoice.items?.reduce((sum, item) => sum + (item.receivedQty || 0), 0) || 0;
   
-  // Payment calculations
-  const totalAmount = proformaInvoice.totalAmount || 0;
-  const totalPaid = proformaInvoice.totalPaid || 0;
-  const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+  // ENHANCED: Payment calculations with better error handling and synchronization
+  const paymentData = useMemo(() => {
+    console.log('🔍 PICard: Calculating payment data for PI:', proformaInvoice.piNumber, {
+      totalAmount: proformaInvoice.totalAmount,
+      totalPaid: proformaInvoice.totalPaid,
+      paymentStatus: proformaInvoice.paymentStatus,
+      payments: proformaInvoice.payments?.length || 0
+    });
+
+    const totalAmount = parseFloat(proformaInvoice.totalAmount || 0);
+    
+    // ENHANCED: Calculate totalPaid from multiple sources with fallback logic
+    let totalPaid = 0;
+    
+    // Method 1: Use direct totalPaid field (preferred - should be updated by batch payment processor)
+    if (proformaInvoice.totalPaid !== undefined && proformaInvoice.totalPaid !== null) {
+      totalPaid = parseFloat(proformaInvoice.totalPaid || 0);
+    } 
+    // Method 2: Calculate from payments array as fallback
+    else if (proformaInvoice.payments && Array.isArray(proformaInvoice.payments)) {
+      totalPaid = proformaInvoice.payments.reduce((sum, payment) => {
+        const amount = parseFloat(payment.amount || 0);
+        return sum + amount;
+      }, 0);
+    }
+    
+    // Calculate remaining balance
+    const remainingBalance = Math.max(0, totalAmount - totalPaid);
+    
+    // Calculate payment progress percentage
+    const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+    
+    // ENHANCED: Determine payment status with more robust logic
+    let actualPaymentStatus = 'pending';
+    if (totalAmount > 0) {
+      if (totalPaid >= totalAmount) {
+        actualPaymentStatus = 'paid';
+      } else if (totalPaid > 0.01) { // Use small tolerance for floating point comparison
+        actualPaymentStatus = 'partial';
+      }
+    }
+    
+    // Log any discrepancies between calculated and stored payment status
+    if (proformaInvoice.paymentStatus && proformaInvoice.paymentStatus !== actualPaymentStatus) {
+      console.warn('⚠️ PICard: Payment status mismatch detected:', {
+        piNumber: proformaInvoice.piNumber,
+        storedStatus: proformaInvoice.paymentStatus,
+        calculatedStatus: actualPaymentStatus,
+        totalAmount,
+        totalPaid,
+        remainingBalance
+      });
+    }
+    
+    return {
+      totalAmount,
+      totalPaid,
+      remainingBalance,
+      paymentProgress,
+      paymentStatus: actualPaymentStatus, // Use calculated status as source of truth
+      hasPayments: totalPaid > 0,
+      isFullyPaid: totalPaid >= totalAmount && totalAmount > 0,
+      isPartiallyPaid: totalPaid > 0 && totalPaid < totalAmount
+    };
+  }, [proformaInvoice.totalAmount, proformaInvoice.totalPaid, proformaInvoice.paymentStatus, proformaInvoice.payments]);
 
   // Handle selection change
   const handleSelectionChange = (e) => {
@@ -171,7 +232,7 @@ const PICard = ({
             <span>Total Amount</span>
           </div>
           <span className="text-sm font-bold text-gray-900">
-            ${totalAmount.toFixed(2)}
+            ${paymentData.totalAmount.toFixed(2)}
           </span>
         </div>
 
@@ -211,33 +272,48 @@ const PICard = ({
         </div>
       </div>
 
-      {/* Payment Status */}
+      {/* FIXED: Payment Status Section */}
       <div className="border-t pt-4 mb-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Payment Status</span>
           <div className="flex items-center gap-2">
-            <span className={`px-2 py-1 text-xs rounded-full flex items-center gap-1 ${getPaymentColor(proformaInvoice.paymentStatus)}`}>
+            <span className={`px-2 py-1 text-xs rounded-full flex items-center gap-1 ${getPaymentColor(paymentData.paymentStatus)}`}>
               <CreditCard size={12} />
-              {proformaInvoice.paymentStatus}
+              {paymentData.paymentStatus}
             </span>
           </div>
         </div>
         
-        {/* Payment Progress */}
-        {proformaInvoice.paymentStatus !== 'pending' && (
+        {/* ENHANCED: Payment Progress with Real Data */}
+        {paymentData.paymentStatus !== 'pending' && paymentData.hasPayments && (
           <div className="mt-2">
             <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>${totalPaid.toFixed(2)} paid</span>
-              <span>${(totalAmount - totalPaid).toFixed(2)} balance</span>
+              <span className="font-medium text-green-700">
+                ${paymentData.totalPaid.toFixed(2)} paid
+              </span>
+              <span className="font-medium text-orange-700">
+                ${paymentData.remainingBalance.toFixed(2)} balance
+              </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-1.5">
+            <div className="w-full bg-gray-200 rounded-full h-2">
               <div 
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  paymentProgress >= 100 ? 'bg-green-600' : 'bg-yellow-600'
+                className={`h-2 rounded-full transition-all duration-500 ${
+                  paymentData.paymentProgress >= 100 ? 'bg-green-600' : 
+                  paymentData.paymentProgress >= 30 ? 'bg-yellow-600' : 'bg-orange-600'
                 }`}
-                style={{ width: `${Math.min(paymentProgress, 100)}%` }}
+                style={{ width: `${Math.min(paymentData.paymentProgress, 100)}%` }}
               />
             </div>
+            <div className="text-xs text-gray-500 mt-1 text-center">
+              {paymentData.paymentProgress.toFixed(1)}% completed
+            </div>
+          </div>
+        )}
+
+        {/* Show message for pending payments */}
+        {paymentData.paymentStatus === 'pending' && (
+          <div className="mt-2 text-xs text-gray-500 text-center py-2 bg-gray-50 rounded">
+            No payments received yet
           </div>
         )}
       </div>
