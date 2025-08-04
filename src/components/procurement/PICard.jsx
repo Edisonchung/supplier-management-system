@@ -78,70 +78,92 @@ const PICard = ({
   const totalReceived = proformaInvoice.items?.reduce((sum, item) => sum + (item.receivedQty || 0), 0) || 0;
   
   // ENHANCED: Payment calculations with better error handling and synchronization
-  const paymentData = useMemo(() => {
-    console.log('🔍 PICard: Calculating payment data for PI:', proformaInvoice.piNumber, {
-      totalAmount: proformaInvoice.totalAmount,
-      totalPaid: proformaInvoice.totalPaid,
-      paymentStatus: proformaInvoice.paymentStatus,
-      payments: proformaInvoice.payments?.length || 0
-    });
+const paymentData = useMemo(() => {
+  console.log('🔍 PICard: Calculating payment data for PI:', proformaInvoice.piNumber, {
+    totalAmount: proformaInvoice.totalAmount,
+    totalPaid: proformaInvoice.totalPaid,
+    paymentStatus: proformaInvoice.paymentStatus,
+    payments: proformaInvoice.payments?.length || 0
+  });
 
-    const totalAmount = parseFloat(proformaInvoice.totalAmount || 0);
-    
-    // ENHANCED: Calculate totalPaid from multiple sources with fallback logic
-    let totalPaid = 0;
-    
-    // Method 1: Use direct totalPaid field (preferred - should be updated by batch payment processor)
-    if (proformaInvoice.totalPaid !== undefined && proformaInvoice.totalPaid !== null) {
-      totalPaid = parseFloat(proformaInvoice.totalPaid || 0);
-    } 
-    // Method 2: Calculate from payments array as fallback
-    else if (proformaInvoice.payments && Array.isArray(proformaInvoice.payments)) {
-      totalPaid = proformaInvoice.payments.reduce((sum, payment) => {
-        const amount = parseFloat(payment.amount || 0);
-        return sum + amount;
-      }, 0);
+  const totalAmount = parseFloat(proformaInvoice.totalAmount || 0);
+  
+  // ENHANCED: Calculate totalPaid from multiple sources with robust parsing
+  let totalPaid = 0;
+  
+  // Method 1: Use direct totalPaid field (preferred - should be updated by batch payment processor)
+  if (proformaInvoice.totalPaid !== undefined && proformaInvoice.totalPaid !== null) {
+    const directTotalPaid = parseFloat(proformaInvoice.totalPaid || 0);
+    if (!isNaN(directTotalPaid)) {
+      totalPaid = directTotalPaid;
     }
-    
-    // Calculate remaining balance
-    const remainingBalance = Math.max(0, totalAmount - totalPaid);
-    
-    // Calculate payment progress percentage
-    const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
-    
-    // ENHANCED: Determine payment status with more robust logic
-    let actualPaymentStatus = 'pending';
-    if (totalAmount > 0) {
-      if (totalPaid >= totalAmount) {
-        actualPaymentStatus = 'paid';
-      } else if (totalPaid > 0.01) { // Use small tolerance for floating point comparison
-        actualPaymentStatus = 'partial';
+  }
+  
+  // Method 2: Calculate from payments array as fallback - WITH ENHANCED PARSING
+  if (totalPaid === 0 && proformaInvoice.payments && Array.isArray(proformaInvoice.payments)) {
+    totalPaid = proformaInvoice.payments.reduce((sum, payment) => {
+      // ENHANCED: Handle different payment amount field variations and types
+      let paymentAmount = 0;
+      
+      if (payment.amount !== undefined && payment.amount !== null) {
+        paymentAmount = parseFloat(payment.amount);
+      } else if (payment.allocatedAmount !== undefined && payment.allocatedAmount !== null) {
+        paymentAmount = parseFloat(payment.allocatedAmount);
+      } else if (payment.paidAmount !== undefined && payment.paidAmount !== null) {
+        paymentAmount = parseFloat(payment.paidAmount);
       }
+      
+      // Only add if it's a valid number
+      if (!isNaN(paymentAmount) && paymentAmount > 0) {
+        console.log('💰 PICard: Found payment amount:', paymentAmount, 'from payment:', payment.id || payment.reference);
+        return sum + paymentAmount;
+      } else {
+        console.warn('⚠️ PICard: Invalid payment amount in payment:', payment);
+        return sum;
+      }
+    }, 0);
+  }
+  
+  // Calculate remaining balance
+  const remainingBalance = Math.max(0, totalAmount - totalPaid);
+  
+  // Calculate payment progress percentage
+  const paymentProgress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+  
+  // ENHANCED: Determine payment status with more robust logic
+  let actualPaymentStatus = 'pending';
+  if (totalAmount > 0) {
+    if (totalPaid >= totalAmount - 0.01) { // Allow small floating point differences
+      actualPaymentStatus = 'paid';
+    } else if (totalPaid > 0.01) { // Use small tolerance for floating point comparison
+      actualPaymentStatus = 'partial';
     }
-    
-    // Log any discrepancies between calculated and stored payment status
-    if (proformaInvoice.paymentStatus && proformaInvoice.paymentStatus !== actualPaymentStatus) {
-      console.warn('⚠️ PICard: Payment status mismatch detected:', {
-        piNumber: proformaInvoice.piNumber,
-        storedStatus: proformaInvoice.paymentStatus,
-        calculatedStatus: actualPaymentStatus,
-        totalAmount,
-        totalPaid,
-        remainingBalance
-      });
-    }
-    
-    return {
+  }
+  
+  // Log any discrepancies between calculated and stored payment status
+  if (proformaInvoice.paymentStatus && proformaInvoice.paymentStatus !== actualPaymentStatus) {
+    console.warn('⚠️ PICard: Payment status mismatch detected:', {
+      piNumber: proformaInvoice.piNumber,
+      storedStatus: proformaInvoice.paymentStatus,
+      calculatedStatus: actualPaymentStatus,
       totalAmount,
       totalPaid,
       remainingBalance,
-      paymentProgress,
-      paymentStatus: actualPaymentStatus, // Use calculated status as source of truth
-      hasPayments: totalPaid > 0,
-      isFullyPaid: totalPaid >= totalAmount && totalAmount > 0,
-      isPartiallyPaid: totalPaid > 0 && totalPaid < totalAmount
-    };
-  }, [proformaInvoice.totalAmount, proformaInvoice.totalPaid, proformaInvoice.paymentStatus, proformaInvoice.payments]);
+      paymentsArray: proformaInvoice.payments
+    });
+  }
+  
+  return {
+    totalAmount,
+    totalPaid,
+    remainingBalance,
+    paymentProgress,
+    paymentStatus: actualPaymentStatus, // Use calculated status as source of truth
+    hasPayments: totalPaid > 0,
+    isFullyPaid: totalPaid >= (totalAmount - 0.01) && totalAmount > 0,
+    isPartiallyPaid: totalPaid > 0.01 && totalPaid < (totalAmount - 0.01)
+  };
+}, [proformaInvoice.totalAmount, proformaInvoice.totalPaid, proformaInvoice.paymentStatus, proformaInvoice.payments]);
 
   // Handle selection change
   const handleSelectionChange = (e) => {
