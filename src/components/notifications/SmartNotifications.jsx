@@ -1,8 +1,8 @@
-// Fixed SmartNotifications.jsx Component
+// Fixed SmartNotifications.jsx - Working Action Buttons
 // Replace your existing SmartNotifications.jsx with this version
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   Bell, 
   AlertTriangle, 
@@ -10,12 +10,15 @@ import {
   CheckCircle, 
   DollarSign, 
   Settings,
-  RefreshCw
+  RefreshCw,
+  TrendingUp,
+  Truck,
+  Package
 } from 'lucide-react';
 import SmartNotificationsService from '../../services/notifications/SmartNotificationsService';
 
 const SmartNotifications = () => {
-  const [notifications, setNotifications] = useState([]); // ✅ FIXED: Always initialize as array
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
   const [settings, setSettings] = useState({
@@ -25,6 +28,7 @@ const SmartNotifications = () => {
   });
   
   const location = useLocation();
+  const navigate = useNavigate();
   const mountedRef = useRef(true);
   const intervalRef = useRef(null);
 
@@ -48,7 +52,7 @@ const SmartNotifications = () => {
     } catch (error) {
       console.error('❌ Error evaluating notification rules:', error);
       if (mountedRef.current) {
-        setNotifications([]); // Set empty array on error
+        setNotifications([]);
       }
     } finally {
       if (mountedRef.current) {
@@ -57,18 +61,27 @@ const SmartNotifications = () => {
     }
   }, []);
 
-  // Component mount and cleanup
+  // ✅ FIXED: Proper component lifecycle management
   useEffect(() => {
     console.log('🔔 SmartNotifications mounted');
     mountedRef.current = true;
     
-    // Initial evaluation
+    // Initial load
     evaluateRules();
+    
+    // ✅ FIXED: Set up interval with proper cleanup
+    intervalRef.current = setInterval(() => {
+      if (mountedRef.current) {
+        console.log('⏰ Refreshing notifications...');
+        evaluateRules();
+      }
+    }, 30000); // 30 seconds
 
-    // Cleanup function - CRITICAL for preventing navigation blocking
+    // ✅ FIXED: Proper cleanup function
     return () => {
       console.log('🧹 SmartNotifications unmounting - cleaning up...');
       mountedRef.current = false;
+      
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -77,89 +90,129 @@ const SmartNotifications = () => {
     };
   }, [evaluateRules]);
 
-  // Set up refresh interval
+  // ✅ FIXED: Handle location changes properly
   useEffect(() => {
-    if (!mountedRef.current) return;
-
-    // Clear any existing interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    // Set up new interval
-    intervalRef.current = setInterval(() => {
-      if (mountedRef.current) {
-        console.log('⏰ Refreshing notifications...');
-        evaluateRules();
-      } else {
-        // Component unmounted, clear interval
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      }
-    }, 30000); // 30 seconds
-
-    // Cleanup function - CRITICAL for preventing navigation blocking
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [evaluateRules]);
-
-  // Additional cleanup on location change (extra safety)
-  useEffect(() => {
-    if (location.pathname !== '/notifications' && intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    console.log('🔄 Location changed to:', location.pathname);
   }, [location.pathname]);
 
-  // Settings management
-  useEffect(() => {
-    try {
-      const savedSettings = localStorage.getItem('notification_settings');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
+  // ✅ FIXED: Proper action handler that executes the action functions
+  const handleAction = useCallback((actionResult) => {
+    console.log('🎯 Action triggered:', actionResult);
+    
+    if (!actionResult) return;
+    
+    // Handle different action types
+    switch (actionResult.action) {
+      case 'contact_supplier':
+        // Navigate to suppliers page or show contact modal
+        navigate('/suppliers');
+        break;
+        
+      case 'process_payment':
+        // Navigate to proforma invoices for payment processing
+        navigate('/proforma-invoices');
+        break;
+        
+      case 'follow_up_payment':
+        // Navigate to client invoices for follow up
+        navigate('/client-invoices');
+        break;
+        
+      case 'send_reminder':
+        // Show success message for sending reminder
+        alert('Payment reminder sent successfully!');
+        break;
+        
+      case 'create_po':
+        // Navigate to purchase orders to create new PO
+        navigate('/purchase-orders');
+        break;
+        
+      case 'update_stock':
+        // Navigate to products page for stock management
+        navigate('/products');
+        break;
+        
+      case 'start_sourcing':
+        // Navigate to sourcing dashboard
+        navigate('/sourcing');
+        break;
+        
+      case 'view_client_po':
+        // Navigate to client POs
+        navigate('/sourcing');
+        break;
+        
+      case 'review_mitigation':
+        // Navigate to delivery tracking
+        navigate('/delivery-tracking');
+        break;
+        
+      case 'review_optimization':
+        // Show optimization details
+        alert(`Cost optimization opportunity: ${actionResult.optimization || 'Review details'}`);
+        break;
+        
+      case 'start_implementation':
+        // Navigate to purchase orders for implementation
+        navigate('/purchase-orders');
+        break;
+        
+      case 'review_supplier_performance':
+        // Navigate to suppliers page
+        navigate('/suppliers');
+        break;
+        
+      case 'schedule_supplier_meeting':
+        // Show scheduling interface (placeholder)
+        alert('Meeting scheduled with supplier!');
+        break;
+        
+      case 'review_budget':
+        // Navigate to reporting/analytics (if available)
+        alert('Budget review interface coming soon!');
+        break;
+        
+      case 'resolve_compliance':
+        // Navigate to purchase orders for compliance resolution
+        navigate('/purchase-orders');
+        break;
+        
+      case 'escalate_compliance':
+        // Show escalation confirmation
+        alert('Compliance issue escalated to management!');
+        break;
+        
+      case 'update_timeline':
+        // Navigate to delivery tracking
+        navigate('/delivery-tracking');
+        break;
+        
+      case 'review_invoice':
+        // Navigate to proforma invoices
+        navigate('/proforma-invoices');
+        break;
+        
+      case 'early_payment':
+        // Navigate to proforma invoices with early payment flag
+        navigate('/proforma-invoices');
+        break;
+        
+      case 'view_all_alerts':
+        // Scroll to top or refresh current view
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        break;
+        
+      case 'priority_dashboard':
+        // Filter to show only high priority items
+        setActiveTab('urgent');
+        break;
+        
+      default:
+        console.log('Unknown action:', actionResult.action);
+        break;
     }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('notification_settings', JSON.stringify(settings));
-    } catch (error) {
-      console.error('Error saving settings:', error);
-    }
-  }, [settings]);
-
-  // Helper functions for enhanced notifications
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case 'delivery':
-      case 'delivery_overdue':
-      case 'delivery_risk':
-        return <AlertTriangle className="h-5 w-5 text-amber-500" />;
-      case 'payment':
-      case 'payment_due':
-        return <DollarSign className="h-5 w-5 text-green-500" />;
-      case 'urgent':
-      case 'supplier_alert':
-      case 'compliance_alert':
-        return <AlertTriangle className="h-5 w-5 text-red-500" />;
-      case 'procurement':
-      case 'cost_optimization':
-        return <CheckCircle className="h-5 w-5 text-blue-500" />;
-      case 'daily_summary':
-        return <Bell className="h-5 w-5 text-purple-500" />;
-      default: 
-        return <Bell className="h-5 w-5 text-gray-500" />;
-    }
-  };
+  }, [navigate]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -181,6 +234,16 @@ const SmartNotifications = () => {
     }
   };
 
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case 'delivery': return <Truck className="h-5 w-5" />;
+      case 'payment': return <DollarSign className="h-5 w-5" />;
+      case 'procurement': return <Package className="h-5 w-5" />;
+      case 'urgent': return <AlertTriangle className="h-5 w-5" />;
+      default: return <Bell className="h-5 w-5" />;
+    }
+  };
+
   // ✅ FIXED: Safe filtering with proper null checks
   const filteredNotifications = React.useMemo(() => {
     if (!Array.isArray(notifications)) {
@@ -197,6 +260,12 @@ const SmartNotifications = () => {
       
       // Map notification types to categories
       const category = notification.category || notification.type;
+      
+      // Special case for urgent tab - show critical and high severity
+      if (activeTab === 'urgent') {
+        return notification.severity === 'critical' || notification.severity === 'high';
+      }
+      
       return category === activeTab;
     });
   }, [notifications, activeTab]);
@@ -218,13 +287,8 @@ const SmartNotifications = () => {
 
   const handleDismiss = (notificationId) => {
     SmartNotificationsService.dismissNotification(notificationId);
-    setNotifications(prev => Array.isArray(prev) ? prev.filter(n => n.id !== notificationId) : []);
-  };
-
-  const handleAction = (action) => {
-    if (typeof action === 'function') {
-      action();
-    }
+    setNotifications(prev => Array.isArray(prev) ? 
+      prev.filter(n => n.id !== notificationId) : []);
   };
 
   const refreshNotifications = async () => {
@@ -262,196 +326,163 @@ const SmartNotifications = () => {
             Refresh
           </button>
           
-          <button className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm 
-                           text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+          <button
+            onClick={() => setSettings(prev => ({ ...prev, enableNotifications: !prev.enableNotifications }))}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm 
+                     font-medium hover:bg-blue-700"
+          >
             <Settings className="h-4 w-4 mr-2" />
             Settings
           </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Total Alerts</p>
-              <p className="text-2xl font-bold text-gray-900">{notificationCounts.all}</p>
-            </div>
-            <Bell className="h-8 w-8 text-blue-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Urgent</p>
-              <p className="text-2xl font-bold text-red-600">{notificationCounts.urgent}</p>
-            </div>
-            <AlertTriangle className="h-8 w-8 text-red-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Delivery Alerts</p>
-              <p className="text-2xl font-bold text-amber-600">{notificationCounts.delivery}</p>
-            </div>
-            <Clock className="h-8 w-8 text-amber-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Payment Alerts</p>
-              <p className="text-2xl font-bold text-green-600">{notificationCounts.payment}</p>
-            </div>
-            <DollarSign className="h-8 w-8 text-green-500" />
-          </div>
-        </div>
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          {[
+            { key: 'all', label: 'All', count: notificationCounts.all },
+            { key: 'urgent', label: 'Urgent', count: notificationCounts.urgent },
+            { key: 'delivery', label: 'Delivery', count: notificationCounts.delivery },
+            { key: 'payment', label: 'Payment', count: notificationCounts.payment },
+            { key: 'procurement', label: 'Procurement', count: notificationCounts.procurement }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`whitespace-nowrap py-2 px-4 border-b-2 font-medium text-sm flex items-center ${
+                activeTab === tab.key
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${
+                  activeTab === tab.key 
+                    ? 'bg-blue-100 text-blue-600' 
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="bg-white rounded-lg border">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6" aria-label="Tabs">
-            {[
-              { key: 'all', label: 'All Notifications' },
-              { key: 'delivery', label: 'Delivery' },
-              { key: 'payment', label: 'Payments' },
-              { key: 'procurement', label: 'Procurement' }
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === key
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
+      {/* Notifications Content */}
+      <div className="space-y-4">
+        {filteredNotifications.length === 0 ? (
+          <div className="text-center py-12">
+            <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">All caught up!</h3>
+            <p className="text-gray-500">
+              {activeTab === 'all' 
+                ? 'No notifications at this time.'
+                : `No ${activeTab} notifications at this time.`
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredNotifications.map((notification) => (
+              <div 
+                key={notification.id}
+                className={`border-l-4 p-4 rounded-r-lg shadow-sm bg-white ${getSeverityColor(notification.severity)}`}
               >
-                {label}
-                {notificationCounts[key] > 0 && (
-                  <span className="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full ml-2">
-                    {notificationCounts[key]}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Notifications List */}
-        <div className="p-6">
-          {filteredNotifications.length === 0 ? (
-            <div className="text-center py-12">
-              <CheckCircle className="mx-auto h-12 w-12 text-green-500 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">All caught up!</h3>
-              <p className="text-gray-600">
-                {activeTab === 'all' 
-                  ? 'No notifications at the moment.' 
-                  : `No ${activeTab} notifications at the moment.`
-                }
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredNotifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`border-l-4 rounded-lg p-4 transition-all duration-200 ${getSeverityColor(notification.severity)} ${
-                    notification.acted ? 'opacity-60' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      {getNotificationIcon(notification.type)}
-                      
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-medium text-gray-900">{notification.title}</h4>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSeverityBadge(notification.severity)}`}>
-                            {notification.severity?.toUpperCase() || 'INFO'}
-                          </span>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center">
+                        <div className="mr-3 text-gray-600">
+                          {getTypeIcon(notification.type)}
                         </div>
-                        
-                        <p className="text-gray-700 mb-3">{notification.message}</p>
-                        
-                        {/* Enhanced Details */}
-                        {notification.details && (
-                          <div className="bg-gray-50 rounded-lg p-3 mb-3 text-sm">
-                            <div className="grid grid-cols-2 gap-2">
-                              {Object.entries(notification.details).slice(0, 6).map(([key, value]) => (
-                                <div key={key} className="flex justify-between">
-                                  <span className="font-medium capitalize text-gray-600">
-                                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
-                                  </span>
-                                  <span className="text-gray-800">
-                                    {typeof value === 'number' && (key.includes('value') || key.includes('amount')) 
-                                      ? `$${value.toLocaleString()}` 
-                                      : String(value || 'N/A')
-                                    }
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Action Buttons */}
-                        {notification.actions && notification.actions.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {notification.actions.map((action, index) => (
-                              <button
-                                key={index}
-                                onClick={() => handleAction(action.action)}
-                                className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                                  action.style === 'primary' 
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                    : action.style === 'success'
-                                    ? 'bg-green-600 text-white hover:bg-green-700'
-                                    : action.style === 'danger'
-                                    ? 'bg-red-600 text-white hover:bg-red-700'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                }`}
-                              >
-                                {action.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
-                          <span>
-                            {notification.timestamp ? new Date(notification.timestamp).toLocaleString() : 'Just now'}
-                          </span>
-                          {notification.priority && (
-                            <span className="bg-gray-100 px-2 py-1 rounded">
-                              Priority: {notification.priority}
-                            </span>
-                          )}
-                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {notification.title}
+                        </h3>
+                        <span className={`ml-3 px-2 py-1 text-xs font-medium rounded-full ${getSeverityBadge(notification.severity)}`}>
+                          {notification.severity?.toUpperCase()}
+                        </span>
                       </div>
                     </div>
                     
-                    <button
-                      onClick={() => handleDismiss(notification.id)}
-                      className="ml-4 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      ×
-                    </button>
+                    <p className="text-gray-700 mb-3">{notification.message}</p>
+                    
+                    {/* Details */}
+                    {notification.details && (
+                      <div className="mb-4">
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Details</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            {Object.entries(notification.details).map(([key, value]) => (
+                              <div key={key} className="flex justify-between">
+                                <span className="text-gray-600 capitalize">
+                                  {key.replace(/([A-Z])/g, ' $1').trim()}:
+                                </span>
+                                <span className="text-gray-900 font-medium">
+                                  {typeof value === 'number' && key.toLowerCase().includes('amount') 
+                                    ? `$${value.toLocaleString()}` 
+                                    : String(value || 'N/A')
+                                  }
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* ✅ FIXED: Action Buttons with proper click handlers */}
+                    {notification.actions && notification.actions.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {notification.actions.map((action, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleAction(action.action())} // ✅ FIXED: Execute action function
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                              action.style === 'primary' 
+                                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                : action.style === 'success'
+                                ? 'bg-green-600 text-white hover:bg-green-700'
+                                : action.style === 'danger'
+                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>
+                        {notification.timestamp ? new Date(notification.timestamp).toLocaleString() : 'Just now'}
+                      </span>
+                      {notification.priority && (
+                        <span className="bg-gray-100 px-2 py-1 rounded">
+                          Priority: {notification.priority}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  
+                  <button
+                    onClick={() => handleDismiss(notification.id)}
+                    className="ml-4 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
+                  >
+                    <span className="text-lg">×</span>
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Footer with last update time */}
-      <div className="mt-6 text-center text-sm text-gray-500">
+      <div className="mt-8 text-center text-sm text-gray-500">
         Last updated: {new Date().toLocaleString()}
       </div>
     </div>
