@@ -1,5 +1,5 @@
-// Updated SmartNotificationsService.js - Firestore Integration
-// Replace your existing file with this version
+// Enhanced SmartNotificationsService.js - Complete Firestore Integration
+// Replace your existing file with this updated version
 
 // Import your existing Firestore service functions
 import { 
@@ -517,140 +517,6 @@ class SmartNotificationsService {
   }
 
   /**
-   * Process unpaid client invoices
-   */
-  static processUnpaidInvoices() {
-    const unpaidInvoices = this.realisticData.unpaidInvoices || [];
-    
-    unpaidInvoices.slice(0, 5).forEach(invoice => {
-      const urgencyIcon = invoice.urgencyLevel === 'critical' ? '🔴' : 
-                         invoice.urgencyLevel === 'high' ? '🟡' : '💰';
-      
-      const notification = {
-        id: `invoice-${invoice.id}`,
-        type: 'payment',
-        severity: invoice.urgencyLevel,
-        title: `${urgencyIcon} Unpaid Invoice ${invoice.daysOverdue > 0 ? `(${invoice.daysOverdue} days overdue)` : '(Due today)'}`,
-        message: `${invoice.currency} ${invoice.amount.toLocaleString()} from ${invoice.clientName}`,
-        details: {
-          client: invoice.clientName,
-          invoiceNumber: invoice.invoiceNumber,
-          amount: invoice.amount,
-          currency: invoice.currency,
-          dueDate: new Date(invoice.dueDate).toLocaleDateString(),
-          daysOverdue: invoice.daysOverdue,
-          paymentTerms: invoice.paymentTerms
-        },
-        actions: [
-          {
-            label: 'Follow Up Payment',
-            action: () => this.handleFollowUpPayment(invoice),
-            style: 'primary'
-          },
-          {
-            label: 'Send Reminder',
-            action: () => this.handleSendReminder(invoice),
-            style: 'secondary'
-          }
-        ],
-        timestamp: new Date(),
-        priority: this.calculatePriority(invoice.urgencyLevel, invoice.daysOverdue)
-      };
-
-      this.notifications.push(notification);
-    });
-  }
-
-  /**
-   * Process low stock alerts
-   */
-  static processLowStockAlerts() {
-    const lowStockAlerts = this.realisticData.lowStockAlerts || [];
-    
-    lowStockAlerts.slice(0, 5).forEach(alert => {
-      const urgencyIcon = alert.urgencyLevel === 'critical' ? '🔴' : 
-                         alert.urgencyLevel === 'high' ? '🟡' : '📦';
-      
-      const notification = {
-        id: `stock-${alert.id}`,
-        type: 'procurement',
-        severity: alert.urgencyLevel,
-        title: `${urgencyIcon} Low Stock Alert`,
-        message: `${alert.productName} - Only ${alert.currentStock} units left`,
-        details: {
-          product: alert.productName,
-          code: alert.productCode,
-          currentStock: alert.currentStock,
-          minStock: alert.minStock,
-          category: alert.category,
-          price: `${alert.price}`,
-          supplier: alert.supplier,
-          reorderQuantity: alert.reorderQuantity
-        },
-        actions: [
-          {
-            label: 'Create Purchase Order',
-            action: () => this.handleCreatePO(alert),
-            style: 'primary'
-          },
-          {
-            label: 'Update Stock Level',
-            action: () => this.handleUpdateStock(alert),
-            style: 'secondary'
-          }
-        ],
-        timestamp: new Date(),
-        priority: this.calculatePriority(alert.urgencyLevel, alert.minStock - alert.currentStock)
-      };
-
-      this.notifications.push(notification);
-    });
-  }
-
-  /**
-   * Process pending sourcing alerts
-   */
-  static processPendingSourcing() {
-    const pendingSourcing = this.realisticData.pendingSourcing || [];
-    
-    pendingSourcing.slice(0, 3).forEach(sourcing => {
-      const notification = {
-        id: `sourcing-${sourcing.id}`,
-        type: 'procurement',
-        severity: sourcing.urgencyLevel,
-        title: `🔍 Sourcing Required`,
-        message: `${sourcing.itemName} for Client PO ${sourcing.clientPONumber}`,
-        details: {
-          clientPO: sourcing.clientPONumber,
-          item: sourcing.itemName,
-          quantity: sourcing.quantity,
-          estimatedValue: `$${sourcing.estimatedValue.toLocaleString()}`,
-          deadline: sourcing.deadline
-        },
-        actions: [
-          {
-            label: 'Start Sourcing',
-            action: () => this.handleStartSourcing(sourcing),
-            style: 'primary'
-          },
-          {
-            label: 'View Client PO',
-            action: () => this.handleViewClientPO(sourcing),
-            style: 'secondary'
-          }
-        ],
-        timestamp: new Date(),
-        priority: this.calculatePriority(sourcing.urgencyLevel, 3)
-      };
-
-      this.notifications.push(notification);
-    });
-  }
-
-  // Keep all your existing processing methods (processOverdueDeliveries, etc.) but they will use Firestore data
-  // I'll include the key ones here:
-
-  /**
    * Process overdue deliveries into notifications
    */
   static processOverdueDeliveries() {
@@ -758,8 +624,136 @@ class SmartNotificationsService {
     });
   }
 
-  // Include all other processing methods (processAtRiskDeliveries, processCostOptimizations, etc.)
-  // They are the same as before but now work with Firestore data
+  /**
+   * Process unpaid client invoices
+   */
+  static processUnpaidInvoices() {
+    const unpaidInvoices = this.realisticData.unpaidInvoices || [];
+    
+    unpaidInvoices.slice(0, 5).forEach(invoice => {
+      const urgencyIcon = invoice.urgencyLevel === 'critical' ? '🔴' : 
+                         invoice.urgencyLevel === 'high' ? '🟡' : '💰';
+      
+      const notification = {
+        id: `invoice-${invoice.id}`,
+        type: 'payment',
+        severity: invoice.urgencyLevel,
+        title: `${urgencyIcon} Unpaid Invoice ${invoice.daysOverdue > 0 ? `(${invoice.daysOverdue} days overdue)` : '(Due today)'}`,
+        message: `${invoice.currency} ${invoice.amount.toLocaleString()} from ${invoice.clientName}`,
+        details: {
+          client: invoice.clientName,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: invoice.amount,
+          currency: invoice.currency,
+          dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+          daysOverdue: invoice.daysOverdue,
+          paymentTerms: invoice.paymentTerms
+        },
+        actions: [
+          {
+            label: 'Follow Up Payment',
+            action: () => this.handleFollowUpPayment(invoice),
+            style: 'primary'
+          },
+          {
+            label: 'Send Reminder',
+            action: () => this.handleSendReminder(invoice),
+            style: 'secondary'
+          }
+        ],
+        timestamp: new Date(),
+        priority: this.calculatePriority(invoice.urgencyLevel, invoice.daysOverdue)
+      };
+
+      this.notifications.push(notification);
+    });
+  }
+
+  /**
+   * Process low stock alerts
+   */
+  static processLowStockAlerts() {
+    const lowStockAlerts = this.realisticData.lowStockAlerts || [];
+    
+    lowStockAlerts.slice(0, 5).forEach(alert => {
+      const urgencyIcon = alert.urgencyLevel === 'critical' ? '🔴' : 
+                         alert.urgencyLevel === 'high' ? '🟡' : '📦';
+      
+      const notification = {
+        id: `stock-${alert.id}`,
+        type: 'procurement',
+        severity: alert.urgencyLevel,
+        title: `${urgencyIcon} Low Stock Alert`,
+        message: `${alert.productName} - Only ${alert.currentStock} units left`,
+        details: {
+          product: alert.productName,
+          code: alert.productCode,
+          currentStock: alert.currentStock,
+          minStock: alert.minStock,
+          category: alert.category,
+          price: `${alert.price}`,
+          supplier: alert.supplier,
+          reorderQuantity: alert.reorderQuantity
+        },
+        actions: [
+          {
+            label: 'Create Purchase Order',
+            action: () => this.handleCreatePO(alert),
+            style: 'primary'
+          },
+          {
+            label: 'Update Stock Level',
+            action: () => this.handleUpdateStock(alert),
+            style: 'secondary'
+          }
+        ],
+        timestamp: new Date(),
+        priority: this.calculatePriority(alert.urgencyLevel, alert.minStock - alert.currentStock)
+      };
+
+      this.notifications.push(notification);
+    });
+  }
+
+  /**
+   * Process pending sourcing alerts
+   */
+  static processPendingSourcing() {
+    const pendingSourcing = this.realisticData.pendingSourcing || [];
+    
+    pendingSourcing.slice(0, 3).forEach(sourcing => {
+      const notification = {
+        id: `sourcing-${sourcing.id}`,
+        type: 'procurement',
+        severity: sourcing.urgencyLevel,
+        title: `🔍 Sourcing Required`,
+        message: `${sourcing.itemName} for Client PO ${sourcing.clientPONumber}`,
+        details: {
+          clientPO: sourcing.clientPONumber,
+          item: sourcing.itemName,
+          quantity: sourcing.quantity,
+          estimatedValue: `${sourcing.estimatedValue.toLocaleString()}`,
+          deadline: sourcing.deadline
+        },
+        actions: [
+          {
+            label: 'Start Sourcing',
+            action: () => this.handleStartSourcing(sourcing),
+            style: 'primary'
+          },
+          {
+            label: 'View Client PO',
+            action: () => this.handleViewClientPO(sourcing),
+            style: 'secondary'
+          }
+        ],
+        timestamp: new Date(),
+        priority: this.calculatePriority(sourcing.urgencyLevel, 3)
+      };
+
+      this.notifications.push(notification);
+    });
+  }
 
   /**
    * Process at-risk deliveries
@@ -781,7 +775,7 @@ class SmartNotificationsService {
           expectedDelay: `${delivery.expectedDelay} days`,
           originalDate: new Date(delivery.originalDeliveryDate).toLocaleDateString(),
           adjustedDate: new Date(delivery.adjustedDeliveryDate).toLocaleDateString(),
-          estimatedImpact: `$${delivery.estimatedImpact.toLocaleString()}`
+          estimatedImpact: `${delivery.estimatedImpact.toLocaleString()}`
         },
         actions: [
           {
@@ -815,11 +809,11 @@ class SmartNotificationsService {
         type: 'procurement',
         severity: 'low',
         title: `💡 Cost Savings Opportunity`,
-        message: `Save $${optimization.potentialAnnualSavings.toLocaleString()} annually - ${optimization.description}`,
+        message: `Save ${optimization.potentialAnnualSavings.toLocaleString()} annually - ${optimization.description}`,
         details: {
           type: optimization.type,
-          currentSpend: `$${optimization.currentAnnualSpend.toLocaleString()}`,
-          potentialSavings: `$${optimization.potentialAnnualSavings.toLocaleString()}`,
+          currentSpend: `${optimization.currentAnnualSpend.toLocaleString()}`,
+          potentialSavings: `${optimization.potentialAnnualSavings.toLocaleString()}`,
           savingsPercentage: `${optimization.savingsPercentage.toFixed(1)}%`,
           confidence: `${optimization.confidence}%`,
           timeToRealize: optimization.timeToRealize,
@@ -904,10 +898,10 @@ class SmartNotificationsService {
         message: `${Math.abs(alert.variancePercentage).toFixed(1)}% ${isOverBudget ? 'Over' : 'Under'} Budget`,
         details: {
           department: alert.department,
-          budgetAmount: `$${alert.budgetAmount.toLocaleString()}`,
-          spentAmount: `$${alert.spentAmount.toLocaleString()}`,
+          budgetAmount: `${alert.budgetAmount.toLocaleString()}`,
+          spentAmount: `${alert.spentAmount.toLocaleString()}`,
           variance: `${alert.variancePercentage > 0 ? '+' : ''}${alert.variancePercentage.toFixed(1)}%`,
-          projectedYearEnd: `$${alert.projectedYearEnd.toLocaleString()}`
+          projectedYearEnd: `${alert.projectedYearEnd.toLocaleString()}`
         },
         actions: [
           {
@@ -936,7 +930,7 @@ class SmartNotificationsService {
           type: alert.type,
           poNumber: alert.poNumber,
           supplier: alert.supplierName,
-          amount: `$${alert.amount.toLocaleString()}`,
+          amount: `${alert.amount.toLocaleString()}`,
           daysOpen: alert.daysOpen,
           assignedTo: alert.assignedTo,
           deadline: new Date(alert.deadline).toLocaleDateString()
@@ -961,7 +955,9 @@ class SmartNotificationsService {
     });
   }
 
-  // Keep all your existing helper methods
+  /**
+   * Generate AI summary notification
+   */
   static generateAISummary() {
     const criticalCount = this.notifications.filter(n => n.severity === 'critical').length;
     const highCount = this.notifications.filter(n => n.severity === 'high').length;
@@ -973,11 +969,11 @@ class SmartNotificationsService {
         type: 'urgent',
         severity: criticalCount > 0 ? 'critical' : 'high',
         title: '🎯 Procurement Intelligence Summary',
-        message: `${criticalCount + highCount} urgent items need attention ($${totalValue.toLocaleString()} at risk)`,
+        message: `${criticalCount + highCount} urgent items need attention (${totalValue.toLocaleString()} at risk)`,
         details: {
           criticalAlerts: criticalCount,
           highPriorityAlerts: highCount,
-          totalAtRiskValue: `$${totalValue.toLocaleString()}`,
+          totalAtRiskValue: `${totalValue.toLocaleString()}`,
           recommendations: this.generateRecommendations(criticalCount, highCount)
         },
         actions: [
@@ -1000,7 +996,7 @@ class SmartNotificationsService {
     }
   }
 
-  // All other helper methods remain the same
+  // Helper methods
   static calculatePriority(severity, factor) {
     const severityWeights = { critical: 8, high: 6, medium: 4, low: 2 };
     return (severityWeights[severity] || 2) + Math.min(factor || 0, 2);
@@ -1044,9 +1040,19 @@ class SmartNotificationsService {
     return { action: 'follow_up_payment', invoice: invoice.id };
   }
 
+  static handleSendReminder(invoice) {
+    console.log('📧 Sending reminder for:', invoice.invoiceNumber);
+    return { action: 'send_reminder', invoice: invoice.id };
+  }
+
   static handleCreatePO(alert) {
     console.log('📋 Creating PO for:', alert.productName);
     return { action: 'create_po', product: alert.id };
+  }
+
+  static handleUpdateStock(alert) {
+    console.log('📦 Updating stock for:', alert.productName);
+    return { action: 'update_stock', product: alert.id };
   }
 
   static handleStartSourcing(sourcing) {
@@ -1054,14 +1060,74 @@ class SmartNotificationsService {
     return { action: 'start_sourcing', sourcing: sourcing.id };
   }
 
+  static handleViewClientPO(sourcing) {
+    console.log('👀 Viewing Client PO:', sourcing.clientPONumber);
+    return { action: 'view_client_po', clientPO: sourcing.clientPONumber };
+  }
+
+  static handleReviewMitigation(delivery) {
+    console.log('🔍 Reviewing mitigation for:', delivery.poNumber);
+    return { action: 'review_mitigation', delivery: delivery.id };
+  }
+
   static handleReviewOptimization(optimization) {
     console.log('💡 Reviewing optimization:', optimization.type);
     return { action: 'review_optimization', optimization: optimization.id };
   }
 
+  static handleStartImplementation(optimization) {
+    console.log('🚀 Starting implementation:', optimization.type);
+    return { action: 'start_implementation', optimization: optimization.id };
+  }
+
+  static handleReviewSupplierPerformance(alert) {
+    console.log('📊 Reviewing supplier performance:', alert.supplierName);
+    return { action: 'review_supplier_performance', supplier: alert.id };
+  }
+
+  static handleScheduleSupplierMeeting(alert) {
+    console.log('📅 Scheduling meeting with:', alert.supplierName);
+    return { action: 'schedule_supplier_meeting', supplier: alert.id };
+  }
+
+  static handleReviewBudget(alert) {
+    console.log('💰 Reviewing budget for:', alert.department);
+    return { action: 'review_budget', department: alert.department };
+  }
+
+  static handleResolveCompliance(alert) {
+    console.log('⚖️ Resolving compliance issue:', alert.poNumber);
+    return { action: 'resolve_compliance', alert: alert.id };
+  }
+
+  static handleEscalateCompliance(alert) {
+    console.log('🚨 Escalating compliance issue:', alert.poNumber);
+    return { action: 'escalate_compliance', alert: alert.id };
+  }
+
+  static handleUpdateTimeline(delivery) {
+    console.log('📅 Updating timeline for:', delivery.poNumber);
+    return { action: 'update_timeline', delivery: delivery.id };
+  }
+
+  static handleReviewInvoice(payment) {
+    console.log('🧾 Reviewing invoice:', payment.invoiceNumber);
+    return { action: 'review_invoice', payment: payment.id };
+  }
+
+  static handleEarlyPayment(payment) {
+    console.log('💰 Processing early payment:', payment.invoiceNumber);
+    return { action: 'early_payment', payment: payment.id };
+  }
+
   static handleViewAllAlerts() {
     console.log('📋 Viewing all alerts');
     return { action: 'view_all_alerts' };
+  }
+
+  static handlePriorityDashboard() {
+    console.log('📊 Opening priority dashboard');
+    return { action: 'priority_dashboard' };
   }
 
   // Updated initialization methods for Firestore
