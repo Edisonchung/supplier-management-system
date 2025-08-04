@@ -2992,20 +2992,19 @@ static async extractBankPaymentSlip(file, userEmail = null) {
       
       // 🎯 System-specific logging
       if (metadata.system_used === 'mcp') {
-        console.log('🚀 MCP System Details:', {
-          prompt_name: metadata.prompt_name || 'Unknown MCP Prompt',
-          ai_provider: metadata.ai_provider || 'deepseek',
-          confidence: result.data?.confidence || 0.9,
-          mcp_processing_time: metadata.processing_time
-        });
-      } else if (metadata.system_used === 'enhanced_legacy') {
-        console.log('🔧 Enhanced Legacy System Details:', {
-          prompt_version: metadata.prompt_used,
-          legacy_processing_time: metadata.processing_time,
-          fallback_reason: metadata.fallback_reason || 'User not in test group'
-        });
-      }
-      
+  console.log('🚀 MCP System Details:', {
+    prompt_name: metadata.prompt_name || 'Unknown MCP Prompt',
+    ai_provider: metadata.ai_provider || 'deepseek',
+    confidence: result.data?.confidence || 0.9,
+    mcp_processing_time: metadata.processing_time
+  });
+} else if (metadata.system_used === 'enhanced_legacy') {
+  console.log('🚀 MCP System Details (Enhanced):', {  // ✅ CORRECTED NAME
+    prompt_version: metadata.prompt_used,
+    mcp_processing_time: metadata.processing_time,     // ✅ CORRECTED NAME
+    system_status: 'MCP system active with enhanced prompts'  // ✅ CLEAR MESSAGE
+  });
+}
       // 💰 Enhanced amount validation logging
       if (metadata.amount_validation) {
         const validation = metadata.amount_validation;
