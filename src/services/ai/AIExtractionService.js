@@ -2896,12 +2896,35 @@ validateClientItemCode(clientCode) {
   }
 
   // 🏦 ADD THESE NEW BANK PAYMENT METHODS HERE:
-  /**
-   * Extract bank payment slip - NEW METHOD
-   */
-  static async extractBankPaymentSlip(file) {
+  // REPLACE YOUR EXISTING extractBankPaymentSlip METHOD (lines 1148-1213) WITH THIS:
+
+/**
+ * 🏦 ENHANCED BANK PAYMENT SLIP EXTRACTION WITH DUAL SYSTEM SUPPORT
+ * Extract bank payment slip with automatic user context and dual system routing
+ */
+static async extractBankPaymentSlip(file, userEmail = null) {
   try {
     console.log('🏦 Extracting bank payment slip via Railway backend:', file.name);
+    
+    // 🔍 Enhanced user context detection with multiple fallback sources
+    const currentUserEmail = userEmail || 
+                            window.currentUser?.email || 
+                            localStorage.getItem('userEmail') ||
+                            sessionStorage.getItem('userEmail') ||
+                            document.querySelector('[data-user-email]')?.dataset.userEmail ||
+                            document.querySelector('meta[name="user-email"]')?.content ||
+                            'edisonchung@flowsolution.net'; // Default for testing
+    
+    // 🧠 Enhanced user context object
+    const userContext = {
+      email: currentUserEmail,
+      role: window.currentUser?.role || 'user',
+      uid: window.currentUser?.uid || 'anonymous',
+      displayName: window.currentUser?.displayName || 'Unknown User'
+    };
+    
+    console.log('👤 User context for dual system:', userContext);
+    console.log('🧪 Is test user (Edison):', currentUserEmail === 'edisonchung@flowsolution.net');
     
     // Validate file first
     const instance = new AIExtractionService();
@@ -2910,42 +2933,133 @@ validateClientItemCode(clientCode) {
       throw new Error(validation.error);
     }
     
-    // Call the specific bank payment backend endpoint
-    const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || 'https://supplier-mcp-server-production.up.railway.app';
-    
+    // 📁 Enhanced FormData with complete user context
     const formData = new FormData();
     formData.append('file', file);
     formData.append('documentType', 'bank_payment_slip');
     
+    // 🔧 CRITICAL: Add user context for dual system routing
+    formData.append('userEmail', currentUserEmail);
+    formData.append('user_email', currentUserEmail); // Alternative field name
+    formData.append('user', JSON.stringify(userContext)); // Complete user object
+    
+    console.log('🔧 Added user context to FormData:', {
+      email: currentUserEmail,
+      role: userContext.role,
+      uid: userContext.uid
+    });
+    
+    // 🌐 API endpoint configuration
+    const AI_BACKEND_URL = import.meta.env.VITE_MCP_SERVER_URL || 
+                          import.meta.env.VITE_AI_BACKEND_URL ||
+                          'https://supplier-mcp-server-production.up.railway.app';
+    
     console.log('📡 Calling backend endpoint:', `${AI_BACKEND_URL}/api/bank-payments/extract`);
     
+    // 🚀 Enhanced API call with comprehensive headers
     const response = await fetch(`${AI_BACKEND_URL}/api/bank-payments/extract`, {
       method: 'POST',
       body: formData,
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        // Pass user email in header as additional context
+        'x-user-email': currentUserEmail,
+        'x-client-version': '2.0.0',
+        'x-feature-flags': 'dual-system,mcp-integration,amount-validation'
       }
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to extract bank payment data' }));
-      throw new Error(error.message || error.error || 'Bank payment extraction failed');
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(`HTTP ${response.status}: ${errorData.message || errorData.error || 'Bank payment extraction failed'}`);
     }
 
     const result = await response.json();
     console.log('✅ Backend extraction successful:', result);
+    
+    // 🔍 Enhanced dual system metadata logging
+    if (result.metadata) {
+      const metadata = result.metadata;
+      
+      console.log('🧠 Dual System Info:', {
+        system_used: metadata.system_used,
+        prompt_used: metadata.prompt_used,
+        is_test_user: metadata.is_test_user,
+        user_email: metadata.user_email,
+        mcp_available: metadata.mcp_available,
+        processing_time: metadata.processing_time || result.processing_time
+      });
+      
+      // 🎯 System-specific logging
+      if (metadata.system_used === 'mcp') {
+        console.log('🚀 MCP System Details:', {
+          prompt_name: metadata.prompt_name || 'Unknown MCP Prompt',
+          ai_provider: metadata.ai_provider || 'deepseek',
+          confidence: result.data?.confidence || 0.9,
+          mcp_processing_time: metadata.processing_time
+        });
+      } else if (metadata.system_used === 'enhanced_legacy') {
+        console.log('🔧 Enhanced Legacy System Details:', {
+          prompt_version: metadata.prompt_used,
+          legacy_processing_time: metadata.processing_time,
+          fallback_reason: metadata.fallback_reason || 'User not in test group'
+        });
+      }
+      
+      // 💰 Enhanced amount validation logging
+      if (metadata.amount_validation) {
+        const validation = metadata.amount_validation;
+        
+        console.log('💰 Amount Validation Results:', validation);
+        
+        // 🚨 Warning system for amount issues
+        if (!validation.amounts_logical) {
+          console.warn('⚠️ WARNING: Payment amounts may be incorrect!');
+          console.warn('💡 Expected: payment_amount < debit_amount');
+          console.warn('📊 Current:', {
+            payment_amount: validation.payment_amount,
+            debit_amount: validation.debit_amount,
+            seems_swapped: validation.payment_amount > validation.debit_amount
+          });
+        }
+        
+        if (!validation.rate_reasonable) {
+          console.warn('⚠️ WARNING: Exchange rate seems unreasonable!');
+          console.warn('💱 Expected: 4.0-5.0 for USD-MYR exchange rate');
+          console.warn('📊 Current rate:', validation.exchange_rate);
+        }
+        
+        // ✅ Success confirmations
+        if (validation.amounts_logical && validation.rate_reasonable) {
+          console.log('✅ All amount validations passed successfully');
+        }
+      }
+      
+      // 🔄 Performance comparison logging
+      if (result.processing_time) {
+        const processingTime = result.processing_time;
+        const systemType = metadata.system_used;
+        
+        console.log(`⚡ Processing Performance (${systemType}):`, {
+          processing_time_ms: processingTime,
+          processing_time_seconds: (processingTime / 1000).toFixed(2),
+          system_efficiency: processingTime < 15000 ? 'Excellent' : 
+                            processingTime < 25000 ? 'Good' : 'Needs Optimization'
+        });
+      }
+    }
 
     // ✅ ADD PROJECT CODE EXTRACTION HERE
-if (result.success && result.data) {
-  result.data = this.extractProjectCodesFromPO(result.data);
-  console.log('🏢 Project codes extracted and added to result');
-}
+    if (result.success && result.data) {
+      result.data = this.extractProjectCodesFromPO(result.data);
+      console.log('🏢 Project codes extracted and added to result');
+    }
     
-    // Return in the format expected by your system
-    return {
+    // 🎯 Enhanced success response with validation
+    const enhancedResponse = {
       success: true,
       data: result.data, // This contains the bank_payment object from backend
-      confidence: result.data.confidence || 0.9,
+      confidence: result.data?.confidence || 0.9,
       metadata: {
         fileName: file.name,
         fileSize: file.size,
@@ -2953,12 +3067,39 @@ if (result.success && result.data) {
         extractionMethod: 'backend_ai_service',
         processingTime: result.processing_time,
         extractedAt: new Date().toISOString(),
+        
+        // 🚀 DUAL SYSTEM METADATA
+        system_used: result.metadata?.system_used || 'unknown',
+        prompt_used: result.metadata?.prompt_used || 'unknown',
+        user_email: result.metadata?.user_email || currentUserEmail,
+        is_test_user: result.metadata?.is_test_user || false,
+        dual_system_active: result.metadata?.dual_system_active || false,
+        mcp_available: result.metadata?.mcp_available || false,
+        
+        // Add extraction metadata
+        frontend_version: '2.0.0',
+        dual_system_enabled: true,
+        user_context_provided: true,
+        timestamp: new Date().toISOString(),
+        
         ...result.metadata
       }
     };
+    
+    return enhancedResponse;
 
   } catch (error) {
     console.error('❌ Bank payment extraction failed:', error);
+    
+    // 📊 Enhanced error logging with context
+    console.error('🔍 Error Context:', {
+      file_name: file.name,
+      file_size: file.size,
+      user_email: userEmail || 'unknown',
+      api_endpoint: `${import.meta.env.VITE_AI_BACKEND_URL || 'https://supplier-mcp-server-production.up.railway.app'}/api/bank-payments/extract`,
+      error_type: error.name,
+      error_message: error.message
+    });
     
     // Only fall back to mock data if in development AND backend is unreachable
     if (import.meta.env.MODE === 'development' || import.meta.env.VITE_USE_MOCK_DATA === 'true') {
@@ -2973,24 +3114,26 @@ if (result.success && result.data) {
           documentType: 'bank_payment_slip',
           mockData: true,
           extractedAt: new Date().toISOString(),
-          fallbackReason: error.message
+          fallbackReason: error.message,
+          system_used: 'mock_fallback',
+          user_email: userEmail || 'unknown'
         }
       };
     }
     
-    return {
-      success: false,
-      error: error.message,
-      data: null,
-      metadata: {
-        fileName: file.name,
-        fileSize: file.size,
-        errorType: 'bank_payment_extraction_failed'
-      }
+    // 🚨 Enhanced error object for better debugging
+    const enhancedError = new Error(`Bank Payment Extraction Failed: ${error.message}`);
+    enhancedError.originalError = error;
+    enhancedError.context = {
+      fileName: file.name,
+      fileSize: file.size,
+      userEmail: userEmail || 'unknown',
+      timestamp: new Date().toISOString()
     };
+    
+    throw enhancedError;
   }
 }
-
   /**
    * Generate mock bank payment data for development
    */
