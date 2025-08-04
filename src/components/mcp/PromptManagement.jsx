@@ -188,29 +188,35 @@ Provide actionable recommendations for supplier relationships.`,
   ], []);
 
   // Load prompts from API
-  const loadPrompts = useCallback(async () => {
+    const loadPrompts = useCallback(async () => {
     if (!mounted) return;
     
     setIsLoading(true);
     try {
+      console.log('🔄 Loading prompts from:', `${API_BASE}/api/ai/prompts`);  // Add logging
       const response = await fetch(`${API_BASE}/api/ai/prompts`);
       if (response.ok) {
         const data = await response.json();
-        const promptList = data.prompts || [];
+        console.log('📦 Raw API response:', data);  // Add logging
+        
+        // FIX: Handle the correct API response format
+        const promptList = data.data || data.prompts || [];  // ✅ FIXED LINE
+        
         if (mounted) {
           setPrompts(promptList);
           setFilteredPrompts(promptList);
           console.log('✅ Loaded prompts:', promptList.length);
+          console.log('📝 Prompt names:', promptList.map(p => p.name));  // Add logging
         }
       } else {
-        throw new Error('API call failed');
+        throw new Error(`API returned status ${response.status}`);  // Better error
       }
     } catch (error) {
-      console.warn('API unavailable, using mock data:', error);
+      console.warn('❌ API error, using mock data:', error);  // Better logging
       if (mounted) {
         setPrompts(mockPrompts);
         setFilteredPrompts(mockPrompts);
-        console.log('✅ Loaded prompts:', mockPrompts.length);
+        console.log('✅ Using mock prompts:', mockPrompts.length);
       }
     } finally {
       if (mounted) {
