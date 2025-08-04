@@ -562,11 +562,15 @@ Provide actionable recommendations for supplier relationships.`,
                   onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
                 >
+                  <option value="purchase_order">Purchase Order</option>
+                  <option value="proforma_invoice">Proforma Invoice</option>
+                  <option value="bank_payment">Bank Payment</option> {/* 🆕 NEW */}
                   <option value="extraction">Extraction</option>
                   <option value="supplier_specific">Supplier Specific</option>
                   <option value="analytics">Analytics</option>
                   <option value="classification">Classification</option>
                   <option value="general">General</option>
+                  
                 </select>
               </div>
 
