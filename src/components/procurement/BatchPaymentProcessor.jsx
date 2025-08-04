@@ -17,7 +17,13 @@ import {
   Eye,
   Download,
   Percent,
-  CloudUpload // ✅ Added for drag & drop
+  CloudUpload, // ✅ Added for drag & drop
+  Brain,
+  Settings,
+  Clock,
+  Zap,
+  BarChart3,
+  Info
 } from 'lucide-react';
 
 const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
@@ -141,6 +147,15 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
       }
       
       console.log('✅ Railway backend extraction successful:', extracted.data);
+
+      // ✅ ADD THIS: Store extraction metadata for prompt display
+    setExtractionMetadata(extracted.metadata || extracted.extractionMetadata || {
+      system_used: "legacy",
+      prompt_name: "Bank Payment - Base Template",
+      ai_provider: "deepseek",
+      processing_time: 15000,
+      is_test_user: false
+    });
       
       // ✅ CRITICAL FIX: Extract the bank_payment object from Railway response
       const bankPaymentData = extracted.data.bank_payment || extracted.data;
@@ -689,6 +704,106 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
           {/* Step 2: Review Extracted Data */}
           {step === 2 && extractedData && (
             <div>
+
+              {/* ✅ ADD THIS AI SYSTEM PANEL RIGHT AFTER THE OPENING <div> */}
+    
+    {/* AI System Information Panel - NEW SECTION */}
+    {extractionMetadata && (
+      <div className="mb-6 px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-gray-200 rounded-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            {/* System Badge */}
+            <div className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
+              extractionMetadata.system_used === "mcp_true" || extractionMetadata.system_used === "mcp"
+                ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                : "bg-blue-100 text-blue-700 border-blue-200"
+            }`}>
+              {extractionMetadata.system_used === "mcp_true" || extractionMetadata.system_used === "mcp" ? (
+                <Brain className="w-3 h-3" />
+              ) : (
+                <Settings className="w-3 h-3" />
+              )}
+              <span>
+                {extractionMetadata.system_used === "mcp_true" || extractionMetadata.system_used === "mcp"
+                  ? "MCP Advanced" 
+                  : "Legacy System"}
+              </span>
+            </div>
+            
+            {/* Prompt Name Display */}
+            {extractionMetadata.prompt_name && (
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Brain className="w-4 h-4" />
+                <span className="font-medium">Prompt:</span>
+                <span className="text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded">
+                  {extractionMetadata.prompt_name}
+                </span>
+              </div>
+            )}
+
+            {/* Legacy Template Indicator */}
+            {extractionMetadata.system_used?.includes('legacy') && !extractionMetadata.prompt_name && (
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Settings className="w-4 h-4" />
+                <span className="font-medium">Template:</span>
+                <span className="text-blue-600 font-semibold bg-blue-50 px-2 py-1 rounded">
+                  Bank Payment Legacy v{extractionMetadata.template_version || '1.3.0'}
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {/* Performance Metrics */}
+          <div className="flex items-center space-x-4 text-xs text-gray-500">
+            <div className="flex items-center space-x-1">
+              <Clock className="w-3 h-3" />
+              <span>{extractionMetadata.processing_time 
+                ? `${(extractionMetadata.processing_time / 1000).toFixed(1)}s`
+                : 'N/A'}</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <Zap className="w-3 h-3" />
+              <span className="capitalize">{extractionMetadata.ai_provider || 'deepseek'}</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <BarChart3 className="w-3 h-3" />
+              <span>{extractedData.confidence 
+                ? `${Math.round(extractedData.confidence * 100)}%`
+                : 'N/A'}</span>
+            </div>
+            {extractionMetadata.is_test_user && (
+              <div className="bg-amber-100 text-amber-700 px-2 py-1 rounded text-xs font-medium">
+                Test User
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* MCP System Details */}
+        {(extractionMetadata.system_used === "mcp_true" || extractionMetadata.system_used === "mcp") && (
+          <div className="mt-2 flex items-center space-x-4 text-xs text-gray-600">
+            <span>MCP Version: <strong>{extractionMetadata.mcp_version || '3.0'}</strong></span>
+            <span>Method: <strong>{extractionMetadata.extraction_method || 'mcp_dynamic_prompt'}</strong></span>
+            <span>Category: <strong>{extractionMetadata.prompt_category || 'bank_payment'}</strong></span>
+          </div>
+        )}
+
+        {/* Exchange Rate Validation for Bank Payments */}
+        {extractionMetadata.amount_validation && (
+          <div className="mt-2 text-xs text-gray-600">
+            <span>Exchange Rate: <strong>{extractionMetadata.amount_validation.exchange_rate}</strong></span>
+            <span className={`ml-2 px-2 py-1 rounded ${
+              extractionMetadata.amount_validation.rate_reasonable 
+                ? 'bg-green-100 text-green-700' 
+                : 'bg-red-100 text-red-700'
+            }`}>
+              {extractionMetadata.amount_validation.rate_reasonable ? 'Reasonable' : 'Check Rate'}
+            </span>
+          </div>
+        )}
+      </div>
+    )}
+              
               <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
                 <FileText className="text-green-600" />
                 Review AI-Extracted Payment Data
@@ -1227,6 +1342,32 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                     const piTotal = parseFloat(pi.totalAmount || 0);
                     const paymentPercentage = ((allocatedAmount / piTotal) * 100).toFixed(1);
                     const isPartialPayment = allocatedAmount < piTotal;
+
+                const formatProcessingTime = (ms) => {
+    return ms > 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+  };
+
+  const getSystemBadge = (systemUsed, isTestUser) => {
+    if (systemUsed === "mcp_true" || systemUsed === "mcp") {
+      return {
+        label: "MCP Advanced",
+        color: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        icon: <Brain className="w-3 h-3" />
+      };
+    } else if (systemUsed?.includes("legacy")) {
+      return {
+        label: "Legacy System",
+        color: "bg-blue-100 text-blue-700 border-blue-200",
+        icon: <Settings className="w-3 h-3" />
+      };
+    }
+    return {
+      label: "Standard",
+      color: "bg-gray-100 text-gray-700 border-gray-200",
+      icon: <Info className="w-3 h-3" />
+    };
+  };
+
                     
                     return (
                       <div key={piId} className="border border-gray-200 rounded-lg p-4">
