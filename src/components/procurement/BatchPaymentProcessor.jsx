@@ -35,6 +35,9 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [autoSuggestions, setAutoSuggestions] = useState([]);
   const [extractionError, setExtractionError] = useState(null);
+
+  const [extractionMetadata, setExtractionMetadata] = useState(null);
+
   
   // Percentage allocation controls
   const [allocationMode, setAllocationMode] = useState('manual'); // 'manual' or 'percentage'
@@ -149,13 +152,16 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
       console.log('✅ Railway backend extraction successful:', extracted.data);
 
       // ✅ ADD THIS: Store extraction metadata for prompt display
-    setExtractionMetadata(extracted.metadata || extracted.extractionMetadata || {
-      system_used: "legacy",
-      prompt_name: "Bank Payment - Base Template",
-      ai_provider: "deepseek",
-      processing_time: 15000,
-      is_test_user: false
-    });
+    setExtractionMetadata({
+  system_used: extracted.metadata?.system_used || "legacy",
+  prompt_name: extracted.metadata?.prompt_used || "Bank Payment - Base Template",
+  ai_provider: "deepseek",
+  processing_time: extracted.processing_time || 16000,
+  is_test_user: extracted.metadata?.is_test_user || false,
+  user_email: extracted.metadata?.user_email || "unknown",
+  mcp_version: extracted.data?.mcp_version || "3.0",
+  extraction_method: extracted.data?.extraction_method || "legacy"
+});
       
       // ✅ CRITICAL FIX: Extract the bank_payment object from Railway response
       const bankPaymentData = extracted.data.bank_payment || extracted.data;
@@ -475,6 +481,54 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
     console.log('🎯 Processing payment with percentage allocation:', paymentRecord);
     onSave(paymentRecord);
   };
+
+  const formatProcessingTime = (ms) => {
+
+    return ms > 1000 ? ${(ms / 1000).toFixed(1)}s : ${ms}ms;
+
+  };
+
+  const getSystemBadge = (systemUsed, isTestUser) => {
+
+    if (systemUsed === "mcp_true" || systemUsed === "mcp") {
+
+      return {
+
+        label: "MCP Advanced",
+
+        color: "bg-emerald-100 text-emerald-700 border-emerald-200",
+
+        icon: <Brain className="w-3 h-3" />
+
+      };
+
+    } else if (systemUsed?.includes("legacy")) {
+
+      return {
+
+        label: "Legacy System",
+
+        color: "bg-blue-100 text-blue-700 border-blue-200",
+
+        icon: <Settings className="w-3 h-3" />
+
+      };
+
+    }
+
+    return {
+
+      label: "Standard",
+
+      color: "bg-gray-100 text-gray-700 border-gray-200",
+
+      icon: <Info className="w-3 h-3" />
+
+    };
+
+  };
+
+
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -1343,31 +1397,7 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
                     const paymentPercentage = ((allocatedAmount / piTotal) * 100).toFixed(1);
                     const isPartialPayment = allocatedAmount < piTotal;
 
-                const formatProcessingTime = (ms) => {
-    return ms > 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
-  };
-
-  const getSystemBadge = (systemUsed, isTestUser) => {
-    if (systemUsed === "mcp_true" || systemUsed === "mcp") {
-      return {
-        label: "MCP Advanced",
-        color: "bg-emerald-100 text-emerald-700 border-emerald-200",
-        icon: <Brain className="w-3 h-3" />
-      };
-    } else if (systemUsed?.includes("legacy")) {
-      return {
-        label: "Legacy System",
-        color: "bg-blue-100 text-blue-700 border-blue-200",
-        icon: <Settings className="w-3 h-3" />
-      };
-    }
-    return {
-      label: "Standard",
-      color: "bg-gray-100 text-gray-700 border-gray-200",
-      icon: <Info className="w-3 h-3" />
-    };
-  };
-
+        
                     
                     return (
                       <div key={piId} className="border border-gray-200 rounded-lg p-4">
