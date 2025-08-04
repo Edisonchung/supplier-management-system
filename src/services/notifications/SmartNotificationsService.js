@@ -1,48 +1,430 @@
-// Update your existing src/services/notifications/SmartNotificationsService.js
-// Replace the evaluateBusinessRules method with this enhanced version
-
-import SampleDataService from '../data/SampleDataService.js';
+// Updated SmartNotificationsService.js - Real Data Integration
+// Replace your existing file with this version
 
 class SmartNotificationsService {
   static notifications = [];
   static lastEvaluation = null;
   static realisticData = null;
+  static isInitialized = false;
 
   /**
-   * Enhanced business rules evaluation using realistic data
+   * Load real procurement data from localStorage instead of mock data
    */
-  static evaluateBusinessRules(trackingData = {}) {
-    console.log('🔄 Evaluating enhanced business rules...');
+  static loadRealProcurementData() {
+    try {
+      // Load real data from localStorage
+      const purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+      const proformaInvoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
+      const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
+      const products = JSON.parse(localStorage.getItem('products') || '[]');
+      const clientPOs = JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]');
 
-    // Get or generate realistic data
-    if (!this.realisticData) {
-      this.realisticData = SampleDataService.getRealisticData();
-      console.log('📊 Loaded realistic procurement data:', {
-        overdueDeliveries: this.realisticData.overdueDeliveries.length,
-        urgentPayments: this.realisticData.urgentPayments.length,
-        atRiskDeliveries: this.realisticData.atRiskDeliveries.length,
-        costOptimizations: this.realisticData.costOptimizations.length
+      console.log('📊 Loading real data:', {
+        purchaseOrders: purchaseOrders.length,
+        proformaInvoices: proformaInvoices.length,
+        suppliers: suppliers.length,
+        products: products.length,
+        clientPOs: clientPOs.length
+      });
+
+      // Convert real data to notification-ready format
+      const realData = {
+        overdueDeliveries: this.findOverdueDeliveries(purchaseOrders, suppliers),
+        urgentPayments: this.findUrgentPayments(proformaInvoices, suppliers),
+        atRiskDeliveries: this.findAtRiskDeliveries(purchaseOrders, suppliers),
+        costOptimizations: this.findCostOptimizations(purchaseOrders, suppliers),
+        supplierAlerts: this.findSupplierIssues(suppliers, purchaseOrders),
+        budgetAlerts: this.findBudgetVariances(purchaseOrders),
+        complianceAlerts: this.findComplianceIssues(purchaseOrders, proformaInvoices),
+        lowStockAlerts: this.findLowStockItems(products),
+        pendingSourcing: this.findPendingSourcing(clientPOs)
+      };
+
+      return realData;
+    } catch (error) {
+      console.error('❌ Error loading real procurement data:', error);
+      return this.getEmptyDataStructure();
+    }
+  }
+
+  /**
+   * Find overdue deliveries from real Purchase Orders
+   */
+  static findOverdueDeliveries(purchaseOrders, suppliers) {
+    const today = new Date();
+    const overdueDeliveries = [];
+
+    purchaseOrders.forEach(po => {
+      if (po.status === 'pending' || po.status === 'partially_fulfilled') {
+        const expectedDate = new Date(po.expectedDeliveryDate || po.createdAt);
+        const daysOverdue = Math.floor((today - expectedDate) / (1000 * 60 * 60 * 24));
+        
+        if (daysOverdue > 0) {
+          const supplier = suppliers.find(s => s.id === po.supplierId);
+          const urgencyLevel = daysOverdue >= 7 ? 'critical' : 
+                              daysOverdue >= 3 ? 'high' : 'medium';
+          
+          overdueDeliveries.push({
+            id: po.id,
+            poNumber: po.poNumber,
+            supplierName: supplier?.name || 'Unknown Supplier',
+            supplierContact: {
+              email: supplier?.contact?.email || supplier?.email || '',
+              phone: supplier?.contact?.phone || supplier?.phone || ''
+            },
+            totalValue: po.totalAmount || 0,
+            daysOverdue: daysOverdue,
+            expectedDeliveryDate: po.expectedDeliveryDate,
+            status: po.status,
+            items: po.items || [],
+            urgencyLevel: urgencyLevel,
+            trackingNumber: po.trackingNumber || 'Not provided',
+            carrier: po.carrier || 'Unknown'
+          });
+        }
+      }
+    });
+
+    return overdueDeliveries.sort((a, b) => b.daysOverdue - a.daysOverdue);
+  }
+
+  /**
+   * Find urgent payments from real Proforma Invoices
+   */
+  static findUrgentPayments(proformaInvoices, suppliers) {
+    const today = new Date();
+    const urgentPayments = [];
+    const urgentThreshold = 3; // days
+
+    proformaInvoices.forEach(pi => {
+      if (pi.paymentStatus === 'pending' || pi.paymentStatus === 'overdue') {
+        const dueDate = new Date(pi.paymentDueDate || pi.createdAt);
+        const daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysUntilDue <= urgentThreshold) {
+          const supplier = suppliers.find(s => s.id === pi.supplierId);
+          const urgencyLevel = daysUntilDue < 0 ? 'critical' : 
+                              daysUntilDue <= 1 ? 'high' : 'medium';
+          
+          urgentPayments.push({
+            id: pi.id,
+            invoiceNumber: pi.piNumber,
+            supplierName: supplier?.name || 'Unknown Supplier',
+            amount: pi.totalAmount || 0,
+            currency: pi.currency || 'MYR',
+            dueDate: pi.paymentDueDate,
+            daysUntilDue: daysUntilDue,
+            isOverdue: daysUntilDue < 0,
+            paymentTerms: pi.paymentTerms || 'Net 30',
+            urgencyLevel: urgencyLevel,
+            discountAvailable: pi.earlyPaymentDiscount ? {
+              percentage: pi.earlyPaymentDiscount,
+              deadline: pi.earlyPaymentDeadline
+            } : null
+          });
+        }
+      }
+    });
+
+    return urgentPayments.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  }
+
+  /**
+   * Find low stock items from real Products
+   */
+  static findLowStockItems(products) {
+    const lowStockAlerts = [];
+
+    products.forEach(product => {
+      const currentStock = product.stock || 0;
+      const minStock = product.minStock || product.reorderPoint || 10;
+      
+      if (currentStock <= minStock) {
+        const urgencyLevel = currentStock === 0 ? 'critical' : 
+                            currentStock <= minStock / 2 ? 'high' : 'medium';
+        
+        lowStockAlerts.push({
+          id: product.id,
+          productName: product.name,
+          productCode: product.code || product.id,
+          currentStock: currentStock,
+          minStock: minStock,
+          category: product.category,
+          price: product.price || 0,
+          supplier: product.preferredSupplier || 'Not assigned',
+          urgencyLevel: urgencyLevel,
+          reorderQuantity: product.reorderQuantity || minStock * 2
+        });
+      }
+    });
+
+    return lowStockAlerts.sort((a, b) => a.currentStock - b.currentStock);
+  }
+
+  /**
+   * Find at-risk deliveries (orders that might be delayed)
+   */
+  static findAtRiskDeliveries(purchaseOrders, suppliers) {
+    const atRiskDeliveries = [];
+    const today = new Date();
+
+    purchaseOrders.forEach(po => {
+      if (po.status === 'pending') {
+        const supplier = suppliers.find(s => s.id === po.supplierId);
+        const expectedDate = new Date(po.expectedDeliveryDate || po.createdAt);
+        const daysUntilDue = Math.floor((expectedDate - today) / (1000 * 60 * 60 * 24));
+        
+        // Flag orders due soon with poor-performing suppliers
+        if (daysUntilDue <= 5 && supplier) {
+          const onTimeRate = supplier.onTimeDelivery || 85;
+          if (onTimeRate < 90) {
+            atRiskDeliveries.push({
+              id: po.id,
+              poNumber: po.poNumber,
+              supplierName: supplier.name,
+              originalDeliveryDate: po.expectedDeliveryDate,
+              adjustedDeliveryDate: new Date(expectedDate.getTime() + (2 * 24 * 60 * 60 * 1000)).toISOString(),
+              riskType: 'Supplier Performance',
+              riskDescription: `Low on-time delivery rate (${onTimeRate}%)`,
+              expectedDelay: 2,
+              severity: onTimeRate < 80 ? 'high' : 'medium',
+              estimatedImpact: (po.totalAmount || 0) * 0.1 // 10% of order value
+            });
+          }
+        }
+      }
+    });
+
+    return atRiskDeliveries;
+  }
+
+  /**
+   * Find cost optimization opportunities
+   */
+  static findCostOptimizations(purchaseOrders, suppliers) {
+    const optimizations = [];
+    
+    // Group orders by product/category to find volume discount opportunities
+    const productSpend = {};
+    
+    purchaseOrders.forEach(po => {
+      if (po.items) {
+        po.items.forEach(item => {
+          const key = item.productName || item.name;
+          if (!productSpend[key]) {
+            productSpend[key] = { totalSpend: 0, quantity: 0, orders: 0 };
+          }
+          productSpend[key].totalSpend += (item.price * item.quantity) || 0;
+          productSpend[key].quantity += item.quantity || 0;
+          productSpend[key].orders += 1;
+        });
+      }
+    });
+
+    // Find high-spend items that could benefit from consolidation
+    Object.entries(productSpend).forEach(([product, data], index) => {
+      if (data.totalSpend > 10000 && data.orders > 3) {
+        optimizations.push({
+          id: `opt-${index}`,
+          type: 'Volume Consolidation',
+          description: `Consolidate ${product} orders for volume discounts`,
+          currentAnnualSpend: data.totalSpend,
+          potentialAnnualSavings: data.totalSpend * 0.15, // 15% savings
+          savingsPercentage: 15,
+          confidence: 85,
+          implementationEffort: 'Medium',
+          timeToRealize: '2-3 months',
+          category: product
+        });
+      }
+    });
+
+    return optimizations.slice(0, 3); // Top 3 opportunities
+  }
+
+  /**
+   * Find supplier performance issues
+   */
+  static findSupplierIssues(suppliers, purchaseOrders) {
+    const supplierAlerts = [];
+    
+    suppliers.forEach(supplier => {
+      const supplierOrders = purchaseOrders.filter(po => po.supplierId === supplier.id);
+      
+      if (supplierOrders.length > 0) {
+        // Check on-time delivery rate
+        const onTimeRate = supplier.onTimeDelivery || 85;
+        if (onTimeRate < 85) {
+          supplierAlerts.push({
+            id: supplier.id,
+            supplierName: supplier.name,
+            alertType: 'Performance',
+            description: 'Below average on-time delivery performance',
+            severity: onTimeRate < 70 ? 'high' : 'medium',
+            metrics: {
+              onTimeDelivery: onTimeRate,
+              qualityRating: supplier.rating || 4.0,
+              responseTime: 24 // hours
+            },
+            trendAnalysis: {
+              lastQuarter: onTimeRate < 80 ? 'Declining' : 'Stable'
+            }
+          });
+        }
+      }
+    });
+
+    return supplierAlerts;
+  }
+
+  /**
+   * Find budget variances (simplified)
+   */
+  static findBudgetVariances(purchaseOrders) {
+    const budgetAlerts = [];
+    const monthlySpend = {};
+    
+    // Calculate monthly spend
+    purchaseOrders.forEach(po => {
+      const date = new Date(po.createdAt);
+      const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+      
+      if (!monthlySpend[monthKey]) {
+        monthlySpend[monthKey] = 0;
+      }
+      monthlySpend[monthKey] += po.totalAmount || 0;
+    });
+
+    // Check if current month is over typical spend
+    const currentMonth = new Date();
+    const currentKey = `${currentMonth.getFullYear()}-${currentMonth.getMonth()}`;
+    const currentSpend = monthlySpend[currentKey] || 0;
+    const avgSpend = Object.values(monthlySpend).reduce((a, b) => a + b, 0) / Object.keys(monthlySpend).length || 1;
+    
+    if (currentSpend > avgSpend * 1.2) { // 20% over average
+      budgetAlerts.push({
+        id: 'budget-current',
+        department: 'Procurement',
+        budgetAmount: avgSpend,
+        spentAmount: currentSpend,
+        variancePercentage: ((currentSpend - avgSpend) / avgSpend) * 100,
+        projectedYearEnd: currentSpend * 12,
+        severity: currentSpend > avgSpend * 1.5 ? 'high' : 'medium'
       });
     }
 
+    return budgetAlerts;
+  }
+
+  /**
+   * Find compliance issues (simplified)
+   */
+  static findComplianceIssues(purchaseOrders, proformaInvoices) {
+    const complianceAlerts = [];
+    
+    // Check for orders without proper documentation
+    purchaseOrders.forEach(po => {
+      if ((po.totalAmount || 0) > 5000 && !po.approvedBy) {
+        complianceAlerts.push({
+          id: po.id,
+          type: 'Approval Required',
+          description: 'High-value order requires approval',
+          poNumber: po.poNumber,
+          supplierName: 'Pending',
+          amount: po.totalAmount || 0,
+          daysOpen: Math.floor((new Date() - new Date(po.createdAt)) / (1000 * 60 * 60 * 24)),
+          assignedTo: 'Procurement Manager',
+          deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          severity: 'medium'
+        });
+      }
+    });
+
+    return complianceAlerts;
+  }
+
+  /**
+   * Find pending sourcing from Client POs
+   */
+  static findPendingSourcing(clientPOs) {
+    const pendingSourcing = [];
+
+    clientPOs.forEach(clientPO => {
+      if (clientPO.items) {
+        clientPO.items.forEach(item => {
+          if (item.sourcingStatus === 'pending' || !item.sourcingStatus) {
+            pendingSourcing.push({
+              id: `${clientPO.id}-${item.id}`,
+              clientPONumber: clientPO.poNumber,
+              itemName: item.productName || item.name,
+              quantity: item.quantity,
+              estimatedValue: (item.price || 0) * (item.quantity || 0),
+              deadline: clientPO.requiredDate,
+              urgencyLevel: this.calculateSourcingPriority(clientPO, item)
+            });
+          }
+        });
+      }
+    });
+
+    return pendingSourcing;
+  }
+
+  /**
+   * Calculate sourcing priority
+   */
+  static calculateSourcingPriority(clientPO, item) {
+    const value = (item.price || 0) * (item.quantity || 0);
+    if (value > 10000) return 'high';
+    if (value > 5000) return 'medium';
+    return 'low';
+  }
+
+  /**
+   * Get empty data structure for fallback
+   */
+  static getEmptyDataStructure() {
+    return {
+      overdueDeliveries: [],
+      urgentPayments: [],
+      atRiskDeliveries: [],
+      costOptimizations: [],
+      supplierAlerts: [],
+      budgetAlerts: [],
+      complianceAlerts: [],
+      lowStockAlerts: [],
+      pendingSourcing: []
+    };
+  }
+
+  /**
+   * Enhanced business rules evaluation using REAL data
+   */
+  static evaluateBusinessRules(trackingData = {}) {
+    console.log('🔄 Evaluating business rules with REAL data...');
+
+    // Load real data instead of mock data
+    this.realisticData = this.loadRealProcurementData();
+    
+    console.log('📊 Loaded real procurement data:', {
+      overdueDeliveries: this.realisticData.overdueDeliveries.length,
+      urgentPayments: this.realisticData.urgentPayments.length,
+      lowStockAlerts: this.realisticData.lowStockAlerts.length,
+      pendingSourcing: this.realisticData.pendingSourcing.length,
+      atRiskDeliveries: this.realisticData.atRiskDeliveries.length,
+      costOptimizations: this.realisticData.costOptimizations.length
+    });
+
     this.notifications = [];
 
-    // Process overdue deliveries (highest priority)
+    // Process real data into notifications
     this.processOverdueDeliveries();
-    
-    // Process urgent payments
     this.processUrgentPayments();
-    
-    // Process at-risk deliveries (top 3 only to avoid overwhelm)
+    this.processLowStockAlerts();
+    this.processPendingSourcing();
     this.processAtRiskDeliveries();
-    
-    // Process cost optimizations (top 2 highest value)
     this.processCostOptimizations();
-    
-    // Process supplier alerts
     this.processSupplierAlerts();
-    
-    // Process budget and compliance alerts
     this.processBudgetAndComplianceAlerts();
     
     // Generate AI summary if there are many alerts
@@ -53,9 +435,98 @@ class SmartNotificationsService {
 
     this.lastEvaluation = new Date();
     
-    console.log(`✅ Generated ${this.notifications.length} enhanced notifications`);
+    console.log(`✅ Generated ${this.notifications.length} notifications from real data`);
     return this.notifications;
   }
+
+  /**
+   * Process low stock alerts
+   */
+  static processLowStockAlerts() {
+    const lowStockAlerts = this.realisticData.lowStockAlerts || [];
+    
+    lowStockAlerts.slice(0, 5).forEach(alert => {
+      const urgencyIcon = alert.urgencyLevel === 'critical' ? '🔴' : 
+                         alert.urgencyLevel === 'high' ? '🟡' : '📦';
+      
+      const notification = {
+        id: `stock-${alert.id}`,
+        type: 'procurement',
+        severity: alert.urgencyLevel,
+        title: `${urgencyIcon} Low Stock Alert`,
+        message: `${alert.productName} - Only ${alert.currentStock} units left`,
+        details: {
+          product: alert.productName,
+          code: alert.productCode,
+          currentStock: alert.currentStock,
+          minStock: alert.minStock,
+          category: alert.category,
+          price: `$${alert.price}`,
+          supplier: alert.supplier,
+          reorderQuantity: alert.reorderQuantity
+        },
+        actions: [
+          {
+            label: 'Create Purchase Order',
+            action: () => this.handleCreatePO(alert),
+            style: 'primary'
+          },
+          {
+            label: 'Update Stock Level',
+            action: () => this.handleUpdateStock(alert),
+            style: 'secondary'
+          }
+        ],
+        timestamp: new Date(),
+        priority: this.calculatePriority(alert.urgencyLevel, alert.minStock - alert.currentStock)
+      };
+
+      this.notifications.push(notification);
+    });
+  }
+
+  /**
+   * Process pending sourcing alerts
+   */
+  static processPendingSourcing() {
+    const pendingSourcing = this.realisticData.pendingSourcing || [];
+    
+    pendingSourcing.slice(0, 3).forEach(sourcing => {
+      const notification = {
+        id: `sourcing-${sourcing.id}`,
+        type: 'procurement',
+        severity: sourcing.urgencyLevel,
+        title: `🔍 Sourcing Required`,
+        message: `${sourcing.itemName} for Client PO ${sourcing.clientPONumber}`,
+        details: {
+          clientPO: sourcing.clientPONumber,
+          item: sourcing.itemName,
+          quantity: sourcing.quantity,
+          estimatedValue: `$${sourcing.estimatedValue.toLocaleString()}`,
+          deadline: sourcing.deadline
+        },
+        actions: [
+          {
+            label: 'Start Sourcing',
+            action: () => this.handleStartSourcing(sourcing),
+            style: 'primary'
+          },
+          {
+            label: 'View Client PO',
+            action: () => this.handleViewClientPO(sourcing),
+            style: 'secondary'
+          }
+        ],
+        timestamp: new Date(),
+        priority: this.calculatePriority(sourcing.urgencyLevel, 3)
+      };
+
+      this.notifications.push(notification);
+    });
+  }
+
+  // Keep all your existing methods below (processOverdueDeliveries, processUrgentPayments, etc.)
+  // but they will now use the real data from this.realisticData
 
   /**
    * Process overdue deliveries into notifications
@@ -114,9 +585,11 @@ class SmartNotificationsService {
     urgentPayments.slice(0, 5).forEach(payment => {
       const dueLabel = payment.daysUntilDue === 0 ? 'DUE TODAY' :
                       payment.daysUntilDue === 1 ? 'DUE TOMORROW' :
+                      payment.daysUntilDue < 0 ? `${Math.abs(payment.daysUntilDue)} DAYS OVERDUE` :
                       `DUE IN ${payment.daysUntilDue} DAYS`;
       
-      const urgencyIcon = payment.daysUntilDue === 0 ? '🔥' : 
+      const urgencyIcon = payment.daysUntilDue < 0 ? '🔥' :
+                         payment.daysUntilDue === 0 ? '💰' : 
                          payment.daysUntilDue === 1 ? '💰' : '📅';
 
       const notification = {
@@ -124,18 +597,19 @@ class SmartNotificationsService {
         type: 'payment',
         severity: payment.urgencyLevel,
         title: `${urgencyIcon} Payment ${dueLabel}`,
-        message: `$${payment.amount.toLocaleString()} to ${payment.supplierName}`,
+        message: `${payment.currency} ${payment.amount.toLocaleString()} to ${payment.supplierName}`,
         details: {
           supplier: payment.supplierName,
           invoiceNumber: payment.invoiceNumber,
           amount: payment.amount,
+          currency: payment.currency,
           dueDate: new Date(payment.dueDate).toLocaleDateString(),
           paymentTerms: payment.paymentTerms,
           earlyPayDiscount: payment.discountAvailable ? `${payment.discountAvailable.percentage}% discount available` : null
         },
         actions: [
           {
-            label: payment.daysUntilDue === 0 ? 'Pay Now' : 'Schedule Payment',
+            label: payment.daysUntilDue <= 0 ? 'Pay Now' : 'Schedule Payment',
             action: () => this.handleProcessPayment(payment),
             style: 'primary'
           },
@@ -160,6 +634,9 @@ class SmartNotificationsService {
       this.notifications.push(notification);
     });
   }
+
+  // Keep all other existing methods (processAtRiskDeliveries, processCostOptimizations, etc.)
+  // They will work with the real data
 
   /**
    * Process at-risk deliveries
@@ -363,9 +840,7 @@ class SmartNotificationsService {
     });
   }
 
-  /**
-   * Generate AI summary notification
-   */
+  // Keep all your existing helper methods and action handlers
   static generateAISummary() {
     const criticalCount = this.notifications.filter(n => n.severity === 'critical').length;
     const highCount = this.notifications.filter(n => n.severity === 'high').length;
@@ -404,9 +879,7 @@ class SmartNotificationsService {
     }
   }
 
-  /**
-   * Helper methods
-   */
+  // Keep all other existing helper methods
   static calculatePriority(severity, factor) {
     const severityWeights = { critical: 8, high: 6, medium: 4, low: 2 };
     return (severityWeights[severity] || 2) + Math.min(factor || 0, 2);
@@ -434,7 +907,7 @@ class SmartNotificationsService {
     return recommendations;
   }
 
-  // Action handlers (these can be expanded as needed)
+  // Action handlers - add new ones for real data
   static handleContactSupplier(item) {
     console.log('📞 Contacting supplier:', item.supplierName);
     return { action: 'contact_supplier', item: item.id };
@@ -443,6 +916,16 @@ class SmartNotificationsService {
   static handleProcessPayment(payment) {
     console.log('💳 Processing payment:', payment.invoiceNumber);
     return { action: 'process_payment', payment: payment.id };
+  }
+
+  static handleCreatePO(alert) {
+    console.log('📋 Creating PO for:', alert.productName);
+    return { action: 'create_po', product: alert.id };
+  }
+
+  static handleStartSourcing(sourcing) {
+    console.log('🔍 Starting sourcing for:', sourcing.itemName);
+    return { action: 'start_sourcing', sourcing: sourcing.id };
   }
 
   static handleReviewOptimization(optimization) {
@@ -455,40 +938,23 @@ class SmartNotificationsService {
     return { action: 'view_all_alerts' };
   }
 
-  // Refresh realistic data (call this periodically or when needed)
-  static refreshRealisticData() {
-    console.log('🔄 Refreshing realistic data...');
-    this.realisticData = SampleDataService.generateRealisticScenarios();
-    SampleDataService.saveToStorage(this.realisticData);
-    return this.realisticData;
-  }
-
-
-  // ADD THESE NEW METHODS HERE (INSIDE THE CLASS)
-  /**
-   * Initialize the service (for compatibility with enhanced component)
-   */
+  // Updated initialization methods
   static async initialize() {
-    console.log('🔔 SmartNotificationsService initializing...');
-    this.realisticData = SampleDataService.getRealisticData();
+    console.log('🔔 SmartNotificationsService initializing with real data...');
+    this.realisticData = this.loadRealProcurementData();
+    this.isInitialized = true;
     return true;
   }
 
-  /**
-   * Get all current notifications (main method called by component)
-   */
   static async getAllNotifications() {
-    if (!this.realisticData) {
+    if (!this.isInitialized) {
       await this.initialize();
     }
     
-    // Use the existing evaluateBusinessRules method
+    // Use the updated evaluateBusinessRules method with real data
     return this.evaluateBusinessRules();
   }
 
-  /**
-   * Dismiss a notification
-   */
   static dismissNotification(notificationId) {
     const index = this.notifications.findIndex(n => n.id === notificationId);
     if (index !== -1) {
@@ -499,27 +965,20 @@ class SmartNotificationsService {
     return false;
   }
 
-  /**
-   * Refresh notifications with latest data
-   */
   static async refreshNotifications() {
-    console.log('🔄 Refreshing Smart Notifications...');
+    console.log('🔄 Refreshing Smart Notifications with real data...');
     
-    // Regenerate realistic data
-    this.realisticData = SampleDataService.generateRealisticScenarios();
-    SampleDataService.saveToStorage(this.realisticData);
+    // Reload real data from localStorage
+    this.realisticData = this.loadRealProcurementData();
     
     // Regenerate notifications
     this.notifications = [];
     const newNotifications = this.evaluateBusinessRules();
     
-    console.log(`✅ Refreshed ${newNotifications.length} notifications`);
+    console.log(`✅ Refreshed ${newNotifications.length} notifications from real data`);
     return newNotifications;
   }
 
-  /**
-   * Get notification summary for dashboard display
-   */
   static async getNotificationSummary() {
     const notifications = await this.getAllNotifications();
     
@@ -533,7 +992,6 @@ class SmartNotificationsService {
       lastUpdate: this.lastEvaluation
     };
   }
-
-} // ← Keep this closing brace for the class
+}
 
 export default SmartNotificationsService;
