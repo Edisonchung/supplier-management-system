@@ -1,5 +1,14 @@
-// Updated SmartNotificationsService.js - Real Data Integration
+// Updated SmartNotificationsService.js - Firestore Integration
 // Replace your existing file with this version
+
+// Import your existing Firestore service functions
+import { 
+  getSuppliers, 
+  getProducts, 
+  getProformaInvoices, 
+  getPurchaseOrders,
+  getClientInvoices 
+} from '../firebase.js';
 
 class SmartNotificationsService {
   static notifications = [];
@@ -8,22 +17,50 @@ class SmartNotificationsService {
   static isInitialized = false;
 
   /**
-   * Load real procurement data from localStorage instead of mock data
+   * Load real procurement data from Firestore instead of localStorage
    */
-  static loadRealProcurementData() {
+  static async loadRealProcurementData() {
     try {
-      // Load real data from localStorage
-      const purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
-      const proformaInvoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-      const suppliers = JSON.parse(localStorage.getItem('suppliers') || '[]');
-      const products = JSON.parse(localStorage.getItem('products') || '[]');
-      const clientPOs = JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]');
+      console.log('🔄 Loading real data from Firestore...');
+      
+      // Load data from Firestore using your existing service functions
+      const [suppliersResult, productsResult, piResult, poResult] = await Promise.all([
+        getSuppliers(),
+        getProducts(), 
+        getProformaInvoices(),
+        getPurchaseOrders()
+      ]);
 
-      console.log('📊 Loading real data:', {
-        purchaseOrders: purchaseOrders.length,
-        proformaInvoices: proformaInvoices.length,
+      // Extract data from results
+      const suppliers = suppliersResult.success ? suppliersResult.data : [];
+      const products = productsResult.success ? productsResult.data : [];
+      const proformaInvoices = piResult.success ? piResult.data : [];
+      const purchaseOrders = poResult.success ? poResult.data : [];
+
+      // Try to get client invoices and client POs (if they exist)
+      let clientInvoices = [];
+      let clientPOs = [];
+      
+      try {
+        const clientInvoicesResult = await getClientInvoices();
+        clientInvoices = clientInvoicesResult.success ? clientInvoicesResult.data : [];
+      } catch (error) {
+        console.log('ℹ️ Client invoices not available:', error.message);
+      }
+
+      // Try to get client POs from localStorage as fallback
+      try {
+        clientPOs = JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]');
+      } catch (error) {
+        console.log('ℹ️ Client POs not available in localStorage');
+      }
+
+      console.log('📊 Loaded Firestore data:', {
         suppliers: suppliers.length,
         products: products.length,
+        proformaInvoices: proformaInvoices.length,
+        purchaseOrders: purchaseOrders.length,
+        clientInvoices: clientInvoices.length,
         clientPOs: clientPOs.length
       });
 
@@ -37,26 +74,28 @@ class SmartNotificationsService {
         budgetAlerts: this.findBudgetVariances(purchaseOrders),
         complianceAlerts: this.findComplianceIssues(purchaseOrders, proformaInvoices),
         lowStockAlerts: this.findLowStockItems(products),
-        pendingSourcing: this.findPendingSourcing(clientPOs)
+        pendingSourcing: this.findPendingSourcing(clientPOs),
+        unpaidInvoices: this.findUnpaidInvoices(clientInvoices)
       };
 
       return realData;
     } catch (error) {
-      console.error('❌ Error loading real procurement data:', error);
+      console.error('❌ Error loading real procurement data from Firestore:', error);
       return this.getEmptyDataStructure();
     }
   }
 
   /**
-   * Find overdue deliveries from real Purchase Orders
+   * Find overdue deliveries from Firestore Purchase Orders
    */
   static findOverdueDeliveries(purchaseOrders, suppliers) {
     const today = new Date();
     const overdueDeliveries = [];
 
     purchaseOrders.forEach(po => {
-      if (po.status === 'pending' || po.status === 'partially_fulfilled') {
-        const expectedDate = new Date(po.expectedDeliveryDate || po.createdAt);
+      // Check for overdue deliveries
+      if (po.status === 'pending' || po.status === 'confirmed' || po.status === 'processing') {
+        const expectedDate = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate) : new Date(po.createdAt);
         const daysOverdue = Math.floor((today - expectedDate) / (1000 * 60 * 60 * 24));
         
         if (daysOverdue > 0) {
@@ -66,20 +105,21 @@ class SmartNotificationsService {
           
           overdueDeliveries.push({
             id: po.id,
-            poNumber: po.poNumber,
-            supplierName: supplier?.name || 'Unknown Supplier',
+            poNumber: po.poNumber || po.id,
+            supplierName: supplier?.name || po.supplierName || 'Unknown Supplier',
             supplierContact: {
               email: supplier?.contact?.email || supplier?.email || '',
               phone: supplier?.contact?.phone || supplier?.phone || ''
             },
-            totalValue: po.totalAmount || 0,
+            totalValue: po.totalAmount || po.total || 0,
             daysOverdue: daysOverdue,
             expectedDeliveryDate: po.expectedDeliveryDate,
             status: po.status,
             items: po.items || [],
             urgencyLevel: urgencyLevel,
             trackingNumber: po.trackingNumber || 'Not provided',
-            carrier: po.carrier || 'Unknown'
+            carrier: po.carrier || 'Unknown',
+            clientName: po.clientName || 'Internal Order'
           });
         }
       }
@@ -89,7 +129,7 @@ class SmartNotificationsService {
   }
 
   /**
-   * Find urgent payments from real Proforma Invoices
+   * Find urgent payments from Firestore Proforma Invoices
    */
   static findUrgentPayments(proformaInvoices, suppliers) {
     const today = new Date();
@@ -97,8 +137,8 @@ class SmartNotificationsService {
     const urgentThreshold = 3; // days
 
     proformaInvoices.forEach(pi => {
-      if (pi.paymentStatus === 'pending' || pi.paymentStatus === 'overdue') {
-        const dueDate = new Date(pi.paymentDueDate || pi.createdAt);
+      if (pi.paymentStatus === 'pending' || pi.paymentStatus === 'overdue' || !pi.paymentStatus) {
+        const dueDate = pi.paymentDueDate ? new Date(pi.paymentDueDate) : new Date(pi.date || pi.createdAt);
         const daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
         
         if (daysUntilDue <= urgentThreshold) {
@@ -108,9 +148,9 @@ class SmartNotificationsService {
           
           urgentPayments.push({
             id: pi.id,
-            invoiceNumber: pi.piNumber,
-            supplierName: supplier?.name || 'Unknown Supplier',
-            amount: pi.totalAmount || 0,
+            invoiceNumber: pi.piNumber || pi.invoiceNumber || pi.id,
+            supplierName: supplier?.name || pi.supplierName || 'Unknown Supplier',
+            amount: pi.totalAmount || pi.total || 0,
             currency: pi.currency || 'MYR',
             dueDate: pi.paymentDueDate,
             daysUntilDue: daysUntilDue,
@@ -130,14 +170,14 @@ class SmartNotificationsService {
   }
 
   /**
-   * Find low stock items from real Products
+   * Find low stock items from Firestore Products
    */
   static findLowStockItems(products) {
     const lowStockAlerts = [];
 
     products.forEach(product => {
-      const currentStock = product.stock || 0;
-      const minStock = product.minStock || product.reorderPoint || 10;
+      const currentStock = product.stock || product.currentStock || 0;
+      const minStock = product.minStock || product.reorderPoint || product.minimumStock || 10;
       
       if (currentStock <= minStock) {
         const urgencyLevel = currentStock === 0 ? 'critical' : 
@@ -146,12 +186,12 @@ class SmartNotificationsService {
         lowStockAlerts.push({
           id: product.id,
           productName: product.name,
-          productCode: product.code || product.id,
+          productCode: product.code || product.sku || product.productCode || product.id,
           currentStock: currentStock,
           minStock: minStock,
           category: product.category,
           price: product.price || 0,
-          supplier: product.preferredSupplier || 'Not assigned',
+          supplier: product.preferredSupplier || product.supplierName || 'Not assigned',
           urgencyLevel: urgencyLevel,
           reorderQuantity: product.reorderQuantity || minStock * 2
         });
@@ -162,25 +202,59 @@ class SmartNotificationsService {
   }
 
   /**
-   * Find at-risk deliveries (orders that might be delayed)
+   * Find unpaid client invoices
+   */
+  static findUnpaidInvoices(clientInvoices) {
+    const today = new Date();
+    const unpaidInvoices = [];
+
+    clientInvoices.forEach(invoice => {
+      if (invoice.paymentStatus === 'pending' || invoice.paymentStatus === 'overdue' || !invoice.paymentStatus) {
+        const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : new Date(invoice.createdAt);
+        const daysOverdue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
+        
+        if (daysOverdue >= 0) { // Include due today and overdue
+          const urgencyLevel = daysOverdue > 30 ? 'critical' : 
+                              daysOverdue > 7 ? 'high' : 'medium';
+          
+          unpaidInvoices.push({
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber || invoice.id,
+            clientName: invoice.clientName || 'Unknown Client',
+            amount: invoice.totalAmount || invoice.total || 0,
+            currency: invoice.currency || 'MYR',
+            dueDate: invoice.dueDate,
+            daysOverdue: Math.max(0, daysOverdue),
+            urgencyLevel: urgencyLevel,
+            paymentTerms: invoice.paymentTerms || 'Net 30'
+          });
+        }
+      }
+    });
+
+    return unpaidInvoices.sort((a, b) => b.daysOverdue - a.daysOverdue);
+  }
+
+  /**
+   * Find at-risk deliveries based on supplier performance
    */
   static findAtRiskDeliveries(purchaseOrders, suppliers) {
     const atRiskDeliveries = [];
     const today = new Date();
 
     purchaseOrders.forEach(po => {
-      if (po.status === 'pending') {
+      if (po.status === 'pending' || po.status === 'confirmed') {
         const supplier = suppliers.find(s => s.id === po.supplierId);
-        const expectedDate = new Date(po.expectedDeliveryDate || po.createdAt);
+        const expectedDate = po.expectedDeliveryDate ? new Date(po.expectedDeliveryDate) : new Date(po.createdAt);
         const daysUntilDue = Math.floor((expectedDate - today) / (1000 * 60 * 60 * 24));
         
         // Flag orders due soon with poor-performing suppliers
         if (daysUntilDue <= 5 && supplier) {
-          const onTimeRate = supplier.onTimeDelivery || 85;
+          const onTimeRate = supplier.onTimeDelivery || supplier.performance?.onTimeDelivery || 85;
           if (onTimeRate < 90) {
             atRiskDeliveries.push({
               id: po.id,
-              poNumber: po.poNumber,
+              poNumber: po.poNumber || po.id,
               supplierName: supplier.name,
               originalDeliveryDate: po.expectedDeliveryDate,
               adjustedDeliveryDate: new Date(expectedDate.getTime() + (2 * 24 * 60 * 60 * 1000)).toISOString(),
@@ -188,7 +262,7 @@ class SmartNotificationsService {
               riskDescription: `Low on-time delivery rate (${onTimeRate}%)`,
               expectedDelay: 2,
               severity: onTimeRate < 80 ? 'high' : 'medium',
-              estimatedImpact: (po.totalAmount || 0) * 0.1 // 10% of order value
+              estimatedImpact: (po.totalAmount || po.total || 0) * 0.1 // 10% of order value
             });
           }
         }
@@ -210,7 +284,7 @@ class SmartNotificationsService {
     purchaseOrders.forEach(po => {
       if (po.items) {
         po.items.forEach(item => {
-          const key = item.productName || item.name;
+          const key = item.productName || item.name || item.description;
           if (!productSpend[key]) {
             productSpend[key] = { totalSpend: 0, quantity: 0, orders: 0 };
           }
@@ -253,7 +327,7 @@ class SmartNotificationsService {
       
       if (supplierOrders.length > 0) {
         // Check on-time delivery rate
-        const onTimeRate = supplier.onTimeDelivery || 85;
+        const onTimeRate = supplier.onTimeDelivery || supplier.performance?.onTimeDelivery || 85;
         if (onTimeRate < 85) {
           supplierAlerts.push({
             id: supplier.id,
@@ -263,7 +337,7 @@ class SmartNotificationsService {
             severity: onTimeRate < 70 ? 'high' : 'medium',
             metrics: {
               onTimeDelivery: onTimeRate,
-              qualityRating: supplier.rating || 4.0,
+              qualityRating: supplier.rating || supplier.qualityRating || 4.0,
               responseTime: 24 // hours
             },
             trendAnalysis: {
@@ -286,13 +360,13 @@ class SmartNotificationsService {
     
     // Calculate monthly spend
     purchaseOrders.forEach(po => {
-      const date = new Date(po.createdAt);
+      const date = new Date(po.createdAt || po.date);
       const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
       
       if (!monthlySpend[monthKey]) {
         monthlySpend[monthKey] = 0;
       }
-      monthlySpend[monthKey] += po.totalAmount || 0;
+      monthlySpend[monthKey] += po.totalAmount || po.total || 0;
     });
 
     // Check if current month is over typical spend
@@ -324,15 +398,15 @@ class SmartNotificationsService {
     
     // Check for orders without proper documentation
     purchaseOrders.forEach(po => {
-      if ((po.totalAmount || 0) > 5000 && !po.approvedBy) {
+      if ((po.totalAmount || po.total || 0) > 5000 && !po.approvedBy) {
         complianceAlerts.push({
           id: po.id,
           type: 'Approval Required',
           description: 'High-value order requires approval',
-          poNumber: po.poNumber,
-          supplierName: 'Pending',
-          amount: po.totalAmount || 0,
-          daysOpen: Math.floor((new Date() - new Date(po.createdAt)) / (1000 * 60 * 60 * 24)),
+          poNumber: po.poNumber || po.id,
+          supplierName: po.supplierName || 'Pending',
+          amount: po.totalAmount || po.total || 0,
+          daysOpen: Math.floor((new Date() - new Date(po.createdAt || po.date)) / (1000 * 60 * 60 * 24)),
           assignedTo: 'Procurement Manager',
           deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           severity: 'medium'
@@ -344,7 +418,7 @@ class SmartNotificationsService {
   }
 
   /**
-   * Find pending sourcing from Client POs
+   * Find pending sourcing from Client POs (localStorage fallback)
    */
   static findPendingSourcing(clientPOs) {
     const pendingSourcing = [];
@@ -393,23 +467,25 @@ class SmartNotificationsService {
       budgetAlerts: [],
       complianceAlerts: [],
       lowStockAlerts: [],
-      pendingSourcing: []
+      pendingSourcing: [],
+      unpaidInvoices: []
     };
   }
 
   /**
-   * Enhanced business rules evaluation using REAL data
+   * Enhanced business rules evaluation using REAL Firestore data
    */
-  static evaluateBusinessRules(trackingData = {}) {
-    console.log('🔄 Evaluating business rules with REAL data...');
+  static async evaluateBusinessRules(trackingData = {}) {
+    console.log('🔄 Evaluating business rules with REAL Firestore data...');
 
-    // Load real data instead of mock data
-    this.realisticData = this.loadRealProcurementData();
+    // Load real data from Firestore instead of localStorage
+    this.realisticData = await this.loadRealProcurementData();
     
-    console.log('📊 Loaded real procurement data:', {
+    console.log('📊 Loaded real Firestore data:', {
       overdueDeliveries: this.realisticData.overdueDeliveries.length,
       urgentPayments: this.realisticData.urgentPayments.length,
       lowStockAlerts: this.realisticData.lowStockAlerts.length,
+      unpaidInvoices: this.realisticData.unpaidInvoices.length,
       pendingSourcing: this.realisticData.pendingSourcing.length,
       atRiskDeliveries: this.realisticData.atRiskDeliveries.length,
       costOptimizations: this.realisticData.costOptimizations.length
@@ -417,10 +493,11 @@ class SmartNotificationsService {
 
     this.notifications = [];
 
-    // Process real data into notifications
+    // Process real Firestore data into notifications
     this.processOverdueDeliveries();
     this.processUrgentPayments();
     this.processLowStockAlerts();
+    this.processUnpaidInvoices();
     this.processPendingSourcing();
     this.processAtRiskDeliveries();
     this.processCostOptimizations();
@@ -435,8 +512,53 @@ class SmartNotificationsService {
 
     this.lastEvaluation = new Date();
     
-    console.log(`✅ Generated ${this.notifications.length} notifications from real data`);
+    console.log(`✅ Generated ${this.notifications.length} notifications from real Firestore data`);
     return this.notifications;
+  }
+
+  /**
+   * Process unpaid client invoices
+   */
+  static processUnpaidInvoices() {
+    const unpaidInvoices = this.realisticData.unpaidInvoices || [];
+    
+    unpaidInvoices.slice(0, 5).forEach(invoice => {
+      const urgencyIcon = invoice.urgencyLevel === 'critical' ? '🔴' : 
+                         invoice.urgencyLevel === 'high' ? '🟡' : '💰';
+      
+      const notification = {
+        id: `invoice-${invoice.id}`,
+        type: 'payment',
+        severity: invoice.urgencyLevel,
+        title: `${urgencyIcon} Unpaid Invoice ${invoice.daysOverdue > 0 ? `(${invoice.daysOverdue} days overdue)` : '(Due today)'}`,
+        message: `${invoice.currency} ${invoice.amount.toLocaleString()} from ${invoice.clientName}`,
+        details: {
+          client: invoice.clientName,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: invoice.amount,
+          currency: invoice.currency,
+          dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+          daysOverdue: invoice.daysOverdue,
+          paymentTerms: invoice.paymentTerms
+        },
+        actions: [
+          {
+            label: 'Follow Up Payment',
+            action: () => this.handleFollowUpPayment(invoice),
+            style: 'primary'
+          },
+          {
+            label: 'Send Reminder',
+            action: () => this.handleSendReminder(invoice),
+            style: 'secondary'
+          }
+        ],
+        timestamp: new Date(),
+        priority: this.calculatePriority(invoice.urgencyLevel, invoice.daysOverdue)
+      };
+
+      this.notifications.push(notification);
+    });
   }
 
   /**
@@ -461,7 +583,7 @@ class SmartNotificationsService {
           currentStock: alert.currentStock,
           minStock: alert.minStock,
           category: alert.category,
-          price: `$${alert.price}`,
+          price: `${alert.price}`,
           supplier: alert.supplier,
           reorderQuantity: alert.reorderQuantity
         },
@@ -525,8 +647,8 @@ class SmartNotificationsService {
     });
   }
 
-  // Keep all your existing methods below (processOverdueDeliveries, processUrgentPayments, etc.)
-  // but they will now use the real data from this.realisticData
+  // Keep all your existing processing methods (processOverdueDeliveries, etc.) but they will use Firestore data
+  // I'll include the key ones here:
 
   /**
    * Process overdue deliveries into notifications
@@ -553,7 +675,8 @@ class SmartNotificationsService {
           trackingNumber: delivery.trackingNumber,
           carrier: delivery.carrier,
           contactEmail: delivery.supplierContact.email,
-          contactPhone: delivery.supplierContact.phone
+          contactPhone: delivery.supplierContact.phone,
+          clientName: delivery.clientName
         },
         actions: [
           {
@@ -635,8 +758,8 @@ class SmartNotificationsService {
     });
   }
 
-  // Keep all other existing methods (processAtRiskDeliveries, processCostOptimizations, etc.)
-  // They will work with the real data
+  // Include all other processing methods (processAtRiskDeliveries, processCostOptimizations, etc.)
+  // They are the same as before but now work with Firestore data
 
   /**
    * Process at-risk deliveries
@@ -644,7 +767,6 @@ class SmartNotificationsService {
   static processAtRiskDeliveries() {
     const atRiskDeliveries = this.realisticData.atRiskDeliveries || [];
     
-    // Show top 3 highest risk deliveries
     atRiskDeliveries.slice(0, 3).forEach(delivery => {
       const notification = {
         id: `risk-${delivery.id}`,
@@ -687,7 +809,6 @@ class SmartNotificationsService {
   static processCostOptimizations() {
     const costOptimizations = this.realisticData.costOptimizations || [];
     
-    // Show top 2 highest value opportunities
     costOptimizations.slice(0, 2).forEach(optimization => {
       const notification = {
         id: `optimization-${optimization.id}`,
@@ -769,7 +890,7 @@ class SmartNotificationsService {
    * Process budget and compliance alerts
    */
   static processBudgetAndComplianceAlerts() {
-    // Budget alerts (top 2)
+    // Budget alerts
     const budgetAlerts = this.realisticData.budgetAlerts || [];
     budgetAlerts.slice(0, 2).forEach(alert => {
       const isOverBudget = alert.variancePercentage > 0;
@@ -802,7 +923,7 @@ class SmartNotificationsService {
       this.notifications.push(notification);
     });
 
-    // Compliance alerts (top 3 most critical)
+    // Compliance alerts
     const complianceAlerts = this.realisticData.complianceAlerts || [];
     complianceAlerts.slice(0, 3).forEach(alert => {
       const notification = {
@@ -840,7 +961,7 @@ class SmartNotificationsService {
     });
   }
 
-  // Keep all your existing helper methods and action handlers
+  // Keep all your existing helper methods
   static generateAISummary() {
     const criticalCount = this.notifications.filter(n => n.severity === 'critical').length;
     const highCount = this.notifications.filter(n => n.severity === 'high').length;
@@ -875,11 +996,11 @@ class SmartNotificationsService {
         priority: 10 // Highest priority for summary
       };
 
-      this.notifications.unshift(summaryNotification); // Add to beginning
+      this.notifications.unshift(summaryNotification);
     }
   }
 
-  // Keep all other existing helper methods
+  // All other helper methods remain the same
   static calculatePriority(severity, factor) {
     const severityWeights = { critical: 8, high: 6, medium: 4, low: 2 };
     return (severityWeights[severity] || 2) + Math.min(factor || 0, 2);
@@ -907,7 +1028,7 @@ class SmartNotificationsService {
     return recommendations;
   }
 
-  // Action handlers - add new ones for real data
+  // Action handlers - add new ones for Firestore data
   static handleContactSupplier(item) {
     console.log('📞 Contacting supplier:', item.supplierName);
     return { action: 'contact_supplier', item: item.id };
@@ -916,6 +1037,11 @@ class SmartNotificationsService {
   static handleProcessPayment(payment) {
     console.log('💳 Processing payment:', payment.invoiceNumber);
     return { action: 'process_payment', payment: payment.id };
+  }
+
+  static handleFollowUpPayment(invoice) {
+    console.log('📞 Following up payment:', invoice.invoiceNumber);
+    return { action: 'follow_up_payment', invoice: invoice.id };
   }
 
   static handleCreatePO(alert) {
@@ -938,10 +1064,10 @@ class SmartNotificationsService {
     return { action: 'view_all_alerts' };
   }
 
-  // Updated initialization methods
+  // Updated initialization methods for Firestore
   static async initialize() {
-    console.log('🔔 SmartNotificationsService initializing with real data...');
-    this.realisticData = this.loadRealProcurementData();
+    console.log('🔔 SmartNotificationsService initializing with Firestore data...');
+    this.realisticData = await this.loadRealProcurementData();
     this.isInitialized = true;
     return true;
   }
@@ -951,8 +1077,8 @@ class SmartNotificationsService {
       await this.initialize();
     }
     
-    // Use the updated evaluateBusinessRules method with real data
-    return this.evaluateBusinessRules();
+    // Use the updated evaluateBusinessRules method with Firestore data
+    return await this.evaluateBusinessRules();
   }
 
   static dismissNotification(notificationId) {
@@ -966,16 +1092,16 @@ class SmartNotificationsService {
   }
 
   static async refreshNotifications() {
-    console.log('🔄 Refreshing Smart Notifications with real data...');
+    console.log('🔄 Refreshing Smart Notifications with Firestore data...');
     
-    // Reload real data from localStorage
-    this.realisticData = this.loadRealProcurementData();
+    // Reload real data from Firestore
+    this.realisticData = await this.loadRealProcurementData();
     
     // Regenerate notifications
     this.notifications = [];
-    const newNotifications = this.evaluateBusinessRules();
+    const newNotifications = await this.evaluateBusinessRules();
     
-    console.log(`✅ Refreshed ${newNotifications.length} notifications from real data`);
+    console.log(`✅ Refreshed ${newNotifications.length} notifications from Firestore`);
     return newNotifications;
   }
 
