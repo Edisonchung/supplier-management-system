@@ -482,53 +482,32 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
     onSave(paymentRecord);
   };
 
+  // ✅ ADD THE HELPER FUNCTIONS RIGHT HERE:
+  
   const formatProcessingTime = (ms) => {
-
-    return ms > 1000 ? ${(ms / 1000).toFixed(1)}s : ${ms}ms;
-
+    return ms > 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
   };
 
   const getSystemBadge = (systemUsed, isTestUser) => {
-
     if (systemUsed === "mcp_true" || systemUsed === "mcp") {
-
       return {
-
         label: "MCP Advanced",
-
         color: "bg-emerald-100 text-emerald-700 border-emerald-200",
-
         icon: <Brain className="w-3 h-3" />
-
       };
-
     } else if (systemUsed?.includes("legacy")) {
-
       return {
-
         label: "Legacy System",
-
         color: "bg-blue-100 text-blue-700 border-blue-200",
-
         icon: <Settings className="w-3 h-3" />
-
       };
-
     }
-
     return {
-
       label: "Standard",
-
       color: "bg-gray-100 text-gray-700 border-gray-200",
-
       icon: <Info className="w-3 h-3" />
-
     };
-
   };
-
-
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
