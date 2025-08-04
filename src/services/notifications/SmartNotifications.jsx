@@ -1,6 +1,5 @@
-// Fixed SmartNotifications.jsx Component
-// Replace your existing SmartNotifications.jsx with this version
-
+// src/components/notifications/SmartNotifications.jsx
+// ENHANCED VERSION - Compatible with Firestore SmartNotificationsService
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
@@ -8,34 +7,58 @@ import {
   AlertTriangle, 
   Clock, 
   CheckCircle, 
-  DollarSign, 
-  Settings,
-  RefreshCw
+  X, 
+  DollarSign,
+  Settings as SettingsIcon,
+  RefreshCw 
 } from 'lucide-react';
 import SmartNotificationsService from '../../services/notifications/SmartNotificationsService';
+import { NotificationManager } from '../common/Notification';
 
 const SmartNotifications = () => {
+  const location = useLocation();
   const [notifications, setNotifications] = useState([]); // ✅ FIXED: Always initialize as array
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
+  const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState({
-    enableNotifications: true,
-    soundEnabled: true,
-    emailAlerts: false
+    deliveryAlerts: true,
+    paymentReminders: true,
+    performanceAlerts: true,
+    costOptimization: false
   });
-  
-  const location = useLocation();
+  const [lastUpdate, setLastUpdate] = useState(null);
+
+  // Critical: Use refs to track component state and prevent memory leaks
   const mountedRef = useRef(true);
   const intervalRef = useRef(null);
 
-  // ✅ FIXED: Safe evaluation function with proper error handling
+  // Component lifecycle management
+  useEffect(() => {
+    console.log('🔔 SmartNotifications mounted with enhanced Firestore features');
+    mountedRef.current = true;
+    
+    return () => {
+      console.log('🧹 SmartNotifications unmounting');
+      mountedRef.current = false;
+      
+      // Critical: Clear any remaining intervals
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, []);
+
+  // ✅ FIXED: Enhanced business rules evaluation using Firestore service
   const evaluateRules = useCallback(async () => {
     if (!mountedRef.current) return;
     
     try {
       setLoading(true);
-      console.log('🔄 Evaluating notification rules...');
+      console.log('🔄 Evaluating enhanced business rules with Firestore data...');
       
+      // Get all notifications from the Firestore-compatible service
       const newNotifications = await SmartNotificationsService.getAllNotifications();
       
       // ✅ FIXED: Ensure we always get an array
@@ -43,12 +66,24 @@ const SmartNotifications = () => {
       
       if (mountedRef.current) {
         setNotifications(safeNotifications);
-        console.log(`✅ Updated with ${safeNotifications.length} notifications`);
+        setLastUpdate(new Date());
+        
+        console.log(`✅ Loaded ${safeNotifications.length} enhanced notifications from Firestore`);
+        
+        // Show toast for critical alerts
+        const criticalAlerts = safeNotifications.filter(n => n.severity === 'critical');
+        if (criticalAlerts.length > 0) {
+          NotificationManager.urgent(
+            `${criticalAlerts.length} critical alert${criticalAlerts.length > 1 ? 's' : ''} need immediate attention`,
+            { duration: 8000 }
+          );
+        }
       }
     } catch (error) {
-      console.error('❌ Error evaluating notification rules:', error);
+      console.error('❌ Error evaluating enhanced business rules:', error);
       if (mountedRef.current) {
         setNotifications([]); // Set empty array on error
+        NotificationManager.error('Failed to load notifications');
       }
     } finally {
       if (mountedRef.current) {
@@ -57,39 +92,101 @@ const SmartNotifications = () => {
     }
   }, []);
 
-  // Component mount and cleanup
-  useEffect(() => {
-    console.log('🔔 SmartNotifications mounted');
-    mountedRef.current = true;
+  // Handle notification actions with enhanced service
+  const handleAction = useCallback((notification, action) => {
+    if (!mountedRef.current) return;
     
+    try {
+      console.log('🎯 Executing notification action:', action.label);
+      
+      // Execute the action
+      if (action.handler || action.action) {
+        const actionFunction = action.handler || action.action;
+        const result = actionFunction();
+        console.log('Action result:', result);
+      }
+
+      // Mark notification as acted upon
+      if (mountedRef.current) {
+        setNotifications(prev => 
+          Array.isArray(prev) ? prev.map(n => 
+            n.id === notification.id ? { ...n, acted: true } : n
+          ) : []
+        );
+        
+        NotificationManager.success(`Action "${action.label}" completed`);
+      }
+    } catch (error) {
+      console.error('Error handling notification action:', error);
+      if (mountedRef.current) {
+        NotificationManager.error('Failed to execute action');
+      }
+    }
+  }, []);
+
+  const dismissNotification = useCallback((notificationId) => {
+    if (!mountedRef.current) return;
+    
+    try {
+      // Dismiss from service
+      SmartNotificationsService.dismissNotification(notificationId);
+      
+      // Update local state with safe array handling
+      setNotifications(prev => Array.isArray(prev) ? prev.filter(n => n.id !== notificationId) : []);
+      
+      console.log('✅ Notification dismissed:', notificationId);
+    } catch (error) {
+      console.error('Error dismissing notification:', error);
+    }
+  }, []);
+
+  const refreshNotifications = useCallback(async () => {
+    if (!mountedRef.current) return;
+    
+    try {
+      console.log('🔄 Manually refreshing Firestore notifications...');
+      await SmartNotificationsService.refreshNotifications();
+      await evaluateRules();
+      NotificationManager.success('Notifications refreshed');
+    } catch (error) {
+      console.error('Error refreshing notifications:', error);
+      NotificationManager.error('Failed to refresh notifications');
+    }
+  }, [evaluateRules]);
+
+  // Load settings safely
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    
+    try {
+      const savedSettings = localStorage.getItem('higgsflow_notificationSettings');
+      if (savedSettings && mountedRef.current) {
+        setSettings(JSON.parse(savedSettings));
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  }, []);
+
+  // Save settings safely
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    
+    try {
+      localStorage.setItem('higgsflow_notificationSettings', JSON.stringify(settings));
+    } catch (error) {
+      console.error('Error saving settings:', error);
+    }
+  }, [settings]);
+
+  // Initialize and set up automatic refresh
+  useEffect(() => {
     // Initial evaluation
     evaluateRules();
 
-    // Cleanup function - CRITICAL for preventing navigation blocking
-    return () => {
-      console.log('🧹 SmartNotifications unmounting - cleaning up...');
-      mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-        console.log('🧹 Interval cleared on unmount');
-      }
-    };
-  }, [evaluateRules]);
-
-  // Set up refresh interval
-  useEffect(() => {
-    if (!mountedRef.current) return;
-
-    // Clear any existing interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    // Set up new interval
+    // Set up interval with safety checks
     intervalRef.current = setInterval(() => {
       if (mountedRef.current) {
-        console.log('⏰ Refreshing notifications...');
         evaluateRules();
       } else {
         // Component unmounted, clear interval
@@ -116,26 +213,6 @@ const SmartNotifications = () => {
       intervalRef.current = null;
     }
   }, [location.pathname]);
-
-  // Settings management
-  useEffect(() => {
-    try {
-      const savedSettings = localStorage.getItem('notification_settings');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('notification_settings', JSON.stringify(settings));
-    } catch (error) {
-      console.error('Error saving settings:', error);
-    }
-  }, [settings]);
 
   // Helper functions for enhanced notifications
   const getNotificationIcon = (type) => {
@@ -164,114 +241,143 @@ const SmartNotifications = () => {
   const getSeverityColor = (severity) => {
     switch (severity) {
       case 'critical': return 'border-l-red-500 bg-red-50';
-      case 'high': return 'border-l-amber-500 bg-amber-50';
-      case 'medium': return 'border-l-blue-500 bg-blue-50';
-      case 'low': return 'border-l-green-500 bg-green-50';
+      case 'high': return 'border-l-orange-500 bg-orange-50';
+      case 'medium': return 'border-l-yellow-500 bg-yellow-50';
+      case 'low': return 'border-l-blue-500 bg-blue-50';
       default: return 'border-l-gray-500 bg-gray-50';
     }
   };
 
   const getSeverityBadge = (severity) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-100 text-red-800';
-      case 'high': return 'bg-amber-100 text-amber-800';
-      case 'medium': return 'bg-blue-100 text-blue-800';
-      case 'low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+    const colors = {
+      critical: 'bg-red-100 text-red-700',
+      high: 'bg-orange-100 text-orange-700',
+      medium: 'bg-yellow-100 text-yellow-700',
+      low: 'bg-blue-100 text-blue-700'
+    };
+    
+    return colors[severity] || 'bg-gray-100 text-gray-700';
   };
 
-  // ✅ FIXED: Safe filtering with proper null checks
+  // ✅ FIXED: Enhanced filtering with safe array handling
   const filteredNotifications = React.useMemo(() => {
     if (!Array.isArray(notifications)) {
       console.warn('⚠️ Notifications is not an array:', typeof notifications);
       return [];
     }
 
-    if (activeTab === 'all') {
-      return notifications;
-    }
-
+    if (activeTab === 'all') return notifications;
+    
     return notifications.filter(notification => {
       if (!notification) return false;
       
-      // Map notification types to categories
-      const category = notification.category || notification.type;
-      return category === activeTab;
+      switch (activeTab) {
+        case 'delivery':
+          return ['delivery', 'delivery_overdue', 'delivery_risk'].includes(notification.type);
+        case 'payment':
+          return ['payment', 'payment_due'].includes(notification.type);
+        case 'critical':
+          return notification.severity === 'critical';
+        case 'optimization':
+          return notification.type === 'cost_optimization';
+        case 'procurement':
+          return notification.type === 'procurement';
+        default:
+          return true;
+      }
     });
   }, [notifications, activeTab]);
 
   // ✅ FIXED: Safe notification counts calculation
   const notificationCounts = React.useMemo(() => {
     if (!Array.isArray(notifications)) {
-      return { all: 0, delivery: 0, payment: 0, procurement: 0, urgent: 0 };
+      return { all: 0, delivery: 0, payment: 0, critical: 0, optimization: 0, procurement: 0 };
     }
 
     return {
       all: notifications.length,
-      delivery: notifications.filter(n => n?.type === 'delivery' || n?.category === 'delivery').length,
-      payment: notifications.filter(n => n?.type === 'payment' || n?.category === 'payment').length,
-      procurement: notifications.filter(n => n?.type === 'procurement' || n?.category === 'procurement').length,
-      urgent: notifications.filter(n => n?.severity === 'critical' || n?.severity === 'high').length
+      delivery: notifications.filter(n => n && ['delivery', 'delivery_overdue', 'delivery_risk'].includes(n.type)).length,
+      payment: notifications.filter(n => n && ['payment', 'payment_due'].includes(n.type)).length,
+      critical: notifications.filter(n => n && n.severity === 'critical').length,
+      optimization: notifications.filter(n => n && n.type === 'cost_optimization').length,
+      procurement: notifications.filter(n => n && n.type === 'procurement').length
     };
   }, [notifications]);
 
-  const handleDismiss = (notificationId) => {
-    SmartNotificationsService.dismissNotification(notificationId);
-    setNotifications(prev => Array.isArray(prev) ? prev.filter(n => n.id !== notificationId) : []);
-  };
-
-  const handleAction = (action) => {
-    if (typeof action === 'function') {
-      action();
+  // ✅ FIXED: Safe summary calculation
+  const getNotificationSummary = React.useMemo(() => {
+    if (!Array.isArray(notifications)) {
+      return { critical: 0, high: 0, totalValue: 0 };
     }
-  };
 
-  const refreshNotifications = async () => {
-    await evaluateRules();
-  };
+    const critical = notifications.filter(n => n && n.severity === 'critical').length;
+    const high = notifications.filter(n => n && n.severity === 'high').length;
+    const totalValue = notifications.reduce((sum, n) => {
+      if (!n || !n.details) return sum;
+      const value = n.details.value || n.details.amount || 0;
+      return sum + (typeof value === 'number' ? value : 0);
+    }, 0);
 
+    return { critical, high, totalValue };
+  }, [notifications]);
+
+  const summary = getNotificationSummary;
+
+  // Loading state
   if (loading && notifications.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="h-8 w-8 text-blue-500 animate-spin mr-3" />
-          <span className="text-lg text-gray-600">Loading notifications...</span>
+          <span className="text-lg text-gray-600">Loading Firestore notifications...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+    <div className="space-y-6">
+      {/* Enhanced Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Smart Notifications</h1>
-          <p className="text-gray-600 mt-2">AI-powered procurement alerts and insights</p>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <Bell className="h-6 w-6 text-blue-500" />
+            Smart Notifications
+            <span className="text-sm font-normal text-gray-500">Firestore Enhanced</span>
+          </h1>
+          <p className="text-gray-600 mt-1">
+            AI-powered procurement intelligence with real Firestore data
+          </p>
+          {lastUpdate && (
+            <p className="text-xs text-gray-500 mt-1">
+              Last updated: {lastUpdate.toLocaleTimeString()}
+            </p>
+          )}
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
           <button
             onClick={refreshNotifications}
             disabled={loading}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm 
-                     font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            className={`flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm ${
+              loading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          
-          <button className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm 
-                           text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-            <Settings className="h-4 w-4 mr-2" />
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            <SettingsIcon className="h-4 w-4" />
             Settings
           </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      {/* Enhanced Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -285,8 +391,8 @@ const SmartNotifications = () => {
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Urgent</p>
-              <p className="text-2xl font-bold text-red-600">{notificationCounts.urgent}</p>
+              <p className="text-sm text-gray-600">Critical</p>
+              <p className="text-2xl font-bold text-red-600">{summary.critical}</p>
             </div>
             <AlertTriangle className="h-8 w-8 text-red-500" />
           </div>
@@ -295,33 +401,37 @@ const SmartNotifications = () => {
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Delivery Alerts</p>
-              <p className="text-2xl font-bold text-amber-600">{notificationCounts.delivery}</p>
+              <p className="text-sm text-gray-600">High Priority</p>
+              <p className="text-2xl font-bold text-orange-600">{summary.high}</p>
             </div>
-            <Clock className="h-8 w-8 text-amber-500" />
+            <Clock className="h-8 w-8 text-orange-500" />
           </div>
         </div>
         
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Payment Alerts</p>
-              <p className="text-2xl font-bold text-green-600">{notificationCounts.payment}</p>
+              <p className="text-sm text-gray-600">Value at Risk</p>
+              <p className="text-2xl font-bold text-green-600">
+                ${summary.totalValue.toLocaleString()}
+              </p>
             </div>
             <DollarSign className="h-8 w-8 text-green-500" />
           </div>
         </div>
       </div>
 
-      {/* Tab Navigation */}
+      {/* Enhanced Tab Navigation */}
       <div className="bg-white rounded-lg border">
         <div className="border-b border-gray-200">
           <nav className="flex space-x-8 px-6" aria-label="Tabs">
             {[
               { key: 'all', label: 'All Notifications' },
-              { key: 'delivery', label: 'Delivery' },
+              { key: 'critical', label: 'Critical' },
+              { key: 'delivery', label: 'Deliveries' },
               { key: 'payment', label: 'Payments' },
-              { key: 'procurement', label: 'Procurement' }
+              { key: 'procurement', label: 'Procurement' },
+              { key: 'optimization', label: 'Opportunities' }
             ].map(({ key, label }) => (
               <button
                 key={key}
@@ -334,7 +444,9 @@ const SmartNotifications = () => {
               >
                 {label}
                 {notificationCounts[key] > 0 && (
-                  <span className="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full ml-2">
+                  <span className={`text-xs px-2 py-1 rounded-full ml-2 ${
+                    key === 'critical' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                  }`}>
                     {notificationCounts[key]}
                   </span>
                 )}
@@ -343,7 +455,7 @@ const SmartNotifications = () => {
           </nav>
         </div>
 
-        {/* Notifications List */}
+        {/* Enhanced Notifications List */}
         <div className="p-6">
           {filteredNotifications.length === 0 ? (
             <div className="text-center py-12">
@@ -390,7 +502,7 @@ const SmartNotifications = () => {
                                   </span>
                                   <span className="text-gray-800">
                                     {typeof value === 'number' && (key.includes('value') || key.includes('amount')) 
-                                      ? `$${value.toLocaleString()}` 
+                                      ? `$${value.toLocaleString()}`
                                       : String(value || 'N/A')
                                     }
                                   </span>
@@ -400,21 +512,18 @@ const SmartNotifications = () => {
                           </div>
                         )}
                         
-                        {/* Action Buttons */}
+                        {/* Enhanced Actions */}
                         {notification.actions && notification.actions.length > 0 && (
                           <div className="flex flex-wrap gap-2 mt-3">
                             {notification.actions.map((action, index) => (
                               <button
                                 key={index}
-                                onClick={() => handleAction(action.action)}
+                                onClick={() => handleAction(notification, action)}
                                 className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                                  action.style === 'primary' 
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                    : action.style === 'success'
-                                    ? 'bg-green-600 text-white hover:bg-green-700'
-                                    : action.style === 'danger'
-                                    ? 'bg-red-600 text-white hover:bg-red-700'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                  action.style === 'primary' ? 'bg-blue-600 text-white hover:bg-blue-700' :
+                                  action.style === 'success' ? 'bg-green-600 text-white hover:bg-green-700' :
+                                  action.style === 'danger' ? 'bg-red-600 text-white hover:bg-red-700' :
+                                  'bg-gray-600 text-white hover:bg-gray-700'
                                 }`}
                               >
                                 {action.label}
@@ -437,10 +546,10 @@ const SmartNotifications = () => {
                     </div>
                     
                     <button
-                      onClick={() => handleDismiss(notification.id)}
-                      className="ml-4 text-gray-400 hover:text-gray-600 transition-colors"
+                      onClick={() => dismissNotification(notification.id)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors ml-4"
                     >
-                      ×
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -450,9 +559,48 @@ const SmartNotifications = () => {
         </div>
       </div>
 
-      {/* Footer with last update time */}
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="bg-white rounded-lg border p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Notification Settings</h3>
+          
+          <div className="space-y-4">
+            {[
+              { key: 'deliveryAlerts', label: 'Delivery Alerts', desc: 'Overdue and delayed deliveries' },
+              { key: 'paymentReminders', label: 'Payment Reminders', desc: 'Due dates and overdue payments' },
+              { key: 'performanceAlerts', label: 'Performance Alerts', desc: 'Supplier performance issues' },
+              { key: 'costOptimization', label: 'Cost Optimization', desc: 'Savings opportunities' }
+            ].map(({ key, label, desc }) => (
+              <div key={key} className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-900">{label}</p>
+                  <p className="text-sm text-gray-600">{desc}</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings[key]}
+                    onChange={(e) => setSettings(prev => ({
+                      ...prev,
+                      [key]: e.target.checked
+                    }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Footer with data source info */}
       <div className="mt-6 text-center text-sm text-gray-500">
-        Last updated: {new Date().toLocaleString()}
+        <p>
+          Data source: Firestore • 
+          Last updated: {lastUpdate ? lastUpdate.toLocaleString() : 'Loading...'} • 
+          {notifications.length} notifications loaded
+        </p>
       </div>
     </div>
   );
