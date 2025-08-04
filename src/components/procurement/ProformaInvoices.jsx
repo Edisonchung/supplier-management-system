@@ -2005,16 +2005,16 @@ const renderPaymentStatus = (pi) => {
             
             <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
               <DocumentViewer
-                documentId={documentsModal.pi?.id}
-                documentType="pi"
-                documentNumber={documentsModal.pi?.piNumber}
-                allowDelete={true}
-                showTitle={false}
-                onDocumentDeleted={(doc) => {
-                  console.log('Document deleted:', doc);
-                  showNotification?.('Document deleted successfully', 'success');
-                }}
-              />
+  documentId={documentsModal.pi?.documentId}  // This is the document storage ID
+  documentType="pi"
+  documentNumber={documentsModal.pi?.piNumber}
+  allowDelete={true}
+  showTitle={false}
+  onDocumentDeleted={(doc) => {
+    console.log('Document deleted:', doc);
+    showNotification?.('Document deleted successfully', 'success');
+  }}
+/>
             </div>
           </div>
         </div>
