@@ -1025,7 +1025,7 @@ const renderPaymentStatus = (pi) => {
 
   const handlePaymentProcessed = async (paymentRecord) => {
   try {
-    console.log('🎯 DEBUG: Processing batch payment record:', paymentRecord);
+    console.log('🎯 Processing batch payment record with real extraction:', paymentRecord);
     
     let updatedCount = 0;
     let errorCount = 0;
@@ -1037,164 +1037,165 @@ const renderPaymentStatus = (pi) => {
         const pi = proformaInvoices.find(p => p.id === allocation.piId);
         
         if (pi) {
-          console.log('🔍 DEBUG: Found PI before update:', {
+          console.log('🔍 Found PI before update:', {
             piNumber: pi.piNumber,
             currentTotalPaid: pi.totalPaid,
             currentPaymentStatus: pi.paymentStatus,
-            currentPaymentsLength: (pi.payments || []).length,
-            allocationAmount: allocation.allocatedAmount
+            currentPaymentsLength: (pi.payments || []).length
           });
 
-          // Create detailed payment record with real extracted data
+          // ENHANCED: Create payment entry with robust amount handling
+          const paymentAmount = parseFloat(allocation.allocatedAmount);
+          
+          if (isNaN(paymentAmount) || paymentAmount <= 0) {
+            console.error('❌ Invalid payment amount:', allocation.allocatedAmount);
+            continue;
+          }
+
           const paymentEntry = {
             id: `batch-${paymentRecord.paymentSlipRef}-${allocation.piId}`,
-            amount: allocation.allocatedAmount,
+            
+            // CRITICAL: Ensure amount is stored as a number in multiple formats for compatibility
+            amount: paymentAmount,
+            allocatedAmount: paymentAmount,
+            paidAmount: paymentAmount,
+            
             date: paymentRecord.paymentDate,
             type: 'batch-payment',
             method: 'bank-transfer',
             reference: paymentRecord.paymentSlipRef,
             
-            // Enhanced payment details from real AI extraction
-            bankName: paymentRecord.bankName,
-            beneficiaryName: paymentRecord.beneficiaryName,
-            beneficiaryBank: paymentRecord.beneficiaryBank,
-            exchangeRate: paymentRecord.exchangeRate,
-            bankCharges: paymentRecord.bankCharges,
+            // Enhanced payment details
+            bankName: paymentRecord.bankName || '',
+            beneficiaryName: paymentRecord.beneficiaryName || '',
+            beneficiaryBank: paymentRecord.beneficiaryBank || '',
+            exchangeRate: parseFloat(paymentRecord.exchangeRate) || 1,
+            bankCharges: parseFloat(paymentRecord.bankCharges) || 0,
             
             // Currency information
-            currency: allocation.currency,
-            debitAmount: paymentRecord.debitAmount,
-            debitCurrency: paymentRecord.debitCurrency,
+            currency: allocation.currency || 'USD',
+            debitAmount: parseFloat(paymentRecord.debitAmount) || paymentAmount,
+            debitCurrency: paymentRecord.debitCurrency || 'USD',
             
             // Payment metadata
-            paymentPercentage: allocation.paymentPercentage,
-            isPartialPayment: allocation.isPartialPayment,
-            previousBalance: allocation.previousBalance,
-            newBalance: allocation.newBalance,
-            
-            // Bank slip document attachment (real document)
-            attachments: paymentRecord.bankSlipDocument ? [{
-              name: paymentRecord.bankSlipDocument.name,
-              url: paymentRecord.bankSlipDocument.url,
-              type: paymentRecord.bankSlipDocument.type,
-              size: paymentRecord.bankSlipDocument.size,
-              uploadedAt: paymentRecord.bankSlipDocument.uploadedAt,
-              category: 'bank_slip'
-            }] : [],
-            
-            // AI extraction metadata
-            extractionConfidence: paymentRecord.extractionConfidence,
-            extractionMethod: paymentRecord.extractionMethod,
-            batchProcessed: true,
+            paymentPercentage: parseFloat(allocation.paymentPercentage) || 0,
+            isPartialPayment: allocation.isPartialPayment || false,
+            previousBalance: parseFloat(allocation.previousBalance) || 0,
+            newBalance: parseFloat(allocation.newBalance) || 0,
             
             // Audit trail
             createdAt: new Date().toISOString(),
-            createdBy: 'system',
+            createdBy: 'batch-payment-system',
+            batchProcessed: true,
+            
             remark: `Batch payment processed via AI extraction. ${allocation.isPartialPayment ? 'Partial payment (' + allocation.paymentPercentage + '% of total)' : 'Payment allocated'}`
           };
 
-          console.log('💳 DEBUG: Created payment entry:', {
+          console.log('💳 Created payment entry:', {
             id: paymentEntry.id,
             amount: paymentEntry.amount,
-            date: paymentEntry.date,
-            type: paymentEntry.type
+            amountType: typeof paymentEntry.amount,
+            allocatedAmount: paymentEntry.allocatedAmount
           });
 
           // Add payment to PI's payment history
-          const updatedPayments = [...(pi.payments || []), paymentEntry];
+          const existingPayments = pi.payments || [];
+          const updatedPayments = [...existingPayments, paymentEntry];
           
-          // ✅ CRITICAL FIX: Calculate totalPaid and include it in updatedPI
-          const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+          // ENHANCED: Calculate totalPaid with robust parsing
+          const totalPaid = updatedPayments.reduce((sum, p) => {
+            const amt = parseFloat(p.amount || p.allocatedAmount || p.paidAmount || 0);
+            return sum + (isNaN(amt) ? 0 : amt);
+          }, 0);
+          
           const totalAmount = parseFloat(pi.totalAmount || 0);
           
-          console.log('🧮 DEBUG: Payment calculations:', {
-            previousPayments: (pi.payments || []).length,
+          console.log('🧮 Payment calculations:', {
+            previousPayments: existingPayments.length,
             newPaymentsCount: updatedPayments.length,
             calculatedTotalPaid: totalPaid,
             piTotalAmount: totalAmount,
-            paymentAmount: allocation.allocatedAmount
+            newPaymentAmount: paymentAmount
           });
 
-          // Determine new payment status
+          // Determine payment status
           let newPaymentStatus = 'pending';
-          if (totalPaid >= totalAmount) {
-            newPaymentStatus = 'paid';
-          } else if (totalPaid > 0) {
-            newPaymentStatus = 'partial';
+          if (totalAmount > 0) {
+            if (totalPaid >= totalAmount - 0.01) { // Account for floating point precision
+              newPaymentStatus = 'paid';
+            } else if (totalPaid > 0.01) {
+              newPaymentStatus = 'partial';
+            }
           }
 
+          // ENHANCED: Build update object with clean numeric fields
           const updatedPI = {
             ...pi,
             payments: updatedPayments,
-            totalPaid: totalPaid, // ✅ THIS IS THE CRITICAL FIELD!
+            
+            // CRITICAL: Ensure these are stored as numbers
+            totalPaid: Number(totalPaid),
+            totalAmount: Number(totalAmount),
+            
             paymentStatus: newPaymentStatus,
             lastPaymentDate: paymentRecord.paymentDate,
             lastModified: new Date().toISOString(),
             lastModifiedBy: 'batch-payment-system'
           };
 
-          console.log('📝 DEBUG: Prepared updatedPI object:', {
+          // ENHANCED: Clean up any undefined/null values before Firestore update
+          Object.keys(updatedPI).forEach(key => {
+            if (updatedPI[key] === undefined || updatedPI[key] === null) {
+              delete updatedPI[key];
+              console.log(`🧹 Removed undefined field: ${key}`);
+            }
+          });
+
+          console.log('📝 Prepared updatedPI object:', {
             piId: pi.id,
             piNumber: pi.piNumber,
             paymentsLength: updatedPI.payments.length,
             totalPaid: updatedPI.totalPaid,
-            paymentStatus: updatedPI.paymentStatus,
-            hasAllRequiredFields: !!(updatedPI.totalPaid !== undefined && updatedPI.paymentStatus && updatedPI.payments)
+            totalPaidType: typeof updatedPI.totalPaid,
+            paymentStatus: updatedPI.paymentStatus
           });
 
-          // Update PI in database
-          console.log('💾 DEBUG: Calling updateProformaInvoice...');
+          // Update PI in Firestore
+          console.log('💾 Calling updateProformaInvoice...');
           const result = await updateProformaInvoice(pi.id, updatedPI);
           
-          console.log('📊 DEBUG: updateProformaInvoice result:', {
+          console.log('📊 updateProformaInvoice result:', {
             success: result.success,
-            error: result.error,
-            data: result.data ? 'present' : 'missing'
+            error: result.error
           });
 
           if (result.success) {
             updatedCount++;
             processedPIs.push({
               piNumber: pi.piNumber,
-              amount: allocation.allocatedAmount,
+              amount: paymentAmount,
               currency: allocation.currency,
               status: newPaymentStatus,
               isPartial: allocation.isPartialPayment,
-              totalPaid: totalPaid, // Include for verification
+              totalPaid: totalPaid,
               remainingBalance: totalAmount - totalPaid
             });
             
-            console.log(`✅ DEBUG: Successfully updated PI ${pi.piNumber}:`, {
+            console.log(`✅ Successfully updated PI ${pi.piNumber}:`, {
               totalPaid: totalPaid,
               paymentStatus: newPaymentStatus,
               paymentsCount: updatedPayments.length
             });
 
-            // 🔥 DEBUG: Let's check if the PI was actually updated by fetching it again
-            setTimeout(async () => {
-              try {
-                // Give some time for the update to propagate
-                const refreshedPIs = proformaInvoices.find(p => p.id === pi.id);
-                console.log('🔍 DEBUG: PI after update (5 seconds later):', {
-                  piNumber: refreshedPIs?.piNumber,
-                  totalPaid: refreshedPIs?.totalPaid,
-                  paymentStatus: refreshedPIs?.paymentStatus,
-                  paymentsLength: refreshedPIs?.payments?.length
-                });
-              } catch (error) {
-                console.error('DEBUG: Error checking updated PI:', error);
-              }
-            }, 5000);
-
           } else {
             throw new Error(result.error || 'Failed to update PI');
           }
         } else {
-          console.warn(`❌ DEBUG: PI not found for allocation: ${allocation.piId}`);
+          console.warn(`❌ PI not found for allocation: ${allocation.piId}`);
           errorCount++;
         }
       } catch (error) {
-        console.error(`❌ DEBUG: Error processing PI ${allocation.piId}:`, error);
+        console.error(`❌ Error processing PI ${allocation.piId}:`, error);
         errorCount++;
       }
     }
@@ -1221,34 +1222,15 @@ const renderPaymentStatus = (pi) => {
       showNotification(
         successMessage,
         errorCount > 0 ? 'warning' : 'success',
-        8000 // Show for 8 seconds
+        8000
       );
       
-      // Log detailed breakdown
-      console.log('📊 DEBUG: Final Batch Payment Summary:', {
+      console.log('📊 Final Batch Payment Summary:', {
         totalProcessed: processedPIs.length,
         partialPayments,
         fullPayments,
-        breakdown: processedPIs.map(p => ({
-          piNumber: p.piNumber,
-          totalPaid: p.totalPaid,
-          remainingBalance: p.remainingBalance,
-          status: p.status
-        })),
-        bankSlip: paymentRecord.bankSlipDocument?.name
+        breakdown: processedPIs
       });
-
-      // 🔥 DEBUG: Let's also check what's in the proformaInvoices array after processing
-      console.log('🔍 DEBUG: Current proformaInvoices state after processing:', 
-        proformaInvoices
-          .filter(pi => processedPIs.some(p => p.piNumber === pi.piNumber))
-          .map(pi => ({
-            piNumber: pi.piNumber,
-            totalPaid: pi.totalPaid,
-            paymentStatus: pi.paymentStatus,
-            paymentsLength: pi.payments?.length
-          }))
-      );
 
     } else {
       showNotification('No PIs were updated. Please check the allocations.', 'warning');
@@ -1258,7 +1240,7 @@ const renderPaymentStatus = (pi) => {
     setShowBatchPaymentModal(false);
     
   } catch (error) {
-    console.error('❌ DEBUG: Error processing batch payment:', error);
+    console.error('❌ Error processing batch payment:', error);
     showNotification(
       `Failed to process batch payment: ${error.message}`,
       'error',
