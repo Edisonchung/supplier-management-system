@@ -826,7 +826,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             results.push({
               piNumber: pi.piNumber,
               amount: existingPayment.amount,
-              status: result?.success ? 'updated' : 'failed',
+              status: 'updated',
               action: 'migration_update',
               error: result?.error || null
             });
@@ -932,7 +932,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             results.push({
               piNumber: pi.piNumber,
               amount: allocatedAmount,
-              status: result?.success ? 'created' : 'failed',
+              status: 'created',
               action: 'new_payment',
               error: result?.error || null
             });
@@ -982,15 +982,21 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
     }
 
     if (failedCount > 0) {
-      console.error(`❌ Failed to process ${failedCount} payment(s)`);
-    }
+  console.error(`❌ Failed to process ${failedCount} payment(s)`);
+  // Show specific errors for debugging
+  results.filter(r => r.status === 'failed').forEach(r => {
+    console.error(`  - ${r.piNumber}: ${r.error}`);
+  });
+}
 
-    // Only close if some payments succeeded
-    if (updatedCount > 0 || newCount > 0) {
-      onClose();
-    } else if (failedCount > 0) {
-      console.error('❌ All payment processing attempts failed');
-    }
+// Only close if some payments succeeded
+if (updatedCount > 0 || newCount > 0) {
+  console.log('🎉 Payment processing completed successfully - closing modal');
+  onClose();
+} else if (failedCount > 0) {
+  console.error('❌ All payment processing attempts failed');
+  alert('Payment processing failed. Please check the console for details and try again.');
+}
 
   } catch (error) {
     console.error('❌ Payment processing error:', error);
