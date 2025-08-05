@@ -3536,36 +3536,44 @@ const saveProductEdit = (index, field) => {
     return (
       <div className="flex items-center gap-1">
         {/* View Button */}
-        <button
-          onClick={() => window.open(documentURL, '_blank')}
-          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
-          title="View payment slip"
-        >
-          <Eye size={12} />
-          View
-        </button>
-        
-        {/* Download Button */}
-        <button
-          onClick={() => {
-            const link = document.createElement('a');
-            link.href = documentURL;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            // Clean up blob URL if we created one
-            if (documentURL.startsWith('blob:')) {
-              setTimeout(() => URL.revokeObjectURL(documentURL), 1000);
-            }
-          }}
-          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
-          title="Download payment slip"
-        >
-          <Download size={12} />
-          Download
-        </button>
+<button
+  type="button"
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(documentURL, '_blank');
+  }}
+  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+  title="View payment slip"
+>
+  <Eye size={12} />
+  View
+</button>
+
+{/* Download Button */}
+<button
+  type="button"
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const link = document.createElement('a');
+    link.href = documentURL;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up blob URL if we created one
+    if (documentURL.startsWith('blob:')) {
+      setTimeout(() => URL.revokeObjectURL(documentURL), 1000);
+    }
+  }}
+  className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
+  title="Download payment slip"
+>
+  <Download size={12} />
+  Download
+</button>
       </div>
     );
   }
@@ -3611,18 +3619,20 @@ const saveProductEdit = (index, field) => {
             
             {/* 🔧 CRITICAL: DELETE BUTTON */}
             <button
-              type="button"
-              onClick={() => {
-                const confirmed = window.confirm(`Are you sure you want to delete this payment record of ${payment.currency || 'USD'} ${payment.amount?.toLocaleString() || '0.00'}?`);
-                if (confirmed) {
-                  handleDeletePayment(payment.id);
-                }
-              }}
-              className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
-              title="Delete payment record"
-            >
-              <X size={16} />
-            </button>
+  type="button"  // ADD THIS LINE
+  onClick={(e) => {  // CHANGE THIS LINE
+    e.preventDefault();  // ADD THIS LINE
+    e.stopPropagation();  // ADD THIS LINE
+    const confirmed = window.confirm(`Are you sure you want to delete this payment record of ${payment.currency || 'USD'} ${payment.amount?.toLocaleString() || '0.00'}?`);
+    if (confirmed) {
+      handleDeletePayment(payment.id);
+    }
+  }}
+  className="p-1 text-red-500 hover:bg-red-100 rounded transition-colors"
+  title="Delete payment record"
+>
+  <X size={16} />
+</button>
           </div>
         </div>
         
