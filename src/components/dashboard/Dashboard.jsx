@@ -17,8 +17,7 @@ import {
   getDocs, 
   orderBy, 
   limit,
-  onSnapshot,
-  serverTimestamp 
+  onSnapshot
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -102,18 +101,51 @@ const Dashboard = ({ showNotification }) => {
       });
       unsubscribes.push(posUnsub);
 
-      // Activity logs listener (recent 20)
+      // Activity logs listener (recent 20) with user information
       const activityQuery = query(
         collection(db, 'activityLogs'), 
         orderBy('timestamp', 'desc'), 
         limit(20)
       );
-      const activityUnsub = onSnapshot(activityQuery, (snapshot) => {
-        const activityLogs = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate()
-        }));
+      const activityUnsub = onSnapshot(activityQuery, async (snapshot) => {
+        const activityLogs = await Promise.all(
+          snapshot.docs.map(async (doc) => {
+            const data = doc.data();
+            let userName = 'System';
+            let userEmail = '';
+            
+            // Try to get user information if userId exists
+            if (data.userId && data.userId !== 'system') {
+              try {
+                // Try to get user info from users collection
+                const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', data.userId), limit(1)));
+                if (!userDoc.empty) {
+                  const userData = userDoc.docs[0].data();
+                  userName = userData.displayName || userData.email?.split('@')[0] || 'User';
+                  userEmail = userData.email;
+                } else {
+                  // Fallback: use current user info if it's the current user
+                  if (data.userId === user?.uid) {
+                    userName = user.displayName || user.email?.split('@')[0] || 'You';
+                    userEmail = user.email;
+                  }
+                }
+              } catch (error) {
+                console.error('Error fetching user info for activity:', error);
+                userName = data.userId === user?.uid ? 'You' : 'User';
+              }
+            }
+            
+            return {
+              id: doc.id,
+              ...data,
+              timestamp: data.timestamp?.toDate(),
+              userName,
+              userEmail
+            };
+          })
+        );
+        
         setDashboardData(prev => ({ ...prev, activityLogs }));
         setLastUpdated(new Date());
         setLoading(false);
@@ -426,14 +458,62 @@ const Dashboard = ({ showNotification }) => {
     return `${prefix}${(value || 0).toLocaleString()}${suffix}`;
   };
 
-  // Get recent activities with proper formatting
-  const recentActivities = dashboardData.activityLogs.slice(0, 6).map(activity => ({
-    id: activity.id,
-    message: activity.description || `${activity.action} performed`,
-    time: getTimeAgo(activity.timestamp),
-    type: getActivityType(activity.action),
-    priority: getActivityPriority(activity.action)
-  }));
+  // Get recent activities with proper formatting and user names
+  const recentActivities = dashboardData.activityLogs.slice(0, 6).map(activity => {
+    // Extract user information
+    const userName = activity.userName || activity.userEmail?.split('@')[0] || 'Unknown User';
+    
+    // Format message based on activity type
+    let message = activity.description;
+    if (!message) {
+      switch (activity.action) {
+        case 'login':
+          message = `${userName} logged in`;
+          break;
+        case 'logout':
+          message = `${userName} logged out`;
+          break;
+        case 'supplier_created':
+          message = `${userName} added a new supplier`;
+          break;
+        case 'supplier_updated':
+          message = `${userName} updated supplier information`;
+          break;
+        case 'product_created':
+          message = `${userName} added a new product`;
+          break;
+        case 'product_updated':
+          message = `${userName} updated product details`;
+          break;
+        case 'pi_created':
+          message = `${userName} created a proforma invoice`;
+          break;
+        case 'pi_updated':
+          message = `${userName} updated a proforma invoice`;
+          break;
+        case 'po_created':
+          message = `${userName} created a purchase order`;
+          break;
+        case 'stock_updated':
+          message = `${userName} updated product stock levels`;
+          break;
+        case 'delivery_status_updated':
+          message = `${userName} updated delivery status`;
+          break;
+        default:
+          message = `${userName} performed ${activity.action.replace('_', ' ')}`;
+      }
+    }
+    
+    return {
+      id: activity.id,
+      message,
+      userName,
+      time: getTimeAgo(activity.timestamp),
+      type: getActivityType(activity.action),
+      priority: getActivityPriority(activity.action)
+    };
+  });
 
   function getTimeAgo(date) {
     if (!date) return 'Just now';
@@ -665,7 +745,14 @@ const Dashboard = ({ showNotification }) => {
                     <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${getStatusColor(activity.type)}`} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
-                        <p className="text-sm text-gray-900 pr-2">{activity.message}</p>
+                        <div className="flex items-center gap-2 pr-2">
+                          <p className="text-sm text-gray-900">{activity.message}</p>
+                          {activity.userName && activity.userName !== 'Unknown User' && (
+                            <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full flex-shrink-0">
+                              {activity.userName}
+                            </span>
+                          )}
+                        </div>
                         {activity.priority === 'high' && (
                           <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex-shrink-0">
                             High
