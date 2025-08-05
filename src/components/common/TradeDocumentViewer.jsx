@@ -45,21 +45,57 @@ const TradeDocumentViewer = ({
       const result = await documentStorageService.getDocuments(documentId, 'trade');
       
       if (result.success) {
-        // Ensure all documents have safe properties
-        const safeDocuments = (result.documents || []).map(doc => ({
-          ...doc,
-          fileName: safeString(doc.fileName, 'unknown'),
-          originalFileName: safeString(doc.originalFileName, doc.fileName || 'unknown'),
-          fileSize: doc.fileSize || 0,
-          uploadedAt: doc.uploadedAt || doc.uploadTime || new Date().toISOString()
-        }));
+        // ✅ ENHANCED: Better document processing with metadata debugging
+        const safeDocuments = (result.documents || []).map((doc, index) => {
+          console.log(`🔍 Processing document ${index + 1}:`, {
+            originalDoc: doc,
+            fileName: doc.fileName,
+            originalFileName: doc.originalFileName,
+            metadata: doc.metadata || 'none'
+          });
+          
+          // Extract the actual filename from the storage path if fileName is missing
+          let actualFileName = doc.fileName;
+          if (!actualFileName || actualFileName === 'unknown') {
+            if (doc.storagePath) {
+              const pathParts = doc.storagePath.split('/');
+              actualFileName = pathParts[pathParts.length - 1];
+            } else if (doc.url) {
+              const urlParts = doc.url.split('/');
+              actualFileName = urlParts[urlParts.length - 1].split('?')[0]; // Remove query params
+            }
+          }
+          
+          const processedDoc = {
+            ...doc,
+            fileName: safeString(actualFileName, `document-${index + 1}`),
+            originalFileName: safeString(
+              doc.originalFileName || 
+              doc.metadata?.originalFileName || 
+              actualFileName, 
+              `document-${index + 1}`
+            ),
+            fileSize: doc.fileSize || doc.metadata?.fileSize || 0,
+            uploadedAt: doc.uploadedAt || doc.uploadTime || doc.metadata?.uploadedAt || new Date().toISOString(),
+            contentType: doc.contentType || doc.metadata?.contentType || 'application/octet-stream'
+          };
+          
+          console.log(`✅ Processed document ${index + 1}:`, {
+            fileName: processedDoc.fileName,
+            originalFileName: processedDoc.originalFileName,
+            fileSize: processedDoc.fileSize
+          });
+          
+          return processedDoc;
+        });
+        
         setDocuments(safeDocuments);
         console.log('✅ Successfully processed', safeDocuments.length, 'documents');
       } else {
         setError(result.error);
       }
     } catch (err) {
-      console.error('Error loading trade documents:', err);
+      console.error('❌ Error loading trade documents:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -93,24 +129,58 @@ const TradeDocumentViewer = ({
 
   const handleDownload = async (document) => {
     try {
+      // ✅ FIXED: Better filename handling with fallbacks
+      let fileNameToUse = document.fileName;
+      
+      // If fileName is missing or 'unknown', try to reconstruct it
+      if (!fileNameToUse || fileNameToUse === 'unknown') {
+        console.warn('⚠️ Document fileName is missing, trying to use originalFileName or URL-based name');
+        
+        // Try different fallback methods
+        if (document.originalFileName) {
+          fileNameToUse = document.originalFileName;
+        } else if (document.url) {
+          // Extract filename from URL if available
+          const urlParts = document.url.split('/');
+          fileNameToUse = urlParts[urlParts.length - 1];
+        } else {
+          // Last resort: use document properties to construct filename
+          const timestamp = new Date().getTime();
+          const extension = document.contentType?.includes('pdf') ? '.pdf' : '.unknown';
+          fileNameToUse = `trade-document-${timestamp}${extension}`;
+        }
+      }
+      
+      console.log('📥 Attempting to download:', {
+        originalFileName: document.fileName,
+        fallbackFileName: fileNameToUse,
+        documentId: documentId,
+        document: document
+      });
+
       const result = await documentStorageService.downloadDocument(
         documentId,
         'trade',
-        document.fileName
+        fileNameToUse
       );
       
       if (result.success) {
         // Create download link
         const link = document.createElement('a');
         link.href = result.downloadURL;
-        link.download = safeString(document.originalFileName, document.fileName);
+        link.download = safeString(document.originalFileName, fileNameToUse);
         link.click();
+        
+        console.log('✅ Download successful for:', fileNameToUse);
       } else {
         throw new Error(result.error);
       }
     } catch (error) {
-      console.error('Error downloading document:', error);
-      alert('Failed to download document: ' + error.message);
+      console.error('❌ Error downloading document:', error);
+      
+      // Show user-friendly error message
+      const fileName = safeString(document.originalFileName || document.fileName, 'Unknown File');
+      alert(`Failed to download "${fileName}": ${error.message}\n\nThe file may have been moved or deleted.`);
     }
   };
 
