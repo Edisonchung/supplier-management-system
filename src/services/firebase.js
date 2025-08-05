@@ -1,4 +1,4 @@
-// src/config/firebase.js - Complete Firebase Implementation with CORS and Admin Fixes
+// src/services/firebase.js - Complete Firebase Implementation with CORS and Admin Fixes + Payment Deletion Fix
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -133,15 +133,38 @@ const handleFirestoreOperation = async (operation, operationName) => {
   }
 };
 
-// 🔧 CRITICAL FIX: Enhanced clean data helper function
+// 🔧 CRITICAL FIX: Enhanced clean data helper function with PAYMENT PROTECTION
 const cleanFirestoreData = (obj) => {
   if (typeof obj !== 'object' || obj === null) return obj;
   
   const cleaned = {};
+  const removedFields = [];
   
   for (const [key, value] of Object.entries(obj)) {
+    // 🔧 CRITICAL: Preserve important arrays even if empty or undefined
+    const importantArrayFields = ['payments', 'items', 'attachments', 'allocations', 'products'];
+    
+    if (importantArrayFields.includes(key)) {
+      // Keep arrays even if empty, but ensure they're valid arrays
+      if (Array.isArray(value)) {
+        // Clean the array contents but preserve the array structure
+        cleaned[key] = value
+          .map(item => typeof item === 'object' && item !== null ? cleanFirestoreData(item) : item)
+          .filter(item => item !== undefined);
+      } else if (value === undefined || value === null) {
+        // Convert undefined/null to empty array for important fields
+        cleaned[key] = [];
+        console.log(`🔧 FIRESTORE: Converting ${key} from ${value} to empty array`);
+      } else {
+        // Keep the value as-is if it's not an array but not undefined/null
+        cleaned[key] = value;
+      }
+      continue; // Skip the normal undefined check for important fields
+    }
+    
     // 🔧 CRITICAL: Skip undefined values entirely (FIRESTORE REQUIREMENT)
     if (value === undefined) {
+      removedFields.push(key);
       console.log(`🧹 FIRESTORE: Removed undefined field: ${key}`);
       continue;
     }
@@ -158,20 +181,29 @@ const cleanFirestoreData = (obj) => {
       // Only include non-empty objects
       if (Object.keys(nestedCleaned).length > 0) {
         cleaned[key] = nestedCleaned;
+      } else {
+        removedFields.push(key);
       }
     } else if (Array.isArray(value)) {
       // 🔧 CRITICAL: Clean arrays by filtering out undefined values
       const cleanedArray = value
-        .map(item => typeof item === 'object' ? cleanFirestoreData(item) : item)
+        .map(item => typeof item === 'object' && item !== null ? cleanFirestoreData(item) : item)
         .filter(item => item !== undefined);
       
       if (cleanedArray.length > 0) {
+        cleaned[key] = cleanedArray;
+      } else {
+        // Keep empty arrays for non-important fields, remove only if not important
         cleaned[key] = cleanedArray;
       }
     } else {
       // Keep primitive values (string, number, boolean, Date)
       cleaned[key] = value;
     }
+  }
+  
+  if (removedFields.length > 0) {
+    console.log(`💾 FIRESTORE: Data cleaning completed - removed ${removedFields.length} fields: [${removedFields.join(', ')}]`);
   }
   
   return cleaned;
@@ -248,16 +280,39 @@ export const safeAddDocument = async (collectionName, data) => {
   }, `addDocument(${collectionName})`);
 };
 
-// 🔧 CRITICAL FIX: Enhanced safe update document with comprehensive cleaning
+// 🔧 CRITICAL FIX: Enhanced safe update document with PAYMENT PROTECTION
 export const safeUpdateDocument = async (collectionName, docId, updates) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
     
-    // 🔧 CRITICAL: Clean updates before sending to Firestore
-    const cleanUpdates = cleanFirestoreData({
-      ...updates,
-      updatedAt: serverTimestamp()
-    });
+    // 🔧 CRITICAL: Special handling for payment updates
+    let cleanUpdates;
+    
+    if (updates.payments !== undefined) {
+      console.log(`💰 FIRESTORE: Processing payment update for ${collectionName}/${docId}`);
+      console.log(`📊 Payment data: ${Array.isArray(updates.payments) ? updates.payments.length : 'not array'} payments`);
+      
+      // Clean everything EXCEPT payments
+      const { payments, ...otherFields } = updates;
+      const cleanedOthers = cleanFirestoreData({
+        ...otherFields,
+        updatedAt: serverTimestamp()
+      });
+      
+      // Combine with protected payments
+      cleanUpdates = {
+        ...cleanedOthers,
+        payments: Array.isArray(payments) ? payments : []
+      };
+      
+      console.log(`✅ Payment protection applied - preserved ${cleanUpdates.payments.length} payments`);
+    } else {
+      // Normal cleaning for non-payment updates
+      cleanUpdates = cleanFirestoreData({
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    }
     
     console.log(`💾 FIRESTORE: Updating ${collectionName}/${docId}`, {
       originalFieldCount: Object.keys(updates).length,
@@ -646,12 +701,12 @@ export const addProformaInvoice = async (invoice) => {
   }
 };
 
-// 🔧 CRITICAL FIX: Enhanced Update PI with comprehensive data cleaning
+// 🔧 CRITICAL FIX: Enhanced Update PI with PAYMENT PROTECTION
 export const updateProformaInvoice = async (id, updates) => {
   try {
     console.log('💾 FIRESTORE: Updating PI:', { id, updates });
     
-    // 🔧 CRITICAL: Use safeUpdateDocument which automatically cleans data
+    // 🔧 CRITICAL: Use safeUpdateDocument which has payment protection
     const result = await safeUpdateDocument('proformaInvoices', id, updates);
     
     if (result.success) {
@@ -667,6 +722,40 @@ export const updateProformaInvoice = async (id, updates) => {
   } catch (error) {
     console.error('Error updating proforma invoice:', error);
     return { success: false, error: error.message };
+  }
+};
+
+// 🔧 NEW: Payment-specific update function for enhanced payment operations
+export const updateProformaInvoicePayments = async (id, payments, paymentTotals = {}) => {
+  try {
+    console.log(`💰 FIRESTORE: Updating payments for PI ${id}`);
+    console.log(`📊 Payment data:`, {
+      paymentsCount: Array.isArray(payments) ? payments.length : 'not array',
+      totalPaid: paymentTotals.totalPaid,
+      paymentStatus: paymentTotals.paymentStatus
+    });
+
+    const updates = {
+      payments: Array.isArray(payments) ? payments : [],
+      ...(paymentTotals.totalPaid !== undefined && { totalPaid: paymentTotals.totalPaid }),
+      ...(paymentTotals.paymentStatus && { paymentStatus: paymentTotals.paymentStatus }),
+      ...(paymentTotals.paymentPercentage !== undefined && { paymentPercentage: paymentTotals.paymentPercentage })
+    };
+
+    // Use the regular updateProformaInvoice which now has payment protection
+    const result = await updateProformaInvoice(id, updates);
+    
+    if (result.success) {
+      console.log(`✅ PI payments updated successfully: ${payments.length} payments`);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`❌ Error updating PI payments:`, error);
+    return { 
+      success: false, 
+      error: error.message 
+    };
   }
 };
 
