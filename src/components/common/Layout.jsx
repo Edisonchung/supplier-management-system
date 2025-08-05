@@ -1,4 +1,4 @@
-// src/components/common/Layout.jsx - PRODUCTION VERSION
+// src/components/common/Layout.jsx - PRODUCTION VERSION with Dark Mode
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
@@ -50,7 +50,7 @@ const Layout = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
       <Header 
         toggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
@@ -62,7 +62,7 @@ const Layout = () => {
         />
         
         <main className={`
-          flex-1 p-6 pt-24 transition-all duration-300
+          flex-1 p-6 pt-24 bg-gray-50 dark:bg-gray-900 transition-all duration-300
           ${isNavCollapsed ? 'lg:ml-16' : 'lg:ml-64'}
         `}>
           <div className="max-w-7xl mx-auto">
