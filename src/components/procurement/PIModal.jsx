@@ -1065,6 +1065,23 @@ useEffect(() => {
   return { subtotal: 0, totalAmount: 0 };
 }, [selectedProducts, formData.discount, formData.shipping, formData.tax]);
 
+  const handleTradeDocumentUploaded = (document) => {
+    console.log('✅ Trade document uploaded successfully:', document);
+    
+    // Show success notification
+    if (showNotification) {
+      showNotification('Trade document uploaded successfully', 'success');
+    }
+    
+    // Optional: Log document details for debugging
+    console.log('📄 Document details:', {
+      fileName: document.fileName || document.name,
+      fileSize: document.fileSize,
+      uploadTime: document.uploadTime,
+      documentId: document.documentId
+    });
+  };
+
   useEffect(() => {
     if (proformaInvoice) {
       console.log('🚢 SHIPPING DEBUG:', {
