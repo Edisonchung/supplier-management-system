@@ -133,18 +133,46 @@ const handleFirestoreOperation = async (operation, operationName) => {
   }
 };
 
-// ✅ FIXED: Clean data helper function
-const cleanFirestoreData = (data) => {
-  if (!data || typeof data !== 'object') return data;
+// 🔧 CRITICAL FIX: Enhanced clean data helper function
+const cleanFirestoreData = (obj) => {
+  if (typeof obj !== 'object' || obj === null) return obj;
   
-  const cleaned = { ...data };
+  const cleaned = {};
   
-  // Remove undefined and null values
-  Object.keys(cleaned).forEach(key => {
-    if (cleaned[key] === undefined || cleaned[key] === null) {
-      delete cleaned[key];
+  for (const [key, value] of Object.entries(obj)) {
+    // 🔧 CRITICAL: Skip undefined values entirely (FIRESTORE REQUIREMENT)
+    if (value === undefined) {
+      console.log(`🧹 FIRESTORE: Removed undefined field: ${key}`);
+      continue;
     }
-  });
+    
+    // Handle null values (keep them as they're valid in Firestore)
+    if (value === null) {
+      cleaned[key] = null;
+      continue;
+    }
+    
+    // 🔧 CRITICAL: Recursively clean nested objects
+    if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      const nestedCleaned = cleanFirestoreData(value);
+      // Only include non-empty objects
+      if (Object.keys(nestedCleaned).length > 0) {
+        cleaned[key] = nestedCleaned;
+      }
+    } else if (Array.isArray(value)) {
+      // 🔧 CRITICAL: Clean arrays by filtering out undefined values
+      const cleanedArray = value
+        .map(item => typeof item === 'object' ? cleanFirestoreData(item) : item)
+        .filter(item => item !== undefined);
+      
+      if (cleanedArray.length > 0) {
+        cleaned[key] = cleanedArray;
+      }
+    } else {
+      // Keep primitive values (string, number, boolean, Date)
+      cleaned[key] = value;
+    }
+  }
   
   return cleaned;
 };
@@ -179,9 +207,17 @@ export const safeGetDocument = async (collectionName, docId) => {
 export const safeSetDocument = async (collectionName, docId, data) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
+    
+    // 🔧 CRITICAL: Clean data before sending to Firestore
     const cleanData = cleanFirestoreData({
       ...data,
       updatedAt: serverTimestamp()
+    });
+    
+    console.log(`💾 FIRESTORE: Setting ${collectionName}/${docId}`, {
+      originalFieldCount: Object.keys(data).length,
+      cleanedFieldCount: Object.keys(cleanData).length,
+      removedFields: Object.keys(data).filter(key => !(key in cleanData))
     });
     
     await setDoc(docRef, cleanData);
@@ -189,14 +225,22 @@ export const safeSetDocument = async (collectionName, docId, data) => {
   }, `setDocument(${collectionName}/${docId})`);
 };
 
-// ✅ CORS FIX: Enhanced safe add document
+// 🔧 CRITICAL FIX: Enhanced safe add document with comprehensive cleaning
 export const safeAddDocument = async (collectionName, data) => {
   return handleFirestoreOperation(async () => {
     const collectionRef = collection(db, collectionName);
+    
+    // 🔧 CRITICAL: Clean data before sending to Firestore
     const cleanData = cleanFirestoreData({
       ...data,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
+    });
+    
+    console.log(`💾 FIRESTORE: Adding to ${collectionName}`, {
+      originalFieldCount: Object.keys(data).length,
+      cleanedFieldCount: Object.keys(cleanData).length,
+      removedFields: Object.keys(data).filter(key => !(key in cleanData))
     });
     
     const docRef = await addDoc(collectionRef, cleanData);
@@ -204,13 +248,29 @@ export const safeAddDocument = async (collectionName, data) => {
   }, `addDocument(${collectionName})`);
 };
 
-// ✅ CORS FIX: Enhanced safe update document
+// 🔧 CRITICAL FIX: Enhanced safe update document with comprehensive cleaning
 export const safeUpdateDocument = async (collectionName, docId, updates) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
+    
+    // 🔧 CRITICAL: Clean updates before sending to Firestore
     const cleanUpdates = cleanFirestoreData({
       ...updates,
       updatedAt: serverTimestamp()
+    });
+    
+    console.log(`💾 FIRESTORE: Updating ${collectionName}/${docId}`, {
+      originalFieldCount: Object.keys(updates).length,
+      cleanedFieldCount: Object.keys(cleanUpdates).length,
+      removedFields: Object.keys(updates).filter(key => !(key in cleanUpdates))
+    });
+    
+    // 🔧 CRITICAL: Final safety check - ensure no undefined values
+    Object.keys(cleanUpdates).forEach(key => {
+      if (cleanUpdates[key] === undefined) {
+        delete cleanUpdates[key];
+        console.warn(`🚨 EMERGENCY: Removed undefined field at final check: ${key}`);
+      }
     });
     
     await updateDoc(docRef, cleanUpdates);
@@ -546,15 +606,15 @@ export const getProformaInvoices = async () => {
   };
 };
 
-// ✅ ENHANCED: Add PI with better data cleaning
+// 🔧 CRITICAL FIX: Enhanced Add PI with comprehensive data cleaning
 export const addProformaInvoice = async (invoice) => {
   try {
     console.log('💾 FIRESTORE: Adding PI with data:', invoice);
     
-    // ✅ FIXED: Build clean document data without undefined fields
-    const docData = cleanFirestoreData({
+    // 🔧 CRITICAL: Build clean document data structure
+    const docData = {
       ...invoice,
-      // Core document storage fields
+      // Core document storage fields (always include these)
       documentId: invoice.documentId,
       documentNumber: invoice.documentNumber,
       documentType: invoice.documentType || 'pi',
@@ -567,8 +627,9 @@ export const addProformaInvoice = async (invoice) => {
       ...(invoice.contentType && { contentType: invoice.contentType }),
       ...(invoice.extractedAt && { extractedAt: invoice.extractedAt }),
       ...(invoice.storedAt && { storedAt: invoice.storedAt }),
-    });
+    };
 
+    // 🔧 CRITICAL: Use safeAddDocument which automatically cleans data
     const result = await safeAddDocument('proformaInvoices', docData);
     
     if (result.success) {
@@ -585,19 +646,22 @@ export const addProformaInvoice = async (invoice) => {
   }
 };
 
-// ✅ ENHANCED: Update PI with proper data cleaning
+// 🔧 CRITICAL FIX: Enhanced Update PI with comprehensive data cleaning
 export const updateProformaInvoice = async (id, updates) => {
   try {
     console.log('💾 FIRESTORE: Updating PI:', { id, updates });
     
+    // 🔧 CRITICAL: Use safeUpdateDocument which automatically cleans data
     const result = await safeUpdateDocument('proformaInvoices', id, updates);
     
     if (result.success) {
+      console.log('✅ PI updated successfully:', result.data);
       return {
         success: true,
-        data: { id, ...updates, updatedAt: new Date() }
+        data: { id, ...result.data, updatedAt: new Date() }
       };
     } else {
+      console.error('❌ PI update failed:', result.error);
       return { success: false, error: result.error };
     }
   } catch (error) {
@@ -628,13 +692,12 @@ export const getSuppliers = async () => {
 };
 
 export const addSupplier = async (supplier) => {
-  const cleanData = cleanFirestoreData(supplier);
-  const result = await safeAddDocument('suppliers', cleanData);
+  const result = await safeAddDocument('suppliers', supplier);
   
   if (result.success) {
     return {
       success: true,
-      data: { id: result.data.id, ...cleanData }
+      data: { id: result.data.id, ...supplier }
     };
   } else {
     return { success: false, error: result.error };
@@ -642,13 +705,12 @@ export const addSupplier = async (supplier) => {
 };
 
 export const updateSupplier = async (id, updates) => {
-  const cleanUpdates = cleanFirestoreData(updates);
-  const result = await safeUpdateDocument('suppliers', id, cleanUpdates);
+  const result = await safeUpdateDocument('suppliers', id, updates);
   
   if (result.success) {
     return {
       success: true,
-      data: { id, ...cleanUpdates }
+      data: { id, ...updates }
     };
   } else {
     return { success: false, error: result.error };
@@ -673,13 +735,12 @@ export const getProducts = async () => {
 };
 
 export const addProduct = async (product) => {
-  const cleanData = cleanFirestoreData(product);
-  const result = await safeAddDocument('products', cleanData);
+  const result = await safeAddDocument('products', product);
   
   if (result.success) {
     return {
       success: true,
-      data: { id: result.data.id, ...cleanData }
+      data: { id: result.data.id, ...product }
     };
   } else {
     return { success: false, error: result.error };
@@ -687,13 +748,12 @@ export const addProduct = async (product) => {
 };
 
 export const updateProduct = async (id, updates) => {
-  const cleanUpdates = cleanFirestoreData(updates);
-  const result = await safeUpdateDocument('products', id, cleanUpdates);
+  const result = await safeUpdateDocument('products', id, updates);
   
   if (result.success) {
     return {
       success: true,
-      data: { id, ...cleanUpdates }
+      data: { id, ...updates }
     };
   } else {
     return { success: false, error: result.error };
@@ -718,13 +778,12 @@ export const getPurchaseOrders = async () => {
 };
 
 export const addPurchaseOrder = async (order) => {
-  const cleanData = cleanFirestoreData(order);
-  const result = await safeAddDocument('purchaseOrders', cleanData);
+  const result = await safeAddDocument('purchaseOrders', order);
   
   if (result.success) {
     return {
       success: true,
-      data: { id: result.data.id, ...cleanData }
+      data: { id: result.data.id, ...order }
     };
   } else {
     return { success: false, error: result.error };
@@ -732,13 +791,12 @@ export const addPurchaseOrder = async (order) => {
 };
 
 export const updatePurchaseOrder = async (id, updates) => {
-  const cleanUpdates = cleanFirestoreData(updates);
-  const result = await safeUpdateDocument('purchaseOrders', id, cleanUpdates);
+  const result = await safeUpdateDocument('purchaseOrders', id, updates);
   
   if (result.success) {
     return {
       success: true,
-      data: { id, ...cleanUpdates }
+      data: { id, ...updates }
     };
   } else {
     return { success: false, error: result.error };
@@ -763,13 +821,12 @@ export const getClientInvoices = async () => {
 };
 
 export const addClientInvoice = async (invoice) => {
-  const cleanData = cleanFirestoreData(invoice);
-  const result = await safeAddDocument('clientInvoices', cleanData);
+  const result = await safeAddDocument('clientInvoices', invoice);
   
   if (result.success) {
     return {
       success: true,
-      data: { id: result.data.id, ...cleanData }
+      data: { id: result.data.id, ...invoice }
     };
   } else {
     return { success: false, error: result.error };
@@ -777,13 +834,12 @@ export const addClientInvoice = async (invoice) => {
 };
 
 export const updateClientInvoice = async (id, updates) => {
-  const cleanUpdates = cleanFirestoreData(updates);
-  const result = await safeUpdateDocument('clientInvoices', id, cleanUpdates);
+  const result = await safeUpdateDocument('clientInvoices', id, updates);
   
   if (result.success) {
     return {
       success: true,
-      data: { id, ...cleanUpdates }
+      data: { id, ...updates }
     };
   } else {
     return { success: false, error: result.error };
@@ -901,6 +957,9 @@ export const mockFirebase = {
     })
   }
 };
+
+// 🔧 CRITICAL: Export the cleaning function for use in other components
+export { cleanFirestoreData };
 
 // Export all Firebase functions
 export {
