@@ -3251,13 +3251,7 @@ const saveProductEdit = (index, field) => {
                 </button>
               </div>
 
-              // 🚨 CRITICAL ISSUE: You have DUPLICATE Payment History sections in your code!
-
-// PROBLEM: Your code has TWO payment history sections that conflict with each other
-// SOLUTION: Remove the duplicate and fix the structure
-
-// 📍 REPLACE YOUR ENTIRE PAYMENT HISTORY SECTION WITH THIS CLEAN VERSION:
-
+           
 {/* Payment History */}
 <div className="space-y-4">
   {formData.payments && formData.payments.length > 0 ? (
@@ -3458,46 +3452,7 @@ const saveProductEdit = (index, field) => {
   )}
 </div>
 
-                      {payment.reference && (
-                        <div className="text-sm text-gray-600 mb-2">
-                          <span className="font-medium">Reference:</span> {payment.reference}
-                        </div>
-                      )}
-
-                      {payment.remark && (
-                        <div className="text-sm text-gray-600 mb-2">
-                          <span className="font-medium">Remark:</span> {payment.remark}
-                        </div>
-                      )}
-
-                      {payment.attachments && payment.attachments.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-sm font-medium text-gray-700 mb-2">Attachments</p>
-                          <div className="flex flex-wrap gap-2">
-                            {payment.attachments.map((file, idx) => (
-                              <a
-                                key={idx}
-                                href={file.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 px-3 py-1 bg-gray-100 rounded text-sm hover:bg-gray-200"
-                              >
-                                <FileText size={14} />
-                                {file.name}
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <DollarSign className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                    <p>No payments recorded yet</p>
-                  </div>
-                )}
-              </div>
+                      
             </div>
           ) : activeTab === 'receiving' ?  (
             // Receiving Tab f
