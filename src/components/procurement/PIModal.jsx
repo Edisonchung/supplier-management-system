@@ -1767,12 +1767,12 @@ const handleSubmit = useCallback((e) => {
         paymentPercentage: Math.round(paymentPercentage * 10) / 10
       };
       
-      // Update the local form data
+      // Update the local form data first
       setFormData(updatedFormData);
       
-      // 🔧 CRITICAL FIX: Save to Firestore immediately
+      // 🔧 CRITICAL FIX: Use onSave() prop to save to Firestore
       console.log(`🔄 Saving payment deletion to Firestore for payment ${paymentId}`);
-      await handleSave(); // This triggers the save to Firestore
+      await onSave(updatedFormData); // This is the correct function to call
       
       console.log(`🗑️ Payment ${paymentId} deleted and saved to Firestore`);
       showNotification?.('Payment record deleted successfully', 'success');
@@ -1781,9 +1781,11 @@ const handleSubmit = useCallback((e) => {
       console.error('❌ Error saving payment deletion:', error);
       showNotification?.('Failed to delete payment record. Please try again.', 'error');
       
-      // Optionally reload the form data to revert changes
-      // This will restore the payment if the save failed
-      window.location.reload(); // Simple revert approach
+      // Revert the local changes if save fails
+      // Reload the original form data
+      if (proformaInvoice) {
+        setFormData(prev => ({ ...proformaInvoice }));
+      }
     }
   }
 };
