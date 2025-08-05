@@ -1761,7 +1761,7 @@ const handleSubmit = useCallback((e) => {
       // Create the updated form data object
       const updatedFormData = {
         ...formData,
-        payments: updatedPayments, // 🔧 CRITICAL: Ensure payments array is included
+        payments: updatedPayments,
         totalPaid,
         paymentStatus,
         paymentPercentage: Math.round(paymentPercentage * 10) / 10
@@ -1770,14 +1770,14 @@ const handleSubmit = useCallback((e) => {
       // Update the local form data first
       setFormData(updatedFormData);
       
-      // 🔧 ALTERNATIVE FIX: Direct Firestore update to bypass cleaning
+      // 🔧 FIX: Use the correct Firebase import path
       console.log(`🔄 Directly updating Firestore for payment deletion ${paymentId}`);
       
       const { updateDoc, doc } = await import('firebase/firestore');
-      const { db } = await import('../../config/firebase');
+      const { db } = await import('../../services/firebase'); // 🔧 CORRECTED PATH
       
       await updateDoc(doc(db, 'proformaInvoices', formData.id), {
-        payments: updatedPayments, // 🔧 Direct array update
+        payments: updatedPayments,
         totalPaid,
         paymentStatus,
         paymentPercentage: Math.round(paymentPercentage * 10) / 10,
