@@ -1,40 +1,68 @@
 // ============================================
 // src/components/common/TradeDocumentUpload.jsx
+// ENHANCED VERSION WITH BETTER ERROR HANDLING
 // ============================================
 
 import React, { useState } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle, X } from 'lucide-react';
 import { DocumentStorageService } from '../../services/DocumentStorageService';
 
 const TradeDocumentUpload = ({ 
   documentId, 
   piNumber, 
   onDocumentUploaded,
-  allowedTypes = ['pdf', 'jpg', 'jpeg', 'png'] 
+  allowedTypes = ['pdf', 'jpg', 'jpeg', 'png'],
+  maxFileSize = 10 * 1024 * 1024 // 10MB default
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const documentStorageService = new DocumentStorageService();
+
+  const validateFile = (file) => {
+    // Check file type
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    if (!allowedTypes.includes(fileExtension)) {
+      throw new Error(`File type .${fileExtension} not allowed. Allowed types: ${allowedTypes.join(', ')}`);
+    }
+
+    // Check file size
+    if (file.size > maxFileSize) {
+      throw new Error(`File size exceeds ${Math.round(maxFileSize / 1024 / 1024)}MB limit`);
+    }
+
+    return true;
+  };
 
   const handleFileUpload = async (files) => {
     if (!files || files.length === 0) return;
     
+    // Check if PI is saved
+    if (!documentId || !piNumber) {
+      setErrorMessage('Please save the PI first before uploading trade documents');
+      setUploadStatus('error');
+      return;
+    }
+    
     setIsUploading(true);
     setUploadProgress(0);
     setUploadStatus(null);
+    setErrorMessage('');
+
+    const successfulUploads = [];
 
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
-        // Validate file type
-        const fileExtension = file.name.split('.').pop().toLowerCase();
-        if (!allowedTypes.includes(fileExtension)) {
-          throw new Error(`File type .${fileExtension} not allowed. Allowed types: ${allowedTypes.join(', ')}`);
-        }
+        // Validate each file
+        validateFile(file);
+
+        console.log(`📤 Uploading trade document: ${file.name}`);
 
         // Upload to Firebase Storage with trade document path
         const result = await documentStorageService.storeDocument(
@@ -45,23 +73,41 @@ const TradeDocumentUpload = ({
         );
 
         if (result.success) {
+          const uploadedDoc = {
+            ...result.data,
+            originalFileName: file.name,
+            fileSize: file.size,
+            uploadTime: new Date().toISOString()
+          };
+          
+          successfulUploads.push(uploadedDoc);
           setUploadProgress(((i + 1) / files.length) * 100);
-          onDocumentUploaded?.(result.data);
-          setUploadStatus('success');
+          
+          console.log(`✅ Trade document uploaded successfully: ${file.name}`);
+          
+          // Call the callback for each successful upload
+          onDocumentUploaded?.(uploadedDoc);
         } else {
-          throw new Error(result.error);
+          throw new Error(result.error || 'Upload failed');
         }
       }
+
+      setUploadedFiles(prev => [...prev, ...successfulUploads]);
+      setUploadStatus('success');
+      
     } catch (error) {
-      console.error('Trade document upload failed:', error);
+      console.error('❌ Trade document upload failed:', error);
       setUploadStatus('error');
-      alert('Upload failed: ' + error.message);
+      setErrorMessage(error.message);
     } finally {
       setIsUploading(false);
+      
+      // Reset status after 3 seconds
       setTimeout(() => {
         setUploadProgress(0);
         setUploadStatus(null);
-      }, 2000);
+        setErrorMessage('');
+      }, 3000);
     }
   };
 
@@ -75,11 +121,38 @@ const TradeDocumentUpload = ({
   const handleInputChange = (e) => {
     const files = Array.from(e.target.files);
     handleFileUpload(files);
+    // Reset input
+    e.target.value = '';
+  };
+
+  const clearError = () => {
+    setErrorMessage('');
+    setUploadStatus(null);
   };
 
   return (
     <div className="space-y-4">
-      <h4 className="font-medium text-gray-900">Upload Trade Documents</h4>
+      <div className="flex items-center justify-between">
+        <h4 className="font-medium text-gray-900">Upload Trade Documents</h4>
+        {uploadedFiles.length > 0 && (
+          <span className="text-sm text-green-600">
+            {uploadedFiles.length} file{uploadedFiles.length > 1 ? 's' : ''} uploaded
+          </span>
+        )}
+      </div>
+      
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between">
+          <div className="flex items-center">
+            <AlertCircle className="h-4 w-4 text-red-500 mr-2" />
+            <span className="text-red-700 text-sm">{errorMessage}</span>
+          </div>
+          <button onClick={clearError} className="text-red-500 hover:text-red-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       
       {/* File Upload Area */}
       <div
@@ -102,14 +175,14 @@ const TradeDocumentUpload = ({
         <input
           type="file"
           multiple
-          accept=".pdf,.jpg,.jpeg,.png"
+          accept={allowedTypes.map(type => `.${type}`).join(',')}
           onChange={handleInputChange}
           className="hidden"
           id="trade-document-upload"
-          disabled={isUploading}
+          disabled={isUploading || !documentId || !piNumber}
         />
         
-        <label htmlFor="trade-document-upload" className={`cursor-pointer ${isUploading ? 'cursor-not-allowed' : ''}`}>
+        <label htmlFor="trade-document-upload" className={`cursor-pointer ${isUploading || !documentId ? 'cursor-not-allowed opacity-60' : ''}`}>
           {uploadStatus === 'success' ? (
             <CheckCircle className="mx-auto h-8 w-8 text-green-500 mb-2" />
           ) : uploadStatus === 'error' ? (
@@ -119,13 +192,22 @@ const TradeDocumentUpload = ({
           )}
           
           <p className="text-gray-600 mb-1">
-            {isUploading ? 'Uploading...' : 
-             uploadStatus === 'success' ? 'Upload successful!' :
-             uploadStatus === 'error' ? 'Upload failed' :
-             'Click to upload or drag and drop'}
+            {!documentId || !piNumber 
+              ? 'Save PI first to enable upload'
+              : isUploading 
+              ? `Uploading... (${uploadProgress.toFixed(0)}%)`
+              : uploadStatus === 'success' 
+              ? 'Upload successful!' 
+              : uploadStatus === 'error' 
+              ? 'Upload failed - try again'
+              : 'Click to upload or drag and drop'
+            }
           </p>
           <p className="text-xs text-gray-500">
-            Form E, Commercial Invoice, Packing List, B/L (PDF, JPG, PNG)
+            Form E, Commercial Invoice, Packing List, B/L ({allowedTypes.join(', ').toUpperCase()})
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Max {Math.round(maxFileSize / 1024 / 1024)}MB per file
           </p>
         </label>
 
