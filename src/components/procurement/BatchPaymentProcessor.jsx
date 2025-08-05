@@ -899,13 +899,18 @@ console.log('🔍 PaymentSlipStorage state check:', {
   }
 };
           
+
 // 🔧 DEBUG: Check storage state before creating payment entry
 console.log('🔍 Storage state before payment creation:', {
   paymentSlipStorage: paymentSlipStorage,
   hasStorageId: !!paymentSlipStorage?.storageId,
-  hasDownloadURL: !!paymentSlipStorage?.downloadURL
+  hasDownloadURL: !!paymentSlipStorage?.downloadURL,
+  paymentSlipData: paymentSlip ? {
+    name: paymentSlip.name,
+    size: paymentSlip.size,
+    type: paymentSlip.type
+  } : null
 });
-
 // 🔧 NOW REPLACE YOUR paymentEntry OBJECT WITH THIS:
 const paymentEntry = {
   id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -981,6 +986,16 @@ firebaseStorage: paymentSlipStorage ? {
     extractionMethod: extractedData.extractionMethod || 'railway_backend_ai'
   }
 };
+
+          // 🔧 DEBUG: Check payment entry after creation
+console.log('🔍 Payment entry AFTER creation:', {
+  paymentId: paymentEntry.id,
+  hasBankSlipDocument: !!paymentEntry.bankSlipDocument,
+  bankSlipDocumentKeys: paymentEntry.bankSlipDocument ? Object.keys(paymentEntry.bankSlipDocument) : [],
+  hasFirebaseStorage: !!paymentEntry.bankSlipDocument?.firebaseStorage,
+  downloadURL: paymentEntry.bankSlipDocument?.firebaseStorage?.downloadURL || null,
+  storageStatus: paymentEntry.bankSlipDocument?.storageStatus || null
+});
 
 
           // Continue with new payment logic
