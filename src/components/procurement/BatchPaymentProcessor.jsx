@@ -331,9 +331,16 @@ const storePaymentSlipToFirebase = async (file, extractedData, piAllocations = [
       
       setExtractedData(processedData);
 
-      // 🆕 NEW: Automatically store payment slip to Firebase Storage
+     // 🆕 FIXED: Store and capture Firebase Storage result
 console.log('💾 Starting automatic Firebase Storage of payment slip...');
-await storePaymentSlipToFirebase(file, processedData, []); // Empty array for now, will be filled later
+const storageResult = await storePaymentSlipToFirebase(file, processedData, []); // Empty array for now, will be filled later
+
+// Store the result for later use in payment creation
+if (storageResult && storageResult.storageId) {
+  console.log('✅ Storage captured for payment creation:', storageResult);
+} else {
+  console.warn('⚠️ Storage failed, payment will use blob URL only');
+}
       
       generateAutoSuggestions(processedData);
       setStep(2);
@@ -729,6 +736,14 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
       piAllocations // 🔧 FIX: Ensure piAllocations is logged and available
     });
 
+    // 🔧 CRITICAL DEBUG: Check paymentSlipStorage state
+console.log('🔍 PaymentSlipStorage state check:', {
+  paymentSlipStorageExists: !!paymentSlipStorage,
+  paymentSlipStorageData: paymentSlipStorage,
+  hasDownloadURL: !!paymentSlipStorage?.downloadURL,
+  hasStorageId: !!paymentSlipStorage?.storageId
+});
+
     console.log('📊 PI Allocations prepared:', piAllocations);
 
     // 🔧 FIX 2: Process each PI with proper error handling
@@ -883,6 +898,13 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
     return new Date().toLocaleDateString();
   }
 };
+          
+// 🔧 DEBUG: Check storage state before creating payment entry
+console.log('🔍 Storage state before payment creation:', {
+  paymentSlipStorage: paymentSlipStorage,
+  hasStorageId: !!paymentSlipStorage?.storageId,
+  hasDownloadURL: !!paymentSlipStorage?.downloadURL
+});
 
 // 🔧 NOW REPLACE YOUR paymentEntry OBJECT WITH THIS:
 const paymentEntry = {
@@ -906,13 +928,13 @@ const paymentEntry = {
     size: paymentSlip.size,
     uploadedAt: new Date().toISOString(),
     
-    // 🔧 Enhanced Firebase Storage structure
-    firebaseStorage: paymentSlipStorage ? {
-      storageId: paymentSlipStorage.storageId,
-      storagePath: paymentSlipStorage.storagePath,
-      downloadURL: paymentSlipStorage.downloadURL,
-      storedAt: paymentSlipStorage.storedAt,
-      isFirebaseStored: true,
+    // 🔧 CRITICAL FIX: Use current paymentSlipStorage state
+firebaseStorage: paymentSlipStorage ? {
+  storageId: paymentSlipStorage.storageId,
+  storagePath: paymentSlipStorage.storagePath,
+  downloadURL: paymentSlipStorage.downloadURL,
+  storedAt: paymentSlipStorage.storedAt,
+  isFirebaseStored: true,
       // 🔧 NEW: Add metadata for better document handling
       metadata: {
         originalFileName: paymentSlip.name,
