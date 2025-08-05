@@ -1033,17 +1033,18 @@ const renderPaymentStatus = (pi) => {
     let errorCount = 0;
     const processedPIs = [];
     
-    // 🔧 CRITICAL FIX: Force reload PI data from Firestore before processing
-    console.log('🔄 Forcing reload of PI data from Firestore...');
-    await loadProformaInvoices(); // This should refresh the proformaInvoices state
-    
-    // 🔧 ADDITIONAL: Wait for state to propagate
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 🔧 REMOVED: loadProformaInvoices() call that was causing the error
+    // 🔧 NEW: Get fresh data directly from Firestore for each PI
     
     for (const allocation of paymentRecord.piAllocations) {
       try {
-        // 🔧 CRITICAL: Get fresh PI data directly from Firestore (bypass state)
+        // 🔧 CRITICAL: Get fresh PI data directly from Firestore (bypass stale state)
         console.log('🔍 Fetching fresh PI data from Firestore for:', allocation.piId);
+        
+        // Import Firebase functions dynamically to ensure they're available
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db } = await import('../../services/firebase.js');
+        
         const piDocRef = doc(db, 'proformaInvoices', allocation.piId);
         const piDocSnap = await getDoc(piDocRef);
         
@@ -1093,7 +1094,7 @@ const renderPaymentStatus = (pi) => {
           paymentStatus: newPaymentStatus,
           lastPaymentDate: paymentRecord.paymentDate,
           lastModified: new Date().toISOString(),
-          lastModifiedBy: 'batch-payment-system-totals-fresh'
+          lastModifiedBy: 'batch-payment-system-fresh-totals'
         };
 
         console.log('📝 Updating PI totals with fresh calculation:', {
@@ -1173,13 +1174,8 @@ const renderPaymentStatus = (pi) => {
       showNotification('No PI totals were updated. Please check the allocations.', 'warning');
     }
     
-    // Close the modal and force final UI refresh
+    // Close the modal
     setShowBatchPaymentModal(false);
-    
-    // 🔧 FINAL: Force one more UI refresh to show updated data
-    setTimeout(() => {
-      loadProformaInvoices();
-    }, 500);
     
   } catch (error) {
     console.error('❌ Error processing batch payment totals:', error);
