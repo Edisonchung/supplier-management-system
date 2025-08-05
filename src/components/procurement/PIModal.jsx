@@ -3457,7 +3457,6 @@ const saveProductEdit = (index, field) => {
     </div>
   )}
 </div>
-</div>
 
                       {payment.reference && (
                         <div className="text-sm text-gray-600 mb-2">
