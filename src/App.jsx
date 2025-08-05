@@ -1,8 +1,9 @@
-// src/App.jsx - UPDATED VERSION - Added DualSystemDashboard and PromptManagement routes
+// src/App.jsx - UPDATED VERSION - Added Dark Mode Support
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DarkModeProvider } from './hooks/useDarkMode';
 import { UnifiedDataProvider } from './context/UnifiedDataContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
@@ -15,7 +16,7 @@ import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
 import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
 import SampleDataTest from './components/test/SampleDataTest';
-
+import './App.css';
 
 // Import lazy components - CLEANED UP IMPORTS (UserManagement removed)
 import { 
@@ -67,11 +68,11 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="flex items-center justify-center h-screen">
           <div className="text-center p-8">
-            <h1 className="text-2xl font-bold text-red-600 mb-4">Something went wrong</h1>
-            <p className="text-gray-600 mb-4">Please refresh the page to try again</p>
+            <h1 className="text-2xl font-bold text-red-600 dark:text-red-400 mb-4">Something went wrong</h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">Please refresh the page to try again</p>
             <button 
               onClick={() => window.location.reload()} 
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors"
             >
               Refresh Page
             </button>
@@ -105,10 +106,10 @@ const ProtectedRoute = ({ children, permission }) => {
     return (
       <div className="flex items-center justify-center h-full p-8">
         <div className="text-center">
-          <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to view this page</p>
-          <p className="text-sm text-gray-500 mt-2">Contact your administrator for access</p>
+          <Shield className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Access Denied</h2>
+          <p className="text-gray-600 dark:text-gray-400">You don't have permission to view this page</p>
+          <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Contact your administrator for access</p>
         </div>
       </div>
     );
@@ -121,10 +122,10 @@ const ProtectedRoute = ({ children, permission }) => {
 const PlaceholderComponent = ({ title, description, icon: Icon }) => (
   <div className="flex items-center justify-center h-full p-8">
     <div className="text-center">
-      {Icon && <Icon className="mx-auto h-12 w-12 text-gray-400 mb-4" />}
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
-      <p className="text-gray-600 mb-4">{description}</p>
-      <div className="mt-6 text-sm text-gray-500">
+      {Icon && <Icon className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" />}
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{title}</h2>
+      <p className="text-gray-600 dark:text-gray-400 mb-4">{description}</p>
+      <div className="mt-6 text-sm text-gray-500 dark:text-gray-500">
         <p>🚀 Feature in development</p>
         <p>Expected completion: Q1 2025</p>
       </div>
@@ -143,11 +144,11 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 transition-colors duration-300">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-medium">Loading HiggsFlow...</p>
-          <p className="mt-2 text-sm text-gray-500">Accelerating Supply Chain</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">Loading HiggsFlow...</p>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Accelerating Supply Chain</p>
         </div>
       </div>
     );
@@ -165,39 +166,40 @@ function AppContent() {
           className: '',
           duration: 4000,
           style: {
-            background: '#363636',
-            color: '#fff',
+            background: 'var(--card-bg)',
+            color: 'var(--text-primary)',
             padding: '16px',
             borderRadius: '8px',
             fontSize: '14px',
+            border: '1px solid var(--border-primary)',
           },
           success: {
             duration: 3000,
             iconTheme: {
-              primary: '#10b981',
-              secondary: '#fff',
+              primary: 'var(--success-color)',
+              secondary: 'var(--card-bg)',
             },
             style: {
-              background: '#10b981',
-              color: '#fff',
+              background: 'var(--success-color)',
+              color: 'white',
             },
           },
           error: {
             duration: 5000,
             iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
+              primary: 'var(--error-color)',
+              secondary: 'white',
             },
             style: {
-              background: '#ef4444',
-              color: '#fff',
+              background: 'var(--error-color)',
+              color: 'white',
             },
           },
           loading: {
             duration: Infinity,
             style: {
-              background: '#3b82f6',
-              color: '#fff',
+              background: 'var(--primary-color)',
+              color: 'white',
             },
           },
         }}
@@ -538,7 +540,7 @@ function AppContent() {
             {showFirestoreTest && <FirestoreTest />}
             <button
               onClick={() => setShowFirestoreTest(!showFirestoreTest)}
-              className="fixed bottom-4 left-4 bg-gray-800 text-white text-xs px-3 py-1 rounded-full hover:bg-gray-700 z-50 shadow-lg transition-colors"
+              className="fixed bottom-4 left-4 bg-gray-800 dark:bg-gray-700 text-white text-xs px-3 py-1 rounded-full hover:bg-gray-700 dark:hover:bg-gray-600 z-50 shadow-lg transition-colors"
               title={`${showFirestoreTest ? 'Hide' : 'Show'} Firestore Test Panel`}
             >
               {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
@@ -555,13 +557,17 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <UnifiedDataProvider>
-        <LoadingFeedbackProvider>
-          <AppContent />
-        </LoadingFeedbackProvider>
-      </UnifiedDataProvider>
-    </AuthProvider>
+    <DarkModeProvider>
+      <AuthProvider>
+        <UnifiedDataProvider>
+          <LoadingFeedbackProvider>
+            <div className="theme-transition">
+              <AppContent />
+            </div>
+          </LoadingFeedbackProvider>
+        </UnifiedDataProvider>
+      </AuthProvider>
+    </DarkModeProvider>
   );
 }
 
