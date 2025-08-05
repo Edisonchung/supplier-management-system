@@ -834,23 +834,13 @@ console.log('🔍 PaymentSlipStorage state check:', {
             throw new Error('onSave function is not available');
           }
 
-          try {
-  // Call onSave first to update the PI with new payment
+         try {
+  // Call onSave to update the PI with new payment (totals already calculated correctly)
   const result = await onSave(cleanedUpdatedPI);
   console.log('✅ onSave completed successfully (new payment):', result);
   
-  // 🔧 CRITICAL: Add longer delay to ensure Firestore update completes and propagates
-  console.log('⏳ Waiting for Firestore synchronization...');
-  await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay for better reliability
-  
-  // 🔧 ADDITIONAL: Force refresh of PI data if needed
-  console.log('🔄 Ensuring data synchronization before totals calculation...');
-  
-  // 🔧 CRITICAL: Now call handlePaymentProcessed AFTER the payment is saved and synced
-  if (onPaymentProcessed) {
-    console.log('🔄 Calling handlePaymentProcessed after sync delay...');
-    await onPaymentProcessed(paymentRecord);
-  }
+  // 🚀 SOLUTION: Skip handlePaymentProcessed since totals are already correct
+  console.log('✅ Skipping handlePaymentProcessed - totals already calculated correctly in payment creation');
   
   results.push({
     piNumber: pi.piNumber,
