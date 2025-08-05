@@ -1738,39 +1738,55 @@ const handleSubmit = useCallback((e) => {
     });
   };
 
-  const handleDeletePayment = (paymentId) => {
+  const handleDeletePayment = async (paymentId) => {
   const confirmed = window.confirm('Are you sure you want to delete this payment record?');
   
   if (confirmed) {
-    // Remove the payment from the payments array
-    const updatedPayments = formData.payments.filter(payment => payment.id !== paymentId);
-    
-    // Recalculate totals
-    const totalPaid = updatedPayments.reduce((sum, payment) => sum + parseFloat(payment.amount || 0), 0);
-    const totalAmount = parseFloat(formData.totalAmount || 0);
-    const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
-    
-    let paymentStatus = 'pending';
-    if (paymentPercentage >= 99.9) {
-      paymentStatus = 'paid';
-    } else if (paymentPercentage > 0) {
-      paymentStatus = 'partial';
+    try {
+      // Remove the payment from the payments array
+      const updatedPayments = formData.payments.filter(payment => payment.id !== paymentId);
+      
+      // Recalculate totals
+      const totalPaid = updatedPayments.reduce((sum, payment) => sum + parseFloat(payment.amount || 0), 0);
+      const totalAmount = parseFloat(formData.totalAmount || 0);
+      const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+      
+      let paymentStatus = 'pending';
+      if (paymentPercentage >= 99.9) {
+        paymentStatus = 'paid';
+      } else if (paymentPercentage > 0) {
+        paymentStatus = 'partial';
+      }
+      
+      // Create the updated form data object
+      const updatedFormData = {
+        ...formData,
+        payments: updatedPayments,
+        totalPaid,
+        paymentStatus,
+        paymentPercentage: Math.round(paymentPercentage * 10) / 10
+      };
+      
+      // Update the local form data
+      setFormData(updatedFormData);
+      
+      // 🔧 CRITICAL FIX: Save to Firestore immediately
+      console.log(`🔄 Saving payment deletion to Firestore for payment ${paymentId}`);
+      await handleSave(); // This triggers the save to Firestore
+      
+      console.log(`🗑️ Payment ${paymentId} deleted and saved to Firestore`);
+      showNotification?.('Payment record deleted successfully', 'success');
+      
+    } catch (error) {
+      console.error('❌ Error saving payment deletion:', error);
+      showNotification?.('Failed to delete payment record. Please try again.', 'error');
+      
+      // Optionally reload the form data to revert changes
+      // This will restore the payment if the save failed
+      window.location.reload(); // Simple revert approach
     }
-    
-    // Update the form data
-    setFormData(prev => ({
-      ...prev,
-      payments: updatedPayments,
-      totalPaid,
-      paymentStatus,
-      paymentPercentage: Math.round(paymentPercentage * 10) / 10
-    }));
-    
-    console.log(`🗑️ Deleted payment ${paymentId}`);
-    showNotification?.('Payment record deleted successfully', 'success');
   }
 };
-
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
