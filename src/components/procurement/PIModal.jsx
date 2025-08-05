@@ -3327,6 +3327,19 @@ const saveProductEdit = (index, field) => {
 {/* Payment History */}
 <div className="space-y-4">
   {formData.payments && formData.payments.length > 0 ? (
+  // 🔧 ADD THIS DEBUG LOG:
+  (() => {
+    console.log('🔍 ALL PAYMENTS DEBUG:', formData.payments);
+    formData.payments.forEach((payment, idx) => {
+      console.log(`🔍 Payment ${idx}:`, {
+        id: payment.id,
+        amount: payment.amount,
+        hasBankSlipDocument: !!payment.bankSlipDocument,
+        bankSlipDocumentStructure: payment.bankSlipDocument
+      });
+    });
+    return null;
+  })(),
     formData.payments.map((payment, index) => (
       <div key={payment.id || index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
         {/* Payment Header */}
@@ -3373,47 +3386,71 @@ const saveProductEdit = (index, field) => {
           
           <div className="flex items-center gap-2">
             {/* Document Action Buttons */}
-            {payment.bankSlipDocument && (
-              (() => {
-                // Get document URL with priority fallback
-                const documentURL = payment.bankSlipDocument?.firebaseStorage?.downloadURL || 
-                                  payment.bankSlipDocument?.blobURL;
-                
-                if (documentURL) {
-                  return (
-                    <div className="flex items-center gap-1">
-                      {/* View Button */}
-                      <button
-                        onClick={() => window.open(documentURL, '_blank')}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
-                        title="View payment slip"
-                      >
-                        <Eye size={12} />
-                        View
-                      </button>
-                      
-                      {/* Download Button */}
-                      <button
-                        onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = documentURL;
-                          link.download = payment.bankSlipDocument?.name || `payment-slip-${payment.reference || 'document'}.pdf`;
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                        }}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
-                        title="Download payment slip"
-                      >
-                        <Download size={12} />
-                        Download
-                      </button>
-                    </div>
-                  );
-                }
-                return null;
-              })()
-            )}
+{(() => {
+  // Helper to get document URL
+  const getDocumentURL = () => {
+    // Priority 1: Firebase Storage URL
+    if (payment.bankSlipDocument?.firebaseStorage?.downloadURL) {
+      return payment.bankSlipDocument.firebaseStorage.downloadURL;
+    }
+    
+    // Priority 2: Blob URL (temporary)
+    if (payment.bankSlipDocument?.blobURL) {
+      return payment.bankSlipDocument.blobURL;
+    }
+    
+    return null;
+  };
+
+  const documentURL = getDocumentURL();
+  const hasDocument = !!documentURL && !!payment.bankSlipDocument;
+
+  // 🔧 DEBUG: Add this temporarily to see what's happening
+  console.log('🔍 Payment Debug:', {
+    paymentId: payment.id,
+    hasDocument: hasDocument,
+    documentURL: documentURL,
+    bankSlipDocument: payment.bankSlipDocument
+  });
+
+  if (hasDocument) {
+    return (
+      <div className="flex items-center gap-1">
+        {/* View Button */}
+        <button
+          onClick={() => window.open(documentURL, '_blank')}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+          title="View payment slip"
+        >
+          <Eye size={12} />
+          View
+        </button>
+        
+        {/* Download Button */}
+        <button
+          onClick={() => {
+            const link = document.createElement('a');
+            link.href = documentURL;
+            link.download = payment.bankSlipDocument?.name || `payment-slip-${payment.reference || 'document'}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
+          title="Download payment slip"
+        >
+          <Download size={12} />
+          Download
+        </button>
+      </div>
+    );
+  }
+  
+  // 🔧 DEBUG: Show when no document is available
+  return (
+    <span className="text-xs text-gray-400">No document</span>
+  );
+})()}
             
             {/* Payment Status Badge */}
             <span className={`px-2 py-1 text-xs rounded-full ${
