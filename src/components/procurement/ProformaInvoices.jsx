@@ -1906,7 +1906,7 @@ const renderPaymentStatus = (pi) => {
       {showBatchPaymentModal && (
   <BatchPaymentProcessor
     onClose={() => setShowBatchPaymentModal(false)}
-    onSave={handlePaymentProcessed}
+    onSave={handleSavePI}
     availablePIs={proformaInvoices.filter(pi => {
       const totalAmount = parseFloat(pi.totalAmount || 0);
       const totalPaid = (pi.payments || []).reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
