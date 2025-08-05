@@ -1770,11 +1770,11 @@ const handleSubmit = useCallback((e) => {
       // Update the local form data first
       setFormData(updatedFormData);
       
-      // 🔧 FIX: Use the correct Firebase import path
+      // 🔧 CORRECTED: Import from the right files
       console.log(`🔄 Directly updating Firestore for payment deletion ${paymentId}`);
       
       const { updateDoc, doc } = await import('firebase/firestore');
-      const { db } = await import('../../services/firebase'); // 🔧 CORRECTED PATH
+      const { db } = await import('../../config/firebase'); // 🔧 Config file for db instance
       
       await updateDoc(doc(db, 'proformaInvoices', formData.id), {
         payments: updatedPayments,
@@ -1789,6 +1789,7 @@ const handleSubmit = useCallback((e) => {
       
     } catch (error) {
       console.error('❌ Error saving payment deletion:', error);
+      console.error('❌ Import details:', error.message);
       showNotification?.('Failed to delete payment record. Please try again.', 'error');
       
       // Revert the local changes if save fails
