@@ -1490,6 +1490,39 @@ const handleSubmit = useCallback((e) => {
     });
   };
 
+  const handleDeletePayment = (paymentId) => {
+  const confirmed = window.confirm('Are you sure you want to delete this payment record?');
+  
+  if (confirmed) {
+    // Remove the payment from the payments array
+    const updatedPayments = formData.payments.filter(payment => payment.id !== paymentId);
+    
+    // Recalculate totals
+    const totalPaid = updatedPayments.reduce((sum, payment) => sum + parseFloat(payment.amount || 0), 0);
+    const totalAmount = parseFloat(formData.totalAmount || 0);
+    const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+    
+    let paymentStatus = 'pending';
+    if (paymentPercentage >= 99.9) {
+      paymentStatus = 'paid';
+    } else if (paymentPercentage > 0) {
+      paymentStatus = 'partial';
+    }
+    
+    // Update the form data
+    setFormData(prev => ({
+      ...prev,
+      payments: updatedPayments,
+      totalPaid,
+      paymentStatus,
+      paymentPercentage: Math.round(paymentPercentage * 10) / 10
+    }));
+    
+    console.log(`🗑️ Deleted payment ${paymentId}`);
+    showNotification?.('Payment record deleted successfully', 'success');
+  }
+};
+
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -2976,25 +3009,39 @@ const saveProductEdit = (index, field) => {
                   formData.payments.map((payment, index) => (
                     <div key={payment.id || index} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="flex items-center gap-3">
-                            <CreditCard className="h-5 w-5 text-gray-400" />
-                            <div>
-                              <p className="font-medium">${payment.amount.toFixed(2)}</p>
-                              <p className="text-sm text-gray-600">
-                                {new Date(payment.date).toLocaleDateString()} • {payment.type.replace('-', ' ')}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          payment.type === 'down-payment' ? 'bg-blue-100 text-blue-800' :
-                          payment.type === 'balance' ? 'bg-green-100 text-green-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {payment.type.replace('-', ' ')}
-                        </span>
-                      </div>
+  <div>
+    <div className="flex items-center gap-3">
+      <CreditCard className="h-5 w-5 text-gray-400" />
+      <div>
+        <p className="font-medium">${payment.amount.toFixed(2)}</p>
+        <p className="text-sm text-gray-600">
+          {new Date(payment.date).toLocaleDateString()} • {payment.type.replace('-', ' ')}
+        </p>
+      </div>
+    </div>
+  </div>
+  
+  {/* ✅ Updated: Payment type badge + Delete button */}
+  <div className="flex items-center gap-2">
+    <span className={`px-2 py-1 text-xs rounded-full ${
+      payment.type === 'down-payment' ? 'bg-blue-100 text-blue-800' :
+      payment.type === 'balance' ? 'bg-green-100 text-green-800' :
+      'bg-gray-100 text-gray-800'
+    }`}>
+      {payment.type.replace('-', ' ')}
+    </span>
+    
+    {/* Delete Button */}
+    <button
+      type="button"
+      onClick={() => handleDeletePayment(payment.id)}
+      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+      title="Delete payment record"
+    >
+      <X size={16} />
+    </button>
+  </div>
+</div>
 
                       {payment.reference && (
                         <div className="text-sm text-gray-600 mb-2">
