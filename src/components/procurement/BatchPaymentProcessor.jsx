@@ -1040,6 +1040,14 @@ console.log('🔍 Payment entry AFTER creation:', {
             piAllocationsData: cleanedUpdatedPI.piAllocations
           });
 
+          // 🔧 NEW DEBUG: Check payments array before onSave
+console.log('🔍 PAYMENTS ARRAY DEBUG before onSave:', {
+  paymentsCount: cleanedUpdatedPI.payments?.length,
+  lastPayment: cleanedUpdatedPI.payments?.[cleanedUpdatedPI.payments.length - 1],
+  lastPaymentHasBankSlip: !!cleanedUpdatedPI.payments?.[cleanedUpdatedPI.payments.length - 1]?.bankSlipDocument,
+  lastPaymentId: cleanedUpdatedPI.payments?.[cleanedUpdatedPI.payments.length - 1]?.id
+});
+
           if (typeof onSave !== 'function') {
             throw new Error('onSave function is not available');
           }
