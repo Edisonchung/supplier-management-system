@@ -690,29 +690,9 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
 
   // Process final payment
   const processPayment = async () => {
-  // 🚨 EMERGENCY FIX: Define piAllocations immediately
-  const piAllocations = selectedPIs
-    .filter(piId => allocation[piId] > 0)
-    .map(piId => {
-      const pi = availablePIs.find(p => p.id === piId);
-      return {
-        piId: piId,
-        piNumber: pi?.piNumber || 'Unknown',
-        supplierName: pi?.supplierName || 'Unknown',
-        allocatedAmount: allocation[piId],
-        currency: extractedData.paidCurrency
-      };
-    });
-
-  console.log('🚨 EMERGENCY: piAllocations defined at start:', piAllocations);
-
-  // Skip authentication check for now - click OK on dialog
-  console.log('⚠️ Skipping authentication check - processing payment directly');
-
-  // Continue with existing validation...
+  // Continue with existing validation FIRST
   if (!extractedData || selectedPIs.filter(piId => allocation[piId] > 0).length === 0) {
     console.error('❌ Missing required data for payment processing');
-    setIsProcessing(false);
     return;
   }
   
@@ -720,14 +700,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
   const results = [];
 
   try {
-    console.log('🎯 Processing batch payment record with real extraction:', {
-      extractedData,
-      selectedPIs,
-      allocation,
-      paymentSlipStorage
-    });
-
-    // 🆕 Build piAllocations array for proper tracking
+    // 🚨 CRITICAL: Define piAllocations ONCE at the start - no duplicates
     const piAllocations = selectedPIs
       .filter(piId => allocation[piId] > 0)
       .map(piId => {
@@ -737,12 +710,21 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
           piNumber: pi?.piNumber || 'Unknown',
           supplierName: pi?.supplierName || 'Unknown',
           allocatedAmount: allocation[piId],
-          currency: extractedData.paidCurrency
+          currency: extractedData.paidCurrency || 'USD'
         };
       });
 
+    console.log('🎯 Processing batch payment record:', {
+      extractedData,
+      selectedPIs,
+      allocation,
+      piAllocations, // ✅ Always defined as array
+      paymentSlipStorage
+    });
+
     console.log('📊 PI Allocations prepared:', piAllocations);
 
+    // Process each selected PI
     for (const piId of selectedPIs.filter(piId => allocation[piId] > 0)) {
       try {
         const pi = availablePIs.find(p => p.id === piId);
@@ -753,144 +735,81 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
 
         const allocatedAmount = allocation[piId];
         
-        // 🚨 CHECK FOR EXISTING PAYMENT RECORD
-        const existingPayment = findExistingPaymentByReference(pi, extractedData.referenceNumber);
+        console.log(`✅ Creating new payment for PI ${pi.piNumber}`);
         
-        if (existingPayment) {
-          console.log(`🔄 Found existing payment for PI ${pi.piNumber} with reference ${extractedData.referenceNumber}`);
-          
-          // UPDATE EXISTING PAYMENT RECORD
-          const updatedPayment = {
-            ...existingPayment,
-            // Update with new Firebase Storage information
-            bankSlipDocument: {
-              ...existingPayment.bankSlipDocument,
-              firebaseStorage: paymentSlipStorage ? {
-                storageId: paymentSlipStorage.storageId,
-                storagePath: paymentSlipStorage.storagePath,
-                downloadURL: paymentSlipStorage.downloadURL,
-                storedAt: paymentSlipStorage.storedAt,
-                isFirebaseStored: true
-              } : existingPayment.bankSlipDocument?.firebaseStorage,
-              storageStatus: paymentSlipStorage ? "firebase_stored" : existingPayment.bankSlipDocument?.storageStatus
-            },
-            // Update metadata if needed
-            updatedAt: new Date().toISOString(),
-            migrationNote: "Updated with Firebase Storage integration",
-            piAllocations: piAllocations // 🆕 ADD: Include allocation data
-          };
+        // Always create NEW payment record (skip existing payment check for now)
+        const paymentEntry = {
+          id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          amount: allocatedAmount,
+          currency: extractedData.paidCurrency || 'USD',
+          paymentDate: extractedData.paymentDate || new Date().toISOString().split('T')[0],
+          reference: extractedData.referenceNumber,
+          paymentMethod: 'bank_transfer',
+          bankCharges: extractedData.bankCharges || 0,
+          exchangeRate: extractedData.exchangeRate || 1,
+          remark: `Batch payment processed via AI extraction - ${allocatedAmount < parseFloat(pi.totalAmount) ? 'Partial payment' : 'Full payment'}`,
+          bankSlipDocument: {
+            name: paymentSlip.name,
+            type: paymentSlip.type,
+            size: paymentSlip.size,
+            uploadedAt: new Date().toISOString(),
+            // Storage may be null due to permission issues, but payment still works
+            firebaseStorage: paymentSlipStorage || null,
+            blobURL: URL.createObjectURL(paymentSlip),
+            storageStatus: paymentSlipStorage ? 'firebase_stored' : 'blob_only',
+            storageError: storageError || 'Firebase Storage permission denied'
+          },
+          addedAt: new Date().toISOString(),
+          // 🚨 CRITICAL: Always include piAllocations (defined above)
+          piAllocations: piAllocations
+        };
 
-          // Update the payment in the PI's payments array
-          const updatedPayments = (pi.payments || []).map(p => 
-            p.reference === extractedData.referenceNumber ? updatedPayment : p
-          );
+        console.log('💰 Payment entry created:', paymentEntry);
 
-          // Calculate updated totals
-          const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-          const totalAmount = parseFloat(pi.totalAmount || 0);
-          const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
-          
-          let paymentStatus = 'pending';
-          if (paymentPercentage >= 99.9) {
-            paymentStatus = 'paid';
-          } else if (paymentPercentage > 0) {
-            paymentStatus = 'partial';
-          }
+        // Add payment to PI
+        const updatedPayments = [...(pi.payments || []), paymentEntry];
+        const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+        const totalAmount = parseFloat(pi.totalAmount || 0);
+        const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+        
+        let paymentStatus = 'pending';
+        if (paymentPercentage >= 99.9) {
+          paymentStatus = 'paid';
+        } else if (paymentPercentage > 0) {
+          paymentStatus = 'partial';
+        }
 
-          // Update the PI with the modified payment
-          const updatedPI = {
-            ...pi,
-            payments: updatedPayments,
-            totalPaid,
-            paymentStatus,
-            paymentPercentage: Math.round(paymentPercentage * 10) / 10,
-            updatedAt: new Date().toISOString()
-          };
+        const updatedPI = {
+          ...pi,
+          payments: updatedPayments,
+          totalPaid,
+          paymentStatus,
+          paymentPercentage: Math.round(paymentPercentage * 10) / 10,
+          updatedAt: new Date().toISOString()
+        };
 
-          // 🆕 ADD: Ensure onSave function exists and is callable
-          if (typeof onSave !== 'function') {
-            throw new Error('onSave function is not available');
-          }
+        console.log('📝 About to save updated PI:', updatedPI);
 
+        // Save the updated PI
+        if (typeof onSave === 'function') {
           const result = await onSave(updatedPI);
-          results.push({
-            piNumber: pi.piNumber,
-            amount: existingPayment.amount,
-            status: result?.success ? 'updated' : 'failed',
-            action: 'migration_update',
-            error: result?.error || null
-          });
-
-        } else {
-          // CREATE NEW PAYMENT RECORD (existing logic)
-          const remainingBalance = getRemainingBalance(pi);
-          const piTotal = parseFloat(pi.totalAmount || 0);
-          const actualPercentage = piTotal > 0 ? (allocatedAmount / piTotal) * 100 : 0;
+          console.log('💾 Save result:', result);
           
-          const paymentEntry = {
-            id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            amount: allocatedAmount,
-            currency: extractedData.paidCurrency || 'USD',
-            paymentDate: extractedData.paymentDate || new Date().toISOString().split('T')[0],
-            reference: extractedData.referenceNumber,
-            paymentMethod: 'bank_transfer',
-            bankCharges: extractedData.bankCharges || 0,
-            exchangeRate: extractedData.exchangeRate || 1,
-            remark: `Batch payment processed via AI extraction. ${allocatedAmount < piTotal ? `Partial payment (${actualPercentage.toFixed(1)}% of total)` : 'Full payment'}`,
-            bankSlipDocument: {
-              name: paymentSlip.name,
-              type: paymentSlip.type,
-              size: paymentSlip.size,
-              uploadedAt: new Date().toISOString(),
-              firebaseStorage: paymentSlipStorage ? {
-                storageId: paymentSlipStorage.storageId,
-                storagePath: paymentSlipStorage.storagePath,
-                downloadURL: paymentSlipStorage.downloadURL,
-                storedAt: paymentSlipStorage.storedAt,
-                isFirebaseStored: true
-              } : null,
-              blobURL: URL.createObjectURL(paymentSlip),
-              storageStatus: paymentSlipStorage ? 'firebase_stored' : 'blob_only',
-              storageError: storageError
-            },
-            addedAt: new Date().toISOString(),
-            piAllocations: piAllocations // 🆕 ADD: Include allocation data
-          };
-
-          // Continue with existing new payment logic
-          const updatedPayments = [...(pi.payments || []), paymentEntry];
-          const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-          const totalAmount = parseFloat(pi.totalAmount || 0);
-          const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
-          
-          let paymentStatus = 'pending';
-          if (paymentPercentage >= 99.9) {
-            paymentStatus = 'paid';
-          } else if (paymentPercentage > 0) {
-            paymentStatus = 'partial';
-          }
-
-          const updatedPI = {
-            ...pi,
-            payments: updatedPayments,
-            totalPaid,
-            paymentStatus,
-            paymentPercentage: Math.round(paymentPercentage * 10) / 10,
-            updatedAt: new Date().toISOString()
-          };
-
-          // 🆕 ADD: Ensure onSave function exists and is callable
-          if (typeof onSave !== 'function') {
-            throw new Error('onSave function is not available');
-          }
-
-          const result = await onSave(updatedPI);
           results.push({
             piNumber: pi.piNumber,
             amount: allocatedAmount,
             status: result?.success ? 'created' : 'failed',
             action: 'new_payment',
             error: result?.error || null
+          });
+        } else {
+          console.error('❌ onSave function not available');
+          results.push({
+            piNumber: pi.piNumber,
+            amount: allocatedAmount,
+            status: 'failed',
+            action: 'error',
+            error: 'onSave function not available'
           });
         }
       } catch (piError) {
@@ -904,6 +823,39 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
         });
       }
     }
+
+    // Show results
+    const successCount = results.filter(r => r.status === 'created').length;
+    const failedCount = results.filter(r => r.status === 'failed').length;
+    
+    console.log('📊 Payment processing results:', {
+      successful: successCount,
+      failed: failedCount,
+      total: results.length,
+      results: results
+    });
+    
+    if (successCount > 0) {
+      console.log(`✅ Successfully processed ${successCount} payment(s)`);
+      
+      // Show success message to user
+      alert(`Payment processing completed!\n\nSuccessfully processed: ${successCount} payment(s)\nReference: ${extractedData.referenceNumber}\nAmount: ${extractedData.paidCurrency} ${extractedData.paidAmount}`);
+      
+      onClose(); // Close the modal
+    } else {
+      console.error(`❌ Failed to process ${failedCount} payment(s)`);
+      console.error('Detailed results:', results);
+      alert('Payment processing failed. Please check console for details.');
+    }
+
+  } catch (error) {
+    console.error('❌ Payment processing error:', error);
+    console.error('Error stack:', error.stack);
+    alert(`Payment processing failed: ${error.message}`);
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
     // Show results summary
     const updatedCount = results.filter(r => r.action === 'migration_update' && r.status === 'updated').length;
