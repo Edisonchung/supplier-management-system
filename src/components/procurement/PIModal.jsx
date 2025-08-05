@@ -3274,12 +3274,165 @@ const saveProductEdit = (index, field) => {
               <div className="space-y-4">
                 {formData.payments && formData.payments.length > 0 ? (
                   formData.payments.map((payment, index) => (
-                    <PaymentHistoryItem
-                      key={payment.id || index}
-                      payment={payment}
-                      onRemove={handleDeletePayment}
-                    />
-                  ))
+  <div key={payment.id || index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+    {/* Payment Header */}
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+          <DollarSign className="w-5 h-5 text-green-600" />
+        </div>
+        
+        <div>
+          <div className="font-semibold text-gray-900">
+            {payment.currency || 'USD'} {payment.amount?.toLocaleString()}
+          </div>
+          <div className="text-sm text-gray-600">
+            {/* Enhanced date formatting */}
+            {(() => {
+              const dateStr = payment.paymentDate || payment.date;
+              if (!dateStr) return 'Invalid Date';
+              
+              try {
+                let date;
+                if (typeof dateStr === 'string' && dateStr.includes('/')) {
+                  // Handle DD/MM/YYYY format from AI extraction
+                  const parts = dateStr.split('/');
+                  if (parts.length === 3) {
+                    date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                  }
+                } else {
+                  date = new Date(dateStr);
+                }
+                
+                if (isNaN(date.getTime())) {
+                  return 'Invalid Date';
+                }
+                
+                return date.toLocaleDateString();
+              } catch (error) {
+                return 'Invalid Date';
+              }
+            })()} • {payment.paymentMethod || payment.type?.replace('-', ' ') || 'bank_transfer'}
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-2">
+        {/* Document Action Buttons */}
+        {payment.bankSlipDocument && (
+          (() => {
+            // Get document URL
+            const documentURL = payment.bankSlipDocument?.firebaseStorage?.downloadURL || 
+                              payment.bankSlipDocument?.blobURL;
+            
+            if (documentURL) {
+              return (
+                <div className="flex items-center gap-1">
+                  {/* View Button */}
+                  <button
+                    onClick={() => window.open(documentURL, '_blank')}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+                    title="View payment slip"
+                  >
+                    <Eye size={12} />
+                    View
+                  </button>
+                  
+                  {/* Download Button */}
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = documentURL;
+                      link.download = payment.bankSlipDocument?.name || `payment-slip-${payment.reference}.pdf`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
+                    title="Download payment slip"
+                  >
+                    <Download size={12} />
+                    Download
+                  </button>
+                </div>
+              );
+            }
+            return null;
+          })()
+        )}
+        
+        {/* Payment Status */}
+        <span className={`px-2 py-1 text-xs rounded-full ${
+          payment.status === 'confirmed' || payment.type === 'balance'
+            ? 'bg-green-100 text-green-700' 
+            : payment.type === 'down-payment'
+            ? 'bg-blue-100 text-blue-700'
+            : 'bg-yellow-100 text-yellow-700'
+        }`}>
+          {payment.status || payment.type?.replace('-', ' ') || 'confirmed'}
+        </span>
+        
+        {/* Storage Status (if document exists) */}
+        {payment.bankSlipDocument && (
+          <span className={`px-2 py-1 text-xs rounded-full ${
+            payment.bankSlipDocument.storageStatus === 'firebase_stored'
+              ? 'bg-green-100 text-green-700'
+              : 'bg-orange-100 text-orange-700'
+          }`}>
+            {payment.bankSlipDocument.storageStatus === 'firebase_stored' 
+              ? '☁️ Stored' 
+              : '📱 Temp'
+            }
+          </span>
+        )}
+        
+        {/* Delete Button */}
+        <button
+          onClick={() => handleDeletePayment(payment.id)}
+          className="p-1 text-red-500 hover:bg-red-100 rounded"
+          title="Remove payment"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+    
+    {/* Payment Details */}
+    {(payment.reference || payment.remark || payment.bankSlipDocument) && (
+      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+        {payment.reference && (
+          <div className="text-sm">
+            <span className="text-gray-500">Reference:</span>
+            <span className="ml-2 font-mono text-gray-700">{payment.reference}</span>
+          </div>
+        )}
+        
+        {payment.remark && (
+          <div className="text-sm">
+            <span className="text-gray-500">Remark:</span>
+            <span className="ml-2 text-gray-700">{payment.remark}</span>
+          </div>
+        )}
+        
+        {/* Document Information */}
+        {payment.bankSlipDocument && (
+          <div className="bg-blue-50 rounded p-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-blue-700">
+                📄 {payment.bankSlipDocument.name}
+              </span>
+              {payment.extractionData?.confidence && (
+                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                  🤖 AI: {Math.round(payment.extractionData.confidence * 100)}%
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+))
                 ) : (
                   <div className="text-center py-8 text-gray-500">
                     <DollarSign className="mx-auto h-12 w-12 text-gray-400 mb-2" />
