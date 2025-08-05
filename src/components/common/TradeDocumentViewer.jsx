@@ -127,6 +127,54 @@ const TradeDocumentViewer = ({
     }
   };
 
+  const handleView = async (document) => {
+    try {
+      // Use the same filename resolution logic as download
+      let fileNameToUse = document.fileName;
+      
+      if (!fileNameToUse || fileNameToUse === 'unknown') {
+        console.warn('⚠️ Document fileName is missing, trying to use originalFileName or URL-based name');
+        
+        if (document.originalFileName) {
+          fileNameToUse = document.originalFileName;
+        } else if (document.url) {
+          const urlParts = document.url.split('/');
+          fileNameToUse = urlParts[urlParts.length - 1];
+        } else {
+          const timestamp = new Date().getTime();
+          const extension = document.contentType?.includes('pdf') ? '.pdf' : '.unknown';
+          fileNameToUse = `trade-document-${timestamp}${extension}`;
+        }
+      }
+      
+      console.log('👀 Attempting to view:', {
+        originalFileName: document.fileName,
+        fallbackFileName: fileNameToUse,
+        documentId: documentId
+      });
+
+      const result = await documentStorageService.downloadDocument(
+        documentId,
+        'trade',
+        fileNameToUse
+      );
+      
+      if (result.success) {
+        // Open in new tab for viewing
+        window.open(result.downloadURL, '_blank');
+        console.log('✅ Document opened for viewing:', fileNameToUse);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error viewing document:', error);
+      
+      // Show user-friendly error message
+      const fileName = safeString(document.originalFileName || document.fileName, 'Unknown File');
+      alert(`Failed to view "${fileName}": ${error.message}\n\nThe file may have been moved or deleted.`);
+    }
+  };
+
   const handleDownload = async (document) => {
     try {
       // ✅ FIXED: Better filename handling with fallbacks
@@ -165,11 +213,15 @@ const TradeDocumentViewer = ({
       );
       
       if (result.success) {
-        // Create download link
-        const link = document.createElement('a');
+        // ✅ CRITICAL FIX: Use window.document to avoid variable name conflict
+        const link = window.document.createElement('a');
         link.href = result.downloadURL;
         link.download = safeString(document.originalFileName, fileNameToUse);
+        
+        // ✅ ADDITIONAL FIX: Ensure the link is properly added to DOM for some browsers
+        window.document.body.appendChild(link);
         link.click();
+        window.document.body.removeChild(link);
         
         console.log('✅ Download successful for:', fileNameToUse);
       } else {
@@ -334,9 +386,16 @@ const TradeDocumentViewer = ({
                 
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => handleDownload(document)}
+                    onClick={() => handleView(document)}
                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                    title="Download"
+                    title="View document"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDownload(document)}
+                    className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                    title="Download document"
                   >
                     <Download className="h-4 w-4" />
                   </button>
@@ -345,7 +404,7 @@ const TradeDocumentViewer = ({
                     <button
                       onClick={() => handleDelete(document)}
                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                      title="Delete"
+                      title="Delete document"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
