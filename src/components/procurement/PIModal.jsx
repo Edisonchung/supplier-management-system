@@ -1761,7 +1761,7 @@ const handleSubmit = useCallback((e) => {
       // Create the updated form data object
       const updatedFormData = {
         ...formData,
-        payments: updatedPayments,
+        payments: updatedPayments, // 🔧 CRITICAL: Ensure payments array is included
         totalPaid,
         paymentStatus,
         paymentPercentage: Math.round(paymentPercentage * 10) / 10
@@ -1770,11 +1770,21 @@ const handleSubmit = useCallback((e) => {
       // Update the local form data first
       setFormData(updatedFormData);
       
-      // 🔧 CRITICAL FIX: Use onSave() prop to save to Firestore
-      console.log(`🔄 Saving payment deletion to Firestore for payment ${paymentId}`);
-      await onSave(updatedFormData); // This is the correct function to call
+      // 🔧 ALTERNATIVE FIX: Direct Firestore update to bypass cleaning
+      console.log(`🔄 Directly updating Firestore for payment deletion ${paymentId}`);
       
-      console.log(`🗑️ Payment ${paymentId} deleted and saved to Firestore`);
+      const { updateDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('../../config/firebase');
+      
+      await updateDoc(doc(db, 'proformaInvoices', formData.id), {
+        payments: updatedPayments, // 🔧 Direct array update
+        totalPaid,
+        paymentStatus,
+        paymentPercentage: Math.round(paymentPercentage * 10) / 10,
+        updatedAt: new Date().toISOString()
+      });
+      
+      console.log(`🗑️ Payment ${paymentId} deleted and saved directly to Firestore`);
       showNotification?.('Payment record deleted successfully', 'success');
       
     } catch (error) {
@@ -1782,7 +1792,6 @@ const handleSubmit = useCallback((e) => {
       showNotification?.('Failed to delete payment record. Please try again.', 'error');
       
       // Revert the local changes if save fails
-      // Reload the original form data
       if (proformaInvoice) {
         setFormData(prev => ({ ...proformaInvoice }));
       }
