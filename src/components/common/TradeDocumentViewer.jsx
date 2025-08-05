@@ -1,6 +1,6 @@
 // ============================================
 // src/components/common/TradeDocumentViewer.jsx
-// UPDATED WITH NULL SAFETY FIXES
+// UPDATED WITH PAGE REFRESH FIX + NULL SAFETY
 // ============================================
 
 import React, { useState, useEffect } from 'react';
@@ -102,10 +102,17 @@ const TradeDocumentViewer = ({
     }
   };
 
-  const handleDelete = async (document) => {
+  // ✅ FIXED: Added event prevention to stop page refresh
+  const handleDelete = async (document, event) => {
+    // 🔧 CRITICAL FIX: Prevent default behavior and event bubbling
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     if (!allowDelete) return;
     
-    const fileName = safeString(document.fileName, 'Unknown File');
+    const fileName = safeString(document.originalFileName || document.fileName, 'Unknown File');
     if (window.confirm(`Are you sure you want to delete ${fileName}?`)) {
       try {
         const result = await documentStorageService.deleteDocument(
@@ -117,17 +124,25 @@ const TradeDocumentViewer = ({
         if (result.success) {
           setDocuments(prev => prev.filter(doc => doc.fileName !== document.fileName));
           onDocumentDeleted?.(document);
+          console.log('✅ Document deleted successfully:', fileName);
         } else {
           throw new Error(result.error);
         }
       } catch (error) {
-        console.error('Error deleting document:', error);
+        console.error('❌ Error deleting document:', error);
         alert('Failed to delete document: ' + error.message);
       }
     }
   };
 
-  const handleView = async (document) => {
+  // ✅ FIXED: Added event prevention to stop page refresh
+  const handleView = async (document, event) => {
+    // 🔧 CRITICAL FIX: Prevent default behavior and event bubbling
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     try {
       // Use the same filename resolution logic as download
       let fileNameToUse = document.fileName;
@@ -175,7 +190,14 @@ const TradeDocumentViewer = ({
     }
   };
 
-  const handleDownload = async (document) => {
+  // ✅ FIXED: Added event prevention to stop page refresh
+  const handleDownload = async (document, event) => {
+    // 🔧 CRITICAL FIX: Prevent default behavior and event bubbling
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     try {
       // ✅ FIXED: Better filename handling with fallbacks
       let fileNameToUse = document.fileName;
@@ -384,16 +406,19 @@ const TradeDocumentViewer = ({
                   </div>
                 </div>
                 
+                {/* ✅ CRITICAL FIX: Added type="button" and event parameter to prevent form submission */}
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => handleView(document)}
+                    type="button"
+                    onClick={(e) => handleView(document, e)}
                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                     title="View document"
                   >
                     <Eye className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => handleDownload(document)}
+                    type="button"
+                    onClick={(e) => handleDownload(document, e)}
                     className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
                     title="Download document"
                   >
@@ -402,7 +427,8 @@ const TradeDocumentViewer = ({
                   
                   {allowDelete && (
                     <button
-                      onClick={() => handleDelete(document)}
+                      type="button"
+                      onClick={(e) => handleDelete(document, e)}
                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                       title="Delete document"
                     >
