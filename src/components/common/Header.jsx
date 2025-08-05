@@ -1,10 +1,11 @@
-// src/components/common/Header.jsx - Enhanced with Smart Notifications
+// src/components/common/Header.jsx - Enhanced with Smart Notifications and Dark Mode
 import React, { useState, useEffect, useCallback } from 'react';
 import { Menu, Bell, LogOut, User, ChevronDown, AlertTriangle, DollarSign, Package, Brain, Settings } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { NotificationManager } from './Notification';
 import SmartNotificationsService from '../../services/notifications/SmartNotificationsService';
+import DarkModeToggle from './DarkModeToggle';
 
 const Header = ({ toggleMobileMenu }) => {
   const { user, logout } = useAuth();
@@ -13,6 +14,7 @@ const Header = ({ toggleMobileMenu }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [smartNotifications, setSmartNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleLogout = async () => {
     try {
@@ -96,11 +98,11 @@ const Header = ({ toggleMobileMenu }) => {
 
   const getNotificationColor = (severity) => {
     switch (severity) {
-      case 'critical': return 'text-red-500';
-      case 'high': return 'text-amber-500';
-      case 'medium': return 'text-blue-500';
-      case 'low': return 'text-green-500';
-      default: return 'text-gray-500';
+      case 'critical': return 'text-red-500 dark:text-red-400';
+      case 'high': return 'text-amber-500 dark:text-amber-400';
+      case 'medium': return 'text-blue-500 dark:text-blue-400';
+      case 'low': return 'text-green-500 dark:text-green-400';
+      default: return 'text-gray-500 dark:text-gray-400';
     }
   };
 
@@ -135,7 +137,7 @@ const Header = ({ toggleMobileMenu }) => {
               type: 'delivery',
               priority: daysOverdue > 7 ? 'high' : 'medium',
               icon: AlertTriangle,
-              color: 'text-red-500',
+              color: 'text-red-500 dark:text-red-400',
               isNew: daysOverdue === 1
             });
           }
@@ -151,13 +153,13 @@ const Header = ({ toggleMobileMenu }) => {
           if (daysUntilDue <= 3 && daysUntilDue >= 0 && payment.status === 'pending') {
             alerts.push({
               id: `legacy-payment-${supplierId}`,
-              message: `Payment of $${payment.totalAmount?.toLocaleString() || '0'} due ${daysUntilDue === 0 ? 'today' : `in ${daysUntilDue} days`}`,
+              message: `Payment of ${payment.totalAmount?.toLocaleString() || '0'} due ${daysUntilDue === 0 ? 'today' : `in ${daysUntilDue} days`}`,
               time: daysUntilDue === 0 ? 'Due today' : `Due in ${daysUntilDue} days`,
               unread: true,
               type: 'payment',
               priority: daysUntilDue <= 1 ? 'high' : 'medium',
               icon: DollarSign,
-              color: daysUntilDue <= 1 ? 'text-red-500' : 'text-amber-500',
+              color: daysUntilDue <= 1 ? 'text-red-500 dark:text-red-400' : 'text-amber-500 dark:text-amber-400',
               isNew: daysUntilDue <= 1
             });
           }
@@ -192,7 +194,7 @@ const Header = ({ toggleMobileMenu }) => {
       type: 'order',
       priority: 'low',
       icon: Bell,
-      color: 'text-blue-500'
+      color: 'text-blue-500 dark:text-blue-400'
     },
     { 
       id: 'regular-2', 
@@ -202,7 +204,7 @@ const Header = ({ toggleMobileMenu }) => {
       type: 'stock',
       priority: 'medium',
       icon: AlertTriangle,
-      color: 'text-amber-500'
+      color: 'text-amber-500 dark:text-amber-400'
     },
     { 
       id: 'regular-3', 
@@ -212,7 +214,7 @@ const Header = ({ toggleMobileMenu }) => {
       type: 'update',
       priority: 'low',
       icon: Package,
-      color: 'text-gray-500'
+      color: 'text-gray-500 dark:text-gray-400'
     },
   ];
 
@@ -240,7 +242,7 @@ const Header = ({ toggleMobileMenu }) => {
       return "absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse font-medium";
     }
     if (unreadCount > 0) {
-      return "absolute top-0 right-0 block h-3 w-3 rounded-full bg-red-400 ring-2 ring-white";
+      return "absolute top-0 right-0 block h-3 w-3 rounded-full bg-red-400 ring-2 ring-white dark:ring-gray-800";
     }
     return "";
   };
@@ -303,224 +305,5 @@ const Header = ({ toggleMobileMenu }) => {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showNotifications, showUserMenu]);
-
-  return (
-    <header className="fixed top-0 z-50 w-full bg-white border-b border-gray-200">
-      <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Left side - Menu button and Title */}
-          <div className="flex items-center">
-            <button
-              onClick={toggleMobileMenu}
-              className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
-            >
-              <Menu className="h-6 w-6" />
-            </button>
-            
-            <div className="ml-4 lg:ml-0 flex items-center space-x-3">
-              <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg">
-                <span className="text-white font-bold text-sm">HF</span>
-              </div>
-              <h1 className="text-xl font-semibold text-gray-900 whitespace-nowrap">
-                HiggsFlow
-              </h1>
-            </div>
-          </div>
-
-          {/* Right side - Enhanced Notifications, Settings, and User menu */}
-          <div className="flex items-center space-x-2">
-            {/* ✅ ENHANCED: Notifications with proper click handling */}
-            <div className="relative">
-              <button
-                onClick={handleNotificationIconClick}
-                className="relative p-2 text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full transition-colors"
-                aria-label="Notifications"
-              >
-                <Bell className="h-6 w-6" />
-                {loading && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                )}
-                {!loading && unreadCount > 0 && (
-                  <span className={getNotificationBadgeStyle()}>
-                    {highPriorityCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : ''}
-                  </span>
-                )}
-              </button>
-
-              {/* Enhanced Notifications Dropdown */}
-              {showNotifications && (
-                <div 
-                  className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-100 z-50 backdrop-blur-sm"
-                  onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
-                >
-                  {/* Header */}
-                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                      <Bell className="h-4 w-4" />
-                      Notifications
-                      {loading && <div className="animate-spin h-3 w-3 border border-blue-500 border-t-transparent rounded-full"></div>}
-                    </h3>
-                    <button 
-                      onClick={handleViewAllNotifications}
-                      className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                    >
-                      View all
-                    </button>
-                  </div>
-
-                  {/* Priority Alert Banner */}
-                  {highPriorityCount > 0 && (
-                    <div className="px-4 py-3 bg-gradient-to-r from-red-50 to-amber-50 border-b border-red-100">
-                      <div className="flex items-center space-x-2">
-                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                        <span className="text-sm font-medium text-red-700">
-                          {highPriorityCount} urgent alert{highPriorityCount > 1 ? 's' : ''} requiring attention
-                        </span>
-                        <Brain className="h-4 w-4 text-purple-500 animate-pulse" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Notifications List */}
-                  <div className="max-h-80 overflow-y-auto">
-                    {allNotifications.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-gray-500">
-                        <Bell className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                        <p className="text-sm font-medium">All caught up!</p>
-                        <p className="text-xs text-gray-400 mt-1">No notifications at the moment</p>
-                      </div>
-                    ) : (
-                      allNotifications.slice(0, 8).map(notification => {
-                        const Icon = notification.icon || Bell;
-                        return (
-                          <div
-                            key={notification.id}
-                            className={`px-4 py-3 hover:bg-gray-50 cursor-pointer border-l-4 transition-all ${
-                              notification.unread ? 'bg-blue-50/50' : ''
-                            } ${
-                              notification.priority === 'high' ? 'border-l-red-500 hover:bg-red-50/30' :
-                              notification.priority === 'medium' ? 'border-l-amber-500 hover:bg-amber-50/30' :
-                              'border-l-transparent'
-                            }`}
-                            onClick={() => handleNotificationClick(notification)}
-                          >
-                            <div className="flex items-start space-x-3">
-                              <Icon className={`h-5 w-5 mt-0.5 ${notification.color || 'text-gray-400'}`} />
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-sm leading-tight ${
-                                  notification.unread ? 'font-medium text-gray-900' : 'text-gray-700'
-                                }`}>
-                                  {notification.message}
-                                </p>
-                                <div className="flex items-center justify-between mt-1">
-                                  <p className="text-xs text-gray-500">{notification.time}</p>
-                                  <div className="flex items-center space-x-1">
-                                    {notification.priority === 'high' && (
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                                        Urgent
-                                      </span>
-                                    )}
-                                    {notification.isNew && (
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 animate-pulse">
-                                        New
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {/* Footer */}
-                  {allNotifications.length > 8 && (
-                    <div className="px-4 py-3 border-t border-gray-100 text-center">
-                      <button 
-                        onClick={handleViewAllNotifications}
-                        className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                      >
-                        View all {allNotifications.length} notifications →
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ✅ NEW: Settings Button */}
-            <button
-              onClick={handleSettingsClick}
-              className="p-2 text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full transition-colors"
-              aria-label="Settings"
-            >
-              <Settings className="h-6 w-6" />
-            </button>
-
-            {/* ✅ ENHANCED: User Menu with proper click handling */}
-            <div className="relative">
-              <button
-                onClick={handleUserMenuClick}
-                className="flex items-center space-x-3 p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-medium">
-                    {user?.email?.charAt(0).toUpperCase() || 'U'}
-                  </span>
-                </div>
-                <span className="hidden md:block text-sm font-medium text-gray-700">
-                  {user?.email || 'User'}
-                </span>
-                <ChevronDown className="hidden md:block h-4 w-4 text-gray-400" />
-              </button>
-
-              {/* User Dropdown */}
-              {showUserMenu && (
-                <div 
-                  className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-50"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="px-4 py-2 border-b border-gray-200">
-                    <p className="text-sm text-gray-900">{user?.email}</p>
-                    <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-                  </div>
-                  <button
-                    onClick={handleSettingsClick}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                  >
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowUserMenu(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                  >
-                    <User className="h-4 w-4" />
-                    <span>Profile</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleLogout();
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
-  );
-};
 
 export default Header;
