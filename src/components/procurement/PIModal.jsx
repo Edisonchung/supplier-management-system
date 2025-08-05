@@ -44,6 +44,254 @@ const ClientPOInput = ({ value, onChange, index, className, placeholder }) => {
     'PO-2025-TOP-GLOVE-001',
     'PO-2025-TMK-CHEMICAL-001'
   ];
+  const PaymentHistoryItem = ({ payment, onRemove }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Helper to get document URL
+  const getDocumentURL = () => {
+    // Priority 1: Firebase Storage URL
+    if (payment.bankSlipDocument?.firebaseStorage?.downloadURL) {
+      return payment.bankSlipDocument.firebaseStorage.downloadURL;
+    }
+    
+    // Priority 2: Blob URL (temporary but immediately available)
+    if (payment.bankSlipDocument?.blobURL) {
+      return payment.bankSlipDocument.blobURL;
+    }
+    
+    return null;
+  };
+
+  // Helper to format date properly
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Invalid Date';
+    
+    try {
+      let date;
+      
+      if (typeof dateString === 'string' && dateString.includes('/')) {
+        // Handle DD/MM/YYYY format
+        const parts = dateString.split('/');
+        if (parts.length === 3) {
+          date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        }
+      } else {
+        date = new Date(dateString);
+      }
+      
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      
+      return date.toLocaleDateString();
+    } catch (error) {
+      console.error('Date formatting error:', error);
+      return 'Invalid Date';
+    }
+  };
+
+  const documentURL = getDocumentURL();
+  const hasDocument = !!documentURL;
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+      {/* Payment Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+            <DollarSign className="w-5 h-5 text-green-600" />
+          </div>
+          
+          <div>
+            <div className="font-semibold text-gray-900">
+              {payment.currency} {payment.amount?.toLocaleString()}
+            </div>
+            <div className="text-sm text-gray-600">
+              {formatDate(payment.paymentDate || payment.date)} • {payment.paymentMethod || 'bank_transfer'}
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {/* Document Action Buttons */}
+          {hasDocument && (
+            <div className="flex items-center gap-1">
+              {/* View Button */}
+              <button
+                onClick={() => window.open(documentURL, '_blank')}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+                title="View payment slip"
+              >
+                <Eye size={12} />
+                View
+              </button>
+              
+              {/* Download Button */}
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = documentURL;
+                  link.download = payment.bankSlipDocument?.name || `payment-slip-${payment.reference}.pdf`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
+                title="Download payment slip"
+              >
+                <Download size={12} />
+                Download
+              </button>
+            </div>
+          )}
+          
+          {/* Payment Status */}
+          <span className={`px-2 py-1 text-xs rounded-full ${
+            payment.status === 'confirmed' 
+              ? 'bg-green-100 text-green-700' 
+              : 'bg-yellow-100 text-yellow-700'
+          }`}>
+            {payment.status || 'confirmed'}
+          </span>
+          
+          {/* Expand/Collapse Button */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1 hover:bg-gray-200 rounded"
+          >
+            <ChevronDown 
+              size={16} 
+              className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            />
+          </button>
+          
+          {/* Remove Button */}
+          {onRemove && (
+            <button
+              onClick={() => onRemove(payment.id)}
+              className="p-1 text-red-500 hover:bg-red-100 rounded"
+              title="Remove payment"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {/* Expanded Details */}
+      {isExpanded && (
+        <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+          {/* Payment Details */}
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-500">Reference:</span>
+              <span className="ml-2 font-mono">{payment.reference}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Bank Charges:</span>
+              <span className="ml-2">{payment.currency} {payment.bankCharges || 0}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Exchange Rate:</span>
+              <span className="ml-2">{payment.exchangeRate || 1}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Method:</span>
+              <span className="ml-2 capitalize">{payment.paymentMethod || 'bank_transfer'}</span>
+            </div>
+          </div>
+          
+          {/* Document Information */}
+          {payment.bankSlipDocument && (
+            <div className="bg-blue-50 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Payment Document</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-blue-700">
+                    📄 {payment.bankSlipDocument.name}
+                  </span>
+                  <span className="text-blue-600 text-xs">
+                    {(payment.bankSlipDocument.size / 1024 / 1024).toFixed(2)} MB
+                  </span>
+                </div>
+                
+                {/* Storage Status */}
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    payment.bankSlipDocument.storageStatus === 'firebase_stored'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {payment.bankSlipDocument.storageStatus === 'firebase_stored' 
+                      ? '☁️ Cloud Stored' 
+                      : '📱 Temporary'
+                    }
+                  </span>
+                  
+                  {/* AI Extraction Info */}
+                  {payment.extractionData?.confidence && (
+                    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-full">
+                      🤖 AI: {Math.round(payment.extractionData.confidence * 100)}%
+                    </span>
+                  )}
+                </div>
+                
+                {/* Document Actions (Larger buttons in expanded view) */}
+                {hasDocument && (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => window.open(documentURL, '_blank')}
+                      className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      <Eye size={14} />
+                      View Document
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = documentURL;
+                        link.download = payment.bankSlipDocument.name || `payment-slip-${payment.reference}.pdf`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                    >
+                      <Download size={14} />
+                      Download
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* Remark */}
+          {payment.remark && (
+            <div>
+              <span className="text-gray-500 text-sm">Remark:</span>
+              <p className="text-sm text-gray-700 mt-1">{payment.remark}</p>
+            </div>
+          )}
+          
+          {/* AI Extraction Details */}
+          {payment.extractionData && (
+            <div className="bg-purple-50 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-purple-900 mb-2">AI Extraction Details</h4>
+              <div className="grid grid-cols-2 gap-2 text-xs text-purple-700">
+                <div>Confidence: {Math.round(payment.extractionData.confidence * 100)}%</div>
+                <div>Bank: {payment.extractionData.bankName}</div>
+                <div>Beneficiary: {payment.extractionData.beneficiaryName}</div>
+                <div>Exchange Rate: {payment.extractionData.exchangeRate}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
   
   const handleInputChange = (inputValue) => {
     onChange(inputValue);
@@ -3022,25 +3270,23 @@ const saveProductEdit = (index, field) => {
   </div>
   
   {/* ✅ Updated: Payment type badge + Delete button */}
-  <div className="flex items-center gap-2">
-    <span className={`px-2 py-1 text-xs rounded-full ${
-      payment.type === 'down-payment' ? 'bg-blue-100 text-blue-800' :
-      payment.type === 'balance' ? 'bg-green-100 text-green-800' :
-      'bg-gray-100 text-gray-800'
-    }`}>
-      {payment.type.replace('-', ' ')}
-    </span>
-    
-    {/* Delete Button */}
-    <button
-      type="button"
-      onClick={() => handleDeletePayment(payment.id)}
-      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-      title="Delete payment record"
-    >
-      <X size={16} />
-    </button>
-  </div>
+ {/* Enhanced Payment History with View/Download */}
+              <div className="space-y-4">
+                {formData.payments && formData.payments.length > 0 ? (
+                  formData.payments.map((payment, index) => (
+                    <PaymentHistoryItem
+                      key={payment.id || index}
+                      payment={payment}
+                      onRemove={handleDeletePayment}
+                    />
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <DollarSign className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                    <p>No payments recorded yet</p>
+                  </div>
+                )}
+              </div>
 </div>
 
                       {payment.reference && (
