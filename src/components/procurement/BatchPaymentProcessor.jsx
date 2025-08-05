@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AIExtractionService } from '../../services/ai/AIExtractionService';
+import { DocumentStorageService } from '../../services/DocumentStorageService'; 
+
 import { 
   Upload, 
   FileText, 
@@ -23,7 +25,8 @@ import {
   Clock,
   Zap,
   BarChart3,
-  Info
+  Info,
+  Database 
 } from 'lucide-react';
 
 const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
@@ -38,6 +41,11 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
 
   const [extractionMetadata, setExtractionMetadata] = useState(null);
 
+  // Payment slip storage state
+const [paymentSlipStorage, setPaymentSlipStorage] = useState(null);
+const [isStoringSlip, setIsStoringSlip] = useState(false);
+const [storageError, setStorageError] = useState(null)
+  
   
   // Percentage allocation controls
   const [allocationMode, setAllocationMode] = useState('manual'); // 'manual' or 'percentage'
@@ -47,6 +55,9 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   // ✅ NEW: Drag & Drop state
   const [isDragOver, setIsDragOver] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
+
+  // Initialize DocumentStorageService
+const documentStorageService = new DocumentStorageService();
 
   // ✅ NEW: Drag and drop handlers
   const handleDragEnter = useCallback((e) => {
@@ -134,11 +145,91 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
     return [...new Set(piNumbers)]; // Remove duplicates
   };
 
+  // Store payment slip to Firebase Storage
+const storePaymentSlipToFirebase = async (file, extractedData) => {
+  setIsStoringSlip(true);
+  setStorageError(null);
+  
+  try {
+    console.log('💾 Storing payment slip to Firebase Storage...');
+    
+    // Generate a unique storage ID for this payment slip
+    const storageId = `payment-slip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create storage metadata
+    const storageMetadata = {
+      documentType: 'payment-slip',
+      paymentReference: extractedData.referenceNumber,
+      paymentDate: extractedData.paymentDate,
+      paidAmount: extractedData.paidAmount,
+      paidCurrency: extractedData.paidCurrency,
+      beneficiaryName: extractedData.beneficiaryName,
+      bankName: extractedData.bankName,
+      processedAt: new Date().toISOString(),
+      originalFileName: file.name
+    };
+
+    // Store the payment slip using DocumentStorageService
+    const storageResult = await documentStorageService.storeDocument(
+      file,
+      'payment-slips', // Custom document type for payment slips
+      extractedData.referenceNumber || 'Unknown-Ref',
+      storageId
+    );
+
+    if (storageResult.success) {
+      console.log('✅ Payment slip stored successfully:', storageResult.data);
+      
+      // Store additional extraction metadata
+      const metadataResult = await documentStorageService.storeExtractionData(
+        {
+          ...extractedData,
+          storageMetadata,
+          fileInfo: {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: file.lastModified
+          }
+        },
+        'payment-slips',
+        extractedData.referenceNumber || 'Unknown-Ref',
+        storageId
+      );
+
+      const completeStorageInfo = {
+        storageId,
+        storagePath: storageResult.data.storagePath,
+        downloadURL: storageResult.data.downloadURL,
+        metadata: storageMetadata,
+        extractionDataStored: metadataResult.success,
+        storedAt: new Date().toISOString()
+      };
+
+      setPaymentSlipStorage(completeStorageInfo);
+      console.log('✅ Complete payment slip storage info:', completeStorageInfo);
+      
+      return completeStorageInfo;
+    } else {
+      throw new Error(storageResult.error || 'Failed to store payment slip');
+    }
+  } catch (error) {
+    console.error('❌ Failed to store payment slip:', error);
+    setStorageError(error.message);
+    return null;
+  } finally {
+    setIsStoringSlip(false);
+  }
+};
+
   // Handle payment slip upload and AI extraction
   const handleFileUpload = async (file) => {
     setIsProcessing(true);
     setPaymentSlip(file);
     setExtractionError(null);
+      // 🆕 NEW: Reset storage state
+  setPaymentSlipStorage(null);
+  setStorageError(null);
     
     try {
       console.log('🚀 Starting Railway backend extraction for:', file.name);
@@ -217,6 +308,11 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
       }
       
       setExtractedData(processedData);
+
+      // 🆕 NEW: Automatically store payment slip to Firebase Storage
+console.log('💾 Starting automatic Firebase Storage of payment slip...');
+await storePaymentSlipToFirebase(file, processedData);
+      
       generateAutoSuggestions(processedData);
       setStep(2);
       
@@ -447,12 +543,27 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
       
       // Attach the original bank slip document
       bankSlipDocument: {
-        name: paymentSlip.name,
-        type: paymentSlip.type,
-        size: paymentSlip.size,
-        url: URL.createObjectURL(paymentSlip),
-        uploadedAt: new Date().toISOString()
-      },
+  name: paymentSlip.name,
+  type: paymentSlip.type,
+  size: paymentSlip.size,
+  uploadedAt: new Date().toISOString(),
+  
+  // Firebase Storage information
+  firebaseStorage: paymentSlipStorage ? {
+    storageId: paymentSlipStorage.storageId,
+    storagePath: paymentSlipStorage.storagePath,
+    downloadURL: paymentSlipStorage.downloadURL,
+    storedAt: paymentSlipStorage.storedAt,
+    isFirebaseStored: true
+  } : null,
+  
+  // Fallback blob URL for immediate access
+  blobURL: URL.createObjectURL(paymentSlip),
+  
+  // Storage status
+  storageStatus: paymentSlipStorage ? 'firebase_stored' : 'blob_only',
+  storageError: storageError
+},
       
       piAllocations: selectedPIs
         .filter(piId => allocation[piId] > 0)
@@ -520,6 +631,13 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
               <h2 className="text-xl font-semibold flex items-center gap-2">
                 <Split className="text-green-600" />
                 Batch Payment Processor
+                {/* 🆕 NEW: Storage status indicator */}
+  {paymentSlipStorage && (
+    <span className="text-sm px-2 py-1 bg-green-100 text-green-700 rounded-full flex items-center gap-1">
+      <Database className="w-3 h-3" />
+      Firebase Stored
+    </span>
+  )}
               </h2>
               <p className="text-gray-600 mt-1">Process bank payment slips with smart allocation</p>
             </div>
@@ -553,6 +671,41 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
             ))}
           </div>
         </div>
+
+        {/* 🆕 NEW: Firebase Storage Status */}
+{isStoringSlip && (
+  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+    <div className="flex items-center gap-2 text-blue-700">
+      <Loader2 className="w-4 h-4 animate-spin" />
+      <span className="text-sm font-medium">Storing payment slip to Firebase Storage...</span>
+    </div>
+  </div>
+)}
+
+{paymentSlipStorage && (
+  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+    <div className="flex items-center gap-2 text-green-700">
+      <CheckCircle2 className="w-4 h-4" />
+      <span className="text-sm font-medium">Payment slip securely stored in Firebase Storage</span>
+    </div>
+    <div className="text-xs text-green-600 mt-1">
+      Storage ID: {paymentSlipStorage.storageId}
+    </div>
+  </div>
+)}
+
+{storageError && (
+  <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+    <div className="flex items-center gap-2 text-amber-700">
+      <AlertCircle className="w-4 h-4" />
+      <span className="text-sm font-medium">Storage Warning: {storageError}</span>
+    </div>
+    <div className="text-xs text-amber-600 mt-1">
+      Payment processing can continue, but the slip document may only be temporarily accessible.
+    </div>
+  </div>
+)}
+</div>
 
         {/* Content */}
         <div className="p-6">
