@@ -3799,12 +3799,24 @@ const saveProductEdit = (index, field) => {
       allowedTypes={['pdf', 'jpg', 'jpeg', 'png']}
     />
 
-    {/* DOCUMENT VIEWER - NEW ADDITION */}
+    {/* Trade Document Viewer with Delete Button - FIXED VERSION */}
     {(formData.documentId || proformaInvoice?.documentId) ? (
       <div className="border-t pt-6">
         <TradeDocumentViewer
           documentId={formData.documentId || proformaInvoice?.documentId}
           documentType="trade"
+          allowDelete={true}  // ✅ CRITICAL FIX: Enable delete button
+          onDocumentDeleted={(doc) => {
+            console.log('✅ Trade document deleted:', doc);
+            
+            // Show success notification
+            if (showNotification) {
+              showNotification('Trade document deleted successfully', 'success');
+            }
+            
+            // Optional: You can add additional cleanup logic here
+            // For example, refresh the document list or update form state
+          }}
         />
       </div>
     ) : (
