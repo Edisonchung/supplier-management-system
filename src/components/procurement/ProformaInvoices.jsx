@@ -24,8 +24,7 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 import BatchUploadModal from './BatchUploadModal';
 import BatchPaymentProcessor from './BatchPaymentProcessor';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config'; // Adjust path as needed
-
+import { db } from '../config/firebase.js';
 
 
 const ProformaInvoices = ({ showNotification }) => {
@@ -1034,12 +1033,16 @@ const renderPaymentStatus = (pi) => {
     let errorCount = 0;
     const processedPIs = [];
     
-    // 🔧 CRITICAL FIX: Skip the loadProformaInvoices call (not available in this scope)
-    // Instead, get fresh data directly from Firestore for each PI
+    // 🔧 CRITICAL FIX: Force reload PI data from Firestore before processing
+    console.log('🔄 Forcing reload of PI data from Firestore...');
+    await loadProformaInvoices(); // This should refresh the proformaInvoices state
+    
+    // 🔧 ADDITIONAL: Wait for state to propagate
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     for (const allocation of paymentRecord.piAllocations) {
       try {
-        // 🔧 CRITICAL: Get fresh PI data directly from Firestore (bypass stale state)
+        // 🔧 CRITICAL: Get fresh PI data directly from Firestore (bypass state)
         console.log('🔍 Fetching fresh PI data from Firestore for:', allocation.piId);
         const piDocRef = doc(db, 'proformaInvoices', allocation.piId);
         const piDocSnap = await getDoc(piDocRef);
@@ -1090,7 +1093,7 @@ const renderPaymentStatus = (pi) => {
           paymentStatus: newPaymentStatus,
           lastPaymentDate: paymentRecord.paymentDate,
           lastModified: new Date().toISOString(),
-          lastModifiedBy: 'batch-payment-system-fresh-totals'
+          lastModifiedBy: 'batch-payment-system-totals-fresh'
         };
 
         console.log('📝 Updating PI totals with fresh calculation:', {
@@ -1170,8 +1173,13 @@ const renderPaymentStatus = (pi) => {
       showNotification('No PI totals were updated. Please check the allocations.', 'warning');
     }
     
-    // Close the modal
+    // Close the modal and force final UI refresh
     setShowBatchPaymentModal(false);
+    
+    // 🔧 FINAL: Force one more UI refresh to show updated data
+    setTimeout(() => {
+      loadProformaInvoices();
+    }, 500);
     
   } catch (error) {
     console.error('❌ Error processing batch payment totals:', error);
