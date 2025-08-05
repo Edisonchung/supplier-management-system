@@ -1033,8 +1033,10 @@ const renderPaymentStatus = (pi) => {
     let errorCount = 0;
     const processedPIs = [];
     
-    // 🔧 REMOVED: loadProformaInvoices() call that was causing the error
     // 🔧 NEW: Get fresh data directly from Firestore for each PI
+    // Add delay to ensure Firestore write operations complete before reading
+    console.log('⏳ Waiting for Firestore write operations to complete...');
+    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
     
     for (const allocation of paymentRecord.piAllocations) {
       try {
