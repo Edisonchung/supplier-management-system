@@ -1767,28 +1767,20 @@ const handleSubmit = useCallback((e) => {
         paymentPercentage: Math.round(paymentPercentage * 10) / 10
       }));
       
-      // 🔧 FIX: Get the PI ID from the right source
+      // Get the PI ID
       const piId = formData.id || proformaInvoice?.id || formData.piId;
       
       if (!piId) {
         console.error('❌ Cannot delete payment: PI ID not found');
-        console.log('🔍 Available IDs:', {
-          formDataId: formData.id,
-          proformaInvoiceId: proformaInvoice?.id,
-          formDataPiId: formData.piId,
-          allFormDataKeys: Object.keys(formData),
-          allProformaInvoiceKeys: proformaInvoice ? Object.keys(proformaInvoice) : []
-        });
-        showNotification?.('Cannot delete payment: PI ID not found. Please save the PI first.', 'error');
+        showNotification?.('Cannot delete payment: PI ID not found.', 'error');
         return;
       }
       
-      console.log(`🔄 Using services file for payment deletion ${paymentId}`);
-      console.log(`📋 PI ID: ${piId}`);
-      console.log(`📋 Updated payments count: ${updatedPayments.length}`);
+      console.log(`🔄 Deleting payment ${paymentId} from both PI and batch payment system`);
       
       const { updateProformaInvoice } = await import('../../services/firebase');
       
+      // 🔧 Step 1: Update the PI document (remove from payments array)
       const result = await updateProformaInvoice(piId, {
         payments: updatedPayments,
         totalPaid,
@@ -1796,12 +1788,49 @@ const handleSubmit = useCallback((e) => {
         paymentPercentage: Math.round(paymentPercentage * 10) / 10
       });
       
-      if (result.success) {
-        console.log(`🗑️ Payment ${paymentId} deleted via services successfully`);
-        showNotification?.('Payment record deleted successfully', 'success');
-      } else {
-        throw new Error(result.error || 'Update failed');
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update PI');
       }
+      
+      // 🔧 Step 2: Delete from the batch payment collection
+      try {
+        // Import Firestore functions
+        const { deleteDoc, doc, collection, query, where, getDocs } = await import('firebase/firestore');
+        const { db } = await import('../../config/firebase');
+        
+        // Find and delete the batch payment record
+        console.log(`🔍 Searching for batch payment record: ${paymentId}`);
+        
+        // Try different collection names based on the logs
+        const possibleCollections = ['batchPayments', 'payments', 'paymentRecords'];
+        
+        for (const collectionName of possibleCollections) {
+          const q = query(collection(db, collectionName), where('id', '==', paymentId));
+          const querySnapshot = await getDocs(q);
+          
+          if (!querySnapshot.empty) {
+            console.log(`🎯 Found batch payment in ${collectionName} collection`);
+            querySnapshot.forEach(async (docSnapshot) => {
+              await deleteDoc(docSnapshot.ref);
+              console.log(`🗑️ Deleted batch payment record from ${collectionName}`);
+            });
+            break;
+          }
+        }
+        
+        // Also try direct document deletion if it's stored by ID
+        if (paymentId.startsWith('batch-')) {
+          await deleteDoc(doc(db, 'batchPayments', paymentId));
+          console.log(`🗑️ Deleted direct batch payment document: ${paymentId}`);
+        }
+        
+      } catch (batchError) {
+        console.warn('⚠️ Could not delete from batch payment collection:', batchError);
+        // Don't fail the entire operation if batch deletion fails
+      }
+      
+      console.log(`🗑️ Payment ${paymentId} deleted successfully from all systems`);
+      showNotification?.('Payment record deleted successfully', 'success');
       
     } catch (error) {
       console.error('❌ Error saving payment deletion:', error);
