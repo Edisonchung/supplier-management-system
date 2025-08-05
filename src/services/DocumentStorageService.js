@@ -8,7 +8,9 @@ class DocumentStorageService {
       po: 'documents/purchase-orders',
       pi: 'documents/proforma-invoices',
       trade: 'documents/trade-documents',
-      temp: 'documents/temp'
+      temp: 'documents/temp',
+      // 🆕 NEW: Payment slip storage path
+      'payment-slips': 'documents/payment-slips'
     };
     this.isInitialized = false;
     this.initializeService();
@@ -41,7 +43,7 @@ class DocumentStorageService {
   /**
    * Upload and store original document
    * @param {File} file - The uploaded file
-   * @param {string} documentType - 'po' or 'pi'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', etc.
    * @param {string} documentNumber - PO/PI number for organizing
    * @param {string} documentId - Unique document ID
    * @returns {Promise<Object>} - Storage result with download URL
@@ -66,11 +68,12 @@ class DocumentStorageService {
       const sanitizedDocNumber = this.sanitizeFileName(documentNumber);
       const fileName = `${sanitizedDocNumber}_${timestamp}_original${fileExtension}`;
       
-      // Create storage path
-      const storagePath = `${this.bucketPaths[documentType]}/${documentId}/${fileName}`;
+      // Create storage path - support payment-slips
+      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+      const storagePath = `${basePath}/${documentId}/${fileName}`;
       const storageRef = ref(storage, storagePath);
 
-      // Add metadata
+      // Add metadata with payment slip support
       const metadata = {
         customMetadata: {
           originalFileName: file.name,
@@ -79,7 +82,13 @@ class DocumentStorageService {
           documentId: documentId,
           uploadedAt: new Date().toISOString(),
           fileSize: file.size.toString(),
-          contentType: file.type
+          contentType: file.type,
+          
+          // 🆕 NEW: Payment slip specific metadata
+          ...(documentType === 'payment-slips' && {
+            paymentSlipId: documentId,
+            storageType: 'payment-slip-original'
+          })
         }
       };
 
@@ -125,7 +134,7 @@ class DocumentStorageService {
    * Store multiple document versions (original + processed)
    * @param {File} originalFile - Original uploaded file
    * @param {Object} extractedData - Processed data for reference
-   * @param {string} documentType - 'po' or 'pi'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', etc.
    * @param {string} documentNumber - PO/PI number
    * @param {string} documentId - Unique document ID
    * @returns {Promise<Object>} - Storage results
@@ -192,7 +201,7 @@ class DocumentStorageService {
   /**
    * Store extraction metadata as JSON file
    * @param {Object} extractedData - AI extraction results
-   * @param {string} documentType - 'po' or 'pi'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', etc.
    * @param {string} documentNumber - Document number
    * @param {string} documentId - Unique document ID
    * @returns {Promise<Object>} - Storage result
@@ -203,7 +212,7 @@ class DocumentStorageService {
       const sanitizedDocNumber = this.sanitizeFileName(documentNumber);
       const fileName = `${sanitizedDocNumber}_${timestamp}_extraction.json`;
       
-      // Create extraction metadata
+      // Create enhanced extraction metadata with payment slip support
       const extractionMetadata = {
         documentId,
         documentNumber,
@@ -211,7 +220,20 @@ class DocumentStorageService {
         extractedAt: new Date().toISOString(),
         aiConfidence: extractedData.confidence || 0,
         extractedData: extractedData,
-        version: '1.0'
+        version: '1.0',
+        
+        // 🆕 NEW: Payment slip specific metadata
+        ...(documentType === 'payment-slips' && {
+          paymentSlipMetadata: {
+            referenceNumber: extractedData.referenceNumber,
+            paymentDate: extractedData.paymentDate,
+            bankName: extractedData.bankName,
+            paidAmount: extractedData.paidAmount,
+            paidCurrency: extractedData.paidCurrency,
+            beneficiaryName: extractedData.beneficiaryName,
+            extractionSystem: extractedData.extractionMethod
+          }
+        })
       };
 
       // Convert to blob
@@ -220,17 +242,26 @@ class DocumentStorageService {
       });
 
       // Create storage path
-      const storagePath = `${this.bucketPaths[documentType]}/${documentId}/${fileName}`;
+      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+      const storagePath = `${basePath}/${documentId}/${fileName}`;
       const storageRef = ref(storage, storagePath);
 
-      // Upload metadata
+      // Upload metadata with payment slip support
       const metadata = {
         customMetadata: {
           documentType: documentType.toUpperCase(),
           documentNumber: documentNumber,
           documentId: documentId,
           dataType: 'extraction',
-          uploadedAt: new Date().toISOString()
+          uploadedAt: new Date().toISOString(),
+          
+          // 🆕 NEW: Payment slip specific metadata
+          ...(documentType === 'payment-slips' && {
+            paymentReference: extractedData.referenceNumber,
+            paymentAmount: extractedData.paidAmount?.toString(),
+            paymentCurrency: extractedData.paidCurrency,
+            storageType: 'payment-slip-extraction'
+          })
         }
       };
 
@@ -257,9 +288,131 @@ class DocumentStorageService {
   }
 
   /**
+   * 🆕 NEW: Specialized method for storing payment slips with enhanced metadata
+   * @param {File} file - Payment slip file
+   * @param {Object} extractedData - AI-extracted payment data
+   * @param {Array} piAllocations - Array of PI allocation information
+   * @returns {Promise<Object>} - Storage result with payment-specific metadata
+   */
+  async storePaymentSlip(file, extractedData, piAllocations = []) {
+    if (!this.isReady()) {
+      throw new Error('DocumentStorageService is not ready. Check Firebase configuration.');
+    }
+
+    try {
+      console.log('💰 Storing payment slip with allocations:', file.name);
+      
+      // Generate unique payment slip ID
+      const paymentSlipId = `payment-slip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Enhanced metadata for payment slips
+      const paymentMetadata = {
+        paymentSlipId,
+        referenceNumber: extractedData.referenceNumber,
+        paymentDate: extractedData.paymentDate,
+        bankName: extractedData.bankName,
+        accountName: extractedData.accountName,
+        
+        // Amount details
+        paidAmount: extractedData.paidAmount,
+        paidCurrency: extractedData.paidCurrency,
+        debitAmount: extractedData.debitAmount,
+        debitCurrency: extractedData.debitCurrency,
+        exchangeRate: extractedData.exchangeRate,
+        bankCharges: extractedData.bankCharges,
+        
+        // Beneficiary information
+        beneficiaryName: extractedData.beneficiaryName,
+        beneficiaryBank: extractedData.beneficiaryBank,
+        beneficiaryCountry: extractedData.beneficiaryCountry,
+        
+        // Processing metadata
+        extractionMethod: extractedData.extractionMethod,
+        extractionConfidence: extractedData.confidence,
+        processedAt: new Date().toISOString(),
+        
+        // PI allocation information
+        piAllocations: piAllocations.map(allocation => ({
+          piId: allocation.piId,
+          piNumber: allocation.piNumber,
+          supplierName: allocation.supplierName,
+          allocatedAmount: allocation.allocatedAmount,
+          currency: allocation.currency,
+          paymentPercentage: allocation.paymentPercentage,
+          isPartialPayment: allocation.isPartialPayment
+        })),
+        
+        // Summary statistics
+        totalAllocatedPIs: piAllocations.length,
+        totalAllocatedAmount: piAllocations.reduce((sum, allocation) => sum + allocation.allocatedAmount, 0),
+        
+        // File information
+        originalFileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      };
+
+      // Store the original payment slip file
+      const fileResult = await this.storeOriginalDocument(
+        file,
+        'payment-slips',
+        extractedData.referenceNumber || 'Unknown-Ref',
+        paymentSlipId
+      );
+
+      if (!fileResult.success) {
+        throw new Error(`Failed to store payment slip file: ${fileResult.error}`);
+      }
+
+      // Store the enhanced extraction data with payment metadata
+      const enhancedExtractionData = {
+        ...extractedData,
+        paymentMetadata,
+        fileInfo: {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified
+        }
+      };
+
+      const extractionResult = await this.storeExtractionData(
+        enhancedExtractionData,
+        'payment-slips',
+        extractedData.referenceNumber || 'Unknown-Ref',
+        paymentSlipId
+      );
+
+      console.log('✅ Payment slip storage complete:', {
+        paymentSlipId,
+        fileStored: fileResult.success,
+        extractionStored: extractionResult.success
+      });
+
+      return {
+        success: true,
+        data: {
+          paymentSlipId,
+          fileStorage: fileResult.data,
+          extractionStorage: extractionResult.success ? extractionResult.data : null,
+          paymentMetadata,
+          storedAt: new Date().toISOString()
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error storing payment slip:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Generic document storage method for any document type
    * @param {File} file - The uploaded file
-   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
    * @param {string} documentNumber - Document number for organizing
    * @param {string} documentId - Unique document ID
    * @returns {Promise<Object>} - Storage result with download URL
@@ -269,8 +422,9 @@ class DocumentStorageService {
       throw new Error('DocumentStorageService is not ready. Check Firebase configuration.');
     }
 
+    // 🆕 NEW: Support payment-slips document type
     if (!this.bucketPaths[documentType]) {
-      throw new Error(`Unsupported document type: ${documentType}`);
+      throw new Error(`Unsupported document type: ${documentType}. Supported types: ${Object.keys(this.bucketPaths).join(', ')}`);
     }
 
     try {
@@ -301,7 +455,13 @@ class DocumentStorageService {
           documentId: documentId,
           uploadedAt: new Date().toISOString(),
           fileSize: file.size.toString(),
-          contentType: file.type
+          contentType: file.type,
+          
+          // 🆕 NEW: Payment slip specific metadata
+          ...(documentType === 'payment-slips' && {
+            paymentSlipId: documentId,
+            storageType: 'payment-slip'
+          })
         }
       };
 
@@ -342,10 +502,11 @@ class DocumentStorageService {
       };
     }
   }
+
   /**
-   * Retrieve all documents for a specific PO/PI
+   * Retrieve all documents for a specific PO/PI/Payment Slip
    * @param {string} documentId - Document ID
-   * @param {string} documentType - 'po' or 'pi'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
    * @returns {Promise<Array>} - List of stored documents
    */
   async getDocumentFiles(documentId, documentType) {
@@ -360,7 +521,8 @@ class DocumentStorageService {
 
     try {
       console.log(`📋 Getting documents for ${documentType} ${documentId}`);
-      const folderPath = `${this.bucketPaths[documentType]}/${documentId}`;
+      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+      const folderPath = `${basePath}/${documentId}`;
       const folderRef = ref(storage, folderPath);
       
       const listResult = await listAll(folderRef);
@@ -370,22 +532,31 @@ class DocumentStorageService {
         listResult.items.map(async (itemRef) => {
           try {
             const downloadURL = await getDownloadURL(itemRef);
-            const metadata = await getMetadata(itemRef);  // ✅ Using imported getMetadata function
+            const metadata = await getMetadata(itemRef);
             
             return {
               name: itemRef.name,
               path: itemRef.fullPath,
-              fullPath: itemRef.fullPath, // Added for compatibility
+              fullPath: itemRef.fullPath,
               downloadURL: downloadURL,
               size: metadata.size,
               contentType: metadata.contentType,
               timeCreated: metadata.timeCreated,
               updated: metadata.updated,
-              customMetadata: metadata.customMetadata || {}
+              customMetadata: metadata.customMetadata || {},
+              
+              // 🆕 NEW: Payment slip specific metadata extraction
+              ...(documentType === 'payment-slips' && metadata.customMetadata && {
+                paymentInfo: {
+                  reference: metadata.customMetadata.paymentReference,
+                  amount: metadata.customMetadata.paymentAmount,
+                  currency: metadata.customMetadata.paymentCurrency,
+                  storageType: metadata.customMetadata.storageType
+                }
+              })
             };
           } catch (fileError) {
             console.error(`❌ Error processing file ${itemRef.name}:`, fileError);
-            // Return basic file info even if metadata fails
             try {
               const downloadURL = await getDownloadURL(itemRef);
               return {
@@ -407,7 +578,6 @@ class DocumentStorageService {
         })
       );
 
-      // Filter out null results
       const validFiles = files.filter(file => file !== null);
       console.log(`✅ Successfully processed ${validFiles.length} documents`);
 
@@ -425,10 +595,102 @@ class DocumentStorageService {
       };
     }
   }
+
+  /**
+   * 🆕 NEW: Get payment slips by reference number or date range
+   * @param {Object} filters - Search filters
+   * @returns {Promise<Object>} - List of matching payment slips
+   */
+  async getPaymentSlips(filters = {}) {
+    if (!this.isReady()) {
+      throw new Error('DocumentStorageService is not ready');
+    }
+
+    try {
+      console.log('🔍 Searching payment slips with filters:', filters);
+      
+      const paymentSlipsRef = ref(storage, this.bucketPaths['payment-slips']);
+      const result = await listAll(paymentSlipsRef);
+      
+      const allPaymentSlips = [];
+      
+      // Process each payment slip folder
+      for (const folderRef of result.prefixes) {
+        try {
+          const folderItems = await listAll(folderRef);
+          
+          for (const itemRef of folderItems.items) {
+            try {
+              const metadata = await getMetadata(itemRef);
+              
+              // Apply filters if provided
+              if (filters.referenceNumber && 
+                  metadata.customMetadata?.paymentReference !== filters.referenceNumber) {
+                continue;
+              }
+              
+              if (filters.dateFrom || filters.dateTo) {
+                const itemDate = new Date(metadata.timeCreated);
+                if (filters.dateFrom && itemDate < new Date(filters.dateFrom)) continue;
+                if (filters.dateTo && itemDate > new Date(filters.dateTo)) continue;
+              }
+              
+              if (filters.minAmount && 
+                  parseFloat(metadata.customMetadata?.paymentAmount || 0) < filters.minAmount) {
+                continue;
+              }
+              
+              const downloadURL = await getDownloadURL(itemRef);
+              
+              allPaymentSlips.push({
+                name: itemRef.name,
+                fullPath: itemRef.fullPath,
+                downloadURL: downloadURL,
+                size: metadata.size,
+                contentType: metadata.contentType,
+                timeCreated: metadata.timeCreated,
+                updated: metadata.updated,
+                customMetadata: metadata.customMetadata || {},
+                paymentInfo: {
+                  reference: metadata.customMetadata?.paymentReference,
+                  amount: metadata.customMetadata?.paymentAmount,
+                  currency: metadata.customMetadata?.paymentCurrency,
+                  documentId: metadata.customMetadata?.documentId,
+                  storageType: metadata.customMetadata?.storageType
+                }
+              });
+              
+            } catch (itemError) {
+              console.warn('⚠️ Error processing payment slip item:', itemError);
+            }
+          }
+        } catch (folderError) {
+          console.warn('⚠️ Error processing payment slip folder:', folderError);
+        }
+      }
+      
+      console.log(`💰 Found ${allPaymentSlips.length} payment slips matching filters`);
+      
+      return {
+        success: true,
+        data: allPaymentSlips,
+        count: allPaymentSlips.length
+      };
+
+    } catch (error) {
+      console.error('❌ Error searching payment slips:', error);
+      return {
+        success: false,
+        error: error.message,
+        data: []
+      };
+    }
+  }
+
   /**
    * Retrieve documents with consistent interface
    * @param {string} documentId - Document ID
-   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
    * @returns {Promise<Object>} - Documents result
    */
   async getDocuments(documentId, documentType) {
@@ -439,6 +701,7 @@ class DocumentStorageService {
       documents: result.data || []
     };
   }
+
   /**
    * Delete specific document file
    * @param {string} filePath - Full storage path to the file
@@ -474,7 +737,7 @@ class DocumentStorageService {
   /**
    * Delete all document files for a document
    * @param {string} documentId - Document ID
-   * @param {string} documentType - 'po' or 'pi'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
    * @returns {Promise<Object>} - Deletion result
    */
   async deleteDocumentFiles(documentId, documentType) {
@@ -486,7 +749,8 @@ class DocumentStorageService {
     }
 
     try {
-      const folderPath = `${this.bucketPaths[documentType]}/${documentId}`;
+      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+      const folderPath = `${basePath}/${documentId}`;
       const folderRef = ref(storage, folderPath);
       
       const listResult = await listAll(folderRef);
@@ -511,10 +775,48 @@ class DocumentStorageService {
       };
     }
   }
+
+  /**
+   * 🆕 NEW: Delete entire payment slip folder (both file and extraction data)
+   * @param {string} paymentSlipId - Payment slip ID
+   * @returns {Promise<Object>} - Deletion result
+   */
+  async deletePaymentSlip(paymentSlipId) {
+    if (!this.isReady()) {
+      throw new Error('DocumentStorageService is not ready');
+    }
+
+    try {
+      console.log('🗑️ Deleting payment slip folder:', paymentSlipId);
+      
+      const folderRef = ref(storage, `${this.bucketPaths['payment-slips']}/${paymentSlipId}`);
+      const folderContents = await listAll(folderRef);
+      
+      // Delete all items in the folder
+      const deletePromises = folderContents.items.map(itemRef => deleteObject(itemRef));
+      await Promise.all(deletePromises);
+      
+      console.log(`✅ Payment slip deleted: ${folderContents.items.length} files removed`);
+      
+      return {
+        success: true,
+        message: `Payment slip deleted: ${folderContents.items.length} files removed`,
+        deletedFiles: folderContents.items.length
+      };
+
+    } catch (error) {
+      console.error('❌ Error deleting payment slip:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
   /**
    * Delete a specific document by filename
    * @param {string} documentId - Document ID
-   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
    * @param {string} fileName - Name of file to delete
    * @returns {Promise<Object>} - Deletion result
    */
@@ -527,7 +829,8 @@ class DocumentStorageService {
     }
 
     try {
-      const filePath = `${this.bucketPaths[documentType]}/${documentId}/${fileName}`;
+      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+      const filePath = `${basePath}/${documentId}/${fileName}`;
       const result = await this.deleteDocumentFile(filePath);
       
       return result;
@@ -540,6 +843,7 @@ class DocumentStorageService {
       };
     }
   }
+
   /**
    * Generate document download link with authentication
    * @param {string} storagePath - Full storage path
@@ -559,10 +863,11 @@ class DocumentStorageService {
       throw error;
     }
   }
+
   /**
    * Download document by filename
    * @param {string} documentId - Document ID
-   * @param {string} documentType - 'po', 'pi', or 'trade'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
    * @param {string} fileName - Name of file to download
    * @returns {Promise<Object>} - Download result with URL
    */
@@ -575,7 +880,8 @@ class DocumentStorageService {
     }
 
     try {
-      const filePath = `${this.bucketPaths[documentType]}/${documentId}/${fileName}`;
+      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+      const filePath = `${basePath}/${documentId}/${fileName}`;
       const downloadURL = await this.getAuthenticatedDownloadURL(filePath);
       
       return {
@@ -592,6 +898,7 @@ class DocumentStorageService {
       };
     }
   }
+
   /**
    * Utility functions
    */
@@ -617,7 +924,7 @@ class DocumentStorageService {
 
   /**
    * Get storage usage statistics
-   * @param {string} documentType - 'po' or 'pi'
+   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
    * @returns {Promise<Object>} - Storage statistics
    */
   async getStorageStats(documentType) {
@@ -630,7 +937,8 @@ class DocumentStorageService {
     }
 
     try {
-      const folderRef = ref(storage, this.bucketPaths[documentType]);
+      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+      const folderRef = ref(storage, basePath);
       const listResult = await listAll(folderRef);
       
       let totalSize = 0;
@@ -671,6 +979,105 @@ class DocumentStorageService {
   }
 
   /**
+   * 🆕 NEW: Get comprehensive storage statistics including payment slips
+   * @returns {Promise<Object>} - Complete storage usage statistics
+   */
+  async getAllStorageStats() {
+    if (!this.isReady()) {
+      throw new Error('DocumentStorageService is not ready');
+    }
+
+    try {
+      console.log('📊 Calculating comprehensive storage statistics...');
+      
+      const stats = {
+        totalFiles: 0,
+        totalSize: 0,
+        byDocumentType: {},
+        paymentSlips: {
+          count: 0,
+          totalAmount: 0,
+          currencies: new Set()
+        }
+      };
+
+      // Process each document type
+      for (const [docType, path] of Object.entries(this.bucketPaths)) {
+        try {
+          const typeRef = ref(storage, path);
+          const typeResult = await listAll(typeRef);
+          
+          let typeStats = {
+            folders: typeResult.prefixes.length,
+            files: 0,
+            size: 0
+          };
+
+          // Process folders within document type
+          for (const folderRef of typeResult.prefixes) {
+            const folderContents = await listAll(folderRef);
+            
+            for (const itemRef of folderContents.items) {
+              try {
+                const metadata = await getMetadata(itemRef);
+                typeStats.files++;
+                typeStats.size += metadata.size;
+                stats.totalFiles++;
+                stats.totalSize += metadata.size;
+
+                // Special handling for payment slips
+                if (docType === 'payment-slips' && metadata.customMetadata) {
+                  stats.paymentSlips.count++;
+                  const amount = parseFloat(metadata.customMetadata.paymentAmount || 0);
+                  if (amount > 0) {
+                    stats.paymentSlips.totalAmount += amount;
+                  }
+                  if (metadata.customMetadata.paymentCurrency) {
+                    stats.paymentSlips.currencies.add(metadata.customMetadata.paymentCurrency);
+                  }
+                }
+              } catch (itemError) {
+                console.warn('⚠️ Error processing item for stats:', itemError);
+              }
+            }
+          }
+
+          stats.byDocumentType[docType] = typeStats;
+          
+        } catch (typeError) {
+          console.warn(`⚠️ Error processing ${docType} for stats:`, typeError);
+          stats.byDocumentType[docType] = { folders: 0, files: 0, size: 0 };
+        }
+      }
+
+      // Convert Set to Array for JSON serialization
+      stats.paymentSlips.currencies = Array.from(stats.paymentSlips.currencies);
+      
+      // Add formatted sizes
+      stats.totalSizeFormatted = this.formatFileSize(stats.totalSize);
+      
+      for (const docType of Object.keys(stats.byDocumentType)) {
+        stats.byDocumentType[docType].sizeFormatted = 
+          this.formatFileSize(stats.byDocumentType[docType].size);
+      }
+
+      console.log('📊 Storage statistics calculated:', stats);
+      
+      return {
+        success: true,
+        data: stats
+      };
+
+    } catch (error) {
+      console.error('❌ Error calculating storage statistics:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Health check method
    * @returns {Promise<Object>} - Service health status
    */
@@ -682,6 +1089,7 @@ class DocumentStorageService {
         hasStorage: !!storage,
         hasApp: !!(storage && storage.app),
         bucketPaths: this.bucketPaths,
+        supportedTypes: Object.keys(this.bucketPaths),
         timestamp: new Date().toISOString()
       };
     } catch (error) {
@@ -689,6 +1097,41 @@ class DocumentStorageService {
         isReady: false,
         error: error.message,
         timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * 🆕 NEW: Validate Firebase Storage connection
+   * @returns {Promise<Object>} - Connection status
+   */
+  async validateConnection() {
+    try {
+      console.log('🔍 Validating Firebase Storage connection...');
+      
+      if (!this.isReady()) {
+        throw new Error('Service not ready');
+      }
+
+      // Try to list the root documents folder
+      const testRef = ref(storage, 'documents');
+      await listAll(testRef);
+      
+      console.log('✅ Firebase Storage connection validated');
+      
+      return {
+        success: true,
+        status: 'connected',
+        message: 'Firebase Storage is accessible'
+      };
+
+    } catch (error) {
+      console.error('❌ Firebase Storage connection validation failed:', error);
+      
+      return {
+        success: false,
+        status: 'disconnected',
+        error: error.message
       };
     }
   }
