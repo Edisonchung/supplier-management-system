@@ -1767,14 +1767,29 @@ const handleSubmit = useCallback((e) => {
         paymentPercentage: Math.round(paymentPercentage * 10) / 10
       }));
       
-      // 🔧 Use the services file function (this should work!)
+      // 🔧 FIX: Get the PI ID from the right source
+      const piId = formData.id || proformaInvoice?.id || formData.piId;
+      
+      if (!piId) {
+        console.error('❌ Cannot delete payment: PI ID not found');
+        console.log('🔍 Available IDs:', {
+          formDataId: formData.id,
+          proformaInvoiceId: proformaInvoice?.id,
+          formDataPiId: formData.piId,
+          allFormDataKeys: Object.keys(formData),
+          allProformaInvoiceKeys: proformaInvoice ? Object.keys(proformaInvoice) : []
+        });
+        showNotification?.('Cannot delete payment: PI ID not found. Please save the PI first.', 'error');
+        return;
+      }
+      
       console.log(`🔄 Using services file for payment deletion ${paymentId}`);
-      console.log(`📋 PI ID: ${formData.id}`);
+      console.log(`📋 PI ID: ${piId}`);
       console.log(`📋 Updated payments count: ${updatedPayments.length}`);
       
       const { updateProformaInvoice } = await import('../../services/firebase');
       
-      const result = await updateProformaInvoice(formData.id, {
+      const result = await updateProformaInvoice(piId, {
         payments: updatedPayments,
         totalPaid,
         paymentStatus,
