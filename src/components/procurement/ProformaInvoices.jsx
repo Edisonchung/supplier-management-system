@@ -140,9 +140,7 @@ const ProformaInvoices = ({ showNotification }) => {
           const existingProduct = products.find(p => 
             p.sku === item.productCode || 
             p.name === item.productName
-        };
-
-export default ProformaInvoices;
+          );
 
           if (existingProduct) {
             // Update existing product - Build clean update data - CRITICAL FIX
@@ -1375,93 +1373,6 @@ export default ProformaInvoices;
           </p>
         </div>
         <div className="flex gap-3">
-          {/* NEW: Batch Status Indicator with dark mode */}
-          {batchStats.activeBatches > 0 && (
-            <div className={`flex items-center space-x-2 ${
-              isDarkMode 
-                ? 'bg-blue-900/50 border-blue-700' 
-                : 'bg-blue-50 border-blue-200'
-            } border rounded-lg px-3 py-2`}>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className={`text-sm ${
-                isDarkMode ? 'text-blue-200' : 'text-blue-700'
-              }`}>
-                {batchStats.activeBatches} batch{batchStats.activeBatches > 1 ? 'es' : ''} processing
-              </span>
-              <button
-                onClick={() => setShowBatchModal(true)}
-                className={`text-sm underline ${
-                  isDarkMode 
-                    ? 'text-blue-400 hover:text-blue-300' 
-                    : 'text-blue-600 hover:text-blue-800'
-                }`}
-              >
-                View
-              </button>
-            </div>
-          )}
-
-          {/* NEW: Bulk Operations Controls with dark mode */}
-          {canDelete && proformaInvoices.length > 0 && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setBulkMode(!bulkMode);
-                  setSelectedPIs(new Set());
-                }}
-                className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 transition-colors ${
-                  bulkMode 
-                    ? isDarkMode
-                      ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' 
-                      : 'bg-gray-600 text-white hover:bg-gray-700'
-                    : isDarkMode
-                      ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-600' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {bulkMode ? (
-                  <>
-                    <X className="w-4 h-4" />
-                    Cancel
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    Bulk Delete
-                  </>
-                )}
-              </button>
-              
-              {bulkMode && (
-                <>
-                  <button
-                    onClick={handleSelectAll}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      isDarkMode
-                        ? 'bg-blue-900 text-blue-200 hover:bg-blue-800' 
-                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                    }`}
-                  >
-                    {selectedPIs.size === filteredPIs.length ? 'Deselect All' : 'Select All'}
-                  </button>
-                  
-                  {selectedPIs.size > 0 && (
-                    <button
-                      onClick={handleBulkDelete}
-                      className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 transition-colors ${
-                        isDarkMode
-                          ? 'bg-red-700 text-red-100 hover:bg-red-600' 
-                          : 'bg-red-600 text-white hover:bg-red-700'
-                      }`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete {selectedPIs.size} PI{selectedPIs.size > 1 ? 's' : ''}
-                    </button>
-                  </>
-                )}
-            </div>
-          )}
-          
           {/* NEW: Batch Upload Button with dark mode */}
           {canEdit && (
             <button
@@ -2148,3 +2059,94 @@ export default ProformaInvoices;
       )}
     </div>
   );
+};
+
+export default ProformaInvoices; Batch Status Indicator with dark mode */}
+          {batchStats.activeBatches > 0 && (
+            <div className={`flex items-center space-x-2 ${
+              isDarkMode 
+                ? 'bg-blue-900/50 border-blue-700' 
+                : 'bg-blue-50 border-blue-200'
+            } border rounded-lg px-3 py-2`}>
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+              <span className={`text-sm ${
+                isDarkMode ? 'text-blue-200' : 'text-blue-700'
+              }`}>
+                {batchStats.activeBatches} batch{batchStats.activeBatches > 1 ? 'es' : ''} processing
+              </span>
+              <button
+                onClick={() => setShowBatchModal(true)}
+                className={`text-sm underline ${
+                  isDarkMode 
+                    ? 'text-blue-400 hover:text-blue-300' 
+                    : 'text-blue-600 hover:text-blue-800'
+                }`}
+              >
+                View
+              </button>
+            </div>
+          )}
+
+          {/* NEW: Bulk Operations Controls with dark mode */}
+          {canDelete && proformaInvoices.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setBulkMode(!bulkMode);
+                  setSelectedPIs(new Set());
+                }}
+                className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 transition-colors ${
+                  bulkMode 
+                    ? isDarkMode
+                      ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' 
+                      : 'bg-gray-600 text-white hover:bg-gray-700'
+                    : isDarkMode
+                      ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-600' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {bulkMode ? (
+                  <>
+                    <X className="w-4 h-4" />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Bulk Delete
+                  </>
+                )}
+              </button>
+              
+              {bulkMode && (
+                <>
+                  <button
+                    onClick={handleSelectAll}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                      isDarkMode
+                        ? 'bg-blue-900 text-blue-200 hover:bg-blue-800' 
+                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    }`}
+                  >
+                    {selectedPIs.size === filteredPIs.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                  
+                  {selectedPIs.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 transition-colors ${
+                        isDarkMode
+                          ? 'bg-red-700 text-red-100 hover:bg-red-600' 
+                          : 'bg-red-600 text-white hover:bg-red-700'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete {selectedPIs.size} PI{selectedPIs.size > 1 ? 's' : ''}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          
+          {/* NEW:
