@@ -793,8 +793,25 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             totalPaid,
             paymentStatus,
             paymentPercentage: Math.round(paymentPercentage * 10) / 10,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            piAllocations: piAllocations,
+  batchPaymentMetadata: {
+    piAllocations: piAllocations,
+    processedAt: new Date().toISOString(),
+    paymentReference: extractedData.referenceNumber,
+    totalAllocated: totalAllocated,
+    selectedPICount: selectedPIs.length
+  }
           };
+           // 🔧 VALIDATION: Log the object being passed to onSave
+  console.log('🔍 DEBUG: updatedPI object before onSave (existing payment):', {
+    id: updatedPI.id,
+    piNumber: updatedPI.piNumber,
+    hasPiAllocations: !!updatedPI.piAllocations,
+    piAllocationsLength: updatedPI.piAllocations?.length,
+    piAllocationsData: updatedPI.piAllocations
+  });
+
 
           // 🔧 FIX 3: Add error checking and parameter validation
           if (typeof onSave !== 'function') {
@@ -810,6 +827,18 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             action: 'migration_update',
             error: result?.error || null
           });
+          } catch (onSaveError) {
+    console.error('❌ onSave function failed (existing payment):', onSaveError);
+    console.error('❌ updatedPI object that caused error:', updatedPI);
+    
+    results.push({
+      piNumber: pi.piNumber,
+      amount: existingPayment.amount,
+      status: 'failed',
+      action: 'onSave_error',
+      error: `onSave failed: ${onSaveError.message}`
+    });
+  }
 
         } else {
           // CREATE NEW PAYMENT RECORD (existing logic)
@@ -866,34 +895,53 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             totalPaid,
             paymentStatus,
             paymentPercentage: Math.round(paymentPercentage * 10) / 10,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            piAllocations: piAllocations,
+  batchPaymentMetadata: {
+    piAllocations: piAllocations,
+    processedAt: new Date().toISOString(),
+    paymentReference: extractedData.referenceNumber,
+    totalAllocated: totalAllocated,
+    selectedPICount: selectedPIs.length
+  }
           };
+       // 🔧 VALIDATION: Log the object being passed to onSave
+  console.log('🔍 DEBUG: updatedPI object before onSave (new payment):', {
+    id: updatedPI.id,
+    piNumber: updatedPI.piNumber,
+    hasPiAllocations: !!updatedPI.piAllocations,
+    piAllocationsLength: updatedPI.piAllocations?.length,
+    piAllocationsData: updatedPI.piAllocations
+  });
 
-          // 🔧 FIX 5: Add error checking and parameter validation
           if (typeof onSave !== 'function') {
-            throw new Error('onSave function is not available');
-          }
+    throw new Error('onSave function is not available');
+  }
 
-          const result = await onSave(updatedPI);
-          results.push({
-            piNumber: pi.piNumber,
-            amount: allocatedAmount,
-            status: result?.success ? 'created' : 'failed',
-            action: 'new_payment',
-            error: result?.error || null
-          });
-        }
-      } catch (piError) {
-        console.error(`❌ Error processing PI ${piId}:`, piError);
-        results.push({
-          piNumber: `PI-${piId}`,
-          amount: allocation[piId],
-          status: 'failed',
-          action: 'error',
-          error: piError.message
-        });
-      }
-    } // 🔧 FIX 6: Ensure proper closing brace for the for loop
+  try {
+    const result = await onSave(updatedPI);
+    console.log('✅ onSave completed successfully (new payment):', result);
+    
+    results.push({
+      piNumber: pi.piNumber,
+      amount: allocatedAmount,
+      status: result?.success ? 'created' : 'failed',
+      action: 'new_payment',
+      error: result?.error || null
+    });
+  } catch (onSaveError) {
+    console.error('❌ onSave function failed (new payment):', onSaveError);
+    console.error('❌ updatedPI object that caused error:', updatedPI);
+    
+    results.push({
+      piNumber: pi.piNumber,
+      amount: allocatedAmount,
+      status: 'failed',
+      action: 'onSave_error',
+      error: `onSave failed: ${onSaveError.message}`
+    });
+  }
+}
 
     // Show results summary
     const updatedCount = results.filter(r => r.action === 'migration_update' && r.status === 'updated').length;
