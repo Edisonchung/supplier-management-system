@@ -24,7 +24,7 @@ import { StockAllocationService } from '../../services/StockAllocationService';
 import BatchUploadModal from './BatchUploadModal';
 import BatchPaymentProcessor from './BatchPaymentProcessor';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase.js';
+import { db } from '../../services/firebase.js';
 
 
 const ProformaInvoices = ({ showNotification }) => {
