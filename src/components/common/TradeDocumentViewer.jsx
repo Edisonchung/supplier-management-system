@@ -1,10 +1,22 @@
 // ============================================
 // src/components/common/TradeDocumentViewer.jsx
+// UPDATED WITH NULL SAFETY FIXES
 // ============================================
 
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Trash2, Eye, Calendar, FileIcon, Image } from 'lucide-react';
+import { FileText, Download, Trash2, Eye, Calendar, FileIcon, Image, AlertCircle } from 'lucide-react';
 import { DocumentStorageService } from '../../services/DocumentStorageService';
+
+// Safe string utility functions
+const safeToLowerCase = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'string') return String(value).toLowerCase();
+  return value.toLowerCase();
+};
+
+const safeString = (value, defaultValue = '') => {
+  return value || defaultValue;
+};
 
 const TradeDocumentViewer = ({ 
   documentId, 
@@ -29,10 +41,20 @@ const TradeDocumentViewer = ({
       setLoading(true);
       setError(null);
       
+      console.log('📋 Getting documents for trade', documentId);
       const result = await documentStorageService.getDocuments(documentId, 'trade');
       
       if (result.success) {
-        setDocuments(result.documents || []);
+        // Ensure all documents have safe properties
+        const safeDocuments = (result.documents || []).map(doc => ({
+          ...doc,
+          fileName: safeString(doc.fileName, 'unknown'),
+          originalFileName: safeString(doc.originalFileName, doc.fileName || 'unknown'),
+          fileSize: doc.fileSize || 0,
+          uploadedAt: doc.uploadedAt || doc.uploadTime || new Date().toISOString()
+        }));
+        setDocuments(safeDocuments);
+        console.log('✅ Successfully processed', safeDocuments.length, 'documents');
       } else {
         setError(result.error);
       }
@@ -47,7 +69,8 @@ const TradeDocumentViewer = ({
   const handleDelete = async (document) => {
     if (!allowDelete) return;
     
-    if (window.confirm(`Are you sure you want to delete ${document.fileName}?`)) {
+    const fileName = safeString(document.fileName, 'Unknown File');
+    if (window.confirm(`Are you sure you want to delete ${fileName}?`)) {
       try {
         const result = await documentStorageService.deleteDocument(
           documentId,
@@ -80,7 +103,7 @@ const TradeDocumentViewer = ({
         // Create download link
         const link = document.createElement('a');
         link.href = result.downloadURL;
-        link.download = document.originalFileName || document.fileName;
+        link.download = safeString(document.originalFileName, document.fileName);
         link.click();
       } else {
         throw new Error(result.error);
@@ -92,7 +115,14 @@ const TradeDocumentViewer = ({
   };
 
   const getDocumentIcon = (fileName) => {
-    const extension = fileName ? fileName.split('.').pop()?.toLowerCase() : '';
+    // Safe file extension extraction
+    if (!fileName || typeof fileName !== 'string') {
+      return <FileIcon className="h-5 w-5 text-gray-500" />;
+    }
+    
+    const parts = fileName.split('.');
+    const extension = parts.length > 1 ? safeToLowerCase(parts.pop()) : '';
+    
     switch (extension) {
       case 'pdf':
         return <FileText className="h-5 w-5 text-red-500" />;
@@ -106,20 +136,37 @@ const TradeDocumentViewer = ({
   };
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || typeof bytes !== 'number' || bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // ✅ FIXED: Safe document category detection
   const getDocumentCategory = (fileName) => {
-    const name = fileName.toLowerCase();
-    if (name.includes('form_e') || name.includes('certificate')) return 'Form E Certificate';
-    if (name.includes('invoice')) return 'Commercial Invoice';
-    if (name.includes('packing')) return 'Packing List';
-    if (name.includes('bill_of_lading') || name.includes('bl')) return 'Bill of Lading';
-    if (name.includes('insurance')) return 'Insurance Certificate';
+    // Safe string processing - this was the source of the error
+    if (!fileName || typeof fileName !== 'string') {
+      return 'Trade Document';
+    }
+    
+    const name = safeToLowerCase(fileName);
+    
+    if (name.includes('form_e') || name.includes('forme') || name.includes('certificate')) {
+      return 'Form E Certificate';
+    }
+    if (name.includes('invoice')) {
+      return 'Commercial Invoice';
+    }
+    if (name.includes('packing')) {
+      return 'Packing List';
+    }
+    if (name.includes('bill_of_lading') || name.includes('bl')) {
+      return 'Bill of Lading';
+    }
+    if (name.includes('insurance')) {
+      return 'Insurance Certificate';
+    }
     return 'Trade Document';
   };
 
@@ -131,6 +178,16 @@ const TradeDocumentViewer = ({
       case 'Bill of Lading': return 'bg-purple-100 text-purple-800';
       case 'Insurance Certificate': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown';
+    
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch (error) {
+      return 'Invalid Date';
     }
   };
 
@@ -172,16 +229,20 @@ const TradeDocumentViewer = ({
       
       <div className="space-y-3">
         {documents.map((document, index) => {
-          const category = getDocumentCategory(document.fileName);
+          // Safe document processing
+          const fileName = safeString(document.fileName, `document-${index}`);
+          const originalFileName = safeString(document.originalFileName, fileName);
+          const category = getDocumentCategory(fileName);
+          
           return (
-            <div key={index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+            <div key={`${fileName}-${index}`} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3 flex-1">
-                  {getDocumentIcon(document.fileName)}
+                  {getDocumentIcon(fileName)}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2 mb-1">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {document.originalFileName || document.fileName}
+                        {originalFileName}
                       </p>
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${getCategoryColor(category)}`}>
                         {category}
@@ -194,7 +255,7 @@ const TradeDocumentViewer = ({
                       {document.uploadedAt && (
                         <p className="text-xs text-gray-500 flex items-center">
                           <Calendar className="h-3 w-3 mr-1" />
-                          {new Date(document.uploadedAt).toLocaleDateString()}
+                          {formatDate(document.uploadedAt)}
                         </p>
                       )}
                     </div>
