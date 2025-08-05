@@ -835,28 +835,39 @@ console.log('🔍 PaymentSlipStorage state check:', {
           }
 
           try {
-            const result = await onSave(cleanedUpdatedPI);
-            console.log('✅ onSave completed successfully (existing payment):', result);
-            
-            results.push({
-              piNumber: pi.piNumber,
-              amount: existingPayment.amount,
-              status: 'updated',
-              action: 'migration_update',
-              error: result?.error || null
-            });
-          } catch (onSaveError) {
-            console.error('❌ onSave function failed (existing payment):', onSaveError);
-            console.error('❌ cleanedUpdatedPI object that caused error:', cleanedUpdatedPI);
-            
-            results.push({
-              piNumber: pi.piNumber,
-              amount: existingPayment.amount,
-              status: 'failed',
-              action: 'onSave_error',
-              error: `onSave failed: ${onSaveError.message}`
-            });
-          }
+  // Call onSave first to update the PI with new payment
+  const result = await onSave(cleanedUpdatedPI);
+  console.log('✅ onSave completed successfully (new payment):', result);
+  
+  // 🔧 CRITICAL: Add delay to ensure Firestore update completes and propagates
+  console.log('⏳ Waiting for Firestore synchronization...');
+  await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+  
+  // 🔧 CRITICAL: Now call handlePaymentProcessed AFTER the payment is saved and synced
+  if (onPaymentProcessed) {
+    console.log('🔄 Calling handlePaymentProcessed after sync delay...');
+    await onPaymentProcessed(paymentRecord);
+  }
+  
+  results.push({
+    piNumber: pi.piNumber,
+    amount: allocatedAmount,
+    status: 'created',
+    action: 'new_payment',
+    error: result?.error || null
+  });
+} catch (onSaveError) {
+  console.error('❌ onSave function failed (new payment):', onSaveError);
+  console.error('❌ cleanedUpdatedPI object that caused error:', cleanedUpdatedPI);
+  
+  results.push({
+    piNumber: pi.piNumber,
+    amount: allocatedAmount,
+    status: 'failed',
+    action: 'onSave_error',
+    error: `onSave failed: ${onSaveError.message}`
+  });
+}
 
         } else {
           // CREATE NEW PAYMENT RECORD
