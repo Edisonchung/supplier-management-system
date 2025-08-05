@@ -3789,24 +3789,25 @@ const saveProductEdit = (index, field) => {
 ) : null}
        </div>
 
-    {/* Modal Footer with Action Buttons */}
-        <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            {proformaInvoice ? 'Update' : 'Create'} PI
-          </button>
+    {/* Fixed Footer with Action Buttons */}
+          <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              {proformaInvoice ? 'Update' : 'Create'} PI
+            </button>
+          </div>
+        </form>
         </div>
-      </form>
-    </div>
+      </div>
 
       {/* Payment Modal */}
       {showPaymentModal && (
