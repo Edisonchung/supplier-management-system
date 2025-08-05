@@ -1142,15 +1142,7 @@ const cleanUndefinedFields = (obj) => {
   return cleaned;
 };
 
-  // 🎯 EXACT LOCATION IN YOUR BatchPaymentProcessor-15.jsx FILE
 
-// 📍 FIND THIS SECTION (around lines 1010-1015):
-const cleanUndefinedFields = (obj) => {
-  // ... existing function code ...
-  return cleaned;
-};  // ← Line 1012: This is the END of cleanUndefinedFields function
-
-  // ✅ ADD THE TWO MISSING FUNCTIONS RIGHT HERE ↓ ↓ ↓
   
 // 🔧 MISSING FUNCTION 1: Add this first
 const generateDocumentViewURL = (payment) => {
