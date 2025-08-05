@@ -1758,20 +1758,19 @@ const handleSubmit = useCallback((e) => {
         paymentStatus = 'partial';
       }
       
-      // Create the updated form data object
-      const updatedFormData = {
-        ...formData,
+      // Update the local form data first
+      setFormData(prev => ({
+        ...prev,
         payments: updatedPayments,
         totalPaid,
         paymentStatus,
         paymentPercentage: Math.round(paymentPercentage * 10) / 10
-      };
+      }));
       
-      // Update the local form data first
-      setFormData(updatedFormData);
-      
-      // 🔧 ALTERNATIVE: Use the services file function
+      // 🔧 Use the services file function (this should work!)
       console.log(`🔄 Using services file for payment deletion ${paymentId}`);
+      console.log(`📋 PI ID: ${formData.id}`);
+      console.log(`📋 Updated payments count: ${updatedPayments.length}`);
       
       const { updateProformaInvoice } = await import('../../services/firebase');
       
@@ -1783,7 +1782,7 @@ const handleSubmit = useCallback((e) => {
       });
       
       if (result.success) {
-        console.log(`🗑️ Payment ${paymentId} deleted via services`);
+        console.log(`🗑️ Payment ${paymentId} deleted via services successfully`);
         showNotification?.('Payment record deleted successfully', 'success');
       } else {
         throw new Error(result.error || 'Update failed');
