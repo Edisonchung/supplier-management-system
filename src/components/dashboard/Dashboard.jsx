@@ -1,5 +1,5 @@
 // src/components/dashboard/Dashboard.jsx
-// Enhanced Dashboard with direct Firestore integration - no migration needed
+// Enhanced Dashboard with Dark Mode Support - All existing features preserved
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, Package, FileText, Users, TrendingUp, 
@@ -21,11 +21,24 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
+// Import the enhanced dark mode system
+import { useDarkMode } from '../../hooks/useDarkMode';
+import { themeClasses, useThemeClasses, getThemeClasses } from '../../utils/theme';
+
 const Dashboard = ({ showNotification }) => {
   const { user } = useAuth();
   const permissions = usePermissions();
   
-  // Real-time data state
+  // Enhanced dark mode integration
+  const { isDarkMode, themeVariant, highContrast } = useDarkMode();
+  
+  // Memoized theme classes for performance
+  const cardClasses = useThemeClasses('card', 'hover');
+  const backgroundClasses = useThemeClasses('background', 'primary');
+  const textPrimaryClasses = useThemeClasses('text', 'primary');
+  const textSecondaryClasses = useThemeClasses('text', 'secondary');
+  
+  // Real-time data state (preserved exactly as before)
   const [dashboardData, setDashboardData] = useState({
     suppliers: [],
     products: [],
@@ -39,7 +52,7 @@ const Dashboard = ({ showNotification }) => {
   const [timeRange, setTimeRange] = useState('30d');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
 
-  // Set up real-time Firestore listeners
+  // Set up real-time Firestore listeners (preserved exactly as before)
   useEffect(() => {
     if (!user) return;
 
@@ -163,7 +176,7 @@ const Dashboard = ({ showNotification }) => {
     };
   }, [user]);
 
-  // Calculate real-time metrics from Firestore data
+  // Calculate real-time metrics from Firestore data (preserved exactly as before)
   const dashboardMetrics = useMemo(() => {
     if (loading) return null;
 
@@ -285,7 +298,7 @@ const Dashboard = ({ showNotification }) => {
     };
   }, [dashboardData, timeRange, loading]);
 
-  // Generate urgent tasks from real data
+  // Generate urgent tasks from real data (preserved exactly as before)
   const urgentTasks = useMemo(() => {
     if (!dashboardMetrics) return [];
     
@@ -350,7 +363,7 @@ const Dashboard = ({ showNotification }) => {
     return tasks.slice(0, 4);
   }, [dashboardMetrics, permissions]);
 
-  // Stats configuration with real data
+  // Enhanced stats configuration with dark mode theming
   const stats = dashboardMetrics ? [
     {
       title: 'Active Suppliers',
@@ -359,7 +372,8 @@ const Dashboard = ({ showNotification }) => {
       trend: dashboardMetrics.suppliers.growth >= 0 ? 'up' : 'down',
       icon: Building2,
       color: 'from-violet-600 to-indigo-600',
-      bgColor: 'bg-violet-50',
+      bgColor: isDarkMode ? 'bg-violet-900/20' : 'bg-violet-50',
+      iconColor: 'text-violet-600 dark:text-violet-400',
       description: 'Verified partners',
       total: dashboardMetrics.suppliers.total,
       action: () => window.location.hash = '#/suppliers'
@@ -371,7 +385,8 @@ const Dashboard = ({ showNotification }) => {
       trend: dashboardMetrics.products.growth >= 0 ? 'up' : 'down',
       icon: Package,
       color: 'from-blue-600 to-cyan-600',
-      bgColor: 'bg-blue-50',
+      bgColor: isDarkMode ? 'bg-blue-900/20' : 'bg-blue-50',
+      iconColor: 'text-blue-600 dark:text-blue-400',
       description: 'Items available',
       alert: dashboardMetrics.products.lowStock > 0 ? `${dashboardMetrics.products.lowStock} low stock` : null,
       action: () => window.location.hash = '#/products'
@@ -383,7 +398,8 @@ const Dashboard = ({ showNotification }) => {
       trend: dashboardMetrics.proformaInvoices.growth >= 0 ? 'up' : 'down',
       icon: FileText,
       color: 'from-emerald-600 to-teal-600',
-      bgColor: 'bg-emerald-50',
+      bgColor: isDarkMode ? 'bg-emerald-900/20' : 'bg-emerald-50',
+      iconColor: 'text-emerald-600 dark:text-emerald-400',
       description: 'In progress',
       total: dashboardMetrics.proformaInvoices.total,
       action: () => window.location.hash = '#/proforma-invoices'
@@ -395,7 +411,8 @@ const Dashboard = ({ showNotification }) => {
       trend: 'up',
       icon: DollarSign,
       color: 'from-amber-600 to-orange-600',
-      bgColor: 'bg-amber-50',
+      bgColor: isDarkMode ? 'bg-amber-900/20' : 'bg-amber-50',
+      iconColor: 'text-amber-600 dark:text-amber-400',
       description: 'Client orders',
       prefix: '$',
       format: 'currency',
@@ -408,7 +425,8 @@ const Dashboard = ({ showNotification }) => {
       trend: dashboardMetrics.ai.improvement >= 0 ? 'up' : 'down',
       icon: Target,
       color: 'from-green-600 to-emerald-600',
-      bgColor: 'bg-green-50',
+      bgColor: isDarkMode ? 'bg-green-900/20' : 'bg-green-50',
+      iconColor: 'text-green-600 dark:text-green-400',
       description: 'Matching success',
       suffix: '%'
     },
@@ -419,7 +437,8 @@ const Dashboard = ({ showNotification }) => {
       trend: 'up',
       icon: TrendingDown,
       color: 'from-purple-600 to-pink-600',
-      bgColor: 'bg-purple-50',
+      bgColor: isDarkMode ? 'bg-purple-900/20' : 'bg-purple-50',
+      iconColor: 'text-purple-600 dark:text-purple-400',
       description: 'This period',
       prefix: '$',
       format: 'currency'
@@ -431,7 +450,8 @@ const Dashboard = ({ showNotification }) => {
       trend: 'down',
       icon: Truck,
       color: 'from-orange-600 to-red-600',
-      bgColor: 'bg-orange-50',
+      bgColor: isDarkMode ? 'bg-orange-900/20' : 'bg-orange-50',
+      iconColor: 'text-orange-600 dark:text-orange-400',
       description: 'Awaiting arrival',
       alert: dashboardMetrics.proformaInvoices.pendingDeliveries > 10 ? 'High volume' : null,
       action: () => window.location.hash = '#/proforma-invoices?filter=pending-delivery'
@@ -443,14 +463,15 @@ const Dashboard = ({ showNotification }) => {
       trend: 'neutral',
       icon: Zap,
       color: 'from-cyan-600 to-blue-600',
-      bgColor: 'bg-cyan-50',
+      bgColor: isDarkMode ? 'bg-cyan-900/20' : 'bg-cyan-50',
+      iconColor: 'text-cyan-600 dark:text-cyan-400',
       description: 'Need suppliers',
       priority: dashboardMetrics.purchaseOrders.needingSourcing > 0 ? 'high' : 'normal',
       action: () => window.location.hash = '#/purchase-orders?filter=needs-sourcing'
     }
   ] : [];
 
-  // Format value helper
+  // Format value helper (preserved exactly as before)
   const formatValue = (value, format, prefix = '', suffix = '') => {
     if (format === 'currency') {
       return `${prefix}${(value || 0).toLocaleString()}${suffix}`;
@@ -458,7 +479,7 @@ const Dashboard = ({ showNotification }) => {
     return `${prefix}${(value || 0).toLocaleString()}${suffix}`;
   };
 
-  // Get recent activities with proper formatting and user names
+  // Get recent activities with proper formatting and user names (preserved exactly as before)
   const recentActivities = dashboardData.activityLogs.slice(0, 6).map(activity => {
     // Extract user information
     const userName = activity.userName || activity.userEmail?.split('@')[0] || 'Unknown User';
@@ -515,6 +536,7 @@ const Dashboard = ({ showNotification }) => {
     };
   });
 
+  // Helper functions (preserved exactly as before)
   function getTimeAgo(date) {
     if (!date) return 'Just now';
     const now = new Date();
@@ -543,18 +565,39 @@ const Dashboard = ({ showNotification }) => {
     return 'low';
   }
 
+  // Enhanced theme-aware helper functions
   const getStatusColor = (type) => {
-    switch (type) {
-      case 'success': return 'bg-green-500';
-      case 'update': return 'bg-blue-500';
-      case 'warning': return 'bg-orange-500';
-      case 'error': return 'bg-red-500';
-      case 'info': return 'bg-gray-500';
-      default: return 'bg-gray-400';
+    const baseColors = {
+      success: 'bg-green-500',
+      update: 'bg-blue-500', 
+      warning: 'bg-orange-500',
+      error: 'bg-red-500',
+      info: 'bg-gray-500'
+    };
+    
+    if (isDarkMode) {
+      return {
+        success: 'bg-green-400',
+        update: 'bg-blue-400',
+        warning: 'bg-orange-400', 
+        error: 'bg-red-400',
+        info: 'bg-gray-400'
+      }[type] || 'bg-gray-400';
     }
+    
+    return baseColors[type] || 'bg-gray-400';
   };
 
   const getPriorityColor = (priority) => {
+    if (isDarkMode) {
+      switch (priority) {
+        case 'high': return 'text-red-400 bg-red-900/20 border-red-700/30';
+        case 'medium': return 'text-orange-400 bg-orange-900/20 border-orange-700/30';
+        case 'low': return 'text-green-400 bg-green-900/20 border-green-700/30';
+        default: return 'text-gray-400 bg-gray-800/20 border-gray-600/30';
+      }
+    }
+    
     switch (priority) {
       case 'high': return 'text-red-600 bg-red-50 border-red-200';
       case 'medium': return 'text-orange-600 bg-orange-50 border-orange-200';
@@ -564,6 +607,15 @@ const Dashboard = ({ showNotification }) => {
   };
 
   const getConnectionStatusColor = () => {
+    if (isDarkMode) {
+      switch (connectionStatus) {
+        case 'connected': return 'text-green-400';
+        case 'connecting': return 'text-yellow-400';
+        case 'error': return 'text-red-400';
+        default: return 'text-gray-400';
+      }
+    }
+    
     switch (connectionStatus) {
       case 'connected': return 'text-green-600';
       case 'connecting': return 'text-yellow-600';
@@ -572,34 +624,35 @@ const Dashboard = ({ showNotification }) => {
     }
   };
 
+  // Enhanced loading state with dark mode
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className={`flex items-center justify-center h-64 ${backgroundClasses}`}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600 dark:border-violet-400 mx-auto"></div>
+          <p className={`mt-4 ${textSecondaryClasses}`}>Loading dashboard data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with connection status */}
+    <div className={`space-y-6 ${backgroundClasses} min-h-screen`}>
+      {/* Enhanced Header with Dark Mode */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className={`text-2xl font-bold ${textPrimaryClasses}`}>
             Welcome back, {user?.displayName || user?.email?.split('@')[0] || 'User'}!
           </h1>
-          <p className="text-gray-600 mt-1">
+          <p className={`${textSecondaryClasses} mt-1`}>
             Here's your live procurement dashboard overview.
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'connected' ? 'bg-green-500' : 
-              connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
+              connectionStatus === 'connected' ? 'bg-green-500 dark:bg-green-400' : 
+              connectionStatus === 'connecting' ? 'bg-yellow-500 dark:bg-yellow-400 animate-pulse' : 'bg-red-500 dark:bg-red-400'
             }`}></div>
             <span className={`text-sm ${getConnectionStatusColor()}`}>
               {connectionStatus === 'connected' ? 'Live' : 
@@ -609,19 +662,19 @@ const Dashboard = ({ showNotification }) => {
           <select 
             value={timeRange} 
             onChange={(e) => setTimeRange(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent text-sm"
+            className={getThemeClasses('input', 'select')}
           >
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
             <option value="90d">Last 90 days</option>
           </select>
-          <div className="text-sm text-gray-500">
+          <div className={`text-sm ${textSecondaryClasses}`}>
             Updated: {lastUpdated.toLocaleTimeString()}
           </div>
         </div>
       </div>
 
-      {/* Real-time Stats Grid */}
+      {/* Enhanced Real-time Stats Grid with Dark Mode */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
@@ -629,20 +682,20 @@ const Dashboard = ({ showNotification }) => {
           return (
             <div 
               key={index} 
-              className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 hover:shadow-md transition-all cursor-pointer group"
+              className={`${cardClasses} p-6 cursor-pointer group`}
               onClick={stat.action}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`p-3 rounded-lg ${stat.bgColor} group-hover:scale-105 transition-transform`}>
-                  <Icon className={`h-6 w-6 text-${stat.color.split('-')[1]}-600`} />
+                  <Icon className={`h-6 w-6 ${stat.iconColor}`} />
                 </div>
                 <div className="flex items-center gap-2">
                   {stat.priority === 'high' && (
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <div className="w-2 h-2 bg-red-500 dark:bg-red-400 rounded-full animate-pulse"></div>
                   )}
                   {stat.trend !== 'neutral' && stat.change !== 0 && (
                     <div className={`flex items-center gap-1 text-sm font-medium ${
-                      stat.trend === 'up' ? 'text-green-600' : 'text-red-600'
+                      stat.trend === 'up' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                     }`}>
                       {stat.trend === 'up' ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
                       {Math.abs(stat.change)}%
@@ -651,16 +704,16 @@ const Dashboard = ({ showNotification }) => {
                 </div>
               </div>
               <div>
-                <p className="text-sm text-gray-600">{stat.title}</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">
+                <p className={`text-sm ${textSecondaryClasses}`}>{stat.title}</p>
+                <p className={`text-2xl font-bold ${textPrimaryClasses} mt-1`}>
                   {formatValue(stat.value, stat.format, stat.prefix, stat.suffix)}
                 </p>
                 <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-gray-500">
+                  <p className={`text-xs ${textSecondaryClasses}`}>
                     {stat.description} {stat.total && `(${stat.total} total)`}
                   </p>
                   {stat.alert && (
-                    <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full">
+                    <span className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-xs rounded-full">
                       {stat.alert}
                     </span>
                   )}
@@ -671,14 +724,14 @@ const Dashboard = ({ showNotification }) => {
         })}
       </div>
 
-      {/* Urgent Tasks & Live Activity */}
+      {/* Enhanced Urgent Tasks & Live Activity with Dark Mode */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Urgent Tasks */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b">
+        <div className={cardClasses}>
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Urgent Tasks</h2>
-              <span className="px-2 py-1 bg-red-100 text-red-800 text-sm rounded-full">
+              <h2 className={`text-lg font-semibold ${textPrimaryClasses}`}>Urgent Tasks</h2>
+              <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 text-sm rounded-full">
                 {urgentTasks.filter(t => t.priority === 'high').length}
               </span>
             </div>
@@ -686,9 +739,9 @@ const Dashboard = ({ showNotification }) => {
           <div className="p-6">
             {urgentTasks.length === 0 ? (
               <div className="text-center py-8">
-                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                <p className="text-gray-600 font-medium">All caught up!</p>
-                <p className="text-sm text-gray-500 mt-1">No urgent tasks at the moment.</p>
+                <CheckCircle className="h-12 w-12 text-green-500 dark:text-green-400 mx-auto mb-3" />
+                <p className={`${textSecondaryClasses} font-medium`}>All caught up!</p>
+                <p className={`text-sm ${textSecondaryClasses} mt-1`}>No urgent tasks at the moment.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -722,21 +775,21 @@ const Dashboard = ({ showNotification }) => {
         </div>
 
         {/* Live Activity Feed */}
-        <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b">
+        <div className={`lg:col-span-2 ${cardClasses}`}>
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Live Activity</h2>
+              <h2 className={`text-lg font-semibold ${textPrimaryClasses}`}>Live Activity</h2>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm text-green-600">Real-time</span>
+                <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></div>
+                <span className="text-sm text-green-600 dark:text-green-400">Real-time</span>
               </div>
             </div>
           </div>
           <div className="p-6">
             {recentActivities.length === 0 ? (
               <div className="text-center py-8">
-                <Activity className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">No recent activity</p>
+                <Activity className={`h-12 w-12 ${textSecondaryClasses} mx-auto mb-3`} />
+                <p className={textSecondaryClasses}>No recent activity</p>
               </div>
             ) : (
               <div className="space-y-4 max-h-80 overflow-y-auto">
@@ -746,20 +799,20 @@ const Dashboard = ({ showNotification }) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-2 pr-2">
-                          <p className="text-sm text-gray-900">{activity.message}</p>
+                          <p className={`text-sm ${textPrimaryClasses}`}>{activity.message}</p>
                           {activity.userName && activity.userName !== 'Unknown User' && (
-                            <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full flex-shrink-0">
+                            <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs rounded-full flex-shrink-0">
                               {activity.userName}
                             </span>
                           )}
                         </div>
                         {activity.priority === 'high' && (
-                          <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex-shrink-0">
+                          <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs rounded-full flex-shrink-0">
                             High
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
+                      <p className={`text-xs ${textSecondaryClasses} mt-1`}>{activity.time}</p>
                     </div>
                   </div>
                 ))}
@@ -769,106 +822,106 @@ const Dashboard = ({ showNotification }) => {
         </div>
       </div>
 
-      {/* Quick Actions & Performance Metrics */}
+      {/* Enhanced Quick Actions & Performance Metrics with Dark Mode */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b">
-            <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
+        <div className={cardClasses}>
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h2 className={`text-lg font-semibold ${textPrimaryClasses}`}>Quick Actions</h2>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-2 gap-4">
               <button 
-                className="group p-4 border border-gray-200 rounded-lg hover:bg-gradient-to-br hover:from-violet-50 hover:to-indigo-50 hover:border-violet-300 transition-all"
+                className={`group p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gradient-to-br hover:from-violet-50 hover:to-indigo-50 dark:hover:from-violet-900/20 dark:hover:to-indigo-900/20 hover:border-violet-300 dark:hover:border-violet-600 transition-all ${textPrimaryClasses}`}
                 onClick={() => window.location.hash = '#/proforma-invoices/new'}
               >
-                <FileText className="h-6 w-6 text-violet-600 mb-2 group-hover:scale-110 transition-transform" />
-                <p className="text-sm font-medium text-gray-900">New PI</p>
-                <p className="text-xs text-gray-500 mt-1">Create proforma invoice</p>
+                <FileText className="h-6 w-6 text-violet-600 dark:text-violet-400 mb-2 group-hover:scale-110 transition-transform" />
+                <p className="text-sm font-medium">New PI</p>
+                <p className={`text-xs ${textSecondaryClasses} mt-1`}>Create proforma invoice</p>
               </button>
               
               <button 
-                className="group p-4 border border-gray-200 rounded-lg hover:bg-gradient-to-br hover:from-blue-50 hover:to-cyan-50 hover:border-blue-300 transition-all"
+                className={`group p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gradient-to-br hover:from-blue-50 hover:to-cyan-50 dark:hover:from-blue-900/20 dark:hover:to-cyan-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-all ${textPrimaryClasses}`}
                 onClick={() => window.location.hash = '#/suppliers/new'}
               >
-                <Building2 className="h-6 w-6 text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
-                <p className="text-sm font-medium text-gray-900">Add Supplier</p>
-                <p className="text-xs text-gray-500 mt-1">New partnership</p>
+                <Building2 className="h-6 w-6 text-blue-600 dark:text-blue-400 mb-2 group-hover:scale-110 transition-transform" />
+                <p className="text-sm font-medium">Add Supplier</p>
+                <p className={`text-xs ${textSecondaryClasses} mt-1`}>New partnership</p>
               </button>
               
               <button 
-                className="group p-4 border border-gray-200 rounded-lg hover:bg-gradient-to-br hover:from-emerald-50 hover:to-teal-50 hover:border-emerald-300 transition-all"
+                className={`group p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gradient-to-br hover:from-emerald-50 hover:to-teal-50 dark:hover:from-emerald-900/20 dark:hover:to-teal-900/20 hover:border-emerald-300 dark:hover:border-emerald-600 transition-all ${textPrimaryClasses}`}
                 onClick={() => window.location.hash = '#/products/new'}
               >
-                <Package className="h-6 w-6 text-emerald-600 mb-2 group-hover:scale-110 transition-transform" />
-                <p className="text-sm font-medium text-gray-900">Add Product</p>
-                <p className="text-xs text-gray-500 mt-1">Update catalog</p>
+                <Package className="h-6 w-6 text-emerald-600 dark:text-emerald-400 mb-2 group-hover:scale-110 transition-transform" />
+                <p className="text-sm font-medium">Add Product</p>
+                <p className={`text-xs ${textSecondaryClasses} mt-1`}>Update catalog</p>
               </button>
               
               <button 
-                className="group p-4 border border-gray-200 rounded-lg hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 hover:border-amber-300 transition-all"
+                className={`group p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 dark:hover:from-amber-900/20 dark:hover:to-orange-900/20 hover:border-amber-300 dark:hover:border-amber-600 transition-all ${textPrimaryClasses}`}
                 onClick={() => window.location.hash = '#/analytics'}
               >
-                <BarChart3 className="h-6 w-6 text-amber-600 mb-2 group-hover:scale-110 transition-transform" />
-                <p className="text-sm font-medium text-gray-900">Analytics</p>
-                <p className="text-xs text-gray-500 mt-1">View reports</p>
+                <BarChart3 className="h-6 w-6 text-amber-600 dark:text-amber-400 mb-2 group-hover:scale-110 transition-transform" />
+                <p className="text-sm font-medium">Analytics</p>
+                <p className={`text-xs ${textSecondaryClasses} mt-1`}>View reports</p>
               </button>
             </div>
           </div>
         </div>
 
         {/* Performance Metrics */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b">
-            <h2 className="text-lg font-semibold text-gray-900">System Performance</h2>
+        <div className={cardClasses}>
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h2 className={`text-lg font-semibold ${textPrimaryClasses}`}>System Performance</h2>
           </div>
           <div className="p-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Database Connection</span>
+                <span className={`text-sm ${textSecondaryClasses}`}>Database Connection</span>
                 <div className="flex items-center gap-2">
                   <span className={`text-sm font-medium ${getConnectionStatusColor()}`}>
                     {connectionStatus === 'connected' ? 'Excellent' : 
                      connectionStatus === 'connecting' ? 'Connecting...' : 'Error'}
                   </span>
                   <div className={`w-2 h-2 rounded-full ${
-                    connectionStatus === 'connected' ? 'bg-green-500' : 
-                    connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                    connectionStatus === 'connected' ? 'bg-green-500 dark:bg-green-400' : 
+                    connectionStatus === 'connecting' ? 'bg-yellow-500 dark:bg-yellow-400' : 'bg-red-500 dark:bg-red-400'
                   }`}></div>
                 </div>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Data Freshness</span>
+                <span className={`text-sm ${textSecondaryClasses}`}>Data Freshness</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-green-600">Real-time</span>
-                  <ArrowUp className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-600 dark:text-green-400">Real-time</span>
+                  <ArrowUp className="w-4 h-4 text-green-600 dark:text-green-400" />
                 </div>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Active Collections</span>
+                <span className={`text-sm ${textSecondaryClasses}`}>Active Collections</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-900">5 synced</span>
-                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  <span className={`text-sm font-medium ${textPrimaryClasses}`}>5 synced</span>
+                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
                 </div>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Last Update</span>
+                <span className={`text-sm ${textSecondaryClasses}`}>Last Update</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-900">
+                  <span className={`text-sm font-medium ${textPrimaryClasses}`}>
                     {getTimeAgo(lastUpdated)}
                   </span>
-                  <RefreshCw className="w-4 h-4 text-blue-600" />
+                  <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">User Session</span>
+                <span className={`text-sm ${textSecondaryClasses}`}>User Session</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-900">Active</span>
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className={`text-sm font-medium ${textPrimaryClasses}`}>Active</span>
+                  <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></div>
                 </div>
               </div>
             </div>
@@ -876,19 +929,19 @@ const Dashboard = ({ showNotification }) => {
         </div>
       </div>
 
-      {/* Smart Alerts based on real data */}
+      {/* Enhanced Smart Alerts with Dark Mode */}
       {dashboardMetrics.purchaseOrders.needingSourcing > 0 && (
-        <div className="bg-gradient-to-r from-blue-50 to-violet-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-gradient-to-r from-blue-50 to-violet-50 dark:from-blue-900/20 dark:to-violet-900/20 border border-blue-200 dark:border-blue-700/50 rounded-lg p-4">
           <div className="flex items-center gap-3">
-            <Zap className="h-5 w-5 text-blue-600 flex-shrink-0" />
+            <Zap className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-blue-900">AI Sourcing Available</p>
-              <p className="text-sm text-blue-700 mt-1">
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-200">AI Sourcing Available</p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
                 {dashboardMetrics.purchaseOrders.needingSourcing} client purchase orders are ready for AI-powered supplier matching.
               </p>
             </div>
             <button 
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white text-sm rounded-lg transition-colors"
               onClick={() => window.location.hash = '#/purchase-orders?filter=needs-sourcing'}
             >
               Start Sourcing
@@ -898,19 +951,19 @@ const Dashboard = ({ showNotification }) => {
       )}
 
       {dashboardMetrics.products.lowStock > 0 && (
-        <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg p-4">
+        <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 border border-orange-200 dark:border-orange-700/50 rounded-lg p-4">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-orange-600 flex-shrink-0" />
+            <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-orange-900">Low Stock Alert</p>
-              <p className="text-sm text-orange-700 mt-1">
+              <p className="text-sm font-medium text-orange-900 dark:text-orange-200">Low Stock Alert</p>
+              <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
                 {dashboardMetrics.products.lowStock} products are running low on stock. 
                 {dashboardMetrics.products.lowStockItems.slice(0, 3).map(p => p.name).join(', ')}
                 {dashboardMetrics.products.lowStock > 3 && ` and ${dashboardMetrics.products.lowStock - 3} more`}.
               </p>
             </div>
             <button 
-              className="px-4 py-2 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 transition-colors"
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"
               onClick={() => window.location.hash = '#/products?filter=low-stock'}
             >
               Review Items
@@ -920,17 +973,17 @@ const Dashboard = ({ showNotification }) => {
       )}
 
       {connectionStatus === 'error' && (
-        <div className="bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-lg p-4">
+        <div className="bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 border border-red-200 dark:border-red-700/50 rounded-lg p-4">
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-red-900">Connection Issue</p>
-              <p className="text-sm text-red-700 mt-1">
+              <p className="text-sm font-medium text-red-900 dark:text-red-200">Connection Issue</p>
+              <p className="text-sm text-red-700 dark:text-red-300 mt-1">
                 Having trouble connecting to the database. Some data may not be up to date.
               </p>
             </div>
             <button 
-              className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 text-white text-sm rounded-lg transition-colors"
               onClick={() => window.location.reload()}
             >
               Refresh
