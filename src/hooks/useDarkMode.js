@@ -1,5 +1,5 @@
-// src/hooks/useDarkMode.js
-import { useState, useEffect, createContext, useContext } from 'react';
+// src/hooks/useDarkMode.jsx
+import React, { useState, useEffect, createContext, useContext } from 'react';
 
 // Create Dark Mode Context
 const DarkModeContext = createContext();
