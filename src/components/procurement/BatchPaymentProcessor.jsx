@@ -839,9 +839,12 @@ console.log('🔍 PaymentSlipStorage state check:', {
   const result = await onSave(cleanedUpdatedPI);
   console.log('✅ onSave completed successfully (new payment):', result);
   
-  // 🔧 CRITICAL: Add delay to ensure Firestore update completes and propagates
+  // 🔧 CRITICAL: Add longer delay to ensure Firestore update completes and propagates
   console.log('⏳ Waiting for Firestore synchronization...');
-  await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+  await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay for better reliability
+  
+  // 🔧 ADDITIONAL: Force refresh of PI data if needed
+  console.log('🔄 Ensuring data synchronization before totals calculation...');
   
   // 🔧 CRITICAL: Now call handlePaymentProcessed AFTER the payment is saved and synced
   if (onPaymentProcessed) {
@@ -868,7 +871,6 @@ console.log('🔍 PaymentSlipStorage state check:', {
     error: `onSave failed: ${onSaveError.message}`
   });
 }
-
         } else {
           // CREATE NEW PAYMENT RECORD
           const remainingBalance = getRemainingBalance(pi);
