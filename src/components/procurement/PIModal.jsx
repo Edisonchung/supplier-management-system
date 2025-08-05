@@ -3481,33 +3481,58 @@ const saveProductEdit = (index, field) => {
           <div className="flex items-center gap-2">
             {/* Document Action Buttons */}
 {(() => {
-  // Helper to get document URL
+  // Enhanced document URL detection
   const getDocumentURL = () => {
-    // Priority 1: Firebase Storage URL
+    // Try multiple possible locations for the document
     if (payment.bankSlipDocument?.firebaseStorage?.downloadURL) {
       return payment.bankSlipDocument.firebaseStorage.downloadURL;
     }
-    
-    // Priority 2: Blob URL (temporary)
+    if (payment.bankSlipDocument?.url) {
+      return payment.bankSlipDocument.url;
+    }
     if (payment.bankSlipDocument?.blobURL) {
       return payment.bankSlipDocument.blobURL;
     }
-    
+    if (payment.attachments && payment.attachments[0]?.url) {
+      return payment.attachments[0].url;
+    }
+    if (payment.attachments && payment.attachments[0]?.data) {
+      // Create blob URL from base64 data
+      try {
+        const file = payment.attachments[0];
+        const byteCharacters = atob(file.data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: file.type || 'application/octet-stream' });
+        return URL.createObjectURL(blob);
+      } catch (error) {
+        console.error('Error creating blob URL:', error);
+        return null;
+      }
+    }
     return null;
   };
 
   const documentURL = getDocumentURL();
-  const hasDocument = !!documentURL && !!payment.bankSlipDocument;
+  const hasDocument = !!(payment.bankSlipDocument || (payment.attachments && payment.attachments.length > 0));
+  const fileName = payment.bankSlipDocument?.name || 
+                  payment.attachments?.[0]?.name || 
+                  `payment-slip-${payment.reference || 'document'}.pdf`;
 
-  // 🔧 DEBUG: Add this temporarily to see what's happening
-  console.log('🔍 Payment Debug:', {
+  // Debug logging
+  console.log('🔍 Payment Debug Enhanced:', {
     paymentId: payment.id,
     hasDocument: hasDocument,
-    documentURL: documentURL,
-    bankSlipDocument: payment.bankSlipDocument
+    documentURL: documentURL ? 'Present' : 'Missing',
+    bankSlipDocument: payment.bankSlipDocument ? 'Present' : 'Missing',
+    attachments: payment.attachments ? payment.attachments.length : 0,
+    fileName: fileName
   });
 
-  if (hasDocument) {
+  if (hasDocument && documentURL) {
     return (
       <div className="flex items-center gap-1">
         {/* View Button */}
@@ -3525,10 +3550,15 @@ const saveProductEdit = (index, field) => {
           onClick={() => {
             const link = document.createElement('a');
             link.href = documentURL;
-            link.download = payment.bankSlipDocument?.name || `payment-slip-${payment.reference || 'document'}.pdf`;
+            link.download = fileName;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            
+            // Clean up blob URL if we created one
+            if (documentURL.startsWith('blob:')) {
+              setTimeout(() => URL.revokeObjectURL(documentURL), 1000);
+            }
           }}
           className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
           title="Download payment slip"
@@ -3540,12 +3570,18 @@ const saveProductEdit = (index, field) => {
     );
   }
   
-  // 🔧 DEBUG: Show when no document is available
+  if (hasDocument && !documentURL) {
+    return (
+      <span className="text-xs text-orange-500 bg-orange-100 px-2 py-1 rounded">
+        Document stored
+      </span>
+    );
+  }
+  
   return (
     <span className="text-xs text-gray-400">No document</span>
   );
-})()}
-            
+})()}            
             {/* Payment Status Badge */}
             <span className={`px-2 py-1 text-xs rounded-full ${
               payment.status === 'confirmed' || payment.type === 'balance'
