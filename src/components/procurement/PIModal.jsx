@@ -3745,7 +3745,7 @@ const saveProductEdit = (index, field) => {
 
     ) : activeTab === 'Trade Documents' ? (
   <div className="space-y-6">
-    {/* Trade Documentation Fee Summary */}
+    {/* Trade Documentation Fee Summary - KEEPING YOUR EXISTING DESIGN */}
     <div className="bg-blue-50 p-4 rounded-lg">
       <h3 className="font-medium text-blue-900 mb-2">Trade Documentation</h3>
       <div className="grid grid-cols-2 gap-4 text-sm">
@@ -3762,64 +3762,32 @@ const saveProductEdit = (index, field) => {
       </div>
     </div>
 
-    {/* Trade Document Upload Interface */}
-    <div className="space-y-4">
-      <h4 className="font-medium text-gray-900">Upload Trade Documents</h4>
-      
-      {/* File Upload Area */}
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-        <input
-          type="file"
-          multiple
-          accept=".pdf,.jpg,.jpeg,.png"
-          className="hidden"
-          id="trade-document-upload"
+    {/* FUNCTIONAL UPLOAD COMPONENT - REPLACING YOUR STATIC UPLOAD */}
+    <TradeDocumentUpload
+      documentId={formData.documentId || proformaInvoice?.documentId}
+      piNumber={formData.documentNumber || proformaInvoice?.documentNumber}
+      onDocumentUploaded={handleTradeDocumentUploaded}
+      allowedTypes={['pdf', 'jpg', 'jpeg', 'png']}
+    />
+
+    {/* DOCUMENT VIEWER - NEW ADDITION */}
+    {(formData.documentId || proformaInvoice?.documentId) ? (
+      <div className="border-t pt-6">
+        <TradeDocumentViewer
+          documentId={formData.documentId || proformaInvoice?.documentId}
+          documentType="trade"
         />
-        
-        <label htmlFor="trade-document-upload" className="cursor-pointer">
-          <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-          <p className="text-gray-600 mb-1">Click to upload or drag and drop</p>
-          <p className="text-xs text-gray-500">
-            Form E, Commercial Invoice, Packing List, B/L (PDF, JPG, PNG)
-          </p>
-        </label>
       </div>
-
-      {/* Document Type Guidelines */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <h5 className="font-medium text-gray-900 mb-2">Required Trade Documents:</h5>
-        <ul className="text-sm text-gray-600 space-y-1">
-          <li>• <strong>Form E Certificate:</strong> ASEAN-China Free Trade Agreement Certificate of Origin</li>
-          <li>• <strong>Commercial Invoice:</strong> Detailed invoice with HS codes</li>
-          <li>• <strong>Packing List:</strong> Complete item manifest</li>
-          <li>• <strong>Bill of Lading:</strong> Shipping documentation</li>
-          <li>• <strong>Insurance Certificate:</strong> Cargo insurance (if applicable)</li>
-        </ul>
+    ) : (
+      <div className="text-center py-8 text-gray-500 border-t">
+        <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+        <p className="font-medium mb-1">Save this PI first to view uploaded documents</p>
+        <p className="text-xs">Documents will be available after saving</p>
       </div>
-    </div>
+    )}
   </div>
-          ) : null}
+) : null}
        </div>
-
-          {/* Fixed Footer with Action Buttons */}
-          <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              {proformaInvoice ? 'Update' : 'Create'} PI
-            </button>
-          </div>
-        </form>
-        </div>
-      </div>
 
       {/* Payment Modal */}
       {showPaymentModal && (
