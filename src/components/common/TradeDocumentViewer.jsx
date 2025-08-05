@@ -92,7 +92,7 @@ const TradeDocumentViewer = ({
   };
 
   const getDocumentIcon = (fileName) => {
-    const extension = fileName.split('.').pop().toLowerCase();
+    const extension = fileName ? fileName.split('.').pop()?.toLowerCase() : '';
     switch (extension) {
       case 'pdf':
         return <FileText className="h-5 w-5 text-red-500" />;
