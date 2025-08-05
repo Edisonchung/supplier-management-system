@@ -504,97 +504,119 @@ class DocumentStorageService {
   }
 
   /**
-   * Retrieve all documents for a specific PO/PI/Payment Slip
-   * @param {string} documentId - Document ID
-   * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
-   * @returns {Promise<Array>} - List of stored documents
-   */
-  async getDocumentFiles(documentId, documentType) {
-    if (!this.isReady()) {
-      console.warn('⚠️ DocumentStorageService not ready');
-      return {
-        success: false,
-        error: 'DocumentStorageService not ready',
-        data: []
-      };
-    }
-
-    try {
-      console.log(`📋 Getting documents for ${documentType} ${documentId}`);
-      const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
-      const folderPath = `${basePath}/${documentId}`;
-      const folderRef = ref(storage, folderPath);
-      
-      const listResult = await listAll(folderRef);
-      console.log(`📁 Found ${listResult.items.length} files in ${folderPath}`);
-      
-      const files = await Promise.all(
-        listResult.items.map(async (itemRef) => {
-          try {
-            const downloadURL = await getDownloadURL(itemRef);
-            const metadata = await getMetadata(itemRef);
-            
-            return {
-              name: itemRef.name,
-              path: itemRef.fullPath,
-              fullPath: itemRef.fullPath,
-              downloadURL: downloadURL,
-              size: metadata.size,
-              contentType: metadata.contentType,
-              timeCreated: metadata.timeCreated,
-              updated: metadata.updated,
-              customMetadata: metadata.customMetadata || {},
-              
-              // 🆕 NEW: Payment slip specific metadata extraction
-              ...(documentType === 'payment-slips' && metadata.customMetadata && {
-                paymentInfo: {
-                  reference: metadata.customMetadata.paymentReference,
-                  amount: metadata.customMetadata.paymentAmount,
-                  currency: metadata.customMetadata.paymentCurrency,
-                  storageType: metadata.customMetadata.storageType
-                }
-              })
-            };
-          } catch (fileError) {
-            console.error(`❌ Error processing file ${itemRef.name}:`, fileError);
-            try {
-              const downloadURL = await getDownloadURL(itemRef);
-              return {
-                name: itemRef.name,
-                path: itemRef.fullPath,
-                fullPath: itemRef.fullPath,
-                downloadURL: downloadURL,
-                size: 0,
-                contentType: 'application/octet-stream',
-                timeCreated: new Date().toISOString(),
-                updated: new Date().toISOString(),
-                customMetadata: {}
-              };
-            } catch (fallbackError) {
-              console.error(`❌ Fallback failed for ${itemRef.name}:`, fallbackError);
-              return null;
-            }
-          }
-        })
-      );
-
-      const validFiles = files.filter(file => file !== null);
-      console.log(`✅ Successfully processed ${validFiles.length} documents`);
-
-      return {
-        success: true,
-        data: validFiles.sort((a, b) => new Date(b.timeCreated) - new Date(a.timeCreated))
-      };
-
-    } catch (error) {
-      console.error('❌ Error retrieving documents:', error);
-      return {
-        success: false,
-        error: error.message,
-        data: []
-      };
-    }
+ * ✅ FIXED: Retrieve all documents for a specific PO/PI/Payment Slip/Trade
+ * @param {string} documentId - Document ID
+ * @param {string} documentType - 'po', 'pi', 'payment-slips', or 'trade'
+ * @returns {Promise<Object>} - List of stored documents with correct filenames
+ */
+async getDocumentFiles(documentId, documentType) {
+  if (!this.isReady()) {
+    console.warn('⚠️ DocumentStorageService not ready');
+    return {
+      success: false,
+      error: 'DocumentStorageService not ready',
+      data: []
+    };
   }
+
+  try {
+    console.log(`📋 Getting documents for ${documentType} ${documentId}`);
+    const basePath = this.bucketPaths[documentType] || this.bucketPaths.temp;
+    const folderPath = `${basePath}/${documentId}`;
+    const folderRef = ref(storage, folderPath);
+    
+    const listResult = await listAll(folderRef);
+    console.log(`📁 Found ${listResult.items.length} files in ${folderPath}`);
+    
+    const files = await Promise.all(
+      listResult.items.map(async (itemRef) => {
+        try {
+          const downloadURL = await getDownloadURL(itemRef);
+          const metadata = await getMetadata(itemRef);
+          
+          return {
+            // ✅ CRITICAL FIX: Map Firebase Storage fields to expected component fields
+            fileName: itemRef.name,  // ← This is the actual filename in Firebase Storage!
+            originalFileName: metadata.customMetadata?.originalFileName || itemRef.name,
+            
+            // Legacy fields for compatibility
+            name: itemRef.name,
+            path: itemRef.fullPath,
+            fullPath: itemRef.fullPath,
+            
+            // File properties
+            downloadURL: downloadURL,
+            fileSize: metadata.size,
+            size: metadata.size, // Legacy field
+            contentType: metadata.contentType,
+            
+            // Timestamps
+            uploadedAt: metadata.customMetadata?.uploadedAt || metadata.timeCreated,
+            timeCreated: metadata.timeCreated,
+            updated: metadata.updated,
+            
+            // Document metadata
+            documentType: metadata.customMetadata?.documentType || documentType.toUpperCase(),
+            documentNumber: metadata.customMetadata?.documentNumber,
+            documentId: metadata.customMetadata?.documentId || documentId,
+            
+            // Raw metadata
+            customMetadata: metadata.customMetadata || {},
+            
+            // 🆕 Payment slip specific metadata extraction (if applicable)
+            ...(documentType === 'payment-slips' && metadata.customMetadata && {
+              paymentInfo: {
+                reference: metadata.customMetadata.paymentReference,
+                amount: metadata.customMetadata.paymentAmount,
+                currency: metadata.customMetadata.paymentCurrency,
+                date: metadata.customMetadata.paymentDate
+              }
+            })
+          };
+          
+        } catch (error) {
+          console.error(`❌ Error processing file ${itemRef.name}:`, error);
+          
+          // Return basic file info even if metadata fails
+          return {
+            fileName: itemRef.name,
+            originalFileName: itemRef.name,
+            name: itemRef.name,
+            path: itemRef.fullPath,
+            fullPath: itemRef.fullPath,
+            fileSize: 0,
+            size: 0,
+            contentType: 'application/octet-stream',
+            uploadedAt: new Date().toISOString(),
+            documentType: documentType.toUpperCase(),
+            documentId: documentId,
+            error: `Failed to load metadata: ${error.message}`
+          };
+        }
+      })
+    );
+
+    console.log(`✅ Successfully processed ${files.length} documents`);
+    
+    // Debug log to show actual filenames
+    files.forEach((file, index) => {
+      console.log(`📄 Document ${index + 1}: fileName="${file.fileName}", originalFileName="${file.originalFileName}"`);
+    });
+
+    return {
+      success: true,
+      data: files
+    };
+
+  } catch (error) {
+    console.error(`❌ Error getting ${documentType} documents:`, error);
+    return {
+      success: false,
+      error: error.message,
+      data: []
+    };
+  }
+}
 
   /**
    * 🆕 NEW: Get payment slips by reference number or date range
