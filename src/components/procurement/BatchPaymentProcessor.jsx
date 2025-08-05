@@ -44,7 +44,7 @@ const BatchPaymentProcessor = ({ onClose, onSave, availablePIs = [] }) => {
   // Payment slip storage state
 const [paymentSlipStorage, setPaymentSlipStorage] = useState(null);
 const [isStoringSlip, setIsStoringSlip] = useState(false);
-const [storageError, setStorageError] = useState(null)
+const [storageError, setStorageError] = useState(null);
   
   
   // Percentage allocation controls
@@ -670,7 +670,6 @@ await storePaymentSlipToFirebase(file, processedData);
               </div>
             ))}
           </div>
-        </div>
 
         {/* 🆕 NEW: Firebase Storage Status */}
 {isStoringSlip && (
