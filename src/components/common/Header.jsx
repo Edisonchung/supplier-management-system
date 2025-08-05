@@ -153,7 +153,7 @@ const Header = ({ toggleMobileMenu }) => {
           if (daysUntilDue <= 3 && daysUntilDue >= 0 && payment.status === 'pending') {
             alerts.push({
               id: `legacy-payment-${supplierId}`,
-              message: `Payment of ${payment.totalAmount?.toLocaleString() || '0'} due ${daysUntilDue === 0 ? 'today' : `in ${daysUntilDue} days`}`,
+              message: `Payment of $${payment.totalAmount?.toLocaleString() || '0'} due ${daysUntilDue === 0 ? 'today' : `in ${daysUntilDue} days`}`,
               time: daysUntilDue === 0 ? 'Due today' : `Due in ${daysUntilDue} days`,
               unread: true,
               type: 'payment',
@@ -305,5 +305,227 @@ const Header = ({ toggleMobileMenu }) => {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showNotifications, showUserMenu]);
+
+  return (
+    <header className="fixed top-0 z-50 w-full bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
+      <div className="px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          {/* Left side - Menu button and Title */}
+          <div className="flex items-center">
+            <button
+              onClick={toggleMobileMenu}
+              className="lg:hidden p-2 rounded-md text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-colors"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            
+            <div className="ml-4 lg:ml-0 flex items-center space-x-3">
+              <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg">
+                <span className="text-white font-bold text-sm">HF</span>
+              </div>
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white whitespace-nowrap transition-colors">
+                HiggsFlow
+              </h1>
+            </div>
+          </div>
+
+          {/* Right side - Dark mode toggle, Enhanced Notifications, Settings, and User menu */}
+          <div className="flex items-center space-x-2">
+            {/* Dark Mode Toggle */}
+            <DarkModeToggle />
+
+            {/* ✅ ENHANCED: Notifications with proper click handling */}
+            <div className="relative">
+              <button
+                onClick={handleNotificationIconClick}
+                className="relative p-2 text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full transition-colors"
+                aria-label="Notifications"
+              >
+                <Bell className="h-6 w-6" />
+                {loading && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                )}
+                {!loading && unreadCount > 0 && (
+                  <span className={getNotificationBadgeStyle()}>
+                    {highPriorityCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : ''}
+                  </span>
+                )}
+              </button>
+
+              {/* Enhanced Notifications Dropdown */}
+              {showNotifications && (
+                <div 
+                  className="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 backdrop-blur-sm transition-colors duration-300"
+                  onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+                >
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Bell className="h-4 w-4" />
+                      Notifications
+                      {loading && <div className="animate-spin h-3 w-3 border border-blue-500 border-t-transparent rounded-full"></div>}
+                    </h3>
+                    <button 
+                      onClick={handleViewAllNotifications}
+                      className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+                    >
+                      View all
+                    </button>
+                  </div>
+
+                  {/* Priority Alert Banner */}
+                  {highPriorityCount > 0 && (
+                    <div className="px-4 py-3 bg-gradient-to-r from-red-50 to-amber-50 dark:from-red-900/20 dark:to-amber-900/20 border-b border-red-100 dark:border-red-800">
+                      <div className="flex items-center space-x-2">
+                        <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400" />
+                        <span className="text-sm font-medium text-red-700 dark:text-red-300">
+                          {highPriorityCount} urgent alert{highPriorityCount > 1 ? 's' : ''} requiring attention
+                        </span>
+                        <Brain className="h-4 w-4 text-purple-500 dark:text-purple-400 animate-pulse" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notifications List */}
+                  <div className="max-h-80 overflow-y-auto">
+                    {allNotifications.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                        <Bell className="h-8 w-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+                        <p className="text-sm font-medium">All caught up!</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">No notifications at the moment</p>
+                      </div>
+                    ) : (
+                      allNotifications.slice(0, 8).map(notification => {
+                        const Icon = notification.icon || Bell;
+                        return (
+                          <div
+                            key={notification.id}
+                            className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer border-l-4 transition-all ${
+                              notification.unread ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''
+                            } ${
+                              notification.priority === 'high' ? 'border-l-red-500 hover:bg-red-50/30 dark:hover:bg-red-900/30' :
+                              notification.priority === 'medium' ? 'border-l-amber-500 hover:bg-amber-50/30 dark:hover:bg-amber-900/30' :
+                              'border-l-transparent'
+                            }`}
+                            onClick={() => handleNotificationClick(notification)}
+                          >
+                            <div className="flex items-start space-x-3">
+                              <Icon className={`h-5 w-5 mt-0.5 ${notification.color || 'text-gray-400 dark:text-gray-500'}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm leading-tight ${
+                                  notification.unread ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'
+                                }`}>
+                                  {notification.message}
+                                </p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{notification.time}</p>
+                                  <div className="flex items-center space-x-1">
+                                    {notification.priority === 'high' && (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+                                        Urgent
+                                      </span>
+                                    )}
+                                    {notification.isNew && (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 animate-pulse">
+                                        New
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  {allNotifications.length > 8 && (
+                    <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700 text-center">
+                      <button 
+                        onClick={handleViewAllNotifications}
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+                      >
+                        View all {allNotifications.length} notifications →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ✅ NEW: Settings Button */}
+            <button
+              onClick={handleSettingsClick}
+              className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 rounded-full transition-colors"
+              aria-label="Settings"
+            >
+              <Settings className="h-6 w-6" />
+            </button>
+
+            {/* ✅ ENHANCED: User Menu with proper click handling */}
+            <div className="relative">
+              <button
+                onClick={handleUserMenuClick}
+                className="flex items-center space-x-3 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              >
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">
+                    {user?.email?.charAt(0).toUpperCase() || 'U'}
+                  </span>
+                </div>
+                <span className="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {user?.email || 'User'}
+                </span>
+                <ChevronDown className="hidden md:block h-4 w-4 text-gray-400 dark:text-gray-500" />
+              </button>
+
+              {/* User Dropdown */}
+              {showUserMenu && (
+                <div 
+                  className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 dark:ring-gray-700 z-50 transition-colors duration-300"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                    <p className="text-sm text-gray-900 dark:text-white">{user?.email}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{user?.role}</p>
+                  </div>
+                  <button
+                    onClick={handleSettingsClick}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2 transition-colors"
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUserMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2 transition-colors"
+                  >
+                    <User className="h-4 w-4" />
+                    <span>Profile</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLogout();
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+};
 
 export default Header;
