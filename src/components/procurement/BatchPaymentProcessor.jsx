@@ -822,7 +822,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
           error: piError.message
         });
       }
-    }
+    } // ✅ CRITICAL: This closing brace was missing in your code!
 
     // Show results
     const successCount = results.filter(r => r.status === 'created').length;
