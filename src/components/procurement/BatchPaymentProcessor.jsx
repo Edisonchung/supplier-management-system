@@ -849,35 +849,117 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
           const piTotal = parseFloat(pi.totalAmount || 0);
           const actualPercentage = piTotal > 0 ? (allocatedAmount / piTotal) * 100 : 0;
           
-          const paymentEntry = {
-            id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            amount: allocatedAmount,
-            currency: extractedData.paidCurrency || 'USD',
-            paymentDate: extractedData.paymentDate || new Date().toISOString().split('T')[0],
-            reference: extractedData.referenceNumber,
-            paymentMethod: 'bank_transfer',
-            bankCharges: extractedData.bankCharges || 0,
-            exchangeRate: extractedData.exchangeRate || 1,
-            remark: `Batch payment processed via AI extraction. ${allocatedAmount < piTotal ? `Partial payment (${actualPercentage.toFixed(1)}% of total)` : 'Full payment'}`,
-            bankSlipDocument: {
-              name: paymentSlip.name,
-              type: paymentSlip.type,
-              size: paymentSlip.size,
-              uploadedAt: new Date().toISOString(),
-              firebaseStorage: paymentSlipStorage ? {
-                storageId: paymentSlipStorage.storageId,
-                storagePath: paymentSlipStorage.storagePath,
-                downloadURL: paymentSlipStorage.downloadURL,
-                storedAt: paymentSlipStorage.storedAt,
-                isFirebaseStored: true
-              } : null,
-              blobURL: URL.createObjectURL(paymentSlip),
-              storageStatus: paymentSlipStorage ? 'firebase_stored' : 'blob_only',
-              storageError: storageError
-            },
-            addedAt: new Date().toISOString(),
-            piAllocations: piAllocations // 🔧 FIX: Use the constant
-          };
+          const formatPaymentDate = (dateString) => {
+  if (!dateString) return new Date().toLocaleDateString();
+  
+  try {
+    // Handle various date formats from AI extraction
+    let date;
+    
+    if (dateString.includes('/')) {
+      // Handle DD/MM/YYYY format (common in payment slips)
+      const parts = dateString.split('/');
+      if (parts.length === 3) {
+        // Assume DD/MM/YYYY
+        date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      }
+    } else if (dateString.includes('-')) {
+      // Handle YYYY-MM-DD format
+      date = new Date(dateString);
+    } else {
+      // Fallback to direct parsing
+      date = new Date(dateString);
+    }
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date detected, using current date:', dateString);
+      return new Date().toLocaleDateString();
+    }
+    
+    return date.toLocaleDateString();
+  } catch (error) {
+    console.error('Date parsing error:', error);
+    return new Date().toLocaleDateString();
+  }
+};
+
+// 🔧 NOW REPLACE YOUR paymentEntry OBJECT WITH THIS:
+const paymentEntry = {
+  id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  amount: allocatedAmount,
+  currency: extractedData.paidCurrency || 'USD',
+  
+  // 🔧 FIX 1: Use proper date formatting
+  paymentDate: formatPaymentDate(extractedData.paymentDate),
+  
+  reference: extractedData.referenceNumber,
+  paymentMethod: 'bank_transfer',
+  bankCharges: extractedData.bankCharges || 0,
+  exchangeRate: extractedData.exchangeRate || 1,
+  remark: `Batch payment processed via AI extraction. ${allocatedAmount < piTotal ? `Partial payment (${actualPercentage.toFixed(1)}% of total)` : 'Full payment'}`,
+  
+  // 🔧 FIX 2: Enhanced bankSlipDocument with better structure
+  bankSlipDocument: {
+    name: paymentSlip.name,
+    type: paymentSlip.type,
+    size: paymentSlip.size,
+    uploadedAt: new Date().toISOString(),
+    
+    // 🔧 Enhanced Firebase Storage structure
+    firebaseStorage: paymentSlipStorage ? {
+      storageId: paymentSlipStorage.storageId,
+      storagePath: paymentSlipStorage.storagePath,
+      downloadURL: paymentSlipStorage.downloadURL,
+      storedAt: paymentSlipStorage.storedAt,
+      isFirebaseStored: true,
+      // 🔧 NEW: Add metadata for better document handling
+      metadata: {
+        originalFileName: paymentSlip.name,
+        paymentReference: extractedData.referenceNumber,
+        extractionMethod: 'ai_batch_processor',
+        confidence: extractedData.confidence || 0.95
+      }
+    } : null,
+    
+    // 🔧 CRITICAL: Always provide blob URL as fallback
+    blobURL: URL.createObjectURL(paymentSlip),
+    
+    // 🔧 Enhanced storage status tracking
+    storageStatus: paymentSlipStorage ? 'firebase_stored' : 'blob_only',
+    storageError: storageError || null,
+    
+    // 🔧 NEW: Document viewing capabilities
+    isViewable: true,
+    isDownloadable: true,
+    
+    // 🔧 NEW: Document metadata for better UI
+    documentMetadata: {
+      extractedAt: extractedData.extractedAt,
+      aiConfidence: extractedData.confidence,
+      extractionMethod: extractedData.extractionMethod || 'railway_backend_ai',
+      paymentReference: extractedData.referenceNumber,
+      beneficiaryName: extractedData.beneficiaryName
+    }
+  },
+  
+  addedAt: new Date().toISOString(),
+  piAllocations: piAllocations,
+  
+  // 🔧 NEW: Enhanced payment tracking
+  status: 'confirmed',
+  processingMethod: 'batch_ai_extraction',
+  
+  // 🔧 NEW: Store extraction data for display in UI
+  extractionData: {
+    confidence: extractedData.confidence,
+    bankName: extractedData.bankName,
+    beneficiaryName: extractedData.beneficiaryName,
+    exchangeRate: extractedData.exchangeRate,
+    extractionMethod: extractedData.extractionMethod || 'railway_backend_ai'
+  }
+};
+
 
           // Continue with new payment logic
           const updatedPayments = [...(pi.payments || []), paymentEntry];
