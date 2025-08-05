@@ -1140,13 +1140,13 @@ const cleanUndefinedFields = (obj) => {
     }
     
     // Recursively clean nested objects
-    if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-      const nestedCleaned = cleanUndefinedFields(value);
-      // Only include non-empty objects
-      if (Object.keys(nestedCleaned).length > 0) {
-        cleaned[key] = nestedCleaned;
-      }
-    } else if (Array.isArray(value)) {
+   if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+  const nestedCleaned = cleanUndefinedFields(value);
+  // Only include non-empty objects - BUT ALWAYS KEEP bankSlipDocument
+  if (Object.keys(nestedCleaned).length > 0 || key === 'bankSlipDocument') {
+    cleaned[key] = nestedCleaned;
+  }
+} else if (Array.isArray(value)) {
       // Clean arrays by filtering out undefined values
       const cleanedArray = value
         .map(item => typeof item === 'object' ? cleanUndefinedFields(item) : item)
