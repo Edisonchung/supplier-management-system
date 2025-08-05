@@ -692,7 +692,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
   const processPayment = async () => {
   setIsProcessing(true);
   
-  // 🔧 FIX 1: Define piAllocations at the very beginning and ensure it's always available
+  // 🔧 FIX 1: Define piAllocations at the very beginning with proper validation
   const piAllocations = selectedPIs
     .filter(piId => allocation[piId] > 0)
     .map(piId => {
@@ -708,10 +708,10 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
 
   console.log('🚨 EMERGENCY: piAllocations defined at start:', piAllocations);
 
-  // Skip authentication check for now - click OK on dialog
+  // Skip authentication check for now - processing payment directly
   console.log('⚠️ Skipping authentication check - processing payment directly');
 
-  // Continue with existing validation...
+  // Validate required data
   if (!extractedData || selectedPIs.filter(piId => allocation[piId] > 0).length === 0) {
     console.error('❌ Missing required data for payment processing');
     setIsProcessing(false);
@@ -729,9 +729,9 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
       piAllocations // 🔧 FIX: Ensure piAllocations is logged and available
     });
 
-    // 🔧 FIX 2: Use the piAllocations constant throughout the function
     console.log('📊 PI Allocations prepared:', piAllocations);
 
+    // 🔧 FIX 2: Process each PI with proper error handling
     for (const piId of selectedPIs.filter(piId => allocation[piId] > 0)) {
       try {
         const pi = availablePIs.find(p => p.id === piId);
@@ -742,210 +742,213 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
 
         const allocatedAmount = allocation[piId];
         
-        // 🚨 CHECK FOR EXISTING PAYMENT RECORD
+        // Check for existing payment record
         const existingPayment = findExistingPaymentByReference(pi, extractedData.referenceNumber);
         
         if (existingPayment) {
-  console.log(`🔄 Found existing payment for PI ${pi.piNumber} with reference ${extractedData.referenceNumber}`);
-  
-  // UPDATE EXISTING PAYMENT RECORD
-  const updatedPayment = {
-    ...existingPayment,
-    // Update with new Firebase Storage information
-    bankSlipDocument: {
-      ...existingPayment.bankSlipDocument,
-      firebaseStorage: paymentSlipStorage ? {
-        storageId: paymentSlipStorage.storageId,
-        storagePath: paymentSlipStorage.storagePath,
-        downloadURL: paymentSlipStorage.downloadURL,
-        storedAt: paymentSlipStorage.storedAt,
-        isFirebaseStored: true
-      } : existingPayment.bankSlipDocument?.firebaseStorage,
-      storageStatus: paymentSlipStorage ? "firebase_stored" : existingPayment.bankSlipDocument?.storageStatus
-    },
-    // Update metadata if needed
-    updatedAt: new Date().toISOString(),
-    migrationNote: "Updated with Firebase Storage integration",
-    piAllocations: piAllocations // 🔧 FIX: Use the constant, not parameter
-  };
+          // UPDATE EXISTING PAYMENT RECORD
+          console.log(`🔄 Found existing payment for PI ${pi.piNumber} with reference ${extractedData.referenceNumber}`);
+          
+          const updatedPayment = {
+            ...existingPayment,
+            // Update with new Firebase Storage information
+            bankSlipDocument: {
+              ...existingPayment.bankSlipDocument,
+              firebaseStorage: paymentSlipStorage ? {
+                storageId: paymentSlipStorage.storageId,
+                storagePath: paymentSlipStorage.storagePath,
+                downloadURL: paymentSlipStorage.downloadURL,
+                storedAt: paymentSlipStorage.storedAt,
+                isFirebaseStored: true
+              } : existingPayment.bankSlipDocument?.firebaseStorage,
+              storageStatus: paymentSlipStorage ? "firebase_stored" : existingPayment.bankSlipDocument?.storageStatus
+            },
+            updatedAt: new Date().toISOString(),
+            migrationNote: "Updated with Firebase Storage integration",
+            piAllocations: piAllocations // 🔧 FIX: Use the constant
+          };
 
-  // Update the payment in the PI's payments array
-  const updatedPayments = (pi.payments || []).map(p => 
-    p.reference === extractedData.referenceNumber ? updatedPayment : p
-  );
+          // Update the payment in the PI's payments array
+          const updatedPayments = (pi.payments || []).map(p => 
+            p.reference === extractedData.referenceNumber ? updatedPayment : p
+          );
 
-  // Calculate updated totals
-  const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-  const totalAmount = parseFloat(pi.totalAmount || 0);
-  const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
-  
-  let paymentStatus = 'pending';
-  if (paymentPercentage >= 99.9) {
-    paymentStatus = 'paid';
-  } else if (paymentPercentage > 0) {
-    paymentStatus = 'partial';
-  }
+          // Calculate updated totals
+          const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+          const totalAmount = parseFloat(pi.totalAmount || 0);
+          const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+          
+          let paymentStatus = 'pending';
+          if (paymentPercentage >= 99.9) {
+            paymentStatus = 'paid';
+          } else if (paymentPercentage > 0) {
+            paymentStatus = 'partial';
+          }
 
-  // Update the PI with the modified payment
-  const updatedPI = {
-    ...pi,
-    payments: updatedPayments,
-    totalPaid,
-    paymentStatus,
-    paymentPercentage: Math.round(paymentPercentage * 10) / 10,
-    updatedAt: new Date().toISOString(),
-    piAllocations: piAllocations,
-    batchPaymentMetadata: {
-      piAllocations: piAllocations,
-      processedAt: new Date().toISOString(),
-      paymentReference: extractedData.referenceNumber,
-      totalAllocated: totalAllocated,
-      selectedPICount: selectedPIs.length
-    }
-  };
+          // 🔧 FIX 3: Create clean updatedPI object with undefined field removal
+          const updatedPI = {
+            ...pi,
+            payments: updatedPayments,
+            totalPaid,
+            paymentStatus,
+            paymentPercentage: Math.round(paymentPercentage * 10) / 10,
+            updatedAt: new Date().toISOString(),
+            piAllocations: piAllocations,
+            batchPaymentMetadata: {
+              piAllocations: piAllocations,
+              processedAt: new Date().toISOString(),
+              paymentReference: extractedData.referenceNumber,
+              totalAllocated: totalAllocated,
+              selectedPICount: selectedPIs.length
+            }
+          };
 
-  // 🔧 VALIDATION: Log the object being passed to onSave
-  console.log('🔍 DEBUG: updatedPI object before onSave (existing payment):', {
-    id: updatedPI.id,
-    piNumber: updatedPI.piNumber,
-    hasPiAllocations: !!updatedPI.piAllocations,
-    piAllocationsLength: updatedPI.piAllocations?.length,
-    piAllocationsData: updatedPI.piAllocations
-  });
+          // 🔧 FIX 4: Clean undefined fields before saving (CRITICAL FOR FIRESTORE)
+          const cleanedUpdatedPI = cleanUndefinedFields(updatedPI);
 
-  // 🔧 FIX 3: Add error checking and parameter validation
-  if (typeof onSave !== 'function') {
-    throw new Error('onSave function is not available');
-  }
+          console.log('🔍 DEBUG: cleanedUpdatedPI object before onSave (existing payment):', {
+            id: cleanedUpdatedPI.id,
+            piNumber: cleanedUpdatedPI.piNumber,
+            hasPiAllocations: !!cleanedUpdatedPI.piAllocations,
+            piAllocationsLength: cleanedUpdatedPI.piAllocations?.length,
+            piAllocationsData: cleanedUpdatedPI.piAllocations
+          });
 
-  // 🔧 FIX 4: Pass updatedPI with proper error handling
-  try {
-    const result = await onSave(updatedPI);
-    console.log('✅ onSave completed successfully (existing payment):', result);
-    
-    results.push({
-      piNumber: pi.piNumber,
-      amount: existingPayment.amount,
-      status: result?.success ? 'updated' : 'failed',
-      action: 'migration_update',
-      error: result?.error || null
-    });
-  } catch (onSaveError) {
-    console.error('❌ onSave function failed (existing payment):', onSaveError);
-    console.error('❌ updatedPI object that caused error:', updatedPI);
-    
-    results.push({
-      piNumber: pi.piNumber,
-      amount: existingPayment.amount,
-      status: 'failed',
-      action: 'onSave_error',
-      error: `onSave failed: ${onSaveError.message}`
-    });
-  }
+          // Call onSave with error handling
+          if (typeof onSave !== 'function') {
+            throw new Error('onSave function is not available');
+          }
 
-} else {
-  // CREATE NEW PAYMENT RECORD (existing logic)
-  const remainingBalance = getRemainingBalance(pi);
-  const piTotal = parseFloat(pi.totalAmount || 0);
-  const actualPercentage = piTotal > 0 ? (allocatedAmount / piTotal) * 100 : 0;
-  
-  const paymentEntry = {
-    id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    amount: allocatedAmount,
-    currency: extractedData.paidCurrency || 'USD',
-    paymentDate: extractedData.paymentDate || new Date().toISOString().split('T')[0],
-    reference: extractedData.referenceNumber,
-    paymentMethod: 'bank_transfer',
-    bankCharges: extractedData.bankCharges || 0,
-    exchangeRate: extractedData.exchangeRate || 1,
-    remark: `Batch payment processed via AI extraction. ${allocatedAmount < piTotal ? `Partial payment (${actualPercentage.toFixed(1)}% of total)` : 'Full payment'}`,
-    bankSlipDocument: {
-      name: paymentSlip.name,
-      type: paymentSlip.type,
-      size: paymentSlip.size,
-      uploadedAt: new Date().toISOString(),
-      firebaseStorage: paymentSlipStorage ? {
-        storageId: paymentSlipStorage.storageId,
-        storagePath: paymentSlipStorage.storagePath,
-        downloadURL: paymentSlipStorage.downloadURL,
-        storedAt: paymentSlipStorage.storedAt,
-        isFirebaseStored: true
-      } : null,
-      blobURL: URL.createObjectURL(paymentSlip),
-      storageStatus: paymentSlipStorage ? 'firebase_stored' : 'blob_only',
-      storageError: storageError
-    },
-    addedAt: new Date().toISOString(),
-    piAllocations: piAllocations // 🔧 FIX: Use the constant, not parameter
-  };
+          try {
+            const result = await onSave(cleanedUpdatedPI);
+            console.log('✅ onSave completed successfully (existing payment):', result);
+            
+            results.push({
+              piNumber: pi.piNumber,
+              amount: existingPayment.amount,
+              status: result?.success ? 'updated' : 'failed',
+              action: 'migration_update',
+              error: result?.error || null
+            });
+          } catch (onSaveError) {
+            console.error('❌ onSave function failed (existing payment):', onSaveError);
+            console.error('❌ cleanedUpdatedPI object that caused error:', cleanedUpdatedPI);
+            
+            results.push({
+              piNumber: pi.piNumber,
+              amount: existingPayment.amount,
+              status: 'failed',
+              action: 'onSave_error',
+              error: `onSave failed: ${onSaveError.message}`
+            });
+          }
 
-  // Continue with existing new payment logic
-  const updatedPayments = [...(pi.payments || []), paymentEntry];
-  const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-  const totalAmount = parseFloat(pi.totalAmount || 0);
-  const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
-  
-  let paymentStatus = 'pending';
-  if (paymentPercentage >= 99.9) {
-    paymentStatus = 'paid';
-  } else if (paymentPercentage > 0) {
-    paymentStatus = 'partial';
-  }
+        } else {
+          // CREATE NEW PAYMENT RECORD
+          const remainingBalance = getRemainingBalance(pi);
+          const piTotal = parseFloat(pi.totalAmount || 0);
+          const actualPercentage = piTotal > 0 ? (allocatedAmount / piTotal) * 100 : 0;
+          
+          const paymentEntry = {
+            id: `payment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            amount: allocatedAmount,
+            currency: extractedData.paidCurrency || 'USD',
+            paymentDate: extractedData.paymentDate || new Date().toISOString().split('T')[0],
+            reference: extractedData.referenceNumber,
+            paymentMethod: 'bank_transfer',
+            bankCharges: extractedData.bankCharges || 0,
+            exchangeRate: extractedData.exchangeRate || 1,
+            remark: `Batch payment processed via AI extraction. ${allocatedAmount < piTotal ? `Partial payment (${actualPercentage.toFixed(1)}% of total)` : 'Full payment'}`,
+            bankSlipDocument: {
+              name: paymentSlip.name,
+              type: paymentSlip.type,
+              size: paymentSlip.size,
+              uploadedAt: new Date().toISOString(),
+              firebaseStorage: paymentSlipStorage ? {
+                storageId: paymentSlipStorage.storageId,
+                storagePath: paymentSlipStorage.storagePath,
+                downloadURL: paymentSlipStorage.downloadURL,
+                storedAt: paymentSlipStorage.storedAt,
+                isFirebaseStored: true
+              } : null,
+              blobURL: URL.createObjectURL(paymentSlip),
+              storageStatus: paymentSlipStorage ? 'firebase_stored' : 'blob_only',
+              storageError: storageError
+            },
+            addedAt: new Date().toISOString(),
+            piAllocations: piAllocations // 🔧 FIX: Use the constant
+          };
 
-  const updatedPI = {
-    ...pi,
-    payments: updatedPayments,
-    totalPaid,
-    paymentStatus,
-    paymentPercentage: Math.round(paymentPercentage * 10) / 10,
-    updatedAt: new Date().toISOString(),
-    piAllocations: piAllocations,
-    batchPaymentMetadata: {
-      piAllocations: piAllocations,
-      processedAt: new Date().toISOString(),
-      paymentReference: extractedData.referenceNumber,
-      totalAllocated: totalAllocated,
-      selectedPICount: selectedPIs.length
-    }
-  };
+          // Continue with new payment logic
+          const updatedPayments = [...(pi.payments || []), paymentEntry];
+          const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+          const totalAmount = parseFloat(pi.totalAmount || 0);
+          const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+          
+          let paymentStatus = 'pending';
+          if (paymentPercentage >= 99.9) {
+            paymentStatus = 'paid';
+          } else if (paymentPercentage > 0) {
+            paymentStatus = 'partial';
+          }
 
-  // 🔧 VALIDATION: Log the object being passed to onSave
-  console.log('🔍 DEBUG: updatedPI object before onSave (new payment):', {
-    id: updatedPI.id,
-    piNumber: updatedPI.piNumber,
-    hasPiAllocations: !!updatedPI.piAllocations,
-    piAllocationsLength: updatedPI.piAllocations?.length,
-    piAllocationsData: updatedPI.piAllocations
-  });
+          // 🔧 FIX 5: Create clean updatedPI object for new payments
+          const updatedPI = {
+            ...pi,
+            payments: updatedPayments,
+            totalPaid,
+            paymentStatus,
+            paymentPercentage: Math.round(paymentPercentage * 10) / 10,
+            updatedAt: new Date().toISOString(),
+            piAllocations: piAllocations,
+            batchPaymentMetadata: {
+              piAllocations: piAllocations,
+              processedAt: new Date().toISOString(),
+              paymentReference: extractedData.referenceNumber,
+              totalAllocated: totalAllocated,
+              selectedPICount: selectedPIs.length
+            }
+          };
 
-  if (typeof onSave !== 'function') {
-    throw new Error('onSave function is not available');
-  }
+          // 🔧 FIX 6: Clean undefined fields before saving (CRITICAL FOR FIRESTORE)
+          const cleanedUpdatedPI = cleanUndefinedFields(updatedPI);
 
-  try {
-    const result = await onSave(updatedPI);
-    console.log('✅ onSave completed successfully (new payment):', result);
-    
-    results.push({
-      piNumber: pi.piNumber,
-      amount: allocatedAmount,
-      status: result?.success ? 'created' : 'failed',
-      action: 'new_payment',
-      error: result?.error || null
-    });
-  } catch (onSaveError) {
-    console.error('❌ onSave function failed (new payment):', onSaveError);
-    console.error('❌ updatedPI object that caused error:', updatedPI);
-    
-    results.push({
-      piNumber: pi.piNumber,
-      amount: allocatedAmount,
-      status: 'failed',
-      action: 'onSave_error',
-      error: `onSave failed: ${onSaveError.message}`
-    });
-  }
-}
+          console.log('🔍 DEBUG: cleanedUpdatedPI object before onSave (new payment):', {
+            id: cleanedUpdatedPI.id,
+            piNumber: cleanedUpdatedPI.piNumber,
+            hasPiAllocations: !!cleanedUpdatedPI.piAllocations,
+            piAllocationsLength: cleanedUpdatedPI.piAllocations?.length,
+            piAllocationsData: cleanedUpdatedPI.piAllocations
+          });
+
+          if (typeof onSave !== 'function') {
+            throw new Error('onSave function is not available');
+          }
+
+          try {
+            const result = await onSave(cleanedUpdatedPI);
+            console.log('✅ onSave completed successfully (new payment):', result);
+            
+            results.push({
+              piNumber: pi.piNumber,
+              amount: allocatedAmount,
+              status: result?.success ? 'created' : 'failed',
+              action: 'new_payment',
+              error: result?.error || null
+            });
+          } catch (onSaveError) {
+            console.error('❌ onSave function failed (new payment):', onSaveError);
+            console.error('❌ cleanedUpdatedPI object that caused error:', cleanedUpdatedPI);
+            
+            results.push({
+              piNumber: pi.piNumber,
+              amount: allocatedAmount,
+              status: 'failed',
+              action: 'onSave_error',
+              error: `onSave failed: ${onSaveError.message}`
+            });
+          }
+        }
       } catch (piError) {
         console.error(`❌ Error processing PI ${piId}:`, piError);
         results.push({
@@ -956,7 +959,8 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
           error: piError.message
         });
       }
-    } // 🔧 CRITICAL: This closing brace for the for loop
+    } // 🔧 CRITICAL: This closing brace for the for loop was missing!
+
     // Show results summary
     const updatedCount = results.filter(r => r.action === 'migration_update' && r.status === 'updated').length;
     const newCount = results.filter(r => r.action === 'new_payment' && r.status === 'created').length;
@@ -985,7 +989,6 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
     if (updatedCount > 0 || newCount > 0) {
       onClose();
     } else if (failedCount > 0) {
-      // Show error message but don't close
       console.error('❌ All payment processing attempts failed');
     }
 
@@ -1007,6 +1010,49 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
   }
 };
 
+// 🔧 FIX 7: ADD THE CRITICAL HELPER FUNCTION TO CLEAN UNDEFINED FIELDS
+const cleanUndefinedFields = (obj) => {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  
+  const cleaned = {};
+  
+  for (const [key, value] of Object.entries(obj)) {
+    // Skip undefined values entirely
+    if (value === undefined) {
+      console.log(`🧹 Removed undefined field: ${key}`);
+      continue;
+    }
+    
+    // Handle null values (keep them as they're valid in Firestore)
+    if (value === null) {
+      cleaned[key] = null;
+      continue;
+    }
+    
+    // Recursively clean nested objects
+    if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      const nestedCleaned = cleanUndefinedFields(value);
+      // Only include non-empty objects
+      if (Object.keys(nestedCleaned).length > 0) {
+        cleaned[key] = nestedCleaned;
+      }
+    } else if (Array.isArray(value)) {
+      // Clean arrays by filtering out undefined values
+      const cleanedArray = value
+        .map(item => typeof item === 'object' ? cleanUndefinedFields(item) : item)
+        .filter(item => item !== undefined);
+      
+      if (cleanedArray.length > 0) {
+        cleaned[key] = cleanedArray;
+      }
+    } else {
+      // Keep primitive values (string, number, boolean, Date)
+      cleaned[key] = value;
+    }
+  }
+  
+  return cleaned;
+};
   // ✅ ADD THE HELPER FUNCTIONS RIGHT HERE:
   
   const formatProcessingTime = (ms) => {
