@@ -1031,93 +1031,103 @@ const renderPaymentStatus = (pi) => {
     let errorCount = 0;
     const processedPIs = [];
     
-    // 🔧 NEW: Only update PI totals - DON'T create new payments
-    // The BatchPaymentProcessor already created payments with bankSlipDocument
+    // 🔧 CRITICAL FIX: Force reload PI data from Firestore before processing
+    console.log('🔄 Forcing reload of PI data from Firestore...');
+    await loadProformaInvoices(); // This should refresh the proformaInvoices state
+    
+    // 🔧 ADDITIONAL: Wait for state to propagate
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     for (const allocation of paymentRecord.piAllocations) {
       try {
-        const pi = proformaInvoices.find(p => p.id === allocation.piId);
+        // 🔧 CRITICAL: Get fresh PI data directly from Firestore (bypass state)
+        console.log('🔍 Fetching fresh PI data from Firestore for:', allocation.piId);
+        const piDocRef = doc(db, 'proformaInvoices', allocation.piId);
+        const piDocSnap = await getDoc(piDocRef);
         
-        if (pi) {
-          console.log('🔍 Found PI for totals update:', {
-            piNumber: pi.piNumber,
-            currentTotalPaid: pi.totalPaid,
-            currentPaymentStatus: pi.paymentStatus,
-            currentPaymentsLength: (pi.payments || []).length
-          });
-
-          // 🔧 CRITICAL: Calculate totals from EXISTING payments (don't add new ones)
-          const existingPayments = pi.payments || [];
-          const totalPaid = existingPayments.reduce((sum, p) => {
-            const amt = parseFloat(p.amount || p.allocatedAmount || p.paidAmount || 0);
-            return sum + (isNaN(amt) ? 0 : amt);
-          }, 0);
-          
-          const totalAmount = parseFloat(pi.totalAmount || 0);
-          
-          console.log('🧮 Payment calculations (totals only):', {
-            existingPayments: existingPayments.length,
-            calculatedTotalPaid: totalPaid,
-            piTotalAmount: totalAmount
-          });
-
-          // Determine payment status
-          let newPaymentStatus = 'pending';
-          if (totalAmount > 0) {
-            if (totalPaid >= totalAmount - 0.01) {
-              newPaymentStatus = 'paid';
-            } else if (totalPaid > 0.01) {
-              newPaymentStatus = 'partial';
-            }
-          }
-
-          // 🔧 CRITICAL: Only update totals - DON'T touch payments array
-          const updateData = {
-            totalPaid: Number(totalPaid),
-            paymentStatus: newPaymentStatus,
-            lastPaymentDate: paymentRecord.paymentDate,
-            lastModified: new Date().toISOString(),
-            lastModifiedBy: 'batch-payment-system-totals-only'
-          };
-
-          console.log('📝 Updating PI totals only (no payments modification):', {
-            piId: pi.id,
-            piNumber: pi.piNumber,
-            updateData: updateData
-          });
-
-          // Update PI in Firestore (totals only)
-          const result = await updateProformaInvoice(pi.id, updateData);
-          
-          console.log('📊 updateProformaInvoice result (totals only):', {
-            success: result.success,
-            error: result.error
-          });
-
-          if (result.success) {
-            updatedCount++;
-            processedPIs.push({
-              piNumber: pi.piNumber,
-              amount: parseFloat(allocation.allocatedAmount),
-              currency: allocation.currency,
-              status: newPaymentStatus,
-              isPartial: allocation.isPartialPayment,
-              totalPaid: totalPaid,
-              remainingBalance: totalAmount - totalPaid
-            });
-            
-            console.log(`✅ Successfully updated PI ${pi.piNumber} totals:`, {
-              totalPaid: totalPaid,
-              paymentStatus: newPaymentStatus,
-              paymentsCount: existingPayments.length
-            });
-
-          } else {
-            throw new Error(result.error || 'Failed to update PI totals');
-          }
-        } else {
-          console.warn(`❌ PI not found for allocation: ${allocation.piId}`);
+        if (!piDocSnap.exists()) {
+          console.error('❌ PI not found in Firestore:', allocation.piId);
           errorCount++;
+          continue;
+        }
+        
+        const freshPI = { id: piDocSnap.id, ...piDocSnap.data() };
+        
+        console.log('🔍 Found PI for totals update (FRESH from Firestore):', {
+          piNumber: freshPI.piNumber,
+          currentTotalPaid: freshPI.totalPaid,
+          currentPaymentStatus: freshPI.paymentStatus,
+          currentPaymentsLength: (freshPI.payments || []).length
+        });
+
+        // 🔧 CRITICAL: Calculate totals from FRESH payments data
+        const existingPayments = freshPI.payments || [];
+        const totalPaid = existingPayments.reduce((sum, p) => {
+          const amt = parseFloat(p.amount || p.allocatedAmount || p.paidAmount || 0);
+          return sum + (isNaN(amt) ? 0 : amt);
+        }, 0);
+        
+        const totalAmount = parseFloat(freshPI.totalAmount || 0);
+        
+        console.log('🧮 Payment calculations (from fresh Firestore data):', {
+          existingPayments: existingPayments.length,
+          calculatedTotalPaid: totalPaid,
+          piTotalAmount: totalAmount
+        });
+
+        // Determine payment status
+        let newPaymentStatus = 'pending';
+        if (totalAmount > 0) {
+          if (totalPaid >= totalAmount - 0.01) {
+            newPaymentStatus = 'paid';
+          } else if (totalPaid > 0.01) {
+            newPaymentStatus = 'partial';
+          }
+        }
+
+        // 🔧 CRITICAL: Only update totals - DON'T touch payments array
+        const updateData = {
+          totalPaid: Number(totalPaid),
+          paymentStatus: newPaymentStatus,
+          lastPaymentDate: paymentRecord.paymentDate,
+          lastModified: new Date().toISOString(),
+          lastModifiedBy: 'batch-payment-system-totals-fresh'
+        };
+
+        console.log('📝 Updating PI totals with fresh calculation:', {
+          piId: allocation.piId,
+          piNumber: freshPI.piNumber,
+          updateData: updateData
+        });
+
+        // Update PI in Firestore (totals only)
+        const result = await updateProformaInvoice(allocation.piId, updateData);
+        
+        console.log('📊 updateProformaInvoice result (fresh data):', {
+          success: result.success,
+          error: result.error
+        });
+
+        if (result.success) {
+          updatedCount++;
+          processedPIs.push({
+            piNumber: freshPI.piNumber,
+            amount: parseFloat(allocation.allocatedAmount),
+            currency: allocation.currency,
+            status: newPaymentStatus,
+            isPartial: allocation.isPartialPayment,
+            totalPaid: totalPaid,
+            remainingBalance: totalAmount - totalPaid
+          });
+          
+          console.log(`✅ Successfully updated PI ${freshPI.piNumber} totals (with fresh data):`, {
+            totalPaid: totalPaid,
+            paymentStatus: newPaymentStatus,
+            paymentsCount: existingPayments.length
+          });
+
+        } else {
+          throw new Error(result.error || 'Failed to update PI totals');
         }
       } catch (error) {
         console.error(`❌ Error processing PI ${allocation.piId}:`, error);
@@ -1150,7 +1160,7 @@ const renderPaymentStatus = (pi) => {
         8000
       );
       
-      console.log('📊 Final Batch Payment Summary (totals only):', {
+      console.log('📊 Final Batch Payment Summary (with fresh data):', {
         totalProcessed: processedPIs.length,
         partialPayments,
         fullPayments,
@@ -1161,8 +1171,13 @@ const renderPaymentStatus = (pi) => {
       showNotification('No PI totals were updated. Please check the allocations.', 'warning');
     }
     
-    // Close the modal
+    // Close the modal and force final UI refresh
     setShowBatchPaymentModal(false);
+    
+    // 🔧 FINAL: Force one more UI refresh to show updated data
+    setTimeout(() => {
+      loadProformaInvoices();
+    }, 500);
     
   } catch (error) {
     console.error('❌ Error processing batch payment totals:', error);
