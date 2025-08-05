@@ -1,4 +1,4 @@
-// src/components/common/Navigation.jsx - Enhanced with DualSystemDashboard and PromptManagement
+// src/components/common/Navigation.jsx - Enhanced with DualSystemDashboard, PromptManagement and Dark Mode
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -423,8 +423,8 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
             onClick={() => toggleExpanded(itemKey)}
             className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-colors ${
               active
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                : 'text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
             }`}
           >
             <div className="flex items-center">
@@ -461,8 +461,8 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         to={item.href}
         className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors group ${
           active
-            ? 'bg-blue-50 text-blue-700'
-            : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+            : 'text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
         } ${isChild ? 'pl-11' : ''}`}
         title={isCollapsed ? item.name : item.description}
       >
@@ -489,13 +489,13 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     return (
       <div key={section.name} className="mb-6">
         {!isCollapsed && (
-          <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center">
+          <h3 className="px-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 flex items-center transition-colors">
             {section.name}
             {section.adminOnly && (
               <Shield className="inline-block w-3 h-3 ml-1" />
             )}
             {section.multiCompanyOnly && (
-              <Crown className="inline-block w-3 h-3 ml-1 text-purple-500" />
+              <Crown className="inline-block w-3 h-3 ml-1 text-purple-500 dark:text-purple-400" />
             )}
           </h3>
         )}
@@ -514,10 +514,10 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     
     // Fallback to role-based display
     const roleConfig = {
-      admin: { label: 'Admin', color: 'bg-purple-100 text-purple-800', icon: Shield },
-      manager: { label: 'Manager', color: 'bg-blue-100 text-blue-800', icon: UserCheck },
-      employee: { label: 'Employee', color: 'bg-green-100 text-green-800', icon: Users },
-      viewer: { label: 'Viewer', color: 'bg-gray-100 text-gray-800', icon: null }
+      admin: { label: 'Admin', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300', icon: Shield },
+      manager: { label: 'Manager', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300', icon: UserCheck },
+      employee: { label: 'Employee', color: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300', icon: Users },
+      viewer: { label: 'Viewer', color: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300', icon: null }
     };
     
     const config = roleConfig[user?.role] || roleConfig.viewer;
@@ -533,12 +533,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   return (
     <>
       {/* Desktop Navigation */}
-      <nav className={`hidden lg:block bg-white shadow-lg h-screen fixed left-0 top-0 transition-all duration-300 z-30 ${
+      <nav className={`hidden lg:block bg-white dark:bg-gray-800 shadow-lg h-screen fixed left-0 top-0 transition-all duration-300 z-30 border-r border-gray-200 dark:border-gray-700 ${
         isCollapsed ? 'w-16' : 'w-64'
       }`}>
         <div className="h-full flex flex-col">
           {/* Enhanced Header with Multi-Company Indicator */}
-          <div className="flex items-center justify-between p-4 border-b h-16 bg-gradient-to-r from-blue-600 to-purple-600">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 h-16 bg-gradient-to-r from-blue-600 to-purple-600">
             {!isCollapsed && (
               <div className="flex items-center">
                 <div className="flex items-center justify-center w-8 h-8 bg-white bg-opacity-20 rounded-lg mr-2">
@@ -581,7 +581,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
           {/* Enhanced User Info with Multi-Company Badge */}
           {user && (
-            <div className="p-4 border-t bg-gray-50">
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 transition-colors duration-300">
               <div className={`flex items-center ${isCollapsed ? 'justify-center' : ''}`}>
                 <div className="relative">
                   <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
@@ -592,7 +592,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                     )}
                   </div>
                   {/* Enhanced online indicator with multi-company status */}
-                  <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white dark:border-gray-800 rounded-full ${
                     permissions.isGroupAdmin ? 'bg-purple-400' :
                     permissions.isDivisionAdmin ? 'bg-blue-400' :
                     permissions.isCompanyAdmin ? 'bg-green-400' :
@@ -601,12 +601,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 </div>
                 {!isCollapsed && (
                   <div className="ml-3 flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-700 truncate">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate transition-colors">
                       {user.displayName || user.email}
                     </p>
                     <div className="flex items-center mt-1">
                       {typeof userBadge === 'string' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
                           {permissions.isGroupAdmin && <Crown className="w-3 h-3 mr-1" />}
                           {permissions.isDivisionAdmin && <Building2 className="w-3 h-3 mr-1" />}
                           {permissions.isCompanyAdmin && <Factory className="w-3 h-3 mr-1" />}
@@ -623,7 +623,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                     
                     {/* Multi-Company Access Indicator */}
                     {permissions.isMultiCompanyUser && !isCollapsed && (
-                      <div className="mt-1 text-xs text-gray-500">
+                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 transition-colors">
                         {permissions.totalAccessibleCompanies} companies • {permissions.totalAccessibleBranches} branches
                       </div>
                     )}
@@ -639,7 +639,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setIsMobileMenuOpen(false)} />
-          <nav className="relative flex-1 flex flex-col max-w-xs w-full bg-white">
+          <nav className="relative flex-1 flex flex-col max-w-xs w-full bg-white dark:bg-gray-800 transition-colors duration-300">
             <div className="absolute top-0 right-0 -mr-12 pt-2">
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -685,7 +685,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
             {/* Enhanced Mobile User Info */}
             {user && (
-              <div className="flex-shrink-0 bg-gray-50 p-4">
+              <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-900/50 p-4 transition-colors duration-300">
                 <div className="flex items-center">
                   <div className="flex-shrink-0 relative">
                     <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
@@ -696,7 +696,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                       )}
                     </div>
                     {/* Multi-company status indicator */}
-                    <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white dark:border-gray-800 rounded-full ${
                       permissions.isGroupAdmin ? 'bg-purple-400' :
                       permissions.isDivisionAdmin ? 'bg-blue-400' :
                       permissions.isCompanyAdmin ? 'bg-green-400' :
@@ -704,12 +704,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                     }`}></div>
                   </div>
                   <div className="ml-3">
-                    <p className="text-base font-medium text-gray-700">
+                    <p className="text-base font-medium text-gray-700 dark:text-gray-300 transition-colors">
                       {user.displayName || user.email}
                     </p>
                     <div className="flex items-center mt-1">
                       {typeof userBadge === 'string' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
                           {permissions.isGroupAdmin && <Crown className="w-3 h-3 mr-1" />}
                           {permissions.isDivisionAdmin && <Building2 className="w-3 h-3 mr-1" />}
                           {permissions.isCompanyAdmin && <Factory className="w-3 h-3 mr-1" />}
@@ -726,7 +726,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                     
                     {/* Multi-Company Access Info on Mobile */}
                     {permissions.isMultiCompanyUser && (
-                      <div className="mt-1 text-xs text-gray-500">
+                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 transition-colors">
                         Access: {permissions.totalAccessibleCompanies} companies
                       </div>
                     )}
