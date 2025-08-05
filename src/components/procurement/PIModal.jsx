@@ -2210,6 +2210,18 @@ const saveProductEdit = (index, field) => {
                 </span>
               )}
             </button>
+
+            
+            <button
+    onClick={() => setActiveTab('Trade Documents')}
+    className={`px-6 py-3 font-medium ${
+      activeTab === 'Trade Documents' 
+        ? 'border-b-2 border-blue-500 text-blue-600' 
+        : 'text-gray-600 hover:text-gray-900'
+    }`}
+  >
+    Trade Documents
+  </button>
           </div>
         </div>
       )}
