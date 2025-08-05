@@ -1770,26 +1770,27 @@ const handleSubmit = useCallback((e) => {
       // Update the local form data first
       setFormData(updatedFormData);
       
-      // 🔧 CORRECTED: Import from the right files
-      console.log(`🔄 Directly updating Firestore for payment deletion ${paymentId}`);
+      // 🔧 ALTERNATIVE: Use the services file function
+      console.log(`🔄 Using services file for payment deletion ${paymentId}`);
       
-      const { updateDoc, doc } = await import('firebase/firestore');
-      const { db } = await import('../../config/firebase'); // 🔧 Config file for db instance
+      const { updateProformaInvoice } = await import('../../services/firebase');
       
-      await updateDoc(doc(db, 'proformaInvoices', formData.id), {
+      const result = await updateProformaInvoice(formData.id, {
         payments: updatedPayments,
         totalPaid,
         paymentStatus,
-        paymentPercentage: Math.round(paymentPercentage * 10) / 10,
-        updatedAt: new Date().toISOString()
+        paymentPercentage: Math.round(paymentPercentage * 10) / 10
       });
       
-      console.log(`🗑️ Payment ${paymentId} deleted and saved directly to Firestore`);
-      showNotification?.('Payment record deleted successfully', 'success');
+      if (result.success) {
+        console.log(`🗑️ Payment ${paymentId} deleted via services`);
+        showNotification?.('Payment record deleted successfully', 'success');
+      } else {
+        throw new Error(result.error || 'Update failed');
+      }
       
     } catch (error) {
       console.error('❌ Error saving payment deletion:', error);
-      console.error('❌ Import details:', error.message);
       showNotification?.('Failed to delete payment record. Please try again.', 'error');
       
       // Revert the local changes if save fails
