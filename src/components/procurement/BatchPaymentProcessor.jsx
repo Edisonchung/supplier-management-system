@@ -690,7 +690,9 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
 
   // Process final payment
   const processPayment = async () => {
-  // 🚨 EMERGENCY FIX: Define piAllocations immediately
+  setIsProcessing(true);
+  
+  // 🔧 FIX 1: Define piAllocations at the very beginning and ensure it's always available
   const piAllocations = selectedPIs
     .filter(piId => allocation[piId] > 0)
     .map(piId => {
@@ -716,7 +718,6 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
     return;
   }
   
-  setIsProcessing(true);
   const results = [];
 
   try {
@@ -724,23 +725,11 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
       extractedData,
       selectedPIs,
       allocation,
-      paymentSlipStorage
+      paymentSlipStorage,
+      piAllocations // 🔧 FIX: Ensure piAllocations is logged and available
     });
 
-    // 🆕 Build piAllocations array for proper tracking
-    const piAllocations = selectedPIs
-      .filter(piId => allocation[piId] > 0)
-      .map(piId => {
-        const pi = availablePIs.find(p => p.id === piId);
-        return {
-          piId: piId,
-          piNumber: pi?.piNumber || 'Unknown',
-          supplierName: pi?.supplierName || 'Unknown',
-          allocatedAmount: allocation[piId],
-          currency: extractedData.paidCurrency
-        };
-      });
-
+    // 🔧 FIX 2: Use the piAllocations constant throughout the function
     console.log('📊 PI Allocations prepared:', piAllocations);
 
     for (const piId of selectedPIs.filter(piId => allocation[piId] > 0)) {
@@ -777,7 +766,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             // Update metadata if needed
             updatedAt: new Date().toISOString(),
             migrationNote: "Updated with Firebase Storage integration",
-            piAllocations: piAllocations // 🆕 ADD: Include allocation data
+            piAllocations: piAllocations // 🔧 FIX: Use the constant, not parameter
           };
 
           // Update the payment in the PI's payments array
@@ -807,11 +796,12 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             updatedAt: new Date().toISOString()
           };
 
-          // 🆕 ADD: Ensure onSave function exists and is callable
+          // 🔧 FIX 3: Add error checking and parameter validation
           if (typeof onSave !== 'function') {
             throw new Error('onSave function is not available');
           }
 
+          // 🔧 FIX 4: Pass updatedPI with proper error handling
           const result = await onSave(updatedPI);
           results.push({
             piNumber: pi.piNumber,
@@ -854,7 +844,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
               storageError: storageError
             },
             addedAt: new Date().toISOString(),
-            piAllocations: piAllocations // 🆕 ADD: Include allocation data
+            piAllocations: piAllocations // 🔧 FIX: Use the constant, not parameter
           };
 
           // Continue with existing new payment logic
@@ -879,7 +869,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
             updatedAt: new Date().toISOString()
           };
 
-          // 🆕 ADD: Ensure onSave function exists and is callable
+          // 🔧 FIX 5: Add error checking and parameter validation
           if (typeof onSave !== 'function') {
             throw new Error('onSave function is not available');
           }
@@ -903,7 +893,7 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
           error: piError.message
         });
       }
-    }
+    } // 🔧 FIX 6: Ensure proper closing brace for the for loop
 
     // Show results summary
     const updatedCount = results.filter(r => r.action === 'migration_update' && r.status === 'updated').length;
@@ -944,7 +934,8 @@ await storePaymentSlipToFirebase(file, processedData, []); // Empty array for no
       stack: error.stack,
       extractedData: extractedData,
       selectedPIs: selectedPIs,
-      allocation: allocation
+      allocation: allocation,
+      piAllocations: piAllocations // 🔧 FIX: Include piAllocations in error logging
     });
     
     // Don't close on error - let user retry
