@@ -7,6 +7,7 @@ import DocumentViewer from '../common/DocumentViewer';
 import StockAllocationModal from './StockAllocationModal';
 import { StockAllocationService } from '../../services/StockAllocationService';
 import { getProformaInvoices } from '../../services/firebase';
+import { updateProformaInvoice } from '../../services/firebase';
 import FSPortalProjectInput from '../common/FSPortalProjectInput';
 import { PIPOMatchingService } from '../../services/PIPOMatchingService';
 import TradeDocumentUpload from '../common/TradeDocumentUpload';
@@ -1708,25 +1709,61 @@ const handleSubmit = useCallback((e) => {
     setShowPaymentModal(true);
   };
 
-  const handleSavePayment = () => {
-    if (!newPayment.amount || newPayment.amount <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
+  const handleSavePayment = async () => {
+  // Validation
+  if (!newPayment.amount || parseFloat(newPayment.amount) <= 0) {
+    showNotification?.('Please enter a valid payment amount', 'error');
+    return;
+  }
 
+  try {
+    // Create payment record
     const payment = {
-      ...newPayment,
       id: `payment-${Date.now()}`,
       amount: parseFloat(newPayment.amount),
-      createdAt: new Date().toISOString()
+      date: newPayment.date,
+      type: newPayment.type,
+      method: newPayment.method,
+      reference: newPayment.reference,
+      remark: newPayment.remark,
+      createdAt: new Date().toISOString(),
+      attachments: newPayment.attachments || []
     };
 
-    setFormData(prev => ({
-      ...prev,
-      payments: [...(prev.payments || []), payment]
-    }));
+    // Calculate totals
+    const updatedPayments = [...(formData.payments || []), payment];
+    const totalPaid = updatedPayments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    const totalAmount = parseFloat(formData.totalAmount || 0);
+    const paymentPercentage = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+    
+    let paymentStatus = 'pending';
+    if (paymentPercentage >= 99.9) {
+      paymentStatus = 'paid';
+    } else if (paymentPercentage > 0) {
+      paymentStatus = 'partial';
+    }
 
-    setShowPaymentModal(false);
+    // Update formData first (for immediate UI feedback)
+    const updatedFormData = {
+      ...formData,
+      payments: updatedPayments,
+      totalPaid: totalPaid,
+      paymentStatus: paymentStatus,
+      paymentPercentage: Math.round(paymentPercentage * 10) / 10,
+      lastPaymentDate: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    setFormData(updatedFormData);
+
+    // Save to Firestore if PI exists
+    const piId = formData.id || proformaInvoice?.id;
+    if (piId && onSave) {
+      console.log('💾 Saving payment to Firestore:', payment);
+      await onSave(updatedFormData);
+    }
+
+    // Reset form and close modal
     setNewPayment({
       amount: '',
       date: new Date().toISOString().split('T')[0],
@@ -1736,7 +1773,15 @@ const handleSubmit = useCallback((e) => {
       remark: '',
       attachments: []
     });
-  };
+    
+    setShowPaymentModal(false);
+    showNotification?.('Payment added successfully', 'success');
+
+  } catch (error) {
+    console.error('❌ Error adding payment:', error);
+    showNotification?.('Failed to add payment', 'error');
+  }
+};
 
   const handleDeletePayment = async (paymentId) => {
   const confirmed = window.confirm('Are you sure you want to delete this payment record?');
