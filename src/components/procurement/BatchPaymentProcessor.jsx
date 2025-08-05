@@ -1141,6 +1141,85 @@ const cleanUndefinedFields = (obj) => {
   
   return cleaned;
 };
+
+  // 🎯 EXACT LOCATION IN YOUR BatchPaymentProcessor-15.jsx FILE
+
+// 📍 FIND THIS SECTION (around lines 1010-1015):
+const cleanUndefinedFields = (obj) => {
+  // ... existing function code ...
+  return cleaned;
+};  // ← Line 1012: This is the END of cleanUndefinedFields function
+
+  // ✅ ADD THE TWO MISSING FUNCTIONS RIGHT HERE ↓ ↓ ↓
+  
+// 🔧 MISSING FUNCTION 1: Add this first
+const generateDocumentViewURL = (payment) => {
+  // Priority 1: Firebase Storage URL (if available)
+  if (payment.bankSlipDocument?.firebaseStorage?.downloadURL) {
+    return payment.bankSlipDocument.firebaseStorage.downloadURL;
+  }
+  
+  // Priority 2: Blob URL (temporary, but immediately available)
+  if (payment.bankSlipDocument?.blobURL) {
+    return payment.bankSlipDocument.blobURL;
+  }
+  
+  // Priority 3: Reconstruct from storage path (if needed)
+  if (payment.bankSlipDocument?.firebaseStorage?.storagePath) {
+    return null; // Handle separately if needed
+  }
+  
+  return null;
+};
+
+// 🔧 MISSING FUNCTION 2: Add this second
+const renderPaymentDocumentActions = (payment) => {
+  const documentURL = generateDocumentViewURL(payment);
+  
+  if (!documentURL) {
+    return (
+      <span className="text-gray-400 text-xs">
+        Document not available
+      </span>
+    );
+  }
+  
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      {/* View Document Button */}
+      <button
+        onClick={() => window.open(documentURL, '_blank')}
+        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition-colors"
+      >
+        <Eye size={12} />
+        View Slip
+      </button>
+      
+      {/* Download Document Button */}
+      <button
+        onClick={() => {
+          const link = document.createElement('a');
+          link.href = documentURL;
+          link.download = payment.bankSlipDocument.name || 'payment-slip.pdf';
+          link.click();
+        }}
+        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-600 rounded hover:bg-green-200 transition-colors"
+      >
+        <Download size={12} />
+        Download
+      </button>
+      
+      {/* Storage Status Indicator */}
+      <span className={`text-xs px-2 py-1 rounded-full ${
+        payment.bankSlipDocument.storageStatus === 'firebase_stored' 
+          ? 'bg-green-100 text-green-700' 
+          : 'bg-orange-100 text-orange-700'
+      }`}>
+        {payment.bankSlipDocument.storageStatus === 'firebase_stored' ? '☁️ Stored' : '📱 Temporary'}
+      </span>
+    </div>
+  );
+};
   // ✅ ADD THE HELPER FUNCTIONS RIGHT HERE:
   
   const formatProcessingTime = (ms) => {
