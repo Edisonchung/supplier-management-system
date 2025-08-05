@@ -1888,24 +1888,44 @@ const handleSubmit = useCallback((e) => {
     }
   }
 };
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // In a real app, this would upload to a server
-      // For demo, we'll create a fake URL
-      const fakeUrl = URL.createObjectURL(file);
+  // ✅ FIXED VERSION (works in Safari)
+const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    try {
+      // Convert file to base64 for permanent storage
+      const base64Data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1]; // Remove data URL prefix
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      
+      // Create safe attachment object
+      const attachment = {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        data: base64Data, // ✅ Permanent base64 data instead of blob URL
+        storageType: 'base64_embedded'
+      };
+      
       setNewPayment(prev => ({
         ...prev,
-        attachments: [...prev.attachments, {
-          name: file.name,
-          url: fakeUrl,
-          type: file.type,
-          size: file.size,
-          uploadedAt: new Date().toISOString()
-        }]
+        attachments: [...prev.attachments, attachment]
       }));
+      
+      showNotification?.(`File "${file.name}" uploaded successfully`, 'success');
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      showNotification?.('Failed to upload file', 'error');
     }
-  };
+  }
+};
 
   const handleAddProduct = (product) => {
     const existingIndex = selectedProducts.findIndex(p => p.productId === product.id);
@@ -3574,26 +3594,72 @@ const saveProductEdit = (index, field) => {
               </div>
             )}
             
-            {/* Legacy Attachments Support */}
-            {payment.attachments && payment.attachments.length > 0 && (
-              <div className="mt-3">
-                <p className="text-sm font-medium text-gray-700 mb-2">Attachments</p>
-                <div className="flex flex-wrap gap-2">
-                  {payment.attachments.map((file, idx) => (
-                    <a
-                      key={idx}
-                      href={file.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 px-3 py-1 bg-gray-100 rounded text-sm hover:bg-gray-200"
-                    >
-                      <FileText size={14} />
-                      {file.name}
-                    </a>
-                  ))}
-                </div>
-              </div>
+           {/* Fixed Attachments Support - Safari Compatible */}
+{payment.attachments && payment.attachments.length > 0 && (
+  <div className="mt-3">
+    <p className="text-sm font-medium text-gray-700 mb-2">Attachments</p>
+    <div className="flex flex-wrap gap-2">
+      {payment.attachments.map((file, idx) => (
+        <div 
+          key={idx} 
+          className="flex items-center justify-between px-3 py-1 bg-gray-100 rounded text-sm min-w-0"
+        >
+          <div className="flex items-center gap-1 min-w-0">
+            <FileText size={14} className="flex-shrink-0" />
+            <span className="truncate">{file.name}</span>
+            {file.size && (
+              <span className="text-xs text-gray-500 ml-1 flex-shrink-0">
+                ({(file.size / 1024 / 1024).toFixed(2)} MB)
+              </span>
             )}
+          </div>
+          
+          {/* Safe Download Button - No blob URLs */}
+          {file.data ? (
+            <button
+              onClick={() => {
+                try {
+                  // ✅ Create safe download from base64 data
+                  const byteCharacters = atob(file.data);
+                  const byteNumbers = new Array(byteCharacters.length);
+                  for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                  }
+                  const byteArray = new Uint8Array(byteNumbers);
+                  const blob = new Blob([byteArray], { type: file.type || 'application/octet-stream' });
+                  
+                  // Create temporary download link and clean up immediately
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = file.name;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url); // Clean up immediately
+                } catch (error) {
+                  console.error('Error downloading file:', error);
+                  showNotification?.('Failed to download file', 'error');
+                }
+              }}
+              className="ml-2 text-blue-600 hover:text-blue-800 text-xs px-2 py-1 rounded hover:bg-blue-50 flex-shrink-0"
+            >
+              Download
+            </button>
+          ) : file.url ? (
+            <span className="ml-2 text-orange-600 text-xs px-2 py-1 rounded bg-orange-50 flex-shrink-0">
+              Temp File
+            </span>
+          ) : (
+            <span className="ml-2 text-gray-500 text-xs px-2 py-1 rounded bg-gray-50 flex-shrink-0">
+              No Data
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
           </div>
         )}
       </div>
