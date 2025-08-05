@@ -1025,146 +1025,71 @@ const renderPaymentStatus = (pi) => {
 
   const handlePaymentProcessed = async (paymentRecord) => {
   try {
-    console.log('🎯 Processing batch payment record with real extraction:', paymentRecord);
+    console.log('🎯 Processing batch payment record - TOTALS ONLY (payments already created):', paymentRecord);
     
     let updatedCount = 0;
     let errorCount = 0;
     const processedPIs = [];
     
-    // Process each PI allocation from the BatchPaymentProcessor
+    // 🔧 NEW: Only update PI totals - DON'T create new payments
+    // The BatchPaymentProcessor already created payments with bankSlipDocument
+    
     for (const allocation of paymentRecord.piAllocations) {
       try {
         const pi = proformaInvoices.find(p => p.id === allocation.piId);
         
         if (pi) {
-          console.log('🔍 Found PI before update:', {
+          console.log('🔍 Found PI for totals update:', {
             piNumber: pi.piNumber,
             currentTotalPaid: pi.totalPaid,
             currentPaymentStatus: pi.paymentStatus,
             currentPaymentsLength: (pi.payments || []).length
           });
 
-          // ENHANCED: Create payment entry with robust amount handling
-          const paymentAmount = parseFloat(allocation.allocatedAmount);
-          
-          if (isNaN(paymentAmount) || paymentAmount <= 0) {
-            console.error('❌ Invalid payment amount:', allocation.allocatedAmount);
-            continue;
-          }
-
-          const paymentEntry = {
-            id: `batch-${paymentRecord.paymentSlipRef}-${allocation.piId}`,
-            
-            // CRITICAL: Ensure amount is stored as a number in multiple formats for compatibility
-            amount: paymentAmount,
-            allocatedAmount: paymentAmount,
-            paidAmount: paymentAmount,
-            
-            date: paymentRecord.paymentDate,
-            type: 'batch-payment',
-            method: 'bank-transfer',
-            reference: paymentRecord.paymentSlipRef,
-            
-            // Enhanced payment details
-            bankName: paymentRecord.bankName || '',
-            beneficiaryName: paymentRecord.beneficiaryName || '',
-            beneficiaryBank: paymentRecord.beneficiaryBank || '',
-            exchangeRate: parseFloat(paymentRecord.exchangeRate) || 1,
-            bankCharges: parseFloat(paymentRecord.bankCharges) || 0,
-            
-            // Currency information
-            currency: allocation.currency || 'USD',
-            debitAmount: parseFloat(paymentRecord.debitAmount) || paymentAmount,
-            debitCurrency: paymentRecord.debitCurrency || 'USD',
-            
-            // Payment metadata
-            paymentPercentage: parseFloat(allocation.paymentPercentage) || 0,
-            isPartialPayment: allocation.isPartialPayment || false,
-            previousBalance: parseFloat(allocation.previousBalance) || 0,
-            newBalance: parseFloat(allocation.newBalance) || 0,
-            
-            // Audit trail
-            createdAt: new Date().toISOString(),
-            createdBy: 'batch-payment-system',
-            batchProcessed: true,
-            
-            remark: `Batch payment processed via AI extraction. ${allocation.isPartialPayment ? 'Partial payment (' + allocation.paymentPercentage + '% of total)' : 'Payment allocated'}`
-          };
-
-          console.log('💳 Created payment entry:', {
-            id: paymentEntry.id,
-            amount: paymentEntry.amount,
-            amountType: typeof paymentEntry.amount,
-            allocatedAmount: paymentEntry.allocatedAmount
-          });
-
-          // Add payment to PI's payment history
+          // 🔧 CRITICAL: Calculate totals from EXISTING payments (don't add new ones)
           const existingPayments = pi.payments || [];
-          const updatedPayments = [...existingPayments, paymentEntry];
-          
-          // ENHANCED: Calculate totalPaid with robust parsing
-          const totalPaid = updatedPayments.reduce((sum, p) => {
+          const totalPaid = existingPayments.reduce((sum, p) => {
             const amt = parseFloat(p.amount || p.allocatedAmount || p.paidAmount || 0);
             return sum + (isNaN(amt) ? 0 : amt);
           }, 0);
           
           const totalAmount = parseFloat(pi.totalAmount || 0);
           
-          console.log('🧮 Payment calculations:', {
-            previousPayments: existingPayments.length,
-            newPaymentsCount: updatedPayments.length,
+          console.log('🧮 Payment calculations (totals only):', {
+            existingPayments: existingPayments.length,
             calculatedTotalPaid: totalPaid,
-            piTotalAmount: totalAmount,
-            newPaymentAmount: paymentAmount
+            piTotalAmount: totalAmount
           });
 
           // Determine payment status
           let newPaymentStatus = 'pending';
           if (totalAmount > 0) {
-            if (totalPaid >= totalAmount - 0.01) { // Account for floating point precision
+            if (totalPaid >= totalAmount - 0.01) {
               newPaymentStatus = 'paid';
             } else if (totalPaid > 0.01) {
               newPaymentStatus = 'partial';
             }
           }
 
-          // ENHANCED: Build update object with clean numeric fields
-          const updatedPI = {
-            ...pi,
-            payments: updatedPayments,
-            
-            // CRITICAL: Ensure these are stored as numbers
+          // 🔧 CRITICAL: Only update totals - DON'T touch payments array
+          const updateData = {
             totalPaid: Number(totalPaid),
-            totalAmount: Number(totalAmount),
-            
             paymentStatus: newPaymentStatus,
             lastPaymentDate: paymentRecord.paymentDate,
             lastModified: new Date().toISOString(),
-            lastModifiedBy: 'batch-payment-system'
+            lastModifiedBy: 'batch-payment-system-totals-only'
           };
 
-          // ENHANCED: Clean up any undefined/null values before Firestore update
-          Object.keys(updatedPI).forEach(key => {
-            if (updatedPI[key] === undefined || updatedPI[key] === null) {
-              delete updatedPI[key];
-              console.log(`🧹 Removed undefined field: ${key}`);
-            }
-          });
-
-          console.log('📝 Prepared updatedPI object:', {
+          console.log('📝 Updating PI totals only (no payments modification):', {
             piId: pi.id,
             piNumber: pi.piNumber,
-            paymentsLength: updatedPI.payments.length,
-            totalPaid: updatedPI.totalPaid,
-            totalPaidType: typeof updatedPI.totalPaid,
-            paymentStatus: updatedPI.paymentStatus
+            updateData: updateData
           });
 
-          // Update PI in Firestore
-          console.log('💾 Calling updateProformaInvoice...');
-          const result = await updateProformaInvoice(pi.id, updatedPI);
+          // Update PI in Firestore (totals only)
+          const result = await updateProformaInvoice(pi.id, updateData);
           
-          console.log('📊 updateProformaInvoice result:', {
+          console.log('📊 updateProformaInvoice result (totals only):', {
             success: result.success,
             error: result.error
           });
@@ -1173,7 +1098,7 @@ const renderPaymentStatus = (pi) => {
             updatedCount++;
             processedPIs.push({
               piNumber: pi.piNumber,
-              amount: paymentAmount,
+              amount: parseFloat(allocation.allocatedAmount),
               currency: allocation.currency,
               status: newPaymentStatus,
               isPartial: allocation.isPartialPayment,
@@ -1181,14 +1106,14 @@ const renderPaymentStatus = (pi) => {
               remainingBalance: totalAmount - totalPaid
             });
             
-            console.log(`✅ Successfully updated PI ${pi.piNumber}:`, {
+            console.log(`✅ Successfully updated PI ${pi.piNumber} totals:`, {
               totalPaid: totalPaid,
               paymentStatus: newPaymentStatus,
-              paymentsCount: updatedPayments.length
+              paymentsCount: existingPayments.length
             });
 
           } else {
-            throw new Error(result.error || 'Failed to update PI');
+            throw new Error(result.error || 'Failed to update PI totals');
           }
         } else {
           console.warn(`❌ PI not found for allocation: ${allocation.piId}`);
@@ -1205,7 +1130,7 @@ const renderPaymentStatus = (pi) => {
       const partialPayments = processedPIs.filter(p => p.isPartial).length;
       const fullPayments = processedPIs.filter(p => !p.isPartial).length;
       
-      let successMessage = `Batch payment processed successfully!\n`;
+      let successMessage = `Batch payment totals updated successfully!\n`;
       successMessage += `• Updated ${updatedCount} PI${updatedCount > 1 ? 's' : ''}\n`;
       successMessage += `• Total: ${paymentRecord.currency} ${paymentRecord.totalPaid.toLocaleString()}\n`;
       successMessage += `• Reference: ${paymentRecord.paymentSlipRef}\n`;
@@ -1225,7 +1150,7 @@ const renderPaymentStatus = (pi) => {
         8000
       );
       
-      console.log('📊 Final Batch Payment Summary:', {
+      console.log('📊 Final Batch Payment Summary (totals only):', {
         totalProcessed: processedPIs.length,
         partialPayments,
         fullPayments,
@@ -1233,22 +1158,21 @@ const renderPaymentStatus = (pi) => {
       });
 
     } else {
-      showNotification('No PIs were updated. Please check the allocations.', 'warning');
+      showNotification('No PI totals were updated. Please check the allocations.', 'warning');
     }
     
     // Close the modal
     setShowBatchPaymentModal(false);
     
   } catch (error) {
-    console.error('❌ Error processing batch payment:', error);
+    console.error('❌ Error processing batch payment totals:', error);
     showNotification(
-      `Failed to process batch payment: ${error.message}`,
+      `Failed to process batch payment totals: ${error.message}`,
       'error',
       10000
     );
   }
 };
-
   const handleViewDocuments = (pi) => {
     setDocumentsModal({ open: true, pi });
   };
