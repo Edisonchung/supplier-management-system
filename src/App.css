@@ -1,4 +1,4 @@
-/* src/App.css */
+/* src/App.css - Enhanced with Dark Mode Support */
 
 /* Import Tailwind CSS */
 @tailwind base;
@@ -7,6 +7,7 @@
 
 /* Root variables for consistent theming */
 :root {
+  /* Brand Colors - consistent across themes */
   --primary-color: #3b82f6; /* blue-500 */
   --primary-dark: #2563eb; /* blue-600 */
   --secondary-color: #9333ea; /* purple-600 */
@@ -14,6 +15,8 @@
   --success-color: #10b981; /* emerald-500 */
   --warning-color: #f59e0b; /* amber-500 */
   --error-color: #ef4444; /* red-500 */
+  
+  /* Existing gray scale (keep for compatibility) */
   --gray-50: #f9fafb;
   --gray-100: #f3f4f6;
   --gray-200: #e5e7eb;
@@ -24,6 +27,51 @@
   --gray-700: #374151;
   --gray-800: #1f2937;
   --gray-900: #111827;
+  
+  /* Light theme colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb; /* gray-50 */
+  --bg-tertiary: #f3f4f6; /* gray-100 */
+  --text-primary: #111827; /* gray-900 */
+  --text-secondary: #6b7280; /* gray-500 */
+  --text-tertiary: #9ca3af; /* gray-400 */
+  --border-primary: #e5e7eb; /* gray-200 */
+  --border-secondary: #d1d5db; /* gray-300 */
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --card-bg: #ffffff;
+  --input-bg: #ffffff;
+  --hover-bg: #f3f4f6; /* gray-100 */
+  
+  /* Scrollbar colors */
+  --scrollbar-track: #f3f4f6;
+  --scrollbar-thumb: #9ca3af;
+  --scrollbar-thumb-hover: #6b7280;
+}
+
+/* Dark theme colors */
+.dark {
+  --bg-primary: #0f172a; /* slate-900 */
+  --bg-secondary: #1e293b; /* slate-800 */
+  --bg-tertiary: #334155; /* slate-700 */
+  --text-primary: #f8fafc; /* slate-50 */
+  --text-secondary: #cbd5e1; /* slate-300 */
+  --text-tertiary: #94a3b8; /* slate-400 */
+  --border-primary: #334155; /* slate-700 */
+  --border-secondary: #475569; /* slate-600 */
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --card-bg: #1e293b; /* slate-800 */
+  --input-bg: #334155; /* slate-700 */
+  --hover-bg: #334155; /* slate-700 */
+  
+  /* Dark scrollbar colors */
+  --scrollbar-track: #334155;
+  --scrollbar-thumb: #64748b;
+  --scrollbar-thumb-hover: #94a3b8;
+  
+  /* Adjust success/warning/error for dark mode */
+  --success-color: #34d399; /* emerald-400 */
+  --warning-color: #fbbf24; /* amber-400 */
+  --error-color: #f87171; /* red-400 */
 }
 
 /* Base styles */
@@ -39,30 +87,32 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--gray-50);
-  color: var(--gray-900);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Scrollbar styling */
+/* Enhanced scrollbar styling with dark mode */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--gray-100);
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-400);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
+  transition: background-color 0.3s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-500);
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* Page header styles for consistent spacing */
+/* Page header styles with dark mode support */
 .page-header {
   margin-bottom: 2rem; /* 32px */
 }
@@ -70,24 +120,27 @@ body {
 .page-title {
   font-size: 1.875rem; /* 30px */
   font-weight: 700;
-  color: var(--gray-900);
+  color: var(--text-primary);
   margin-bottom: 0.5rem; /* 8px */
   line-height: 1.25;
+  transition: color 0.3s ease;
 }
 
 .page-subtitle {
   font-size: 1rem; /* 16px */
-  color: var(--gray-500);
+  color: var(--text-secondary);
   line-height: 1.5;
+  transition: color 0.3s ease;
 }
 
-/* Card styles */
+/* Enhanced card styles with dark mode */
 .card {
-  background-color: white;
+  background-color: var(--card-bg);
   border-radius: 0.5rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  border: 1px solid var(--gray-200);
+  box-shadow: 0 1px 3px 0 var(--shadow-color), 0 1px 2px 0 var(--shadow-color);
+  border: 1px solid var(--border-primary);
   overflow: hidden;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .card-hover {
@@ -95,234 +148,45 @@ body {
 }
 
 .card-hover:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px 0 var(--shadow-color), 0 2px 4px 0 var(--shadow-color);
 }
 
-/* Button styles */
-.btn {
+/* Dark mode toggle button styles */
+.dark-mode-toggle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 0.375rem;
-  transition: all 0.2s ease;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--hover-bg);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
   cursor: pointer;
-  border: 1px solid transparent;
-  outline: none;
+  transition: all 0.3s ease;
 }
 
-.btn:focus {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+.dark-mode-toggle:hover {
+  background-color: var(--border-secondary);
+  color: var(--text-primary);
+  transform: scale(1.05);
 }
 
-.btn-primary {
-  background-color: var(--primary-color);
-  color: white;
+.dark-mode-toggle:active {
+  transform: scale(0.95);
 }
 
-.btn-primary:hover {
-  background-color: var(--primary-dark);
+/* Animation for theme transition */
+.theme-transition {
+  transition: background-color 0.3s ease, 
+              color 0.3s ease, 
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
 }
 
-.btn-secondary {
-  background-color: white;
-  color: var(--gray-700);
-  border-color: var(--gray-300);
-}
-
-.btn-secondary:hover {
-  background-color: var(--gray-50);
-}
-
-/* Form styles */
-.form-label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--gray-700);
-  margin-bottom: 0.5rem;
-}
-
-.form-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  border: 1px solid var(--gray-300);
-  border-radius: 0.375rem;
-  transition: all 0.2s ease;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* Status badge styles */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.625rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  border-radius: 9999px;
-}
-
-.badge-success {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-.badge-warning {
-  background-color: #fed7aa;
-  color: #92400e;
-}
-
-.badge-error {
-  background-color: #fee2e2;
-  color: #991b1b;
-}
-
-.badge-info {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-/* Navigation styles */
-.nav-item {
-  transition: all 0.2s ease;
-}
-
-.nav-tooltip {
-  position: absolute;
-  left: 100%;
-  margin-left: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background-color: var(--gray-900);
-  color: white;
-  font-size: 0.875rem;
-  border-radius: 0.25rem;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.nav-item:hover .nav-tooltip {
-  opacity: 1;
-}
-
-/* Modal styles */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 40;
-  animation: fadeIn 0.2s ease;
-}
-
-.modal-content {
-  background-color: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  max-height: 90vh;
-  overflow-y: auto;
-  animation: slideUp 0.3s ease;
-}
-
-/* Table styles */
-.table-container {
-  overflow-x: auto;
-  border-radius: 0.5rem;
-  border: 1px solid var(--gray-200);
-}
-
-.table-header {
-  background-color: var(--gray-50);
-  border-bottom: 1px solid var(--gray-200);
-}
-
-.table-row:hover {
-  background-color: var(--gray-50);
-}
-
-/* Loading states */
-.skeleton {
-  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(10px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-/* Notification styles */
-.notification {
-  position: fixed;
-  bottom: 1rem;
-  right: 1rem;
-  padding: 1rem;
-  background-color: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  z-index: 50;
-  animation: slideInRight 0.3s ease;
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* HiggsFlow brand gradient */
+/* HiggsFlow brand gradient - enhanced for dark mode */
 .gradient-brand {
   background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
 }
@@ -334,32 +198,135 @@ body {
   background-clip: text;
 }
 
-/* Utility classes */
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Form inputs with dark mode support */
+.form-input {
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  transition: all 0.3s ease;
 }
 
-.transition-all {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
+.form-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-/* Print styles */
+.form-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Button variants with dark mode */
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.btn-secondary {
+  background-color: var(--hover-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--border-secondary);
+  transform: translateY(-1px);
+}
+
+/* Navigation enhancements for dark mode */
+.nav-item {
+  color: var(--text-secondary);
+  transition: color 0.3s ease;
+}
+
+.nav-item:hover,
+.nav-item.active {
+  color: var(--text-primary);
+}
+
+/* Status badges with dark mode support */
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-active {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--success-color);
+}
+
+.status-pending {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: var(--warning-color);
+}
+
+.status-inactive {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--error-color);
+}
+
+/* Loading spinner with dark mode */
+.spinner {
+  border: 2px solid var(--border-primary);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dropdown animation with dark mode */
+.dropdown {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px var(--shadow-color);
+  transition: all 0.3s ease;
+}
+
+/* Print styles - force light mode for printing */
 @media print {
   .no-print {
     display: none !important;
   }
   
   body {
-    background-color: white;
+    background-color: white !important;
+    color: black !important;
   }
   
   .card {
     box-shadow: none;
     border: 1px solid #000;
+    background-color: white !important;
   }
 }
 
@@ -384,49 +351,4 @@ body {
 :focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
-}
-
-/* Custom scrollbar for data tables */
-.table-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-
-.table-scroll::-webkit-scrollbar-track {
-  background: var(--gray-100);
-}
-
-.table-scroll::-webkit-scrollbar-thumb {
-  background: var(--gray-300);
-  border-radius: 3px;
-}
-
-/* Loading spinner */
-.spinner {
-  border: 2px solid var(--gray-200);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  animation: spin 0.8s linear infinite;
-}
-
-/* Dropdown animation */
-.dropdown-enter {
-  opacity: 0;
-  transform: scale(0.95);
-}
-
-.dropdown-enter-active {
-  opacity: 1;
-  transform: scale(1);
-  transition: opacity 200ms, transform 200ms;
-}
-
-.dropdown-exit {
-  opacity: 1;
-}
-
-.dropdown-exit-active {
-  opacity: 0;
-  transition: opacity 150ms;
 }
