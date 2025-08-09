@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { DocumentManager } from '../documents/DocumentManager';
 import { ProductEnrichmentService } from '../../services/ProductEnrichmentService';
-import { useAILearning } from '../../services/AILearningService';
+// ✅ FIXED: Import the correct factory function instead of non-existent hook
+import { createAILearningHook } from '../../services/AILearningService';
 
 // ================================================================
 // ENHANCED PRODUCT MODAL COMPONENT
@@ -64,8 +65,8 @@ const ProductModal = ({
   const [webSearchResults, setWebSearchResults] = useState(null);
   const [isWebSearching, setIsWebSearching] = useState(false);
 
-  // ✅ NEW: AI Learning integration
-  const { recordCorrection, recordSuccess } = useAILearning();
+  // ✅ FIXED: Use the factory function to create AI learning capabilities
+  const aiLearning = createAILearningHook();
 
   // Enhanced tab configuration
   const tabs = [
@@ -232,8 +233,8 @@ const ProductModal = ({
       // Switch to AI tab to show suggestions
       setActiveTab('ai');
       
-      // Record successful enhancement
-      recordSuccess(suggestions, true);
+      // ✅ FIXED: Record successful enhancement using aiLearning instance
+      aiLearning.recordSuccess(suggestions, true);
       
       showNotification?.(`AI analysis complete with ${Math.round(suggestions.confidence * 100)}% confidence`, 'success');
       
@@ -314,10 +315,11 @@ const ProductModal = ({
     }
   };
 
-  // ✅ NEW: Handle user correction for learning
+  // ✅ FIXED: Handle user correction for learning
   const handleUserCorrection = (field, originalValue, newValue) => {
     if (aiSuggestions && originalValue !== newValue) {
-      recordCorrection(
+      // ✅ FIXED: Use aiLearning instance
+      aiLearning.recordCorrection(
         { [field]: originalValue, confidence: aiSuggestions.confidence },
         { [field]: newValue },
         {
