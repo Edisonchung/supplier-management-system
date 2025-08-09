@@ -1,5 +1,5 @@
 // src/services/AILearningService.js
-import { ProductEnrichmentService } from './ProductEnrichmentService';
+// ✅ FIXED: Removed React imports to prevent build issues
 
 export class AILearningService {
   constructor() {
@@ -308,8 +308,11 @@ export class AILearningService {
   /**
    * Apply a learned pattern to the ProductEnrichmentService
    */
-  applyPattern(pattern) {
+  async applyPattern(pattern) {
     try {
+      // Dynamically import to avoid build issues
+      const { ProductEnrichmentService } = await import('./ProductEnrichmentService');
+      
       ProductEnrichmentService.addBrandPattern(
         pattern.brand,
         pattern.regex,
@@ -399,45 +402,6 @@ export class AILearningService {
   }
 
   /**
-   * Export learning data for analysis
-   */
-  exportLearningData() {
-    return {
-      ...this.learningData,
-      statistics: this.getLearningStatistics(),
-      exportedAt: new Date().toISOString()
-    };
-  }
-
-  /**
-   * Import learning data (for backup/restore)
-   */
-  importLearningData(data) {
-    if (data && data.corrections && data.successes && data.learnedPatterns) {
-      this.learningData = {
-        corrections: data.corrections || [],
-        successes: data.successes || [],
-        learnedPatterns: data.learnedPatterns || [],
-        metadata: data.metadata || this.learningData.metadata
-      };
-      this.saveLearningData();
-      console.log('📥 Learning data imported successfully');
-      return true;
-    }
-    console.error('❌ Invalid learning data format');
-    return false;
-  }
-
-  /**
-   * Clear all learning data (for reset)
-   */
-  clearLearningData() {
-    this.learningData = this.getInitialLearningData();
-    this.saveLearningData();
-    console.log('🗑️ Learning data cleared');
-  }
-
-  /**
    * Load learning data from storage
    */
   loadLearningData() {
@@ -509,45 +473,31 @@ export class AILearningService {
   }
 }
 
-// React Hook for using the learning service
-export const useAILearning = () => {
-  const [learningService] = React.useState(() => new AILearningService());
-  const [statistics, setStatistics] = React.useState(null);
-
-  const recordCorrection = React.useCallback((originalSuggestion, userCorrection, context) => {
-    return learningService.recordUserCorrection(originalSuggestion, userCorrection, context);
-  }, [learningService]);
-
-  const recordSuccess = React.useCallback((enhancement, userAcceptance) => {
-    return learningService.recordSuccessfulEnhancement(enhancement, userAcceptance);
-  }, [learningService]);
-
-  const refreshStatistics = React.useCallback(() => {
-    const stats = learningService.getLearningStatistics();
-    setStatistics(stats);
-    return stats;
-  }, [learningService]);
-
-  const applyPattern = React.useCallback((patternId) => {
-    const pattern = learningService.learningData.learnedPatterns.find(p => p.id === patternId);
-    if (pattern) {
-      return learningService.applyPattern(pattern);
-    }
-    return false;
-  }, [learningService]);
-
-  React.useEffect(() => {
-    refreshStatistics();
-  }, [refreshStatistics]);
+// ✅ FIXED: Simple hook-like function that doesn't require React
+export function createAILearningHook() {
+  let learningService = null;
 
   return {
-    recordCorrection,
-    recordSuccess,
-    refreshStatistics,
-    applyPattern,
-    statistics,
-    learningService
+    getLearningService() {
+      if (!learningService) {
+        learningService = new AILearningService();
+      }
+      return learningService;
+    },
+    
+    recordCorrection(originalSuggestion, userCorrection, context) {
+      return this.getLearningService().recordUserCorrection(originalSuggestion, userCorrection, context);
+    },
+    
+    recordSuccess(enhancement, userAcceptance) {
+      return this.getLearningService().recordSuccessfulEnhancement(enhancement, userAcceptance);
+    },
+    
+    getStatistics() {
+      return this.getLearningService().getLearningStatistics();
+    }
   };
-};
+}
 
+// Export default for compatibility
 export default AILearningService;
