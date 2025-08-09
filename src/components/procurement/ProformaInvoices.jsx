@@ -109,36 +109,89 @@ const ProformaInvoices = ({ showNotification }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ NEW: Product Sync Function (PRESERVED)
-  const syncPIProductsToDatabase = async (piData, savedPI) => {
+  // ✅ ENHANCED: Product Sync Function with AI Integration
+const syncPIProductsToDatabase = async (piData, savedPI) => {
   try {
-    console.log('🔄 Syncing PI products to Products database...');
+    console.log('🔄 Enhanced PI Product Sync Starting...');
     
     if (!piData.items || !Array.isArray(piData.items)) {
       console.log('No items to sync');
-      return { synced: 0, created: 0, updated: 0 };
+      return { synced: 0, created: 0, updated: 0, enhanced: 0 };
     }
 
-    const syncStats = { synced: 0, created: 0, updated: 0 };
+    const syncStats = { synced: 0, created: 0, updated: 0, enhanced: 0, errors: [] };
     const supplier = suppliers.find(s => s.id === piData.supplierId);
 
-    for (const item of piData.items) {
+    for (const [index, item] of piData.items.entries()) {
       try {
-        // Find existing product by SKU/code
-        const existingProduct = products.find(p => 
-          p.sku === item.productCode || 
-          p.name === item.productName
-        );
+        console.log(`🔄 Processing item ${index + 1}/${piData.items.length}:`, item.productCode || item.productName);
+
+        // ✅ NEW: Enhanced part number validation
+        let normalizedPartNumber = null;
+        if (item.productCode) {
+          // Import the ProductEnrichmentService if available
+          try {
+            const { ProductEnrichmentService } = await import('../../services/ProductEnrichmentService');
+            const validation = ProductEnrichmentService.validateAndNormalizePartNumber(item.productCode);
+            if (validation.isValid) {
+              normalizedPartNumber = validation.normalized;
+              console.log(`✅ Normalized part number: ${item.productCode} → ${normalizedPartNumber}`);
+            } else {
+              console.warn(`⚠️ Invalid part number format: ${item.productCode}`);
+            }
+          } catch (importError) {
+            console.warn('ProductEnrichmentService not available, using basic validation');
+            // Fallback validation
+            normalizedPartNumber = item.productCode.trim().toUpperCase();
+          }
+        }
+
+        // Find existing product with enhanced matching
+        const existingProduct = products.find(p => {
+          // Primary match: normalized part number
+          if (normalizedPartNumber && (
+            p.partNumber === normalizedPartNumber || 
+            p.sku === normalizedPartNumber ||
+            p.manufacturerCode === normalizedPartNumber
+          )) {
+            return true;
+          }
+          
+          // Secondary match: client item code
+          if (item.clientItemCode && p.clientItemCode === item.clientItemCode) {
+            return true;
+          }
+          
+          // Tertiary match: exact name match
+          if (p.name === item.productName) {
+            return true;
+          }
+          
+          // Legacy match: original SKU field
+          if (p.sku === item.productCode || p.name === item.productName) {
+            return true;
+          }
+          
+          return false;
+        });
 
         if (existingProduct) {
-          // Update existing product
-          console.log(`Updating existing product: ${item.productCode}`);
+          console.log(`📝 Found existing product, checking for updates...`);
           
-          // Build clean update data - CRITICAL FIX
+          // ✅ ENHANCED: Build comprehensive update data
           const updateData = {
             // Core product info
             name: item.productName || existingProduct.name || 'Unnamed Product',
-            sku: item.productCode || existingProduct.sku || `SKU-${Date.now()}`,
+            
+            // ✅ NEW: Enhanced identifier fields
+            ...(normalizedPartNumber && { partNumber: normalizedPartNumber }),
+            ...(item.clientItemCode && { clientItemCode: item.clientItemCode }),
+            
+            // Update SKU if it was missing the normalized part number
+            ...(normalizedPartNumber && !existingProduct.partNumber && { 
+              sku: existingProduct.sku || normalizedPartNumber 
+            }),
+            
             description: item.notes || item.specifications || existingProduct.description || '',
             
             // Pricing - only include if values exist
@@ -158,15 +211,17 @@ const ProformaInvoices = ({ showNotification }) => {
             minStock: existingProduct.minStock || 1,
             minStockLevel: existingProduct.minStockLevel || 1,
             
-            // Categories
+            // ✅ ENHANCED: Categories with AI detection
             category: existingProduct.category || detectProductCategory(item.productName) || 'components',
             ...(item.brand && { brand: item.brand }),
             
             // Status
             status: existingProduct.status || 'active',
             
-            // Tracking
+            // ✅ NEW: Add enhancement tracking
+            source: existingProduct.source || 'pi_import',
             updatedAt: new Date().toISOString(),
+            lastUpdatedFrom: 'pi_upload',
             
             // PI References - safely merge with existing
             piReferences: [
@@ -205,16 +260,63 @@ const ProformaInvoices = ({ showNotification }) => {
             console.log(`✅ Updated product: ${existingProduct.name}`);
           } else {
             console.error(`❌ Failed to update product: ${existingProduct.name}`, result.error);
+            syncStats.errors.push({ item: item.productName, error: result.error });
           }
         } else {
-          // Create new product from PI item
-          console.log(`Creating new product: ${item.productCode}`);
+          console.log(`🆕 Creating new product with AI enhancement...`);
           
-          // Build clean new product data - CRITICAL FIX
+          // ✅ NEW: Try AI enhancement for new products
+          let aiEnhanced = false;
+          let confidence = 0;
+          let detectedBrand = null;
+          let detectedCategory = detectProductCategory(item.productName) || 'components';
+          let generatedSKU = null;
+          
+          if (normalizedPartNumber) {
+            try {
+              const { ProductEnrichmentService } = await import('../../services/ProductEnrichmentService');
+              
+              // AI brand detection
+              const brandResult = ProductEnrichmentService.detectBrandFromPartNumber(
+                normalizedPartNumber, 
+                item.productName || ''
+              );
+              
+              if (brandResult) {
+                detectedBrand = brandResult.brand;
+                detectedCategory = brandResult.category || detectedCategory;
+                confidence = brandResult.confidence || 0.7;
+                aiEnhanced = true;
+                
+                console.log(`🤖 AI detected brand: ${detectedBrand} (${Math.round(confidence * 100)}% confidence)`);
+              }
+              
+              // Generate internal SKU
+              generatedSKU = ProductEnrichmentService.generateInternalSKU({
+                category: detectedCategory,
+                brand: detectedBrand,
+                partNumber: normalizedPartNumber
+              });
+              
+              console.log(`🏷️ Generated SKU: ${generatedSKU}`);
+              
+            } catch (enhancementError) {
+              console.warn('AI enhancement not available, using basic detection:', enhancementError);
+              // Fallback to basic detection
+              generatedSKU = `${detectedCategory.toUpperCase().slice(0, 3)}-${Date.now().toString().slice(-6)}`;
+            }
+          }
+          
+          // ✅ ENHANCED: Build comprehensive new product data
           const newProduct = {
             // Core product info - with safe defaults
-            name: item.productName || 'Unnamed Product',
-            sku: item.productCode || `SKU-${Date.now()}`,
+            name: item.productName || normalizedPartNumber || 'Unnamed Product',
+            
+            // ✅ NEW: Enhanced identifier fields
+            ...(normalizedPartNumber && { partNumber: normalizedPartNumber }),
+            sku: generatedSKU || item.productCode || `SKU-${Date.now()}`,
+            ...(item.clientItemCode && { clientItemCode: item.clientItemCode }),
+            
             description: item.notes || item.specifications || '',
             
             // Pricing - only include if values exist
@@ -234,18 +336,26 @@ const ProformaInvoices = ({ showNotification }) => {
             minStock: 1,
             minStockLevel: 1,
             
-            // Categories
-            category: detectProductCategory(item.productName) || 'components',
-            ...(item.brand && { brand: item.brand }),
+            // ✅ ENHANCED: Categories and brands with AI
+            category: detectedCategory,
+            ...(detectedBrand && { brand: detectedBrand }),
+            ...(item.brand && { brand: item.brand }), // User-provided brand takes precedence
             
             // Status
             status: 'active',
+            
+            // ✅ NEW: AI enhancement metadata
+            aiEnriched: aiEnhanced,
+            confidence: confidence,
+            lastEnhanced: aiEnhanced ? new Date().toISOString() : null,
+            detectedSpecs: {}, // Could be enhanced further with spec extraction
             
             // Tracking
             dateAdded: new Date().toISOString(),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            source: 'pi_import',
+            source: 'pi_extraction',
+            createdFromPI: savedPI.id,
             
             // PI References
             piReferences: [{
@@ -279,27 +389,54 @@ const ProformaInvoices = ({ showNotification }) => {
           const result = await addProduct(newProduct);
           if (result.success) {
             syncStats.created++;
-            console.log(`✅ Created product: ${newProduct.name}`);
+            if (aiEnhanced) {
+              syncStats.enhanced++;
+              console.log(`🤖 AI-enhanced product created: ${newProduct.name} (Brand: ${detectedBrand})`);
+            } else {
+              console.log(`✅ Created product: ${newProduct.name}`);
+            }
           } else {
             console.error(`❌ Failed to create product: ${newProduct.name}`, result.error);
+            syncStats.errors.push({ item: item.productName, error: result.error });
           }
         }
         
         syncStats.synced++;
       } catch (error) {
         console.error(`Failed to sync product ${item.productCode}:`, error);
+        syncStats.errors.push({ item: item.productCode || item.productName, error: error.message });
         // Continue with other products even if one fails
       }
     }
     
-    console.log('✅ PI products sync completed:', syncStats);
+    console.log('🎉 Enhanced PI products sync completed:', syncStats);
     
-    // Show notification based on results
-    if (syncStats.created > 0 || syncStats.updated > 0) {
+    // ✅ ENHANCED: Show comprehensive notification
+    if (syncStats.errors.length > 0) {
+      const errorSummary = syncStats.errors.slice(0, 3).map(e => e.item).join(', ');
+      const moreErrors = syncStats.errors.length > 3 ? ` and ${syncStats.errors.length - 3} more` : '';
+      
       showNotification(
-        `Products synced: ${syncStats.created} created, ${syncStats.updated} updated`, 
-        'success'
+        `Sync completed with ${syncStats.errors.length} errors. Failed items: ${errorSummary}${moreErrors}`,
+        'warning',
+        8000
       );
+    } else if (syncStats.created > 0 || syncStats.updated > 0) {
+      let message = `Products synced successfully! `;
+      
+      if (syncStats.created > 0) {
+        message += `${syncStats.created} created`;
+        if (syncStats.enhanced > 0) {
+          message += ` (${syncStats.enhanced} AI-enhanced)`;
+        }
+      }
+      
+      if (syncStats.updated > 0) {
+        if (syncStats.created > 0) message += ', ';
+        message += `${syncStats.updated} updated`;
+      }
+      
+      showNotification(message, 'success', 6000);
     } else if (syncStats.synced > 0) {
       showNotification(`${syncStats.synced} products processed (no changes needed)`, 'info');
     }
@@ -308,7 +445,7 @@ const ProformaInvoices = ({ showNotification }) => {
   } catch (error) {
     console.error('Error syncing PI products:', error);
     showNotification(`Error syncing products: ${error.message}`, 'error');
-    return { synced: 0, created: 0, updated: 0, error: error.message };
+    return { synced: 0, created: 0, updated: 0, enhanced: 0, error: error.message };
   }
 };
 
