@@ -25,6 +25,8 @@ import BatchUploadModal from './BatchUploadModal';
 import BatchPaymentProcessor from './BatchPaymentProcessor';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
+import { ProductEnrichmentService } from '../../services/ProductEnrichmentService';
+
 
 
 const ProformaInvoices = ({ showNotification }) => {
