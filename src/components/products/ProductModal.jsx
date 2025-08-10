@@ -248,50 +248,64 @@ const ProductModal = ({
 
   // ✅ NEW: Web search enhancement (optional)
   const performWebSearch = async () => {
-    if (!formData.partNumber) {
-      showNotification?.('Please enter a part number first', 'warning');
-      return;
+  if (!formData.partNumber) {
+    showNotification?.('Please enter a part number first', 'warning');
+    return;
+  }
+
+  setIsWebSearching(true);
+  try {
+    console.log('🔍 Starting web search for:', formData.partNumber);
+    
+    // ✅ FIXED: Ensure correct URL and method
+    const response = await fetch('https://supplier-mcp-server-production.up.railway.app/api/web-search', {
+      method: 'POST',  // ✅ CRITICAL: Must be POST, not GET
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        partNumber: formData.partNumber,
+        brand: formData.brand,
+        description: formData.description,
+        type: 'product_search'
+      })
+    });
+
+    console.log('Web search response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Web search failed:', response.status, errorText);
+      throw new Error(`Web search failed: ${response.status} ${response.statusText}`);
     }
 
-    setIsWebSearching(true);
-    try {
-      // This is a placeholder for web search integration
-      // Replace with your actual web search implementation
-      const response = await fetch('/api/web-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          queries: [`"${formData.partNumber}" datasheet specifications`],
-          type: 'product_search'
-        })
-      });
-
-      if (response.ok) {
-        const searchResults = await response.json();
-        setWebSearchResults(searchResults);
-        
-        if (searchResults.found) {
-          // Merge web search results with AI suggestions
-          const enhancedSuggestions = {
-            ...aiSuggestions,
-            ...searchResults,
-            webEnhanced: true,
-            confidence: Math.max(aiSuggestions?.confidence || 0, searchResults.confidence || 0.6)
-          };
-          setAiSuggestions(enhancedSuggestions);
-          showNotification?.('Web search completed - additional data found!', 'success');
-        } else {
-          showNotification?.('No additional data found via web search', 'info');
-        }
-      }
-    } catch (error) {
-      console.warn('Web search failed:', error);
-      showNotification?.('Web search unavailable - using local AI only', 'info');
-    } finally {
-      setIsWebSearching(false);
+    const searchResults = await response.json();
+    console.log('Web search results:', searchResults);
+    
+    setWebSearchResults(searchResults);
+    
+    if (searchResults.found) {
+      // Merge web search results with AI suggestions
+      const enhancedSuggestions = {
+        ...aiSuggestions,
+        ...searchResults,
+        webEnhanced: true,
+        confidence: Math.max(aiSuggestions?.confidence || 0, searchResults.confidence || 0.6)
+      };
+      setAiSuggestions(enhancedSuggestions);
+      showNotification?.('Web search completed - additional data found!', 'success');
+    } else {
+      showNotification?.(`Web search completed: ${searchResults.reason || 'No additional data found'}`, 'info');
     }
-  };
-
+    
+  } catch (error) {
+    console.error('Web search error:', error);
+    showNotification?.(`Web search failed: ${error.message}`, 'error');
+  } finally {
+    setIsWebSearching(false);
+  }
+};
   // ✅ NEW: Apply AI suggestion with learning
   const applySuggestion = (field, value) => {
     const fieldMapping = {
