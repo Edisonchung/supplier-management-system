@@ -1,9 +1,9 @@
-// src/components/products/ProductModal.jsx - ENHANCED with MCP Integration
+// src/components/products/ProductModal.jsx - ENHANCED with MCP Prompt Selector Integration
 import React, { useState, useEffect } from 'react';
 import { 
   X, Package, DollarSign, Layers, Tag, Hash, Image, FileText, Info, Clock, 
   AlertCircle, Save, Sparkles, Check, RefreshCw, Loader2, Wand2, Brain,
-  ExternalLink, TrendingUp, CheckCircle, AlertTriangle, Zap, Target
+  ExternalLink, TrendingUp, CheckCircle, AlertTriangle, Zap, Target, History
 } from 'lucide-react';
 import { DocumentManager } from '../documents/DocumentManager';
 // ✅ SIMPLIFIED: Only import utilities from ProductEnrichmentService
@@ -13,8 +13,11 @@ import { createAILearningHook } from '../../services/AILearningService';
 // ✅ PRIMARY: Import MCP Product Enhancement Service (main enhancement method)
 import { MCPProductEnhancementService } from '../../services/MCPProductEnhancementService';
 
+// ✅ NEW: MCP Server URL constant
+const MCP_SERVER_URL = process.env.REACT_APP_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
+
 // ================================================================
-// ENHANCED PRODUCT MODAL COMPONENT WITH MCP INTEGRATION
+// ENHANCED PRODUCT MODAL COMPONENT WITH MCP PROMPT SELECTOR
 // ================================================================
 const ProductModal = ({ 
   product, 
@@ -78,6 +81,13 @@ const ProductModal = ({
   const [mcpResults, setMcpResults] = useState(null);
   const [isMcpEnhancing, setIsMcpEnhancing] = useState(false);
   const [enhancementMethod, setEnhancementMethod] = useState('auto'); // 'auto', 'mcp', 'legacy'
+
+  // ✅ NEW: Prompt selector state
+  const [availablePrompts, setAvailablePrompts] = useState([]);
+  const [selectedPromptId, setSelectedPromptId] = useState(null);
+  const [isRerunning, setIsRerunning] = useState(false);
+  const [promptHistory, setPromptHistory] = useState([]);
+  const [showComparison, setShowComparison] = useState(false);
 
   const aiLearning = createAILearningHook();
 
@@ -171,9 +181,10 @@ const ProductModal = ({
     setWebSearchResults(null);
   }, [product, initialTab, partNumber, basicDescription]);
 
-  // ✅ NEW: Check MCP system status on component mount
+  // ✅ NEW: Check MCP system status and load prompts on component mount
   useEffect(() => {
     checkMCPSystemStatus();
+    loadAvailablePrompts();
   }, [userEmail]);
 
   // ✅ NEW: Auto-trigger enhancement for new products with part numbers
@@ -192,6 +203,141 @@ const ProductModal = ({
     } catch (error) {
       console.warn('⚠️ MCP Status Check Failed:', error);
       setMcpStatus({ status: 'error', reason: error.message });
+    }
+  };
+
+  // ✅ NEW: Load available prompts with enhanced metadata
+  const loadAvailablePrompts = async () => {
+    try {
+      const response = await fetch(`${MCP_SERVER_URL}/api/product-enhancement-status?userEmail=${encodeURIComponent(userEmail)}`);
+      const data = await response.json();
+      
+      console.log('📝 Prompt Status Response:', data);
+      
+      if (data.available_prompts_list) {
+        setAvailablePrompts(data.available_prompts_list);
+        
+        // Set smart default based on part number
+        const smartDefault = getSmartDefaultPrompt(formData.partNumber, data.available_prompts_list);
+        setSelectedPromptId(smartDefault?.id);
+      } else if (data.selected_prompt) {
+        // Fallback: create list from selected prompt
+        const promptList = [{
+          id: data.selected_prompt.id,
+          name: data.selected_prompt.name,
+          aiProvider: data.selected_prompt.ai_provider || 'deepseek',
+          specialized_for: data.selected_prompt.specialized_for || 'General enhancement',
+          confidence_avg: 0.9,
+          usage_count: 1,
+          recommended_for: ['general']
+        }];
+        setAvailablePrompts(promptList);
+        setSelectedPromptId(data.selected_prompt.id);
+      }
+    } catch (error) {
+      console.error('Failed to load available prompts:', error);
+      // Create a fallback prompt option
+      setAvailablePrompts([{
+        id: 'fallback-basic',
+        name: 'Basic Pattern Analysis',
+        aiProvider: 'pattern',
+        specialized_for: 'Basic enhancement using patterns',
+        confidence_avg: 0.7,
+        usage_count: 0,
+        recommended_for: ['fallback']
+      }]);
+      setSelectedPromptId('fallback-basic');
+    }
+  };
+
+  // ✅ NEW: Smart default prompt selection
+  const getSmartDefaultPrompt = (partNumber, prompts) => {
+    if (!partNumber || !prompts) return prompts[0];
+    
+    const upperPartNumber = partNumber.toUpperCase();
+    
+    // Siemens parts
+    if (upperPartNumber.match(/^(6XV|6ES|3SE)/)) {
+      return prompts.find(p => p.name.toLowerCase().includes('siemens')) || prompts[0];
+    }
+    
+    // SKF bearings
+    if (upperPartNumber.match(/^(NJ|NU|6\d{3}|32\d{3})/)) {
+      return prompts.find(p => p.name.toLowerCase().includes('skf')) || prompts[0];
+    }
+    
+    // ABB drives
+    if (upperPartNumber.match(/^ACS\d{3}/)) {
+      return prompts.find(p => p.name.toLowerCase().includes('abb')) || prompts[0];
+    }
+    
+    // Default to brand detection prompt
+    return prompts.find(p => p.name.toLowerCase().includes('brand detection')) || prompts[0];
+  };
+
+  // ✅ NEW: Prompt re-run functionality
+  const rerunWithDifferentPrompt = async (promptId) => {
+    if (!promptId || isRerunning) return;
+    
+    setIsRerunning(true);
+    
+    try {
+      const response = await fetch(`${MCP_SERVER_URL}/api/enhance-product`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productData: {
+            partNumber: formData.partNumber,
+            name: formData.name,
+            brand: formData.brand,
+            description: formData.description,
+            category: formData.category
+          },
+          userEmail: userEmail,
+          forcedPromptId: promptId,
+          metadata: {
+            rerun: true,
+            originalPrompt: aiSuggestions?.mcpMetadata?.prompt_id,
+            userSelected: true,
+            timestamp: new Date().toISOString()
+          }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Save current result to history for comparison
+        if (aiSuggestions?.mcpEnhanced) {
+          setPromptHistory(prev => [...prev, {
+            promptId: aiSuggestions.mcpMetadata?.prompt_id,
+            promptName: aiSuggestions.mcpMetadata?.prompt_used,
+            result: aiSuggestions,
+            timestamp: new Date().toISOString()
+          }]);
+        }
+        
+        // Apply new results
+        setAiSuggestions({
+          ...result.extractedData,
+          mcpMetadata: result.metadata,
+          mcpEnhanced: true,
+          source: 'MCP AI Enhancement (User Selected)',
+          userSelectedPrompt: true
+        });
+        
+        setSelectedPromptId(promptId);
+        
+        showNotification?.(
+          `Enhancement complete with ${result.metadata.prompt_used} (${Math.round(result.confidence_score * 100)}% confidence)`, 
+          'success'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to rerun with different prompt:', error);
+      showNotification?.('Failed to rerun enhancement', 'error');
+    } finally {
+      setIsRerunning(false);
     }
   };
 
@@ -214,13 +360,20 @@ const ProductModal = ({
         try {
           console.log('🚀 Attempting MCP Product Enhancement (Primary Method)...');
           
-          const mcpResult = await MCPProductEnhancementService.enhanceProduct({
+          const enhancementData = {
             partNumber: formData.partNumber,
             name: formData.name,
             brand: formData.brand,
             description: formData.description,
             category: formData.category
-          }, userEmail);
+          };
+
+          // Use selected prompt if available
+          if (selectedPromptId && selectedPromptId !== 'fallback-basic') {
+            enhancementData.forcedPromptId = selectedPromptId;
+          }
+
+          const mcpResult = await MCPProductEnhancementService.enhanceProduct(enhancementData, userEmail);
 
           console.log('✅ MCP Enhancement Result:', mcpResult);
           
@@ -357,7 +510,7 @@ const ProductModal = ({
     try {
       console.log('🔍 Starting web search for:', formData.partNumber);
       
-      const response = await fetch('https://supplier-mcp-server-production.up.railway.app/api/web-search', {
+      const response = await fetch(`${MCP_SERVER_URL}/api/web-search`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -580,7 +733,9 @@ const ProductModal = ({
           webEnhanced: !!aiSuggestions?.webEnhanced,
           mcpEnhanced: !!mcpResults,
           enhancementSource: mcpResults?.source || aiSuggestions?.source || 'unknown',
-          mcpMetadata: mcpResults?.mcpMetadata
+          mcpMetadata: mcpResults?.mcpMetadata,
+          selectedPromptId: selectedPromptId,
+          userSelectedPrompt: !!aiSuggestions?.userSelectedPrompt
         });
       }
 
@@ -601,6 +756,7 @@ const ProductModal = ({
         detectedSpecs: mcpResults?.specifications || aiSuggestions?.specifications || formData.detectedSpecs,
         mcpMetadata: mcpResults?.mcpMetadata || formData.mcpMetadata,
         webEnhanced: !!aiSuggestions?.webEnhanced,
+        selectedPromptId: selectedPromptId,
         updatedAt: new Date().toISOString(),
         dateAdded: product?.dateAdded || new Date().toISOString()
       };
@@ -693,6 +849,104 @@ const ProductModal = ({
     'electrical'
   ];
 
+  // ✅ NEW: Prompt Selector Panel Component
+  const PromptSelectorPanel = () => (
+    <div className="grid grid-cols-3 gap-4 p-3 bg-white rounded-lg border mb-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          🧠 Active Prompt
+        </label>
+        <select 
+          value={selectedPromptId || ''}
+          onChange={(e) => rerunWithDifferentPrompt(e.target.value)}
+          disabled={isRerunning}
+          className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-purple-500"
+        >
+          {availablePrompts.map(prompt => (
+            <option key={prompt.id} value={prompt.id}>
+              {prompt.name}
+              {prompt.confidence_avg && ` (${Math.round(prompt.confidence_avg * 100)}% avg)`}
+            </option>
+          ))}
+        </select>
+        {selectedPromptId && (
+          <p className="text-xs text-gray-500 mt-1">
+            Specialized for: {availablePrompts.find(p => p.id === selectedPromptId)?.specialized_for}
+          </p>
+        )}
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ⚡ AI Provider
+        </label>
+        <div className="flex items-center space-x-2 p-2">
+          <Zap className="w-4 h-4 text-yellow-500" />
+          <span className="text-sm text-gray-900">
+            {aiSuggestions?.mcpMetadata?.ai_provider || availablePrompts.find(p => p.id === selectedPromptId)?.aiProvider || 'deepseek'}
+          </span>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ⏱️ Processing Time
+        </label>
+        <div className="flex items-center space-x-2 p-2">
+          <Clock className="w-4 h-4 text-orange-500" />
+          <span className="text-sm text-gray-900">
+            {aiSuggestions?.mcpMetadata?.processing_time || '0ms'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ✅ NEW: Prompt History Panel Component
+  const PromptHistoryPanel = () => (
+    <div className="mt-4 p-3 bg-gray-50 rounded-lg border">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-medium text-gray-900 flex items-center">
+          <History className="w-4 h-4 text-gray-600 mr-2" />
+          Prompt History
+        </h4>
+        {promptHistory.length > 0 && (
+          <button
+            onClick={() => setShowComparison(!showComparison)}
+            className="text-sm text-purple-600 hover:text-purple-800"
+          >
+            {showComparison ? 'Hide' : 'Compare'} Results
+          </button>
+        )}
+      </div>
+      
+      {promptHistory.length > 0 ? (
+        <div className="space-y-2">
+          {promptHistory.slice(-3).map((entry, index) => (
+            <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
+              <div>
+                <span className="text-sm font-medium text-gray-900">
+                  {entry.promptName}
+                </span>
+                <span className="ml-2 text-xs text-gray-500">
+                  {Math.round(entry.result.confidence * 100)}% confidence
+                </span>
+              </div>
+              <button
+                onClick={() => rerunWithDifferentPrompt(entry.promptId)}
+                className="text-xs text-purple-600 hover:text-purple-800"
+              >
+                Reuse
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500">No previous enhancements</p>
+      )}
+    </div>
+  );
+
   // ✅ ENHANCED: MCP Suggestion Component
   const MCPSuggestionField = ({ label, field, suggestion, current }) => {
     const isApplied = appliedSuggestions.has(field);
@@ -777,7 +1031,7 @@ const ProductModal = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden">
-        {/* ✅ ENHANCED: Header with MCP Integration */}
+        {/* ✅ ENHANCED: Header with MCP Integration and Prompt Info */}
         <div className="p-6 border-b bg-gradient-to-r from-blue-50 to-purple-50">
           <div className="flex justify-between items-center">
             <div>
@@ -808,6 +1062,11 @@ const ProductModal = ({
                       : 'bg-yellow-100 text-yellow-800'
                   }`}>
                     {mcpStatus.status === 'available' ? '🟢 MCP Ready' : '🟡 Basic Mode'}
+                  </span>
+                )}
+                {availablePrompts.length > 1 && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                    {availablePrompts.length} Prompts Available
                   </span>
                 )}
               </div>
@@ -912,7 +1171,7 @@ const ProductModal = ({
           </nav>
         </div>
 
-        {/* Tab Content - keeping all existing tabs and adding MCP enhancement to AI tab */}
+        {/* Tab Content - keeping all existing tabs and adding enhanced AI tab with prompt selector */}
         <div className="overflow-y-auto max-h-[calc(90vh-200px)]">
           {activeTab === 'basic' && (
             <div className="p-6">
@@ -1126,7 +1385,11 @@ const ProductModal = ({
                     onBlur={() => {
                       // Auto-trigger enhancement when part number is entered
                       if (formData.partNumber && !aiSuggestions && !mcpResults && !isEnriching) {
-                        setTimeout(enrichProductData, 500);
+                        setTimeout(() => {
+                          loadAvailablePrompts().then(() => {
+                            enrichProductData();
+                          });
+                        }, 500);
                       }
                     }}
                   />
@@ -1202,7 +1465,7 @@ const ProductModal = ({
             </div>
           )}
 
-          {/* ✅ ENHANCED: AI Enhancement Tab with MCP Integration */}
+          {/* ✅ ENHANCED: AI Enhancement Tab with MCP Prompt Selector Integration */}
           {activeTab === 'ai' && (
             <div className="p-6 space-y-6">
               <div className="text-center">
@@ -1211,7 +1474,7 @@ const ProductModal = ({
                   MCP AI Product Enhancement
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Enhance your product data using advanced MCP AI analysis or basic pattern matching.
+                  Enhance your product data using advanced MCP AI analysis with intelligent prompt selection.
                 </p>
                 
                 {!aiSuggestions && !mcpResults && !isEnriching && (
@@ -1261,6 +1524,33 @@ const ProductModal = ({
                 )}
               </div>
 
+              {/* ✅ NEW: Prompt Selector Panel */}
+              {availablePrompts.length > 0 && (aiSuggestions || mcpResults) && (
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                      <Brain className="h-5 w-5 text-purple-600" />
+                      MCP Enhancement Results
+                      <span className="text-sm bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                        {availablePrompts.length} Prompts Available
+                      </span>
+                    </h4>
+                    {isRerunning && (
+                      <div className="flex items-center gap-2 text-purple-600">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span className="text-sm">Re-running...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ✅ NEW: Prompt Selector Panel Component */}
+                  <PromptSelectorPanel />
+
+                  {/* ✅ NEW: Prompt History Component */}
+                  <PromptHistoryPanel />
+                </div>
+              )}
+
               {/* ✅ NEW: MCP Enhancement Results Panel */}
               {mcpResults && (
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
@@ -1284,6 +1574,12 @@ const ProductModal = ({
                         <Target className="h-4 w-4" />
                         {Math.round(mcpResults.confidence * 100)}% confidence
                       </span>
+
+                      {aiSuggestions?.userSelectedPrompt && (
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                          User Selected Prompt
+                        </span>
+                      )}
                     </div>
                     
                     <button
@@ -1619,7 +1915,7 @@ const ProductModal = ({
             </div>
           )}
 
-          {/* ✅ ENHANCED: History Tab with MCP enhancement history */}
+          {/* ✅ ENHANCED: History Tab with MCP enhancement history and prompt tracking */}
           {activeTab === 'history' && (
             <div className="p-6 space-y-4">
               <h3 className="text-lg font-medium text-gray-900">Product History</h3>
@@ -1662,6 +1958,11 @@ const ProductModal = ({
                             <strong>MCP Prompt:</strong> {product.mcpMetadata.prompt_used}
                           </p>
                         )}
+                        {product.selectedPromptId && (
+                          <p className="text-sm text-blue-700">
+                            <strong>Selected Prompt ID:</strong> {product.selectedPromptId}
+                          </p>
+                        )}
                       </div>
                     )}
                     
@@ -1685,7 +1986,7 @@ const ProductModal = ({
                     )}
                   </div>
 
-                  {/* ✅ ENHANCED: Enhancement History */}
+                  {/* ✅ ENHANCED: Enhancement History with Prompt Tracking */}
                   {formData.enhancementHistory && formData.enhancementHistory.length > 0 && (
                     <div className="space-y-2">
                       <h4 className="font-medium text-gray-900">Enhancement History</h4>
@@ -1703,6 +2004,11 @@ const ProductModal = ({
                                 <Sparkles className="h-4 w-4 text-blue-600" />
                               )}
                               Enhancement #{index + 1} {enhancement.mcpEnhanced ? '(MCP)' : '(AI)'}
+                              {enhancement.userSelectedPrompt && (
+                                <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">
+                                  User Selected
+                                </span>
+                              )}
                             </span>
                             <span className="text-xs text-blue-600">
                               {new Date(enhancement.timestamp).toLocaleString()}
@@ -1723,6 +2029,11 @@ const ProductModal = ({
                               MCP Prompt: {enhancement.mcpMetadata.prompt_used}
                             </div>
                           )}
+                          {enhancement.selectedPromptId && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Prompt ID: {enhancement.selectedPromptId}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1730,7 +2041,7 @@ const ProductModal = ({
                   
                   <div className="text-center py-8">
                     <Clock className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                    <p className="text-gray-500">Detailed history tracking coming soon</p>
+                    <p className="text-gray-500">Detailed history tracking complete with prompt selection</p>
                   </div>
                 </div>
               ) : (
@@ -1743,7 +2054,7 @@ const ProductModal = ({
           )}
         </div>
 
-        {/* ✅ ENHANCED: Footer with Actions and MCP status */}
+        {/* ✅ ENHANCED: Footer with Actions and Prompt Status */}
         {activeTab !== 'documents' && (
           <div className="p-6 border-t bg-gray-50 flex justify-between items-center">
             <div className="flex items-center gap-4">
@@ -1753,6 +2064,11 @@ const ProductModal = ({
                   <Brain size={16} />
                   <span className="text-sm font-medium">
                     MCP Enhanced ({Math.round(formData.confidence * 100)}%)
+                    {selectedPromptId && availablePrompts.find(p => p.id === selectedPromptId) && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        via {availablePrompts.find(p => p.id === selectedPromptId)?.name}
+                      </span>
+                    )}
                   </span>
                 </div>
               )}
@@ -1783,6 +2099,11 @@ const ProductModal = ({
                     mcpStatus.status === 'available' ? 'bg-green-500' : 'bg-yellow-500'
                   }`}></span>
                   MCP System: {mcpStatus.status === 'available' ? 'Ready' : 'Basic Mode'}
+                  {availablePrompts.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      ({availablePrompts.length} prompts)
+                    </span>
+                  )}
                 </div>
               )}
             </div>
