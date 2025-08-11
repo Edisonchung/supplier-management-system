@@ -1,10 +1,9 @@
-// src/components/products/ProductModal.jsx - FIXED: Clean Enhancement Dropdown + Visible Update Button
-import React, { useState, useEffect, useRef } from 'react';
+// src/components/products/ProductModal.jsx - ENHANCED with MCP Prompt Selector Integration
+import React, { useState, useEffect } from 'react';
 import { 
   X, Package, DollarSign, Layers, Tag, Hash, Image, FileText, Info, Clock, 
   AlertCircle, Save, Sparkles, Check, RefreshCw, Loader2, Wand2, Brain,
-  ExternalLink, TrendingUp, CheckCircle, AlertTriangle, Zap, Target, History,
-  ChevronDown, Settings
+  ExternalLink, TrendingUp, CheckCircle, AlertTriangle, Zap, Target, History, ChevronDown, Settings
 } from 'lucide-react';
 import { DocumentManager } from '../documents/DocumentManager';
 // ✅ SIMPLIFIED: Only import utilities from ProductEnrichmentService
@@ -18,7 +17,7 @@ import { MCPProductEnhancementService } from '../../services/MCPProductEnhanceme
 const MCP_SERVER_URL = process.env.REACT_APP_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
 
 // ================================================================
-// FIXED PRODUCT MODAL COMPONENT WITH CLEAN ENHANCEMENT DROPDOWN
+// ENHANCED PRODUCT MODAL COMPONENT WITH MCP PROMPT SELECTOR
 // ================================================================
 const ProductModal = ({ 
   product, 
@@ -90,7 +89,7 @@ const ProductModal = ({
   const [promptHistory, setPromptHistory] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
 
-  // ✅ NEW: Clean dropdown state
+   // ✅ NEW: Clean dropdown state
   const [showEnhancementDropdown, setShowEnhancementDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -110,18 +109,7 @@ const ProductModal = ({
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'history', label: 'History', icon: Clock }
   ];
-
-  // ✅ NEW: Click outside to close dropdown
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowEnhancementDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  
 
   useEffect(() => {
     if (product) {
@@ -211,6 +199,18 @@ const ProductModal = ({
     }
   }, [formData.partNumber, product, aiSuggestions, mcpResults]);
 
+  // ✅ NEW: Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowEnhancementDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // ✅ NEW: Check MCP system status
   const checkMCPSystemStatus = async () => {
     try {
@@ -290,6 +290,230 @@ const ProductModal = ({
     
     // Default to brand detection prompt
     return prompts.find(p => p.name.toLowerCase().includes('brand detection')) || prompts[0];
+  };
+
+  // ✅ NEW: Prompt re-run functionality
+  const rerunWithDifferentPrompt = async (promptId) => {
+    if (!promptId || isRerunning) return;
+    
+    setIsRerunning(true);
+    
+    try {
+      const response = await fetch(`${MCP_SERVER_URL}/api/enhance-product`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productData: {
+            partNumber: formData.partNumber,
+            name: formData.name,
+            brand: formData.brand,
+            description: formData.description,
+            category: formData.category
+          },
+          userEmail: userEmail,
+          forcedPromptId: promptId,
+          metadata: {
+            rerun: true,
+            originalPrompt: aiSuggestions?.mcpMetadata?.prompt_id,
+            userSelected: true,
+            timestamp: new Date().toISOString()
+          }
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Save current result to history for comparison
+        if (aiSuggestions?.mcpEnhanced) {
+          setPromptHistory(prev => [...prev, {
+            promptId: aiSuggestions.mcpMetadata?.prompt_id,
+            promptName: aiSuggestions.mcpMetadata?.prompt_used,
+            result: aiSuggestions,
+            timestamp: new Date().toISOString()
+          }]);
+        }
+        
+        // Apply new results
+        setAiSuggestions({
+          ...result.extractedData,
+          mcpMetadata: result.metadata,
+          mcpEnhanced: true,
+          source: 'MCP AI Enhancement (User Selected)',
+          userSelectedPrompt: true
+        });
+        
+        setSelectedPromptId(promptId);
+        
+        showNotification?.(
+          `Enhancement complete with ${result.metadata.prompt_used} (${Math.round(result.confidence_score * 100)}% confidence)`, 
+          'success'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to rerun with different prompt:', error);
+      showNotification?.('Failed to rerun enhancement', 'error');
+    } finally {
+      setIsRerunning(false);
+    }
+  };
+
+  // ✅ SIMPLIFIED: Master enhancement function - MCP primary, minimal fallback
+  const enrichProductData = async (forceMethod = null) => {
+    if (!formData.partNumber) {
+      showNotification?.('Please enter a part number first', 'warning');
+      return;
+    }
+    
+    setIsEnriching(true);
+    setIsMcpEnhancing(forceMethod === 'mcp' || enhancementMethod === 'mcp');
+    
+    try {
+      let suggestions = null;
+      let usedMethod = 'basic_fallback';
+      
+      // ✅ PRIMARY: Try MCP enhancement first (95% of use cases)
+      if (forceMethod !== 'legacy') {
+        try {
+          console.log('🚀 Attempting MCP Product Enhancement (Primary Method)...');
+          
+          const enhancementData = {
+            partNumber: formData.partNumber,
+            name: formData.name,
+            brand: formData.brand,
+            description: formData.description,
+            category: formData.category
+          };
+
+          // Use selected prompt if available
+          if (selectedPromptId && selectedPromptId !== 'fallback-basic') {
+            enhancementData.forcedPromptId = selectedPromptId;
+          }
+
+          const mcpResult = await MCPProductEnhancementService.enhanceProduct(enhancementData, userEmail);
+
+          console.log('✅ MCP Enhancement Result:', mcpResult);
+          
+          if (mcpResult.found && mcpResult.confidence > 0.5) {
+            suggestions = {
+              productName: mcpResult.productName,
+              brand: mcpResult.brand,
+              category: mcpResult.category,
+              description: mcpResult.description,
+              specifications: mcpResult.specifications || {},
+              confidence: mcpResult.confidence,
+              mcpEnhanced: true,
+              mcpMetadata: mcpResult.mcpMetadata,
+              source: mcpResult.source || 'MCP AI Enhancement'
+            };
+            
+            setMcpResults(mcpResult);
+            usedMethod = 'mcp';
+            
+            showNotification?.(
+              `MCP enhancement complete: ${Math.round(mcpResult.confidence * 100)}% confidence`, 
+              'success'
+            );
+          } else {
+            console.log('⚠️ MCP enhancement failed or low confidence, using basic fallback');
+            throw new Error('MCP enhancement unsuccessful');
+          }
+          
+        } catch (mcpError) {
+          console.warn('MCP enhancement failed, using basic fallback:', mcpError);
+          // Fall through to basic fallback
+        }
+      }
+      
+      // ✅ SIMPLIFIED: Basic fallback only (emergency use - 5% of cases)
+      if (!suggestions) {
+        console.log('🔄 Using basic fallback enhancement...');
+        
+        // Simple brand detection (only most common patterns)
+        let detectedBrand = null;
+        const partUpper = formData.partNumber.toUpperCase();
+        
+        if (partUpper.match(/^6(XV|ES|EP|AV)/)) detectedBrand = 'Siemens';
+        else if (partUpper.match(/^(NJ|NU|6\d{3}|32\d{3})/)) detectedBrand = 'SKF';
+        else if (partUpper.match(/^ACS\d{3}/)) detectedBrand = 'ABB';
+        else if (partUpper.match(/^(TM|LC1)/)) detectedBrand = 'Schneider Electric';
+        else if (partUpper.match(/^(E3|CP1|MY)/)) detectedBrand = 'Omron';
+        
+        // Simple category detection
+        let detectedCategory = formData.category || 'components';
+        if (partUpper.match(/^6XV/)) detectedCategory = 'networking';
+        else if (partUpper.match(/^6ES/)) detectedCategory = 'automation';
+        else if (partUpper.match(/^(NJ|NU|6\d{3})/)) detectedCategory = 'bearings';
+        else if (partUpper.match(/^ACS/)) detectedCategory = 'drives';
+        
+        suggestions = {
+          productName: detectedBrand ? 
+            `${detectedBrand} ${detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)} Component ${formData.partNumber}` :
+            formData.name || `Industrial Component ${formData.partNumber}`,
+          brand: detectedBrand,
+          category: detectedCategory,
+          description: detectedBrand ? 
+            `${detectedBrand} industrial ${detectedCategory} component. Part number: ${formData.partNumber}. Professional-grade equipment for industrial applications.` :
+            `Industrial component with part number ${formData.partNumber}. Manufacturer to be verified.`,
+          specifications: detectedBrand ? {
+            manufacturer: detectedBrand,
+            category: detectedCategory,
+            part_number: formData.partNumber
+          } : {},
+          confidence: detectedBrand ? 0.6 : 0.3,
+          source: 'Basic Pattern Fallback',
+          mcpEnhanced: false
+        };
+        
+        usedMethod = 'basic_fallback';
+      }
+      
+      setAiSuggestions(suggestions);
+      setShowAIPanel(true);
+      
+      // Auto-apply high-confidence suggestions for new products
+      if (!product && suggestions.confidence > 0.8) {
+        const autoApplyFields = ['brand', 'category'];
+        autoApplyFields.forEach(field => {
+          if (suggestions[field] && !formData[field]) {
+            applySuggestion(field, suggestions[field]);
+          }
+        });
+      }
+      
+      // Switch to AI tab to show suggestions
+      setActiveTab('ai');
+      
+      // Record successful enhancement
+      aiLearning.recordSuccess(suggestions, usedMethod === 'mcp');
+      
+      const methodLabels = {
+        mcp: 'MCP AI',
+        basic_fallback: 'Basic Pattern Analysis'
+      };
+      
+      showNotification?.(
+        `${methodLabels[usedMethod]} analysis complete with ${Math.round(suggestions.confidence * 100)}% confidence`, 
+        suggestions.confidence > 0.7 ? 'success' : 'info'
+      );
+      
+    } catch (error) {
+      console.error('Failed to enrich product:', error);
+      showNotification?.('Failed to enhance product data', 'error');
+    } finally {
+      setIsEnriching(false);
+      setIsMcpEnhancing(false);
+    }
+  };
+
+  // ✅ NEW: Force MCP enhancement
+  const enhanceWithMCP = async () => {
+    await enrichProductData('mcp');
+  };
+
+  // ✅ SIMPLIFIED: Force legacy enhancement (basic fallback only)
+  const enhanceWithLegacy = async () => {
+    await enrichProductData('legacy');
   };
 
   // ✅ NEW: MCP Enhancement (Primary method)
@@ -485,84 +709,63 @@ const ProductModal = ({
     }
   };
 
-  // ✅ SIMPLIFIED: Master enhancement function - MCP primary, minimal fallback
-  const enrichProductData = async (forceMethod = null) => {
+  // ✅ ENHANCED: Web search enhancement (keeping existing functionality)
+  const performWebSearch = async () => {
     if (!formData.partNumber) {
       showNotification?.('Please enter a part number first', 'warning');
       return;
     }
-    
-    // Default to MCP enhancement unless forced otherwise
-    if (forceMethod === 'fallback') {
-      await enhanceWithFallback();
-    } else {
-      await enhanceWithMCP();
-    }
-  };
 
-  // ✅ NEW: Prompt re-run functionality
-  const rerunWithDifferentPrompt = async (promptId) => {
-    if (!promptId || isRerunning) return;
-    
-    setIsRerunning(true);
-    
+    setIsWebSearching(true);
     try {
-      const response = await fetch(`${MCP_SERVER_URL}/api/enhance-product`, {
+      console.log('🔍 Starting web search for:', formData.partNumber);
+      
+      const response = await fetch(`${MCP_SERVER_URL}/api/web-search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
-          productData: {
-            partNumber: formData.partNumber,
-            name: formData.name,
-            brand: formData.brand,
-            description: formData.description,
-            category: formData.category
-          },
-          userEmail: userEmail,
-          forcedPromptId: promptId,
-          metadata: {
-            rerun: true,
-            originalPrompt: aiSuggestions?.mcpMetadata?.prompt_id,
-            userSelected: true,
-            timestamp: new Date().toISOString()
-          }
+          partNumber: formData.partNumber,
+          brand: formData.brand,
+          description: formData.description,
+          type: 'product_search'
         })
       });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        // Save current result to history for comparison
-        if (aiSuggestions?.mcpEnhanced) {
-          setPromptHistory(prev => [...prev, {
-            promptId: aiSuggestions.mcpMetadata?.prompt_id,
-            promptName: aiSuggestions.mcpMetadata?.prompt_used,
-            result: aiSuggestions,
-            timestamp: new Date().toISOString()
-          }]);
-        }
-        
-        // Apply new results
-        setAiSuggestions({
-          ...result.extractedData,
-          mcpMetadata: result.metadata,
-          mcpEnhanced: true,
-          source: 'MCP AI Enhancement (User Selected)',
-          userSelectedPrompt: true
-        });
-        
-        setSelectedPromptId(promptId);
-        
-        showNotification?.(
-          `Enhancement complete with ${result.metadata.prompt_used} (${Math.round(result.confidence_score * 100)}% confidence)`, 
-          'success'
-        );
+      console.log('Web search response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Web search failed:', response.status, errorText);
+        throw new Error(`Web search failed: ${response.status} ${response.statusText}`);
       }
+
+      const searchResults = await response.json();
+      console.log('Web search results:', searchResults);
+      
+      setWebSearchResults(searchResults);
+      
+      if (searchResults.found) {
+        // Merge web search results with existing suggestions
+        const enhancedSuggestions = {
+          ...aiSuggestions,
+          ...searchResults,
+          webEnhanced: true,
+          confidence: Math.max(aiSuggestions?.confidence || 0, searchResults.confidence || 0.6)
+        };
+        setAiSuggestions(enhancedSuggestions);
+        showNotification?.('Web search completed - additional data found!', 'success');
+      } else {
+        showNotification?.(`Web search completed: ${searchResults.reason || 'No additional data found'}`, 'info');
+      }
+      
     } catch (error) {
-      console.error('Failed to rerun with different prompt:', error);
-      showNotification?.('Failed to rerun enhancement', 'error');
+      console.error('Web search error:', error);
+      showNotification?.(`Web search failed: ${error.message}`, 'error');
     } finally {
-      setIsRerunning(false);
+      setIsWebSearching(false);
     }
   };
 
@@ -593,34 +796,33 @@ const ProductModal = ({
 
   // ✅ NEW: Apply all MCP suggestions
   const applyAllMCPSuggestions = () => {
-    if (!mcpResults && !aiSuggestions) return;
+    if (!mcpResults) return;
 
-    const results = mcpResults || aiSuggestions;
     const updates = {};
     let appliedCount = 0;
 
-    if (results.productName && results.productName !== formData.name) {
-      updates.name = results.productName;
+    if (mcpResults.productName && mcpResults.productName !== formData.name) {
+      updates.name = mcpResults.productName;
       appliedCount++;
     }
     
-    if (results.brand && results.brand !== formData.brand) {
-      updates.brand = results.brand;
+    if (mcpResults.brand && mcpResults.brand !== formData.brand) {
+      updates.brand = mcpResults.brand;
       appliedCount++;
     }
     
-    if (results.category && results.category !== formData.category) {
-      updates.category = results.category;
+    if (mcpResults.category && mcpResults.category !== formData.category) {
+      updates.category = mcpResults.category;
       appliedCount++;
     }
     
-    if (results.description && results.description !== formData.description) {
-      updates.description = results.description;
+    if (mcpResults.description && mcpResults.description !== formData.description) {
+      updates.description = mcpResults.description;
       appliedCount++;
     }
 
     setFormData(prev => ({ ...prev, ...updates }));
-    showNotification?.(`Applied ${appliedCount} suggestions`, 'success');
+    showNotification?.(`Applied ${appliedCount} MCP suggestions`, 'success');
   };
 
   // ✅ ENHANCED: Apply AI suggestion with learning (keeping existing functionality)
@@ -699,6 +901,104 @@ const ProductModal = ({
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
+
+  // ✅ NEW: Enhancement Dropdown Component
+  const EnhancementDropdown = () => (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setShowEnhancementDropdown(!showEnhancementDropdown)}
+        disabled={!formData.partNumber || isEnriching}
+        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
+      >
+        {isEnriching ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
+          </>
+        ) : (
+          <>
+            <Brain size={16} />
+            AI Enhance
+            <ChevronDown size={14} />
+          </>
+        )}
+      </button>
+
+      {showEnhancementDropdown && !isEnriching && (
+        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+          <div className="p-2">
+            {/* MCP Enhancement (Primary) */}
+            {mcpStatus?.status === 'available' && (
+              <button
+                type="button"
+                onClick={enhanceWithMCP}
+                className="w-full text-left px-3 py-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-lg flex items-center gap-3 transition-colors"
+              >
+                <div className="flex-shrink-0">
+                  <Brain size={20} className="text-purple-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900">MCP Enhancement</div>
+                  <div className="text-sm text-gray-500">Advanced AI with smart prompts</div>
+                  <div className="text-xs text-purple-600 mt-1">Recommended • High Accuracy</div>
+                </div>
+              </button>
+            )}
+
+            {/* Specific Prompt Options */}
+            {availablePrompts.length > 1 && (
+              <div className="border-t pt-2 mt-2">
+                <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Specialized Prompts
+                </div>
+                {availablePrompts.slice(0, 3).map(prompt => (
+                  <button
+                    key={prompt.id}
+                    type="button"
+                    onClick={() => enhanceWithSpecificPrompt(prompt.id)}
+                    className="w-full text-left px-3 py-2 hover:bg-purple-50 rounded-lg flex items-center gap-3 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <Settings size={16} className="text-purple-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{prompt.name}</div>
+                      <div className="text-xs text-gray-500 truncate">{prompt.specialized_for}</div>
+                      {prompt.confidence_avg && (
+                        <div className="text-xs text-purple-600 mt-1">
+                          {Math.round(prompt.confidence_avg * 100)}% avg accuracy
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Fallback Enhancement */}
+            <div className="border-t pt-2 mt-2">
+              <button
+                type="button"
+                onClick={enhanceWithFallback}
+                className="w-full text-left px-3 py-3 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition-colors"
+              >
+                <div className="flex-shrink-0">
+                  <Sparkles size={20} className="text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900">Quick Enhancement</div>
+                  <div className="text-sm text-gray-500">Pattern-based analysis</div>
+                  <div className="text-xs text-blue-600 mt-1">Fast • Basic Detection</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   // ✅ ENHANCED: Improved submit handler with MCP metadata
   const handleSubmit = async (e) => {
@@ -856,103 +1156,6 @@ const ProductModal = ({
     'safety',
     'electrical'
   ];
-
-  // ✅ NEW: Enhancement Dropdown Component
-  const EnhancementDropdown = () => (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setShowEnhancementDropdown(!showEnhancementDropdown)}
-        disabled={!formData.partNumber || isEnriching}
-        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
-      >
-        {isEnriching ? (
-          <>
-            <Loader2 size={16} className="animate-spin" />
-            {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
-          </>
-        ) : (
-          <>
-            <Brain size={16} />
-            AI Enhance
-            <ChevronDown size={14} />
-          </>
-        )}
-      </button>
-
-      {showEnhancementDropdown && !isEnriching && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-          <div className="p-2">
-            {/* MCP Enhancement (Primary) */}
-            {mcpStatus?.status === 'available' && (
-              <button
-                type="button"
-                onClick={enhanceWithMCP}
-                className="w-full text-left px-3 py-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-lg flex items-center gap-3 transition-colors"
-              >
-                <div className="flex-shrink-0">
-                  <Brain size={20} className="text-purple-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900">MCP Enhancement</div>
-                  <div className="text-sm text-gray-500">Advanced AI with smart prompts</div>
-                  <div className="text-xs text-purple-600 mt-1">Recommended • High Accuracy</div>
-                </div>
-              </button>
-            )}
-
-            {/* Specific Prompt Options */}
-            {availablePrompts.length > 1 && (
-              <div className="border-t pt-2 mt-2">
-                <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Specialized Prompts
-                </div>
-                {availablePrompts.slice(0, 3).map(prompt => (
-                  <button
-                    key={prompt.id}
-                    type="button"
-                    onClick={() => enhanceWithSpecificPrompt(prompt.id)}
-                    className="w-full text-left px-3 py-2 hover:bg-purple-50 rounded-lg flex items-center gap-3 transition-colors"
-                  >
-                    <div className="flex-shrink-0">
-                      <Settings size={16} className="text-purple-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{prompt.name}</div>
-                      <div className="text-xs text-gray-500 truncate">{prompt.specialized_for}</div>
-                      {prompt.confidence_avg && (
-                        <div className="text-xs text-purple-600 mt-1">
-                          {Math.round(prompt.confidence_avg * 100)}% avg accuracy
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Fallback Enhancement */}
-            <div className="border-t pt-2 mt-2">
-              <button
-                type="button"
-                onClick={enhanceWithFallback}
-                className="w-full text-left px-3 py-3 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition-colors"
-              >
-                <div className="flex-shrink-0">
-                  <Sparkles size={20} className="text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900">Quick Enhancement</div>
-                  <div className="text-sm text-gray-500">Pattern-based analysis</div>
-                  <div className="text-xs text-blue-600 mt-1">Fast • Basic Detection</div>
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 
   // ✅ NEW: Prompt Selector Panel Component
   const PromptSelectorPanel = () => (
@@ -1136,7 +1339,7 @@ const ProductModal = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden">
-        {/* ✅ FIXED: Header with Clean Enhancement Dropdown */}
+        {/* ✅ ENHANCED: Header with MCP Integration and Prompt Info */}
         <div className="p-6 border-b bg-gradient-to-r from-blue-50 to-purple-50">
           <div className="flex justify-between items-center">
             <div>
@@ -1179,7 +1382,6 @@ const ProductModal = ({
             <div className="flex items-center gap-3">
               {/* ✅ NEW: Single Enhancement Dropdown */}
               {formData.partNumber && <EnhancementDropdown />}
-              
               <button
                 onClick={onClose}
                 className="text-gray-500 hover:text-gray-700 transition-colors"
@@ -1220,7 +1422,7 @@ const ProductModal = ({
           </nav>
         </div>
 
-        {/* Tab Content */}
+        {/* Tab Content - keeping all existing tabs and adding enhanced AI tab with prompt selector */}
         <div className="overflow-y-auto max-h-[calc(90vh-200px)]">
           {activeTab === 'basic' && (
             <div className="p-6">
@@ -1489,7 +1691,6 @@ const ProductModal = ({
                   />
                 </div>
               </div>
-              </div>
 
               {/* Part Number Validation Status */}
               {formData.partNumber && (
@@ -1521,15 +1722,45 @@ const ProductModal = ({
               <div className="text-center">
                 <Brain className="mx-auto h-12 w-12 text-blue-600 mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  AI Product Enhancement
+                  MCP AI Product Enhancement
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Enhance your product data using advanced AI analysis with intelligent prompt selection.
+                  Enhance your product data using advanced MCP AI analysis with intelligent prompt selection.
                 </p>
                 
                 {!aiSuggestions && !mcpResults && !isEnriching && (
-                  <div className="flex items-center justify-center">
-                    <EnhancementDropdown />
+                  <div className="flex items-center justify-center gap-3 flex-wrap">
+                    {mcpStatus?.status === 'available' && (
+                      <button
+                        type="button"
+                        onClick={enhanceWithMCP}
+                        disabled={!formData.partNumber}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        <Brain size={20} />
+                        MCP Enhance
+                      </button>
+                    )}
+                    
+                    <button
+                      type="button"
+                      onClick={enrichProductData}
+                      disabled={!formData.partNumber}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <Sparkles size={20} />
+                      Basic Enhance
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={performWebSearch}
+                      disabled={!formData.partNumber}
+                      className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <ExternalLink size={20} />
+                      Web Search
+                    </button>
                   </div>
                 )}
                 
@@ -1550,7 +1781,7 @@ const ProductModal = ({
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-bold text-gray-900 flex items-center gap-2">
                       <Brain className="h-5 w-5 text-purple-600" />
-                      Enhancement Results
+                      MCP Enhancement Results
                       <span className="text-sm bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
                         {availablePrompts.length} Prompts Available
                       </span>
@@ -1572,7 +1803,7 @@ const ProductModal = ({
               )}
 
               {/* ✅ NEW: MCP Enhancement Results Panel */}
-              {(mcpResults || (aiSuggestions && aiSuggestions.mcpEnhanced)) && (
+              {mcpResults && (
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
                   
                   <div className="flex items-center justify-between mb-4">
@@ -1583,16 +1814,16 @@ const ProductModal = ({
                       </div>
                       
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        (mcpResults?.source || aiSuggestions?.source)?.includes('MCP') 
+                        mcpResults.source?.includes('MCP') 
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-blue-100 text-blue-800'
                       }`}>
-                        {mcpResults?.source || aiSuggestions?.source || 'MCP Analysis'}
+                        {mcpResults.source || 'MCP Analysis'}
                       </span>
                       
                       <span className="text-sm text-gray-600 flex items-center gap-1">
                         <Target className="h-4 w-4" />
-                        {Math.round((mcpResults?.confidence || aiSuggestions?.confidence || 0) * 100)}% confidence
+                        {Math.round(mcpResults.confidence * 100)}% confidence
                       </span>
 
                       {aiSuggestions?.userSelectedPrompt && (
@@ -1612,7 +1843,7 @@ const ProductModal = ({
                   </div>
 
                   {/* MCP Metadata Panel */}
-                  {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata) && (
+                  {mcpResults.mcpMetadata && (
                     <div className="bg-white rounded-lg p-4 border mb-4">
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                         <div className="flex items-center gap-2">
@@ -1620,7 +1851,7 @@ const ProductModal = ({
                           <div>
                             <span className="text-gray-500 block">Prompt:</span>
                             <span className="font-medium text-blue-800">
-                              {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata)?.prompt_used || 'MCP Analysis'}
+                              {mcpResults.mcpMetadata.prompt_used || 'MCP Analysis'}
                             </span>
                           </div>
                         </div>
@@ -1630,7 +1861,7 @@ const ProductModal = ({
                           <div>
                             <span className="text-gray-500 block">AI Provider:</span>
                             <span className="font-medium text-gray-900">
-                              {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata)?.ai_provider || 'Advanced AI'}
+                              {mcpResults.mcpMetadata.ai_provider || 'Advanced AI'}
                             </span>
                           </div>
                         </div>
@@ -1640,7 +1871,7 @@ const ProductModal = ({
                           <div>
                             <span className="text-gray-500 block">Time:</span>
                             <span className="font-medium text-gray-900">
-                              {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata)?.processing_time || 'Fast'}
+                              {mcpResults.mcpMetadata.processing_time || 'Fast'}
                             </span>
                           </div>
                         </div>
@@ -1653,35 +1884,35 @@ const ProductModal = ({
                     <MCPSuggestionField 
                       label="Product Name" 
                       field="productName"
-                      suggestion={(mcpResults || aiSuggestions)?.productName}
+                      suggestion={mcpResults.productName}
                       current={formData.name}
                     />
                     <MCPSuggestionField 
                       label="Brand" 
                       field="brand"
-                      suggestion={(mcpResults || aiSuggestions)?.brand}
+                      suggestion={mcpResults.brand}
                       current={formData.brand}
                     />
                     <MCPSuggestionField 
                       label="Category" 
                       field="category"
-                      suggestion={(mcpResults || aiSuggestions)?.category}
+                      suggestion={mcpResults.category}
                       current={formData.category}
                     />
                     <MCPSuggestionField 
                       label="Description" 
                       field="description"
-                      suggestion={(mcpResults || aiSuggestions)?.description}
+                      suggestion={mcpResults.description}
                       current={formData.description}
                     />
                   </div>
 
                   {/* Technical Specifications from MCP */}
-                  {(mcpResults?.specifications || aiSuggestions?.specifications) && Object.keys(mcpResults?.specifications || aiSuggestions?.specifications || {}).length > 0 && (
+                  {mcpResults.specifications && Object.keys(mcpResults.specifications).length > 0 && (
                     <div className="mt-4 bg-white rounded-lg p-4 border">
-                      <h5 className="font-medium text-gray-900 mb-3">Detected Specifications</h5>
+                      <h5 className="font-medium text-gray-900 mb-3">MCP Detected Specifications</h5>
                       <div className="grid grid-cols-2 gap-2 text-sm">
-                        {Object.entries(mcpResults?.specifications || aiSuggestions?.specifications || {}).map(([key, value]) => (
+                        {Object.entries(mcpResults.specifications).map(([key, value]) => (
                           value && (
                             <div key={key} className="flex justify-between">
                               <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
@@ -1696,13 +1927,13 @@ const ProductModal = ({
               )}
 
               {/* ✅ SIMPLIFIED: AI Suggestions Panel (basic fallback results) */}
-              {aiSuggestions && !aiSuggestions.mcpEnhanced && !mcpResults && (
+              {aiSuggestions && !mcpResults && (
                 <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <Sparkles className="text-blue-600" size={20} />
                       <h4 className="font-medium text-blue-900">
-                        {aiSuggestions.source === 'Pattern Analysis Fallback' ? 'Pattern Analysis Results' : 'Enhancement Results'}
+                        {aiSuggestions.source === 'Basic Pattern Fallback' ? 'Basic Pattern Analysis' : 'Enhancement Results'}
                       </h4>
                       {aiSuggestions.webEnhanced && (
                         <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
@@ -1731,14 +1962,14 @@ const ProductModal = ({
                   </div>
                   
                   {/* ✅ SIMPLIFIED: Show low confidence warning for basic fallback */}
-                  {aiSuggestions.source === 'Pattern Analysis Fallback' && (
+                  {aiSuggestions.source === 'Basic Pattern Fallback' && (
                     <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                       <div className="flex items-center gap-2 text-yellow-800">
                         <AlertCircle size={16} />
-                        <span className="text-sm font-medium">Pattern Analysis</span>
+                        <span className="text-sm font-medium">Basic Pattern Analysis</span>
                       </div>
                       <p className="text-sm text-yellow-700 mt-1">
-                        Using basic pattern matching. For better accuracy, try MCP enhancement.
+                        Using basic pattern matching. For better accuracy, ensure MCP system is available.
                       </p>
                     </div>
                   )}
@@ -2074,11 +2305,11 @@ const ProductModal = ({
           )}
         </div>
 
-        {/* ✅ FIXED: Footer with Always Visible Update Button */}
+        {/* ✅ ENHANCED: Footer with Actions and Prompt Status */}
         {activeTab !== 'documents' && (
-          <div className="p-6 border-t bg-gray-50 flex justify-between items-center sticky bottom-0 bg-white shadow-lg">
+          <div className="p-6 border-t bg-gray-50 flex justify-between items-center">
             <div className="flex items-center gap-4">
-              {/* ✅ NEW: Enhancement Status Indicators */}
+              {/* ✅ NEW: MCP Enhancement Status Indicator */}
               {formData.mcpEnhanced && (
                 <div className="flex items-center gap-2 text-purple-700">
                   <Brain size={16} />
@@ -2128,7 +2359,6 @@ const ProductModal = ({
               )}
             </div>
             
-            {/* ✅ FIXED: Always Visible Action Buttons */}
             <div className="flex justify-end gap-3">
               <button
                 type="button"
