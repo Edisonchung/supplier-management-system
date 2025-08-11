@@ -1489,6 +1489,7 @@ const ProductModal = ({
                   />
                 </div>
               </div>
+              </div>
 
               {/* Part Number Validation Status */}
               {formData.partNumber && (
@@ -2155,5 +2156,3 @@ const ProductModal = ({
 };
 
 export default ProductModal;
-
-                <div>
