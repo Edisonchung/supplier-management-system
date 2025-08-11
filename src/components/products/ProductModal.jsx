@@ -1,5 +1,5 @@
 // src/components/products/ProductModal.jsx - ENHANCED with MCP Prompt Selector Integration
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Package, DollarSign, Layers, Tag, Hash, Image, FileText, Info, Clock, 
   AlertCircle, Save, Sparkles, Check, RefreshCw, Loader2, Wand2, Brain,
