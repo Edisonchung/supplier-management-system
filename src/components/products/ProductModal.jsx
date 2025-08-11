@@ -287,86 +287,7 @@ const ProductModal = ({
       } else if (data.selected_prompt) {
         // Fallback: create list from selected prompt
         const promptList = [{
-        </div>
-
-        {/* ✅ FIXED: Footer with Always Visible Update Button */}
-        <div className="bg-gray-50 px-6 py-4 border-t">
-          <div className="flex items-center justify-between">
-            {/* ✅ LEFT: Status Indicators */}
-            <div className="flex items-center gap-4 text-sm">
-              {formData.mcpEnhanced && (
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle size={16} />
-                  <span className="font-medium">
-                    AI Enhanced ({Math.round(formData.confidence * 100)}%)
-                    {aiSuggestions?.forcedPrompt && (
-                      <span className="ml-1 text-xs text-gray-500">(Forced Prompt)</span>
-                    )}
-                  </span>
-                </div>
-              )}
-              
-              {aiSuggestions?.patternEnhanced && (
-                <div className="flex items-center gap-2 text-orange-700">
-                  <Zap size={16} />
-                  <span className="font-medium">
-                    Pattern Enhanced ({Math.round(formData.confidence * 100)}%)
-                  </span>
-                </div>
-              )}
-              
-              {appliedSuggestions.size > 0 && (
-                <div className="flex items-center gap-2 text-blue-700">
-                  <TrendingUp size={16} />
-                  <span className="text-sm">
-                    {appliedSuggestions.size} suggestion(s) applied
-                  </span>
-                </div>
-              )}
-
-              {/* MCP System Status */}
-              {mcpStatus && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <span className={`h-2 w-2 rounded-full ${
-                    mcpStatus.status === 'available' ? 'bg-green-500' : 'bg-yellow-500'
-                  }`}></span>
-                  MCP System: {mcpStatus.status === 'available' ? 'Ready' : 'Basic Mode'}
-                  {availablePrompts.length > 0 && (
-                    <span className="text-xs text-gray-500">
-                      ({availablePrompts.length} prompts)
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            {/* ✅ RIGHT: Action Buttons - ALWAYS VISIBLE AND PROPERLY SPACED! */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
-              >
-                <Save size={16} />
-                <span>{isSubmitting ? 'Saving...' : (product ? 'Update' : 'Add')} Product</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  );
-};
-
-export default ProductModal;id: data.selected_prompt.id,
+          id: data.selected_prompt.id,
           name: data.selected_prompt.name,
           aiProvider: data.selected_prompt.ai_provider || 'deepseek',
           specialized_for: data.selected_prompt.specialized_for || 'General enhancement',
@@ -1839,3 +1760,83 @@ export default ProductModal;id: data.selected_prompt.id,
               )}
             </div>
           )}
+        </div>
+
+        {/* ✅ FIXED: Footer with Always Visible Update Button */}
+        <div className="bg-gray-50 px-6 py-4 border-t">
+          <div className="flex items-center justify-between">
+            {/* ✅ LEFT: Status Indicators */}
+            <div className="flex items-center gap-4 text-sm">
+              {formData.mcpEnhanced && (
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle size={16} />
+                  <span className="font-medium">
+                    AI Enhanced ({Math.round(formData.confidence * 100)}%)
+                    {aiSuggestions?.forcedPrompt && (
+                      <span className="ml-1 text-xs text-gray-500">(Forced Prompt)</span>
+                    )}
+                  </span>
+                </div>
+              )}
+              
+              {aiSuggestions?.patternEnhanced && (
+                <div className="flex items-center gap-2 text-orange-700">
+                  <Zap size={16} />
+                  <span className="font-medium">
+                    Pattern Enhanced ({Math.round(formData.confidence * 100)}%)
+                  </span>
+                </div>
+              )}
+              
+              {appliedSuggestions.size > 0 && (
+                <div className="flex items-center gap-2 text-blue-700">
+                  <TrendingUp size={16} />
+                  <span className="text-sm">
+                    {appliedSuggestions.size} suggestion(s) applied
+                  </span>
+                </div>
+              )}
+
+              {/* MCP System Status */}
+              {mcpStatus && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <span className={`h-2 w-2 rounded-full ${
+                    mcpStatus.status === 'available' ? 'bg-green-500' : 'bg-yellow-500'
+                  }`}></span>
+                  MCP System: {mcpStatus.status === 'available' ? 'Ready' : 'Basic Mode'}
+                  {availablePrompts.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      ({availablePrompts.length} prompts)
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* ✅ RIGHT: Action Buttons - ALWAYS VISIBLE AND PROPERLY SPACED! */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
+              >
+                <Save size={16} />
+                <span>{isSubmitting ? 'Saving...' : (product ? 'Update' : 'Add')} Product</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+export default ProductModal;
