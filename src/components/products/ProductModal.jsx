@@ -1,4 +1,4 @@
-// src/components/products/ProductModal.jsx - FIXED: Dropdown Enhancement + Visible Update Button
+// src/components/products/ProductModal.jsx - FIXED: Clean Enhancement Dropdown + Visible Update Button
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Package, DollarSign, Layers, Tag, Hash, Image, FileText, Info, Clock, 
@@ -18,7 +18,7 @@ import { MCPProductEnhancementService } from '../../services/MCPProductEnhanceme
 const MCP_SERVER_URL = process.env.REACT_APP_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
 
 // ================================================================
-// FIXED PRODUCT MODAL COMPONENT WITH DROPDOWN ENHANCEMENT
+// FIXED PRODUCT MODAL COMPONENT WITH CLEAN ENHANCEMENT DROPDOWN
 // ================================================================
 const ProductModal = ({ 
   product, 
@@ -90,7 +90,7 @@ const ProductModal = ({
   const [promptHistory, setPromptHistory] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
 
-  // ✅ NEW: Dropdown state
+  // ✅ NEW: Clean dropdown state
   const [showEnhancementDropdown, setShowEnhancementDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -111,64 +111,17 @@ const ProductModal = ({
     { id: 'history', label: 'History', icon: Clock }
   ];
 
-  // ✅ NEW: Close dropdown when clicking outside
+  // ✅ NEW: Click outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowEnhancementDropdown(false);
       }
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  // ✅ NEW: Enhancement options configuration
-  const enhancementOptions = [
-    {
-      id: 'ai_primary',
-      label: 'AI Enhancement',
-      description: 'Full AI analysis with DeepSeek + smart prompt selection',
-      icon: Brain,
-      action: enhanceWithMCP,
-      isPrimary: true,
-      confidence: 'High (85-95%)',
-      time: '20-30s',
-      available: mcpStatus?.status === 'available'
-    },
-    {
-      id: 'pattern_quick',
-      label: 'Quick Pattern Analysis',
-      description: 'Fast pattern-based enhancement for immediate results',
-      icon: Zap,
-      action: enhanceWithPattern,
-      isPrimary: false,
-      confidence: 'Medium (60-85%)',
-      time: '1-2s',
-      available: true
-    },
-    {
-      id: 'siemens_specialist',
-      label: 'Force Siemens Specialist',
-      description: 'Use Siemens-specific AI prompt (for 6XV, 6ES, 3SE series)',
-      icon: Target,
-      action: () => enhanceWithSpecificPrompt('product-enhancement-siemens-specialist'),
-      isPrimary: false,
-      confidence: 'Very High (90-98%)',
-      time: '25-35s',
-      available: mcpStatus?.status === 'available' && formData.partNumber?.match(/^(6XV|6ES|3SE)/i)
-    },
-    {
-      id: 'brand_detection',
-      label: 'Force Brand Detection',
-      description: 'Use general brand detection AI prompt for unknown parts',
-      icon: Settings,
-      action: () => enhanceWithSpecificPrompt('product-enhancement-brand-detection'),
-      isPrimary: false,
-      confidence: 'High (80-90%)',
-      time: '20-30s',
-      available: mcpStatus?.status === 'available'
-    }
-  ];
 
   useEffect(() => {
     if (product) {
@@ -339,48 +292,70 @@ const ProductModal = ({
     return prompts.find(p => p.name.toLowerCase().includes('brand detection')) || prompts[0];
   };
 
-  // ✅ NEW: Quick pattern enhancement function
-  const enhanceWithPattern = async () => {
+  // ✅ NEW: MCP Enhancement (Primary method)
+  const enhanceWithMCP = async () => {
     if (!formData.partNumber) {
       showNotification?.('Please enter a part number first', 'warning');
       return;
     }
     
     setIsEnriching(true);
+    setIsMcpEnhancing(true);
     setShowEnhancementDropdown(false);
     
     try {
-      console.log('⚡ Quick Pattern Enhancement...');
+      console.log('🚀 MCP Enhancement (Primary Method)...');
       
-      // Call pattern fallback function
-      const enhancedData = await enhanceProductDataFallback({
+      const enhancementData = {
         partNumber: formData.partNumber,
         name: formData.name,
         brand: formData.brand,
         description: formData.description,
         category: formData.category
-      });
+      };
+
+      // Use selected prompt if available
+      if (selectedPromptId && selectedPromptId !== 'fallback-basic') {
+        enhancementData.forcedPromptId = selectedPromptId;
+      }
+
+      const mcpResult = await MCPProductEnhancementService.enhanceProduct(enhancementData, userEmail);
+
+      console.log('✅ MCP Enhancement Result:', mcpResult);
       
-      setAiSuggestions({
-        ...enhancedData,
-        source: 'Quick Pattern Analysis',
-        mcpEnhanced: false,
-        patternEnhanced: true
-      });
-      
-      setActiveTab('ai');
-      setShowAIPanel(true);
-      
-      showNotification?.(
-        `Quick analysis complete with ${Math.round(enhancedData.confidence * 100)}% confidence`, 
-        'success'
-      );
+      if (mcpResult.found && mcpResult.confidence > 0.5) {
+        const suggestions = {
+          productName: mcpResult.productName,
+          brand: mcpResult.brand,
+          category: mcpResult.category,
+          description: mcpResult.description,
+          specifications: mcpResult.specifications || {},
+          confidence: mcpResult.confidence,
+          mcpEnhanced: true,
+          mcpMetadata: mcpResult.mcpMetadata,
+          source: mcpResult.source || 'MCP AI Enhancement'
+        };
+        
+        setAiSuggestions(suggestions);
+        setMcpResults(mcpResult);
+        setActiveTab('ai');
+        setShowAIPanel(true);
+        
+        showNotification?.(
+          `MCP enhancement complete: ${Math.round(mcpResult.confidence * 100)}% confidence`, 
+          'success'
+        );
+      } else {
+        throw new Error('MCP enhancement unsuccessful');
+      }
       
     } catch (error) {
-      console.error('Pattern enhancement failed:', error);
-      showNotification?.('Quick enhancement failed', 'error');
+      console.warn('MCP enhancement failed, using fallback:', error);
+      // Auto-fallback to pattern analysis
+      await enhanceWithFallback();
     } finally {
       setIsEnriching(false);
+      setIsMcpEnhancing(false);
     }
   };
 
@@ -441,6 +416,87 @@ const ProductModal = ({
     } finally {
       setIsEnriching(false);
       setIsMcpEnhancing(false);
+    }
+  };
+
+  // ✅ NEW: Fallback enhancement (pattern-based)
+  const enhanceWithFallback = async () => {
+    if (!formData.partNumber) {
+      showNotification?.('Please enter a part number first', 'warning');
+      return;
+    }
+    
+    setIsEnriching(true);
+    setShowEnhancementDropdown(false);
+    
+    try {
+      console.log('🔄 Using fallback pattern enhancement...');
+      
+      // Simple brand detection (only most common patterns)
+      let detectedBrand = null;
+      const partUpper = formData.partNumber.toUpperCase();
+      
+      if (partUpper.match(/^6(XV|ES|EP|AV)/)) detectedBrand = 'Siemens';
+      else if (partUpper.match(/^(NJ|NU|6\d{3}|32\d{3})/)) detectedBrand = 'SKF';
+      else if (partUpper.match(/^ACS\d{3}/)) detectedBrand = 'ABB';
+      else if (partUpper.match(/^(TM|LC1)/)) detectedBrand = 'Schneider Electric';
+      else if (partUpper.match(/^(E3|CP1|MY)/)) detectedBrand = 'Omron';
+      
+      // Simple category detection
+      let detectedCategory = formData.category || 'components';
+      if (partUpper.match(/^6XV/)) detectedCategory = 'networking';
+      else if (partUpper.match(/^6ES/)) detectedCategory = 'automation';
+      else if (partUpper.match(/^(NJ|NU|6\d{3})/)) detectedCategory = 'bearings';
+      else if (partUpper.match(/^ACS/)) detectedCategory = 'drives';
+      
+      const enhancedData = {
+        productName: detectedBrand ? 
+          `${detectedBrand} ${detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)} Component ${formData.partNumber}` :
+          formData.name || `Industrial Component ${formData.partNumber}`,
+        brand: detectedBrand,
+        category: detectedCategory,
+        description: detectedBrand ? 
+          `${detectedBrand} industrial ${detectedCategory} component. Part number: ${formData.partNumber}. Professional-grade equipment for industrial applications.` :
+          `Industrial component with part number ${formData.partNumber}. Manufacturer to be verified.`,
+        specifications: detectedBrand ? {
+          manufacturer: detectedBrand,
+          category: detectedCategory,
+          part_number: formData.partNumber
+        } : {},
+        confidence: detectedBrand ? 0.7 : 0.4,
+        source: 'Pattern Analysis Fallback',
+        mcpEnhanced: false
+      };
+      
+      setAiSuggestions(enhancedData);
+      setActiveTab('ai');
+      setShowAIPanel(true);
+      
+      showNotification?.(
+        `Quick analysis complete with ${Math.round(enhancedData.confidence * 100)}% confidence`, 
+        'success'
+      );
+      
+    } catch (error) {
+      console.error('Pattern enhancement failed:', error);
+      showNotification?.('Quick enhancement failed', 'error');
+    } finally {
+      setIsEnriching(false);
+    }
+  };
+
+  // ✅ SIMPLIFIED: Master enhancement function - MCP primary, minimal fallback
+  const enrichProductData = async (forceMethod = null) => {
+    if (!formData.partNumber) {
+      showNotification?.('Please enter a part number first', 'warning');
+      return;
+    }
+    
+    // Default to MCP enhancement unless forced otherwise
+    if (forceMethod === 'fallback') {
+      await enhanceWithFallback();
+    } else {
+      await enhanceWithMCP();
     }
   };
 
@@ -510,170 +566,64 @@ const ProductModal = ({
     }
   };
 
-  // ✅ SIMPLIFIED: Master enhancement function - MCP primary, minimal fallback
-  const enrichProductData = async (forceMethod = null) => {
-    if (!formData.partNumber) {
-      showNotification?.('Please enter a part number first', 'warning');
-      return;
-    }
-    
-    setIsEnriching(true);
-    setIsMcpEnhancing(forceMethod === 'mcp' || enhancementMethod === 'mcp');
-    
-    try {
-      let suggestions = null;
-      let usedMethod = 'basic_fallback';
-      
-      // ✅ PRIMARY: Try MCP enhancement first (95% of use cases)
-      if (forceMethod !== 'legacy') {
-        try {
-          console.log('🚀 Attempting MCP Product Enhancement (Primary Method)...');
-          
-          const enhancementData = {
-            partNumber: formData.partNumber,
-            name: formData.name,
-            brand: formData.brand,
-            description: formData.description,
-            category: formData.category
-          };
-
-          // Use selected prompt if available
-          if (selectedPromptId && selectedPromptId !== 'fallback-basic') {
-            enhancementData.forcedPromptId = selectedPromptId;
-          }
-
-          const mcpResult = await MCPProductEnhancementService.enhanceProduct(enhancementData, userEmail);
-
-          console.log('✅ MCP Enhancement Result:', mcpResult);
-          
-          if (mcpResult.found && mcpResult.confidence > 0.5) {
-            suggestions = {
-              productName: mcpResult.productName,
-              brand: mcpResult.brand,
-              category: mcpResult.category,
-              description: mcpResult.description,
-              specifications: mcpResult.specifications || {},
-              confidence: mcpResult.confidence,
-              mcpEnhanced: true,
-              mcpMetadata: mcpResult.mcpMetadata,
-              source: mcpResult.source || 'MCP AI Enhancement'
-            };
-            
-            setMcpResults(mcpResult);
-            usedMethod = 'mcp';
-            
-            showNotification?.(
-              `MCP enhancement complete: ${Math.round(mcpResult.confidence * 100)}% confidence`, 
-              'success'
-            );
-          } else {
-            console.log('⚠️ MCP enhancement failed or low confidence, using basic fallback');
-            throw new Error('MCP enhancement unsuccessful');
-          }
-          
-        } catch (mcpError) {
-          console.warn('MCP enhancement failed, using basic fallback:', mcpError);
-          // Fall through to basic fallback
-        }
-      }
-      
-      // ✅ SIMPLIFIED: Basic fallback only (emergency use - 5% of cases)
-      if (!suggestions) {
-        console.log('🔄 Using basic fallback enhancement...');
-        const enhancedData = await enhanceProductDataFallback(formData);
-        suggestions = {
-          ...enhancedData,
-          source: 'Basic Pattern Fallback',
-          mcpEnhanced: false
-        };
-        usedMethod = 'basic_fallback';
-      }
-      
-      setAiSuggestions(suggestions);
-      setShowAIPanel(true);
-      
-      // Auto-apply high-confidence suggestions for new products
-      if (!product && suggestions.confidence > 0.8) {
-        const autoApplyFields = ['brand', 'category'];
-        autoApplyFields.forEach(field => {
-          if (suggestions[field] && !formData[field]) {
-            applySuggestion(field, suggestions[field]);
-          }
-        });
-      }
-      
-      // Switch to AI tab to show suggestions
-      setActiveTab('ai');
-      
-      // Record successful enhancement
-      aiLearning.recordSuccess(suggestions, usedMethod === 'mcp');
-      
-      const methodLabels = {
-        mcp: 'MCP AI',
-        basic_fallback: 'Basic Pattern Analysis'
-      };
-      
-      showNotification?.(
-        `${methodLabels[usedMethod]} analysis complete with ${Math.round(suggestions.confidence * 100)}% confidence`, 
-        suggestions.confidence > 0.7 ? 'success' : 'info'
-      );
-      
-    } catch (error) {
-      console.error('Failed to enrich product:', error);
-      showNotification?.('Failed to enhance product data', 'error');
-    } finally {
-      setIsEnriching(false);
-      setIsMcpEnhancing(false);
-    }
-  };
-
-  // ✅ NEW: Force MCP enhancement
-  const enhanceWithMCP = async () => {
-    await enrichProductData('mcp');
-  };
-
-  // ✅ ENHANCED: Enhanced pattern fallback function
-  const enhanceProductDataFallback = async (productData) => {
-    const partNumber = productData.partNumber || '';
-    
-    console.log(`🔍 Pattern analysis for part number: ${partNumber}`);
-    
-    // Simple brand detection (only most common patterns)
-    let detectedBrand = null;
-    const partUpper = partNumber.toUpperCase();
-    
-    if (partUpper.match(/^6(XV|ES|EP|AV)/)) detectedBrand = 'Siemens';
-    else if (partUpper.match(/^(NJ|NU|6\d{3}|32\d{3})/)) detectedBrand = 'SKF';
-    else if (partUpper.match(/^ACS\d{3}/)) detectedBrand = 'ABB';
-    else if (partUpper.match(/^(TM|LC1)/)) detectedBrand = 'Schneider Electric';
-    else if (partUpper.match(/^(E3|CP1|MY)/)) detectedBrand = 'Omron';
-    
-    // Simple category detection
-    let detectedCategory = productData.category || 'components';
-    if (partUpper.match(/^6XV/)) detectedCategory = 'networking';
-    else if (partUpper.match(/^6ES/)) detectedCategory = 'automation';
-    else if (partUpper.match(/^(NJ|NU|6\d{3})/)) detectedCategory = 'bearings';
-    else if (partUpper.match(/^ACS/)) detectedCategory = 'drives';
-    
-    return {
-      productName: detectedBrand ? 
-        `${detectedBrand} ${detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)} Component ${partNumber}` :
-        productData.name || `Industrial Component ${partNumber}`,
-      brand: detectedBrand,
-      category: detectedCategory,
-      description: detectedBrand ? 
-        `${detectedBrand} industrial ${detectedCategory} component. Part number: ${partNumber}. Professional-grade equipment for industrial applications.` :
-        `Industrial component with part number ${partNumber}. Manufacturer to be verified.`,
-      specifications: detectedBrand ? {
-        manufacturer: detectedBrand,
-        category: detectedCategory,
-        part_number: partNumber
-      } : {},
-      confidence: detectedBrand ? 0.6 : 0.3
+  // ✅ NEW: Apply MCP suggestion
+  const applyMCPSuggestion = (field, value, label) => {
+    const fieldMapping = {
+      productName: 'name',
+      category: 'category',
+      brand: 'brand',
+      description: 'description'
     };
+    
+    const formField = fieldMapping[field] || field;
+    setFormData(prev => ({
+      ...prev,
+      [formField]: value
+    }));
+    
+    setAppliedSuggestions(prev => new Set([...prev, field]));
+    
+    // Clear any validation errors for the updated field
+    if (errors[formField]) {
+      setErrors(prev => ({ ...prev, [formField]: '' }));
+    }
+    
+    showNotification?.(`Applied ${label}: ${value}`, 'success');
   };
 
-  // ✅ Keep all your existing functions (unchanged)
+  // ✅ NEW: Apply all MCP suggestions
+  const applyAllMCPSuggestions = () => {
+    if (!mcpResults && !aiSuggestions) return;
+
+    const results = mcpResults || aiSuggestions;
+    const updates = {};
+    let appliedCount = 0;
+
+    if (results.productName && results.productName !== formData.name) {
+      updates.name = results.productName;
+      appliedCount++;
+    }
+    
+    if (results.brand && results.brand !== formData.brand) {
+      updates.brand = results.brand;
+      appliedCount++;
+    }
+    
+    if (results.category && results.category !== formData.category) {
+      updates.category = results.category;
+      appliedCount++;
+    }
+    
+    if (results.description && results.description !== formData.description) {
+      updates.description = results.description;
+      appliedCount++;
+    }
+
+    setFormData(prev => ({ ...prev, ...updates }));
+    showNotification?.(`Applied ${appliedCount} suggestions`, 'success');
+  };
+
+  // ✅ ENHANCED: Apply AI suggestion with learning (keeping existing functionality)
   const applySuggestion = (field, value) => {
     const fieldMapping = {
       productName: 'name',
@@ -696,6 +646,7 @@ const ProductModal = ({
     }
   };
 
+  // ✅ ENHANCED: Handle user correction for learning (keeping existing functionality)
   const handleUserCorrection = (field, originalValue, newValue) => {
     if (aiSuggestions && originalValue !== newValue) {
       aiLearning.recordCorrection(
@@ -711,6 +662,7 @@ const ProductModal = ({
     }
   };
 
+  // ✅ SIMPLIFIED: Improved validation using utility functions only
   const validateForm = () => {
     const newErrors = {};
     
@@ -726,6 +678,7 @@ const ProductModal = ({
       newErrors.price = 'Valid price is required';
     }
     
+    // ✅ UTILITY: Part number validation using ProductEnrichmentService utility
     if (!formData.partNumber.trim()) {
       newErrors.partNumber = 'Part number is required';
     } else {
@@ -747,6 +700,7 @@ const ProductModal = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  // ✅ ENHANCED: Improved submit handler with MCP metadata
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -758,6 +712,7 @@ const ProductModal = ({
     setIsSubmitting(true);
     
     try {
+      // ✅ UTILITY: Normalize part number using ProductEnrichmentService utility
       let normalizedPartNumber = formData.partNumber;
       if (formData.partNumber) {
         const validation = ProductEnrichmentService.validateAndNormalizePartNumber(formData.partNumber);
@@ -766,6 +721,7 @@ const ProductModal = ({
         }
       }
 
+      // ✅ UTILITY: Generate SKU using ProductEnrichmentService utility
       let sku = formData.sku;
       if (!sku && formData.partNumber) {
         sku = ProductEnrichmentService.generateInternalSKU({
@@ -775,6 +731,7 @@ const ProductModal = ({
         });
       }
 
+      // ✅ NEW: Build enhancement history including MCP data
       const enhancementHistory = [...(formData.enhancementHistory || [])];
       if (aiSuggestions || mcpResults) {
         enhancementHistory.push({
@@ -797,6 +754,7 @@ const ProductModal = ({
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
         minStock: parseInt(formData.minStock),
+        // ✅ ENHANCED: Add AI + MCP enhancement metadata
         aiEnriched: (aiSuggestions || mcpResults) ? true : formData.aiEnriched,
         mcpEnhanced: mcpResults ? true : formData.mcpEnhanced,
         confidence: mcpResults?.confidence || aiSuggestions?.confidence || formData.confidence,
@@ -815,6 +773,7 @@ const ProductModal = ({
         productData.id = product.id;
       }
 
+      // Clean undefined values
       Object.keys(productData).forEach(key => {
         if (productData[key] === undefined || productData[key] === null) {
           delete productData[key];
@@ -844,6 +803,7 @@ const ProductModal = ({
   };
 
   const handleChange = (field, value) => {
+    // Handle user corrections for learning
     if (aiSuggestions && ['brand', 'category', 'name', 'description'].includes(field)) {
       const originalValue = aiSuggestions[field === 'name' ? 'productName' : field];
       if (originalValue && originalValue !== value) {
@@ -852,6 +812,7 @@ const ProductModal = ({
     }
 
     setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -871,14 +832,269 @@ const ProductModal = ({
     }
   };
 
+  // ✅ ENHANCED: Updated categories
   const categories = [
-    'electronics', 'hydraulics', 'pneumatics', 'automation', 'sensors', 'cables',
-    'components', 'mechanical', 'bearings', 'gears', 'couplings', 'drives',
-    'instrumentation', 'networking', 'diaphragm_pumps', 'pumping_systems',
-    'fluid_handling', 'pumps', 'valves', 'safety', 'electrical'
+    'electronics',
+    'hydraulics', 
+    'pneumatics',
+    'automation',
+    'sensors',
+    'cables',
+    'components',
+    'mechanical',
+    'bearings',
+    'gears',
+    'couplings',
+    'drives',
+    'instrumentation',
+    'networking',
+    'diaphragm_pumps',
+    'pumping_systems',
+    'fluid_handling',
+    'pumps',
+    'valves',
+    'safety',
+    'electrical'
   ];
 
-  // ✅ ENHANCED: Suggestion component
+  // ✅ NEW: Enhancement Dropdown Component
+  const EnhancementDropdown = () => (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setShowEnhancementDropdown(!showEnhancementDropdown)}
+        disabled={!formData.partNumber || isEnriching}
+        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
+      >
+        {isEnriching ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
+          </>
+        ) : (
+          <>
+            <Brain size={16} />
+            AI Enhance
+            <ChevronDown size={14} />
+          </>
+        )}
+      </button>
+
+      {showEnhancementDropdown && !isEnriching && (
+        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+          <div className="p-2">
+            {/* MCP Enhancement (Primary) */}
+            {mcpStatus?.status === 'available' && (
+              <button
+                type="button"
+                onClick={enhanceWithMCP}
+                className="w-full text-left px-3 py-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-lg flex items-center gap-3 transition-colors"
+              >
+                <div className="flex-shrink-0">
+                  <Brain size={20} className="text-purple-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900">MCP Enhancement</div>
+                  <div className="text-sm text-gray-500">Advanced AI with smart prompts</div>
+                  <div className="text-xs text-purple-600 mt-1">Recommended • High Accuracy</div>
+                </div>
+              </button>
+            )}
+
+            {/* Specific Prompt Options */}
+            {availablePrompts.length > 1 && (
+              <div className="border-t pt-2 mt-2">
+                <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Specialized Prompts
+                </div>
+                {availablePrompts.slice(0, 3).map(prompt => (
+                  <button
+                    key={prompt.id}
+                    type="button"
+                    onClick={() => enhanceWithSpecificPrompt(prompt.id)}
+                    className="w-full text-left px-3 py-2 hover:bg-purple-50 rounded-lg flex items-center gap-3 transition-colors"
+                  >
+                    <div className="flex-shrink-0">
+                      <Settings size={16} className="text-purple-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{prompt.name}</div>
+                      <div className="text-xs text-gray-500 truncate">{prompt.specialized_for}</div>
+                      {prompt.confidence_avg && (
+                        <div className="text-xs text-purple-600 mt-1">
+                          {Math.round(prompt.confidence_avg * 100)}% avg accuracy
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Fallback Enhancement */}
+            <div className="border-t pt-2 mt-2">
+              <button
+                type="button"
+                onClick={enhanceWithFallback}
+                className="w-full text-left px-3 py-3 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition-colors"
+              >
+                <div className="flex-shrink-0">
+                  <Sparkles size={20} className="text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900">Quick Enhancement</div>
+                  <div className="text-sm text-gray-500">Pattern-based analysis</div>
+                  <div className="text-xs text-blue-600 mt-1">Fast • Basic Detection</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ✅ NEW: Prompt Selector Panel Component
+  const PromptSelectorPanel = () => (
+    <div className="grid grid-cols-3 gap-4 p-3 bg-white rounded-lg border mb-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          🧠 Active Prompt
+        </label>
+        <select 
+          value={selectedPromptId || ''}
+          onChange={(e) => rerunWithDifferentPrompt(e.target.value)}
+          disabled={isRerunning}
+          className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-purple-500"
+        >
+          {availablePrompts.map(prompt => (
+            <option key={prompt.id} value={prompt.id}>
+              {prompt.name}
+              {prompt.confidence_avg && ` (${Math.round(prompt.confidence_avg * 100)}% avg)`}
+            </option>
+          ))}
+        </select>
+        {selectedPromptId && (
+          <p className="text-xs text-gray-500 mt-1">
+            Specialized for: {availablePrompts.find(p => p.id === selectedPromptId)?.specialized_for}
+          </p>
+        )}
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ⚡ AI Provider
+        </label>
+        <div className="flex items-center space-x-2 p-2">
+          <Zap className="w-4 h-4 text-yellow-500" />
+          <span className="text-sm text-gray-900">
+            {aiSuggestions?.mcpMetadata?.ai_provider || availablePrompts.find(p => p.id === selectedPromptId)?.aiProvider || 'deepseek'}
+          </span>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ⏱️ Processing Time
+        </label>
+        <div className="flex items-center space-x-2 p-2">
+          <Clock className="w-4 h-4 text-orange-500" />
+          <span className="text-sm text-gray-900">
+            {aiSuggestions?.mcpMetadata?.processing_time || '0ms'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ✅ NEW: Prompt History Panel Component
+  const PromptHistoryPanel = () => (
+    <div className="mt-4 p-3 bg-gray-50 rounded-lg border">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-medium text-gray-900 flex items-center">
+          <History className="w-4 h-4 text-gray-600 mr-2" />
+          Prompt History
+        </h4>
+        {promptHistory.length > 0 && (
+          <button
+            onClick={() => setShowComparison(!showComparison)}
+            className="text-sm text-purple-600 hover:text-purple-800"
+          >
+            {showComparison ? 'Hide' : 'Compare'} Results
+          </button>
+        )}
+      </div>
+      
+      {promptHistory.length > 0 ? (
+        <div className="space-y-2">
+          {promptHistory.slice(-3).map((entry, index) => (
+            <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
+              <div>
+                <span className="text-sm font-medium text-gray-900">
+                  {entry.promptName}
+                </span>
+                <span className="ml-2 text-xs text-gray-500">
+                  {Math.round(entry.result.confidence * 100)}% confidence
+                </span>
+              </div>
+              <button
+                onClick={() => rerunWithDifferentPrompt(entry.promptId)}
+                className="text-xs text-purple-600 hover:text-purple-800"
+              >
+                Reuse
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500">No previous enhancements</p>
+      )}
+    </div>
+  );
+
+  // ✅ ENHANCED: MCP Suggestion Component
+  const MCPSuggestionField = ({ label, field, suggestion, current }) => {
+    const isApplied = appliedSuggestions.has(field);
+    const isDifferent = suggestion && suggestion !== current;
+    
+    if (!suggestion || !isDifferent) return null;
+    
+    return (
+      <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+        <div className="flex-1">
+          <div className="font-medium text-blue-900 text-sm flex items-center gap-2">
+            <Brain className="h-4 w-4 text-purple-600" />
+            {label}
+          </div>
+          <div className="text-blue-700 text-sm">{suggestion}</div>
+          {current && (
+            <div className="text-xs text-gray-500 mt-1">Current: {current}</div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => applyMCPSuggestion(field, suggestion, label)}
+          disabled={isApplied}
+          className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            isApplied 
+              ? 'bg-green-100 text-green-800 cursor-not-allowed flex items-center gap-1' 
+              : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700'
+          }`}
+        >
+          {isApplied ? (
+            <>
+              <Check size={12} />
+              Applied
+            </>
+          ) : (
+            'Apply'
+          )}
+        </button>
+      </div>
+    );
+  };
+
+  // ✅ ENHANCED: AI Suggestion Component (keeping existing functionality)
   const SuggestionField = ({ label, field, suggestion, current }) => {
     const isApplied = appliedSuggestions.has(field);
     const isDifferent = suggestion && suggestion !== current;
@@ -920,137 +1136,61 @@ const ProductModal = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden">
-        
-        {/* ✅ FIXED: Header with Enhancement Dropdown */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 text-white">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Package className="h-6 w-6" />
-              <div>
-                <h2 className="text-xl font-semibold">
-                  {product ? 'Edit Product' : 'Add New Product'}
-                </h2>
-                {/* ✅ MCP Status Indicator */}
-                <div className="flex items-center gap-4 text-sm text-blue-100 mt-1">
+        {/* ✅ FIXED: Header with Clean Enhancement Dropdown */}
+        <div className="p-6 border-b bg-gradient-to-r from-blue-50 to-purple-50">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800">
+                {product ? 'Edit Product' : 'Add New Product'}
+              </h2>
+              <div className="flex items-center gap-4 mt-1">
+                {formData.mcpEnhanced && (
                   <div className="flex items-center gap-2">
-                    <div className={`h-2 w-2 rounded-full ${
-                      mcpStatus?.status === 'available' ? 'bg-green-400' : 'bg-yellow-400'
-                    }`}></div>
-                    <span>
-                      {mcpStatus?.status === 'available' ? 'MCP Ready' : 'Basic Mode'}
+                    <Brain className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm text-purple-700">
+                      MCP Enhanced ({Math.round(formData.confidence * 100)}% confidence)
                     </span>
                   </div>
-                  {availablePrompts.length > 0 && (
-                    <span>{availablePrompts.length} Prompts Available</span>
-                  )}
-                </div>
+                )}
+                {formData.aiEnriched && !formData.mcpEnhanced && (
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm text-blue-700">
+                      AI Enhanced ({Math.round(formData.confidence * 100)}% confidence)
+                    </span>
+                  </div>
+                )}
+                {mcpStatus && (
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    mcpStatus.status === 'available' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {mcpStatus.status === 'available' ? '🟢 MCP Ready' : '🟡 Basic Mode'}
+                  </span>
+                )}
+                {availablePrompts.length > 1 && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                    {availablePrompts.length} Prompts Available
+                  </span>
+                )}
               </div>
             </div>
-            
-            {/* ✅ FIXED: Enhancement Dropdown + Close Button */}
             <div className="flex items-center gap-3">
-              {/* ✅ DROPDOWN: Smart Enhancement Options */}
-              {formData.partNumber && (
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setShowEnhancementDropdown(!showEnhancementDropdown)}
-                    disabled={isEnriching || !formData.partNumber}
-                    className="bg-white/20 hover:bg-white/30 disabled:opacity-50 px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm font-medium min-w-[140px]"
-                  >
-                    {isEnriching ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        <span>Enhancing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Brain size={16} />
-                        <span>AI Enhance</span>
-                        <ChevronDown size={14} className={`transition-transform ${
-                          showEnhancementDropdown ? 'rotate-180' : ''
-                        }`} />
-                      </>
-                    )}
-                  </button>
-
-                  {/* ✅ DROPDOWN MENU: Enhancement Options */}
-                  {showEnhancementDropdown && (
-                    <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                      <div className="px-3 py-2 border-b border-gray-100">
-                        <h4 className="text-sm font-semibold text-gray-900">Enhancement Options</h4>
-                        <p className="text-xs text-gray-500 mt-1">Choose the best method for your product</p>
-                      </div>
-                      
-                      {enhancementOptions.map((option) => {
-                        const Icon = option.icon;
-                        const isAvailable = option.available;
-                        
-                        return (
-                          <button
-                            key={option.id}
-                            onClick={() => isAvailable ? option.action() : null}
-                            disabled={!isAvailable || isEnriching}
-                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
-                              option.isPrimary ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <Icon size={18} className={`mt-0.5 ${
-                                option.isPrimary ? 'text-blue-600' : 'text-gray-600'
-                              }`} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-sm font-medium ${
-                                    option.isPrimary ? 'text-blue-900' : 'text-gray-900'
-                                  }`}>
-                                    {option.label}
-                                  </span>
-                                  {option.isPrimary && (
-                                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
-                                      Recommended
-                                    </span>
-                                  )}
-                                  {!isAvailable && (
-                                    <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
-                                      Unavailable
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                                  {option.description}
-                                </p>
-                                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                                  <span>⚡ {option.time}</span>
-                                  <span>🎯 {option.confidence}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                      
-                      <div className="px-4 py-2 border-t border-gray-100 mt-2">
-                        <p className="text-xs text-gray-500">
-                          💡 Tip: Start with AI Enhancement for best results, use Quick Pattern for speed
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ✅ CLOSE BUTTON */}
+              {/* ✅ NEW: Single Enhancement Dropdown */}
+              {formData.partNumber && <EnhancementDropdown />}
+              
               <button
                 onClick={onClose}
-                className="text-white/80 hover:text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
+                className="text-gray-500 hover:text-gray-700 transition-colors"
               >
-                <X size={20} />
+                <X size={24} />
               </button>
             </div>
           </div>
         </div>
 
-        {/* ✅ EXISTING: Tab Navigation (unchanged) */}
+        {/* Tab Navigation */}
         <div className="border-b border-gray-200 bg-gray-50">
           <nav className="flex space-x-8 px-6">
             {tabs.map(tab => {
@@ -1080,9 +1220,8 @@ const ProductModal = ({
           </nav>
         </div>
 
-        {/* ✅ EXISTING: Tab Content (keeping all your existing tabs) */}
+        {/* Tab Content */}
         <div className="overflow-y-auto max-h-[calc(90vh-200px)]">
-          {/* Basic Info Tab */}
           {activeTab === 'basic' && (
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1275,166 +1414,7 @@ const ProductModal = ({
             </div>
           )}
 
-          {/* ✅ AI Enhancement Tab (keeping your existing content but simplified) */}
-          {activeTab === 'ai' && (
-            <div className="p-6 space-y-6">
-              <div className="text-center">
-                <Brain className="mx-auto h-12 w-12 text-blue-600 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  AI Product Enhancement
-                </h3>
-                <p className="text-gray-600 mb-6">
-                  Enhance your product data using advanced AI analysis with intelligent prompt selection.
-                </p>
-                
-                {!aiSuggestions && !mcpResults && !isEnriching && (
-                  <div className="flex items-center justify-center gap-3 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={enhanceWithMCP}
-                      disabled={!formData.partNumber}
-                      className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      <Brain size={20} />
-                      Enhance with AI
-                    </button>
-                  </div>
-                )}
-                
-                {(isEnriching || isWebSearching) && (
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 size={20} className="animate-spin text-blue-600" />
-                    <span className="text-gray-600">
-                      {isMcpEnhancing ? 'MCP analyzing product...' : 
-                       isEnriching ? 'Analyzing product data...' : 'Searching web...'}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* ✅ AI Suggestions Panel (simplified) */}
-              {aiSuggestions && (
-                <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      {aiSuggestions.patternEnhanced ? (
-                        <Zap className="text-orange-600" size={20} />
-                      ) : (
-                        <Sparkles className="text-blue-600" size={20} />
-                      )}
-                      <h4 className="font-medium text-blue-900">
-                        {aiSuggestions.source || 'Enhancement Results'}
-                      </h4>
-                      {aiSuggestions.patternEnhanced && (
-                        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
-                          Quick Pattern
-                        </span>
-                      )}
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      aiSuggestions.confidence > 0.8 ? 'bg-green-100 text-green-800' :
-                      aiSuggestions.confidence > 0.6 ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      Confidence: {Math.round(aiSuggestions.confidence * 100)}%
-                    </span>
-                  </div>
-                  
-                  {/* Show enhancement warning for basic fallback */}
-                  {aiSuggestions.source === 'Basic Pattern Fallback' && (
-                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-yellow-800">
-                        <AlertCircle size={16} />
-                        <span className="text-sm font-medium">Basic Pattern Analysis</span>
-                      </div>
-                      <p className="text-sm text-yellow-700 mt-1">
-                        Using basic pattern matching. For better accuracy, ensure MCP system is available.
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <SuggestionField 
-                      label="Product Name" 
-                      field="productName"
-                      suggestion={aiSuggestions.productName}
-                      current={formData.name}
-                    />
-                    <SuggestionField 
-                      label="Brand" 
-                      field="brand"
-                      suggestion={aiSuggestions.brand}
-                      current={formData.brand}
-                    />
-                    <SuggestionField 
-                      label="Category" 
-                      field="category"
-                      suggestion={aiSuggestions.category}
-                      current={formData.category}
-                    />
-                    <SuggestionField 
-                      label="Description" 
-                      field="description"
-                      suggestion={aiSuggestions.description}
-                      current={formData.description}
-                    />
-                  </div>
-                  
-                  {/* Apply All Button */}
-                  <div className="text-center mb-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (aiSuggestions.productName) applySuggestion('productName', aiSuggestions.productName);
-                        if (aiSuggestions.brand) applySuggestion('brand', aiSuggestions.brand);
-                        if (aiSuggestions.category) applySuggestion('category', aiSuggestions.category);
-                        if (aiSuggestions.description) applySuggestion('description', aiSuggestions.description);
-                      }}
-                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2 mx-auto"
-                    >
-                      <Wand2 size={16} />
-                      Apply All Suggestions
-                    </button>
-                  </div>
-
-                  {/* Detected Specifications */}
-                  {aiSuggestions.specifications && Object.keys(aiSuggestions.specifications).length > 0 && (
-                    <div className="p-4 bg-white rounded-lg border border-gray-200">
-                      <h5 className="font-medium text-gray-900 mb-3">Detected Specifications</h5>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        {Object.entries(aiSuggestions.specifications).map(([key, value]) => (
-                          value && (
-                            <div key={key} className="flex justify-between">
-                              <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                              <span className="font-medium">{value}</span>
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!formData.partNumber && (
-                <div className="text-center py-8">
-                  <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
-                  <p className="text-gray-600">
-                    Please enter a part number in the Identifiers tab to enable AI enhancement.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('identifiers')}
-                    className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    Go to Identifiers
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ✅ EXISTING: Identifiers Tab (unchanged) */}
+          {/* ✅ ENHANCED: Identifiers Tab (keeping existing functionality) */}
           {activeTab === 'identifiers' && (
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1515,6 +1495,7 @@ const ProductModal = ({
                 <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                   <h4 className="font-medium text-gray-900 mb-2">Part Number Validation</h4>
                   {(() => {
+                    // ✅ UTILITY: Using ProductEnrichmentService utility function only
                     const validation = ProductEnrichmentService.validateAndNormalizePartNumber(formData.partNumber);
                     return validation.isValid ? (
                       <div className="flex items-center gap-2 text-green-700">
@@ -1533,7 +1514,337 @@ const ProductModal = ({
             </div>
           )}
 
-          {/* ✅ EXISTING: Inventory Tab (unchanged) */}
+          {/* ✅ ENHANCED: AI Enhancement Tab with MCP Prompt Selector Integration */}
+          {activeTab === 'ai' && (
+            <div className="p-6 space-y-6">
+              <div className="text-center">
+                <Brain className="mx-auto h-12 w-12 text-blue-600 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  AI Product Enhancement
+                </h3>
+                <p className="text-gray-600 mb-6">
+                  Enhance your product data using advanced AI analysis with intelligent prompt selection.
+                </p>
+                
+                {!aiSuggestions && !mcpResults && !isEnriching && (
+                  <div className="flex items-center justify-center">
+                    <EnhancementDropdown />
+                  </div>
+                )}
+                
+                {(isEnriching || isWebSearching) && (
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 size={20} className="animate-spin text-blue-600" />
+                    <span className="text-gray-600">
+                      {isMcpEnhancing ? 'MCP analyzing product...' : 
+                       isEnriching ? 'Analyzing product data...' : 'Searching web...'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* ✅ NEW: Prompt Selector Panel */}
+              {availablePrompts.length > 0 && (aiSuggestions || mcpResults) && (
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                      <Brain className="h-5 w-5 text-purple-600" />
+                      Enhancement Results
+                      <span className="text-sm bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                        {availablePrompts.length} Prompts Available
+                      </span>
+                    </h4>
+                    {isRerunning && (
+                      <div className="flex items-center gap-2 text-purple-600">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span className="text-sm">Re-running...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ✅ NEW: Prompt Selector Panel Component */}
+                  <PromptSelectorPanel />
+
+                  {/* ✅ NEW: Prompt History Component */}
+                  <PromptHistoryPanel />
+                </div>
+              )}
+
+              {/* ✅ NEW: MCP Enhancement Results Panel */}
+              {(mcpResults || (aiSuggestions && aiSuggestions.mcpEnhanced)) && (
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
+                  
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Brain className="h-6 w-6 text-blue-600" />
+                        <span className="font-bold text-gray-900">MCP Enhancement Results</span>
+                      </div>
+                      
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        (mcpResults?.source || aiSuggestions?.source)?.includes('MCP') 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {mcpResults?.source || aiSuggestions?.source || 'MCP Analysis'}
+                      </span>
+                      
+                      <span className="text-sm text-gray-600 flex items-center gap-1">
+                        <Target className="h-4 w-4" />
+                        {Math.round((mcpResults?.confidence || aiSuggestions?.confidence || 0) * 100)}% confidence
+                      </span>
+
+                      {aiSuggestions?.userSelectedPrompt && (
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                          User Selected Prompt
+                        </span>
+                      )}
+                    </div>
+                    
+                    <button
+                      onClick={applyAllMCPSuggestions}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center gap-2"
+                    >
+                      <Zap className="h-4 w-4" />
+                      Apply All Suggestions
+                    </button>
+                  </div>
+
+                  {/* MCP Metadata Panel */}
+                  {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata) && (
+                    <div className="bg-white rounded-lg p-4 border mb-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          <Brain className="h-4 w-4 text-purple-600" />
+                          <div>
+                            <span className="text-gray-500 block">Prompt:</span>
+                            <span className="font-medium text-blue-800">
+                              {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata)?.prompt_used || 'MCP Analysis'}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-4 w-4 text-green-600" />
+                          <div>
+                            <span className="text-gray-500 block">AI Provider:</span>
+                            <span className="font-medium text-gray-900">
+                              {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata)?.ai_provider || 'Advanced AI'}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-orange-600" />
+                          <div>
+                            <span className="text-gray-500 block">Time:</span>
+                            <span className="font-medium text-gray-900">
+                              {(mcpResults?.mcpMetadata || aiSuggestions?.mcpMetadata)?.processing_time || 'Fast'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MCP Enhancement Suggestions Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <MCPSuggestionField 
+                      label="Product Name" 
+                      field="productName"
+                      suggestion={(mcpResults || aiSuggestions)?.productName}
+                      current={formData.name}
+                    />
+                    <MCPSuggestionField 
+                      label="Brand" 
+                      field="brand"
+                      suggestion={(mcpResults || aiSuggestions)?.brand}
+                      current={formData.brand}
+                    />
+                    <MCPSuggestionField 
+                      label="Category" 
+                      field="category"
+                      suggestion={(mcpResults || aiSuggestions)?.category}
+                      current={formData.category}
+                    />
+                    <MCPSuggestionField 
+                      label="Description" 
+                      field="description"
+                      suggestion={(mcpResults || aiSuggestions)?.description}
+                      current={formData.description}
+                    />
+                  </div>
+
+                  {/* Technical Specifications from MCP */}
+                  {(mcpResults?.specifications || aiSuggestions?.specifications) && Object.keys(mcpResults?.specifications || aiSuggestions?.specifications || {}).length > 0 && (
+                    <div className="mt-4 bg-white rounded-lg p-4 border">
+                      <h5 className="font-medium text-gray-900 mb-3">Detected Specifications</h5>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        {Object.entries(mcpResults?.specifications || aiSuggestions?.specifications || {}).map(([key, value]) => (
+                          value && (
+                            <div key={key} className="flex justify-between">
+                              <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                              <span className="font-medium">{value}</span>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ✅ SIMPLIFIED: AI Suggestions Panel (basic fallback results) */}
+              {aiSuggestions && !aiSuggestions.mcpEnhanced && !mcpResults && (
+                <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="text-blue-600" size={20} />
+                      <h4 className="font-medium text-blue-900">
+                        {aiSuggestions.source === 'Pattern Analysis Fallback' ? 'Pattern Analysis Results' : 'Enhancement Results'}
+                      </h4>
+                      {aiSuggestions.webEnhanced && (
+                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                          Web Enhanced
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        aiSuggestions.confidence > 0.8 ? 'bg-green-100 text-green-800' :
+                        aiSuggestions.confidence > 0.6 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        Confidence: {Math.round(aiSuggestions.confidence * 100)}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={enrichProductData}
+                        disabled={isEnriching}
+                        className="text-blue-600 hover:text-blue-800 p-1"
+                        title="Refresh suggestions"
+                      >
+                        <RefreshCw size={16} className={isEnriching ? 'animate-spin' : ''} />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* ✅ SIMPLIFIED: Show low confidence warning for basic fallback */}
+                  {aiSuggestions.source === 'Pattern Analysis Fallback' && (
+                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex items-center gap-2 text-yellow-800">
+                        <AlertCircle size={16} />
+                        <span className="text-sm font-medium">Pattern Analysis</span>
+                      </div>
+                      <p className="text-sm text-yellow-700 mt-1">
+                        Using basic pattern matching. For better accuracy, try MCP enhancement.
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <SuggestionField 
+                      label="Product Name" 
+                      field="productName"
+                      suggestion={aiSuggestions.productName}
+                      current={formData.name}
+                    />
+                    <SuggestionField 
+                      label="Brand" 
+                      field="brand"
+                      suggestion={aiSuggestions.brand}
+                      current={formData.brand}
+                    />
+                    <SuggestionField 
+                      label="Category" 
+                      field="category"
+                      suggestion={aiSuggestions.category}
+                      current={formData.category}
+                    />
+                    <SuggestionField 
+                      label="Description" 
+                      field="description"
+                      suggestion={aiSuggestions.description}
+                      current={formData.description}
+                    />
+                  </div>
+                  
+                  {/* Apply All Button */}
+                  <div className="text-center mb-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (aiSuggestions.productName) applySuggestion('productName', aiSuggestions.productName);
+                        if (aiSuggestions.brand) applySuggestion('brand', aiSuggestions.brand);
+                        if (aiSuggestions.category) applySuggestion('category', aiSuggestions.category);
+                        if (aiSuggestions.description) applySuggestion('description', aiSuggestions.description);
+                      }}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2 mx-auto"
+                    >
+                      <Wand2 size={16} />
+                      Apply All Suggestions
+                    </button>
+                  </div>
+
+                  {/* Detected Specifications */}
+                  {aiSuggestions.specifications && Object.keys(aiSuggestions.specifications).length > 0 && (
+                    <div className="p-4 bg-white rounded-lg border border-gray-200">
+                      <h5 className="font-medium text-gray-900 mb-3">Detected Specifications</h5>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        {Object.entries(aiSuggestions.specifications).map(([key, value]) => (
+                          value && (
+                            <div key={key} className="flex justify-between">
+                              <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                              <span className="font-medium">{value}</span>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Web Search Results */}
+                  {webSearchResults && webSearchResults.found && (
+                    <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                      <h5 className="font-medium text-green-900 mb-2 flex items-center gap-2">
+                        <ExternalLink size={16} />
+                        Additional Web Information
+                      </h5>
+                      {webSearchResults.datasheetUrl && (
+                        <a 
+                          href={webSearchResults.datasheetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-green-700 hover:text-green-900 text-sm flex items-center gap-1"
+                        >
+                          <ExternalLink size={14} />
+                          View Datasheet
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!formData.partNumber && (
+                <div className="text-center py-8">
+                  <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
+                  <p className="text-gray-600">
+                    Please enter a part number in the Identifiers tab to enable AI enhancement.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('identifiers')}
+                    className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Go to Identifiers
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ✅ KEEPING: Inventory Tab (existing functionality) */}
           {activeTab === 'inventory' && (
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1592,7 +1903,7 @@ const ProductModal = ({
             </div>
           )}
 
-          {/* ✅ EXISTING: Documents Tab (unchanged) */}
+          {/* ✅ KEEPING: Documents Tab (existing functionality) */}
           {activeTab === 'documents' && product?.id && (
             <div className="p-6">
               <DocumentManager 
@@ -1623,7 +1934,7 @@ const ProductModal = ({
             </div>
           )}
 
-          {/* ✅ EXISTING: History Tab (unchanged) */}
+          {/* ✅ ENHANCED: History Tab with MCP enhancement history and prompt tracking */}
           {activeTab === 'history' && (
             <div className="p-6 space-y-4">
               <h3 className="text-lg font-medium text-gray-900">Product History</h3>
@@ -1645,7 +1956,7 @@ const ProductModal = ({
                       </p>
                     )}
                     
-                    {/* MCP Enhancement History */}
+                    {/* ✅ ENHANCED: MCP Enhancement History */}
                     {product.mcpEnhanced && (
                       <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded border border-blue-200">
                         <p className="text-sm text-blue-700">
@@ -1674,7 +1985,7 @@ const ProductModal = ({
                       </div>
                     )}
                     
-                    {/* AI Enhancement History */}
+                    {/* ✅ KEEPING: AI Enhancement History */}
                     {product.aiEnriched && !product.mcpEnhanced && (
                       <div className="mt-3 p-3 bg-purple-50 rounded border border-purple-200">
                         <p className="text-sm text-purple-700">
@@ -1694,7 +2005,7 @@ const ProductModal = ({
                     )}
                   </div>
 
-                  {/* Enhancement History */}
+                  {/* ✅ ENHANCED: Enhancement History with Prompt Tracking */}
                   {formData.enhancementHistory && formData.enhancementHistory.length > 0 && (
                     <div className="space-y-2">
                       <h4 className="font-medium text-gray-900">Enhancement History</h4>
@@ -1763,27 +2074,30 @@ const ProductModal = ({
         </div>
 
         {/* ✅ FIXED: Footer with Always Visible Update Button */}
-        <div className="bg-gray-50 px-6 py-4 border-t">
-          <div className="flex items-center justify-between">
-            {/* ✅ LEFT: Status Indicators */}
-            <div className="flex items-center gap-4 text-sm">
+        {activeTab !== 'documents' && (
+          <div className="p-6 border-t bg-gray-50 flex justify-between items-center sticky bottom-0 bg-white shadow-lg">
+            <div className="flex items-center gap-4">
+              {/* ✅ NEW: Enhancement Status Indicators */}
               {formData.mcpEnhanced && (
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle size={16} />
-                  <span className="font-medium">
-                    AI Enhanced ({Math.round(formData.confidence * 100)}%)
-                    {aiSuggestions?.forcedPrompt && (
-                      <span className="ml-1 text-xs text-gray-500">(Forced Prompt)</span>
+                <div className="flex items-center gap-2 text-purple-700">
+                  <Brain size={16} />
+                  <span className="text-sm font-medium">
+                    MCP Enhanced ({Math.round(formData.confidence * 100)}%)
+                    {selectedPromptId && availablePrompts.find(p => p.id === selectedPromptId) && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        via {availablePrompts.find(p => p.id === selectedPromptId)?.name}
+                      </span>
                     )}
                   </span>
                 </div>
               )}
               
-              {aiSuggestions?.patternEnhanced && (
-                <div className="flex items-center gap-2 text-orange-700">
-                  <Zap size={16} />
-                  <span className="font-medium">
-                    Pattern Enhanced ({Math.round(formData.confidence * 100)}%)
+              {/* ✅ KEEPING: AI Enhancement Status Indicator */}
+              {formData.aiEnriched && !formData.mcpEnhanced && (
+                <div className="flex items-center gap-2 text-purple-700">
+                  <Sparkles size={16} />
+                  <span className="text-sm font-medium">
+                    AI Enhanced ({Math.round(formData.confidence * 100)}%)
                   </span>
                 </div>
               )}
@@ -1797,7 +2111,7 @@ const ProductModal = ({
                 </div>
               )}
 
-              {/* MCP System Status */}
+              {/* ✅ NEW: MCP System Status */}
               {mcpStatus && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <span className={`h-2 w-2 rounded-full ${
@@ -1813,8 +2127,8 @@ const ProductModal = ({
               )}
             </div>
             
-            {/* ✅ RIGHT: Action Buttons - ALWAYS VISIBLE AND PROPERLY SPACED! */}
-            <div className="flex items-center gap-3">
+            {/* ✅ FIXED: Always Visible Action Buttons */}
+            <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={onClose}
@@ -1825,18 +2139,21 @@ const ProductModal = ({
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center space-x-2 font-medium"
               >
                 <Save size={16} />
-                <span>{isSubmitting ? 'Saving...' : (product ? 'Update' : 'Add')} Product</span>
+                <span>
+                  {isSubmitting ? 'Saving...' : (product ? 'Update Product' : 'Add Product')}
+                </span>
               </button>
             </div>
           </div>
-        </div>
-
+        )}
       </div>
     </div>
   );
 };
 
 export default ProductModal;
+
+                <div>
