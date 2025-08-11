@@ -506,11 +506,6 @@ const ProductModal = ({
     }
   };
 
-  // ✅ NEW: Force MCP enhancement
-  const enhanceWithMCP = async () => {
-    await enrichProductData('mcp');
-  };
-
   // ✅ SIMPLIFIED: Force legacy enhancement (basic fallback only)
   const enhanceWithLegacy = async () => {
     await enrichProductData('legacy');
