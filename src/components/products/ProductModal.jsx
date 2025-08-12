@@ -2342,7 +2342,6 @@ const ProductModal = ({
   </div>
 )}
 
-// ✅ REPLACE WITH THIS ENHANCED VERSION:
 {/* ✅ ENHANCED: Footer with Always Visible Update Button */}
 {activeTab !== 'documents' && (
   <div className="sticky bottom-0 bg-white border-t border-gray-200 p-6 flex justify-between items-center shadow-lg">
@@ -2426,8 +2425,9 @@ const ProductModal = ({
     </div>
   </div>
 )}
-      </div>
-    </div>
+        </div> {/* Tab content container */}
+      </div>   {/* Modal container */}
+    </div>     {/* Backdrop */}
   );
 };
 
