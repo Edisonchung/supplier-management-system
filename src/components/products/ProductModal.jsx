@@ -2309,39 +2309,6 @@ const ProductModal = ({
           )}
         </div>
 
-// 📍 LOCATION: At the very end of your ProductModal component
-// Around the last 50 lines of your file, just before the closing </div></div>);
-
-// ❌ FIND AND REPLACE THIS EXISTING CODE:
-{/* ✅ ENHANCED: Footer with Actions and Prompt Status */}
-{activeTab !== 'documents' && (
-  <div className="p-6 border-t bg-gray-50 flex justify-between items-center">
-    <div className="flex items-center gap-4">
-      {/* Your existing status indicators */}
-    </div>
-    
-    <div className="flex justify-end gap-3">
-      <button
-        type="button"
-        onClick={onClose}
-        className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-      >
-        Cancel
-      </button>
-      <button
-        onClick={handleSubmit}
-        disabled={isSubmitting}
-        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center space-x-2 font-medium"
-      >
-        <Save size={16} />
-        <span>
-          {isSubmitting ? 'Saving...' : (product ? 'Update Product' : 'Add Product')}
-        </span>
-      </button>
-    </div>
-  </div>
-)}
-
 {/* ✅ ENHANCED: Footer with Always Visible Update Button */}
 {activeTab !== 'documents' && (
   <div className="sticky bottom-0 bg-white border-t border-gray-200 p-6 flex justify-between items-center shadow-lg">
