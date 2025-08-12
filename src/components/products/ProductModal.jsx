@@ -1612,7 +1612,6 @@ const ProductModal = ({
 
           {/* Add other tabs here - identifiers, inventory, ai, documents, history */}
           {/* For brevity, I'm showing just the basic tab, but you should include all tabs */}
-        </div>
 
           {/* ✅ ENHANCED: Identifiers Tab (keeping existing functionality) */}
           {activeTab === 'identifiers' && (
