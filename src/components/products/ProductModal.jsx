@@ -2309,11 +2309,10 @@ const ProductModal = ({
           )}
         </div>
 
-{/* ✅ ENHANCED: Footer with Always Visible Update Button */}
+{/* Footer */}
 {activeTab !== 'documents' && (
   <div className="sticky bottom-0 bg-white border-t border-gray-200 p-6 flex justify-between items-center shadow-lg">
     <div className="flex items-center gap-4 flex-wrap">
-      {/* ✅ Enhanced MCP Enhancement Status Indicator */}
       {formData.mcpEnhanced && (
         <div className="flex items-center gap-2 text-purple-700">
           <Brain size={16} />
@@ -2328,7 +2327,6 @@ const ProductModal = ({
         </div>
       )}
       
-      {/* ✅ AI Enhancement Status Indicator */}
       {formData.aiEnriched && !formData.mcpEnhanced && (
         <div className="flex items-center gap-2 text-purple-700">
           <Sparkles size={16} />
@@ -2347,7 +2345,6 @@ const ProductModal = ({
         </div>
       )}
 
-      {/* ✅ Enhanced MCP System Status */}
       {mcpStatus && (
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span className={`h-2 w-2 rounded-full ${
@@ -2363,7 +2360,6 @@ const ProductModal = ({
       )}
     </div>
     
-    {/* ✅ Enhanced Action Buttons */}
     <div className="flex items-center gap-3 ml-4">
       <button
         type="button"
@@ -2391,11 +2387,11 @@ const ProductModal = ({
       </button>
     </div>
   </div>
-)}  
-        </div> 
-      </div>   
-    </div>     
-  );           
-};           
+)}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default ProductModal;
