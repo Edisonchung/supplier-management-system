@@ -914,9 +914,7 @@ const ProductModal = ({
           <>
             <Brain size={16} />
             AI Enhance
-            <ChevronDown size={14} className={`transition-transform ${
-              showEnhancementDropdown ? 'rotate-180' : 'rotate-0'
-            }`} />
+            <ChevronDown size={14} />
           </>
         )}
       </button>
@@ -995,66 +993,7 @@ const ProductModal = ({
     </div>
   );
 
-  // Apply suggestion helper
-  const applySuggestion = (field, value) => {
-    const fieldMapping = {
-      productName: 'name',
-      category: 'category',
-      brand: 'brand',
-      description: 'description'
-    };
-    
-    const formField = fieldMapping[field] || field;
-    setFormData(prev => ({
-      ...prev,
-      [formField]: value
-    }));
-    
-    setAppliedSuggestions(prev => new Set([...prev, field]));
-    
-    if (errors[formField]) {
-      setErrors(prev => ({ ...prev, [formField]: '' }));
-    }
-  };
-
-  // Form validation
-  const validateForm = () => {
-    const newErrors = {};
-    
-    if (!formData.name.trim()) {
-      newErrors.name = 'Product name is required';
-    }
-    
-    if (!formData.supplierId) {
-      newErrors.supplierId = 'Supplier is required';
-    }
-    
-    if (!formData.price || formData.price <= 0) {
-      newErrors.price = 'Valid price is required';
-    }
-    
-    if (!formData.partNumber.trim()) {
-      newErrors.partNumber = 'Part number is required';
-    } else {
-      const validation = ProductEnrichmentService.validateAndNormalizePartNumber(formData.partNumber);
-      if (!validation.isValid) {
-        newErrors.partNumber = validation.error;
-      }
-    }
-    
-    if (formData.stock < 0) {
-      newErrors.stock = 'Stock cannot be negative';
-    }
-    
-    if (formData.minStock < 0) {
-      newErrors.minStock = 'Minimum stock cannot be negative';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  // Form submission
+  // ✅ ENHANCED: Improved submit handler with MCP metadata
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -1066,6 +1005,7 @@ const ProductModal = ({
     setIsSubmitting(true);
     
     try {
+      // ✅ UTILITY: Normalize part number using ProductEnrichmentService utility
       let normalizedPartNumber = formData.partNumber;
       if (formData.partNumber) {
         const validation = ProductEnrichmentService.validateAndNormalizePartNumber(formData.partNumber);
@@ -1074,6 +1014,7 @@ const ProductModal = ({
         }
       }
 
+      // ✅ UTILITY: Generate SKU using ProductEnrichmentService utility
       let sku = formData.sku;
       if (!sku && formData.partNumber) {
         sku = ProductEnrichmentService.generateInternalSKU({
@@ -1083,6 +1024,7 @@ const ProductModal = ({
         });
       }
 
+      // ✅ NEW: Build enhancement history including MCP data
       const enhancementHistory = [...(formData.enhancementHistory || [])];
       if (aiSuggestions || mcpResults) {
         enhancementHistory.push({
@@ -1105,6 +1047,7 @@ const ProductModal = ({
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock),
         minStock: parseInt(formData.minStock),
+        // ✅ ENHANCED: Add AI + MCP enhancement metadata
         aiEnriched: (aiSuggestions || mcpResults) ? true : formData.aiEnriched,
         mcpEnhanced: mcpResults ? true : formData.mcpEnhanced,
         confidence: mcpResults?.confidence || aiSuggestions?.confidence || formData.confidence,
@@ -1153,7 +1096,16 @@ const ProductModal = ({
   };
 
   const handleChange = (field, value) => {
+    // Handle user corrections for learning
+    if (aiSuggestions && ['brand', 'category', 'name', 'description'].includes(field)) {
+      const originalValue = aiSuggestions[field === 'name' ? 'productName' : field];
+      if (originalValue && originalValue !== value) {
+        handleUserCorrection(field, originalValue, value);
+      }
+    }
+
     setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
