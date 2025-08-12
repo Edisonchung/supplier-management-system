@@ -1343,56 +1343,58 @@ const ProductModal = ({
       <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-hidden">
         {/* ✅ ENHANCED: Header with MCP Integration and Prompt Info */}
         <div className="p-6 border-b bg-gradient-to-r from-blue-50 to-purple-50">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800">
-                {product ? 'Edit Product' : 'Add New Product'}
-              </h2>
-              <div className="flex items-center gap-4 mt-1">
-                {formData.mcpEnhanced && (
-                  <div className="flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-purple-600" />
-                    <span className="text-sm text-purple-700">
-                      MCP Enhanced ({Math.round(formData.confidence * 100)}% confidence)
-                    </span>
-                  </div>
-                )}
-                {formData.aiEnriched && !formData.mcpEnhanced && (
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm text-blue-700">
-                      AI Enhanced ({Math.round(formData.confidence * 100)}% confidence)
-                    </span>
-                  </div>
-                )}
-                {mcpStatus && (
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    mcpStatus.status === 'available' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {mcpStatus.status === 'available' ? '🟢 MCP Ready' : '🟡 Basic Mode'}
-                  </span>
-                )}
-                {availablePrompts.length > 1 && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                    {availablePrompts.length} Prompts Available
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {/* ✅ CORRECTED: Single Enhancement Dropdown */}
-              {formData.partNumber && <EnhancementDropdown />}
-              <button
-                onClick={onClose}
-                className="text-gray-500 hover:text-gray-700 transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
+  <div className="flex justify-between items-start">
+    <div className="flex-1">
+      <h2 className="text-xl font-semibold text-gray-800 mb-2">
+        {product ? 'Edit Product' : 'Add New Product'}
+      </h2>
+      <div className="flex items-center gap-4 flex-wrap">
+        {formData.mcpEnhanced && (
+          <div className="flex items-center gap-2">
+            <Brain className="h-4 w-4 text-purple-600" />
+            <span className="text-sm text-purple-700">
+              MCP Enhanced ({Math.round(formData.confidence * 100)}% confidence)
+            </span>
           </div>
-        </div>
+        )}
+        {formData.aiEnriched && !formData.mcpEnhanced && (
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-blue-600" />
+            <span className="text-sm text-blue-700">
+              AI Enhanced ({Math.round(formData.confidence * 100)}% confidence)
+            </span>
+          </div>
+        )}
+        {mcpStatus && (
+          <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+            mcpStatus.status === 'available' 
+              ? 'bg-green-100 text-green-800' 
+              : 'bg-yellow-100 text-yellow-800'
+          }`}>
+            <span className={`h-2 w-2 rounded-full ${
+              mcpStatus.status === 'available' ? 'bg-green-500' : 'bg-yellow-500'
+            }`}></span>
+            {mcpStatus.status === 'available' ? 'MCP Ready' : 'Basic Mode'}
+          </span>
+        )}
+        {availablePrompts.length > 1 && (
+          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+            {availablePrompts.length} Prompts Available
+          </span>
+        )}
+      </div>
+    </div>
+    <div className="flex items-center gap-3 ml-4">
+      {formData.partNumber && <EnhancementDropdown />}
+      <button
+        onClick={onClose}
+        className="text-gray-500 hover:text-gray-700 transition-colors p-1"
+      >
+        <X size={24} />
+      </button>
+    </div>
+  </div>
+</div>
 
         {/* Tab Navigation */}
         <div className="border-b border-gray-200 bg-gray-50">
