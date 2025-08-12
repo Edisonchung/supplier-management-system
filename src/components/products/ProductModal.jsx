@@ -2392,9 +2392,9 @@ const ProductModal = ({
     </div>
   </div>
 )}
-        </div> {/* Tab content container */}
-      </div>   {/* Modal container */}
-    </div>     {/* Backdrop */}
+        </div> 
+      </div>   
+    </div>    
   );
 };
 
