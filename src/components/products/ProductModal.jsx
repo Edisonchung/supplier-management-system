@@ -269,28 +269,32 @@ const ProductModal = ({
 
   // ✅ NEW: Smart default prompt selection
   const getSmartDefaultPrompt = (partNumber, prompts) => {
-    if (!partNumber || !prompts) return prompts[0];
-    
-    const upperPartNumber = partNumber.toUpperCase();
-    
-    // Siemens parts
-    if (upperPartNumber.match(/^(6XV|6ES|3SE)/)) {
-      return prompts.find(p => p.name.toLowerCase().includes('siemens')) || prompts[0];
-    }
-    
-    // SKF bearings
-    if (upperPartNumber.match(/^(NJ|NU|6\d{3}|32\d{3})/)) {
-      return prompts.find(p => p.name.toLowerCase().includes('skf')) || prompts[0];
-    }
-    
-    // ABB drives
-    if (upperPartNumber.match(/^ACS\d{3}/)) {
-      return prompts.find(p => p.name.toLowerCase().includes('abb')) || prompts[0];
-    }
-    
-    // Default to brand detection prompt
-    return prompts.find(p => p.name.toLowerCase().includes('brand detection')) || prompts[0];
-  };
+  if (!partNumber || !prompts) return prompts[0];
+  
+  const upperPartNumber = partNumber.toUpperCase();
+  
+  // ✅ SAFE: Using string methods instead of regex to avoid the build error
+  // Siemens parts
+  if (upperPartNumber.startsWith('6XV') || upperPartNumber.startsWith('6ES') || upperPartNumber.startsWith('3SE')) {
+    return prompts.find(p => p.name.toLowerCase().includes('siemens')) || prompts[0];
+  }
+  
+  // SKF bearings - check for common patterns
+  if (upperPartNumber.startsWith('NJ') || upperPartNumber.startsWith('NU') || 
+      (upperPartNumber.startsWith('6') && upperPartNumber.length >= 4) ||
+      (upperPartNumber.startsWith('32') && upperPartNumber.length >= 5)) {
+    return prompts.find(p => p.name.toLowerCase().includes('skf')) || prompts[0];
+  }
+  
+  // ABB drives
+  if (upperPartNumber.startsWith('ACS')) {
+    return prompts.find(p => p.name.toLowerCase().includes('abb')) || prompts[0];
+  }
+  
+  // Default to brand detection prompt
+  return prompts.find(p => p.name.toLowerCase().includes('brand detection')) || prompts[0];
+};
+
 
   // ✅ NEW: Prompt re-run functionality
   const rerunWithDifferentPrompt = async (promptId) => {
