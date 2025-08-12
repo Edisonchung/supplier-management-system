@@ -2314,74 +2314,91 @@ const ProductModal = ({
 
         {/* ✅ ENHANCED: Footer with Actions and Prompt Status */}
         {activeTab !== 'documents' && (
-          <div className="sticky bottom-0 p-6 border-t bg-gray-50 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            {formData.mcpEnhanced && (
-              <div className="flex items-center gap-2 text-purple-700">
-                <Brain size={16} />
-                <span className="text-sm font-medium">
-                  MCP Enhanced ({Math.round(formData.confidence * 100)}%)
-                </span>
-              </div>
-            )}
-            
-            {formData.aiEnriched && !formData.mcpEnhanced && (
-              <div className="flex items-center gap-2 text-purple-700">
-                <Sparkles size={16} />
-                <span className="text-sm font-medium">
-                  AI Enhanced ({Math.round(formData.confidence * 100)}%)
-                </span>
-              </div>
-            )}
-            
-            {appliedSuggestions.size > 0 && (
-              <div className="flex items-center gap-2 text-blue-700">
-                <TrendingUp size={16} />
-                <span className="text-sm">
-                  {appliedSuggestions.size} suggestion(s) applied
-                </span>
-              </div>
-            )}
-
-            {mcpStatus && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <span className={`h-2 w-2 rounded-full ${
-                  mcpStatus.status === 'available' ? 'bg-green-500' : 'bg-yellow-500'
-                }`}></span>
-                MCP System: {mcpStatus.status === 'available' ? 'Ready' : 'Basic Mode'}
-                {availablePrompts.length > 0 && (
-                  <span className="text-xs text-gray-500">
-                    ({availablePrompts.length} prompts)
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center space-x-2 font-medium shadow-lg"
-            >
-              <Save size={16} />
-              <span>
-                {isSubmitting ? 'Saving...' : (product ? 'Update Product' : 'Add Product')}
+  <div className="sticky bottom-0 bg-white border-t border-gray-200 p-6 flex justify-between items-center shadow-lg">
+    <div className="flex items-center gap-4 flex-wrap">
+      {/* ✅ Enhanced MCP Enhancement Status Indicator */}
+      {formData.mcpEnhanced && (
+        <div className="flex items-center gap-2 text-purple-700">
+          <Brain size={16} />
+          <span className="text-sm font-medium">
+            MCP Enhanced ({Math.round(formData.confidence * 100)}%)
+            {selectedPromptId && availablePrompts.find(p => p.id === selectedPromptId) && (
+              <span className="ml-1 text-xs text-gray-500">
+                via {availablePrompts.find(p => p.id === selectedPromptId)?.name}
               </span>
-            </button>
-          </div>
+            )}
+          </span>
         </div>
+      )}
+      
+      {/* ✅ AI Enhancement Status Indicator */}
+      {formData.aiEnriched && !formData.mcpEnhanced && (
+        <div className="flex items-center gap-2 text-purple-700">
+          <Sparkles size={16} />
+          <span className="text-sm font-medium">
+            AI Enhanced ({Math.round(formData.confidence * 100)}%)
+          </span>
+        </div>
+      )}
+      
+      {appliedSuggestions.size > 0 && (
+        <div className="flex items-center gap-2 text-blue-700">
+          <TrendingUp size={16} />
+          <span className="text-sm">
+            {appliedSuggestions.size} suggestion(s) applied
+          </span>
+        </div>
+      )}
+
+      {/* ✅ Enhanced MCP System Status */}
+      {mcpStatus && (
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <span className={`h-2 w-2 rounded-full ${
+            mcpStatus.status === 'available' ? 'bg-green-500' : 'bg-yellow-500'
+          }`}></span>
+          MCP System: {mcpStatus.status === 'available' ? 'Ready' : 'Basic Mode'}
+          {availablePrompts.length > 0 && (
+            <span className="text-xs text-gray-500 ml-1">
+              ({availablePrompts.length} prompts)
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+    
+    {/* ✅ Enhanced Action Buttons */}
+    <div className="flex items-center gap-3 ml-4">
+      <button
+        type="button"
+        onClick={onClose}
+        className="px-5 py-2.5 text-gray-700 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+      >
+        Cancel
+      </button>
+      <button
+        onClick={handleSubmit}
+        disabled={isSubmitting}
+        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 font-semibold shadow-lg hover:shadow-xl transform hover:scale-[1.02] min-w-[140px] justify-center"
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            <span>Saving...</span>
+          </>
+        ) : (
+          <>
+            <Save size={16} />
+            <span>{product ? 'Update Product' : 'Add Product'}</span>
+          </>
         )}
+      </button>
+    </div>
+  </div>
+)}
       </div>
     </div>
   );
 };
+
 
 export default ProductModal;
