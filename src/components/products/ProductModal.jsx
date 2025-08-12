@@ -644,69 +644,78 @@ const ProductModal = ({
 
   // ✅ NEW: Fallback enhancement (pattern-based)
   const enhanceWithFallback = async () => {
-    if (!formData.partNumber) {
-      showNotification?.('Please enter a part number first', 'warning');
-      return;
+  if (!formData.partNumber) {
+    showNotification?.('Please enter a part number first', 'warning');
+    return;
+  }
+  
+  setIsEnriching(true);
+  setShowEnhancementDropdown(false);
+  
+  try {
+    console.log('🔄 Using fallback pattern enhancement...');
+    
+    // ✅ SAFE: Using string methods instead of regex
+    let detectedBrand = null;
+    const partUpper = formData.partNumber.toUpperCase();
+    
+    // Brand detection using safe string methods
+    if (partUpper.startsWith('6XV') || partUpper.startsWith('6ES') || partUpper.startsWith('6EP') || partUpper.startsWith('6AV')) {
+      detectedBrand = 'Siemens';
+    } else if (partUpper.startsWith('NJ') || partUpper.startsWith('NU') || 
+               (partUpper.startsWith('6') && partUpper.length >= 4) ||
+               (partUpper.startsWith('32') && partUpper.length >= 5)) {
+      detectedBrand = 'SKF';
+    } else if (partUpper.startsWith('ACS')) {
+      detectedBrand = 'ABB';
+    } else if (partUpper.startsWith('TM') || partUpper.startsWith('LC1')) {
+      detectedBrand = 'Schneider Electric';
+    } else if (partUpper.startsWith('E3') || partUpper.startsWith('CP1') || partUpper.startsWith('MY')) {
+      detectedBrand = 'Omron';
     }
     
-    setIsEnriching(true);
-    setShowEnhancementDropdown(false);
+    // Category detection using safe string methods
+    let detectedCategory = formData.category || 'components';
+    if (partUpper.startsWith('6XV')) detectedCategory = 'networking';
+    else if (partUpper.startsWith('6ES')) detectedCategory = 'automation';
+    else if (partUpper.startsWith('NJ') || partUpper.startsWith('NU') || partUpper.startsWith('6')) detectedCategory = 'bearings';
+    else if (partUpper.startsWith('ACS')) detectedCategory = 'drives';
     
-    try {
-      console.log('🔄 Using fallback pattern enhancement...');
-      
-      // Simple brand detection (only most common patterns)
-      let detectedBrand = null;
-      const partUpper = formData.partNumber.toUpperCase();
-      
-      if (partUpper.match(/^6(XV|ES|EP|AV)/)) detectedBrand = 'Siemens';
-      else if (partUpper.match(/^(NJ|NU|6\d{3}|32\d{3})/)) detectedBrand = 'SKF';
-      else if (partUpper.match(/^ACS\d{3}/)) detectedBrand = 'ABB';
-      else if (partUpper.match(/^(TM|LC1)/)) detectedBrand = 'Schneider Electric';
-      else if (partUpper.match(/^(E3|CP1|MY)/)) detectedBrand = 'Omron';
-      
-      // Simple category detection
-      let detectedCategory = formData.category || 'components';
-      if (partUpper.match(/^6XV/)) detectedCategory = 'networking';
-      else if (partUpper.match(/^6ES/)) detectedCategory = 'automation';
-      else if (partUpper.match(/^(NJ|NU|6\d{3})/)) detectedCategory = 'bearings';
-      else if (partUpper.match(/^ACS/)) detectedCategory = 'drives';
-      
-      const enhancedData = {
-        productName: detectedBrand ? 
-          `${detectedBrand} ${detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)} Component ${formData.partNumber}` :
-          formData.name || `Industrial Component ${formData.partNumber}`,
-        brand: detectedBrand,
+    const enhancedData = {
+      productName: detectedBrand ? 
+        `${detectedBrand} ${detectedCategory.charAt(0).toUpperCase() + detectedCategory.slice(1)} Component ${formData.partNumber}` :
+        formData.name || `Industrial Component ${formData.partNumber}`,
+      brand: detectedBrand,
+      category: detectedCategory,
+      description: detectedBrand ? 
+        `${detectedBrand} industrial ${detectedCategory} component. Part number: ${formData.partNumber}. Professional-grade equipment for industrial applications.` :
+        `Industrial component with part number ${formData.partNumber}. Manufacturer to be verified.`,
+      specifications: detectedBrand ? {
+        manufacturer: detectedBrand,
         category: detectedCategory,
-        description: detectedBrand ? 
-          `${detectedBrand} industrial ${detectedCategory} component. Part number: ${formData.partNumber}. Professional-grade equipment for industrial applications.` :
-          `Industrial component with part number ${formData.partNumber}. Manufacturer to be verified.`,
-        specifications: detectedBrand ? {
-          manufacturer: detectedBrand,
-          category: detectedCategory,
-          part_number: formData.partNumber
-        } : {},
-        confidence: detectedBrand ? 0.7 : 0.4,
-        source: 'Pattern Analysis Fallback',
-        mcpEnhanced: false
-      };
-      
-      setAiSuggestions(enhancedData);
-      setActiveTab('ai');
-      setShowAIPanel(true);
-      
-      showNotification?.(
-        `Quick analysis complete with ${Math.round(enhancedData.confidence * 100)}% confidence`, 
-        'success'
-      );
-      
-    } catch (error) {
-      console.error('Pattern enhancement failed:', error);
-      showNotification?.('Quick enhancement failed', 'error');
-    } finally {
-      setIsEnriching(false);
-    }
-  };
+        part_number: formData.partNumber
+      } : {},
+      confidence: detectedBrand ? 0.7 : 0.4,
+      source: 'Pattern Analysis Fallback',
+      mcpEnhanced: false
+    };
+    
+    setAiSuggestions(enhancedData);
+    setActiveTab('ai');
+    setShowAIPanel(true);
+    
+    showNotification?.(
+      `Quick analysis complete with ${Math.round(enhancedData.confidence * 100)}% confidence`, 
+      'success'
+    );
+    
+  } catch (error) {
+    console.error('Pattern enhancement failed:', error);
+    showNotification?.('Quick enhancement failed', 'error');
+  } finally {
+    setIsEnriching(false);
+  }
+};
 
   // ✅ ENHANCED: Web search enhancement (keeping existing functionality)
   const performWebSearch = async () => {
