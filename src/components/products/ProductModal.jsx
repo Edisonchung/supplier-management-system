@@ -2391,11 +2391,11 @@ const ProductModal = ({
       </button>
     </div>
   </div>
-)}  // ← This closes the footer conditional
-        </div>  // ← This should close the tab content container
-      </div>    // ← This should close the modal container  
-    </div>      // ← This should close the backdrop
-  );            // ← This closes the return statement
-};              // ← This closes the component function
+)}  
+        </div> 
+      </div>   
+    </div>     
+  );           
+};           
 
 export default ProductModal;
