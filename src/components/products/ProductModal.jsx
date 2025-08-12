@@ -898,100 +898,109 @@ const ProductModal = ({
 
   // ✅ NEW: Enhancement Dropdown Component
   const EnhancementDropdown = () => (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setShowEnhancementDropdown(!showEnhancementDropdown)}
-        disabled={!formData.partNumber || isEnriching}
-        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center gap-2 transition-colors"
-      >
-        {isEnriching ? (
-          <>
-            <Loader2 size={16} className="animate-spin" />
-            {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
-          </>
-        ) : (
-          <>
-            <Brain size={16} />
-            AI Enhance
-            <ChevronDown size={14} />
-          </>
-        )}
-      </button>
+  <div className="relative" ref={dropdownRef}>
+    <button
+      type="button"
+      onClick={() => setShowEnhancementDropdown(!showEnhancementDropdown)}
+      disabled={!formData.partNumber || isEnriching}
+      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center gap-2 transition-colors min-w-[140px]"
+    >
+      {isEnriching ? (
+        <>
+          <Loader2 size={16} className="animate-spin" />
+          {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
+        </>
+      ) : (
+        <>
+          <Brain size={16} />
+          AI Enhance
+          <ChevronDown size={14} className={`transition-transform duration-200 ${
+            showEnhancementDropdown ? 'rotate-180' : 'rotate-0'
+          }`} />
+        </>
+      )}
+    </button>
 
-      {showEnhancementDropdown && !isEnriching && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-          <div className="p-2">
-            {/* MCP Enhancement (Primary) */}
-            {mcpStatus?.status === 'available' && (
-              <button
-                type="button"
-                onClick={enhanceWithMCP}
-                className="w-full text-left px-3 py-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-lg flex items-center gap-3 transition-colors"
-              >
-                <div className="flex-shrink-0">
-                  <Brain size={20} className="text-purple-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900">MCP Enhancement</div>
-                  <div className="text-sm text-gray-500">Advanced AI with smart prompts</div>
-                  <div className="text-xs text-purple-600 mt-1">Recommended • High Accuracy</div>
-                </div>
-              </button>
-            )}
-
-            {/* Specific Prompt Options */}
-            {availablePrompts.length > 1 && (
-              <div className="border-t pt-2 mt-2">
-                <div className="px-3 py-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Specialized Prompts
-                </div>
-                {availablePrompts.slice(0, 3).map(prompt => (
-                  <button
-                    key={prompt.id}
-                    type="button"
-                    onClick={() => enhanceWithSpecificPrompt(prompt.id)}
-                    className="w-full text-left px-3 py-2 hover:bg-purple-50 rounded-lg flex items-center gap-3 transition-colors"
-                  >
-                    <div className="flex-shrink-0">
-                      <Settings size={16} className="text-purple-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{prompt.name}</div>
-                      <div className="text-xs text-gray-500 truncate">{prompt.specialized_for}</div>
-                      {prompt.confidence_avg && (
-                        <div className="text-xs text-purple-600 mt-1">
-                          {Math.round(prompt.confidence_avg * 100)}% avg accuracy
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                ))}
+    {showEnhancementDropdown && !isEnriching && (
+      <div className="absolute top-full right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
+        <div className="p-1">
+          {/* MCP Enhancement (Primary) */}
+          {mcpStatus?.status === 'available' && (
+            <button
+              type="button"
+              onClick={enhanceWithMCP}
+              className="w-full text-left p-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 rounded-lg flex items-start gap-3 transition-colors group"
+            >
+              <div className="flex-shrink-0 mt-1">
+                <Brain size={20} className="text-purple-600 group-hover:text-purple-700" />
               </div>
-            )}
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900 text-sm mb-1">MCP Enhancement</div>
+                <div className="text-xs text-gray-600 mb-2">Advanced AI with smart prompts</div>
+                <div className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                  Recommended • High Accuracy
+                </div>
+              </div>
+            </button>
+          )}
 
-            {/* Fallback Enhancement */}
-            <div className="border-t pt-2 mt-2">
-              <button
-                type="button"
-                onClick={enhanceWithFallback}
-                className="w-full text-left px-3 py-3 hover:bg-gray-50 rounded-lg flex items-center gap-3 transition-colors"
-              >
-                <div className="flex-shrink-0">
-                  <Sparkles size={20} className="text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900">Quick Enhancement</div>
-                  <div className="text-sm text-gray-500">Pattern-based analysis</div>
-                  <div className="text-xs text-blue-600 mt-1">Fast • Basic Detection</div>
-                </div>
-              </button>
+          {/* Specialized Prompts Section */}
+          {availablePrompts.length > 1 && (
+            <div className="border-t border-gray-100 mt-1 pt-1">
+              <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50 rounded-md mx-1 mb-1">
+                Specialized Prompts
+              </div>
+              {availablePrompts.slice(0, 2).map(prompt => (
+                <button
+                  key={prompt.id}
+                  type="button"
+                  onClick={() => enhanceWithSpecificPrompt(prompt.id)}
+                  className="w-full text-left p-3 hover:bg-purple-50 rounded-lg flex items-start gap-3 transition-colors group"
+                >
+                  <div className="flex-shrink-0 mt-1">
+                    <Settings size={16} className="text-purple-500 group-hover:text-purple-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 mb-1 truncate">{prompt.name}</div>
+                    <div className="text-xs text-gray-500 mb-2">{prompt.specialized_for}</div>
+                    {prompt.confidence_avg && (
+                      <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs">
+                        {Math.round(prompt.confidence_avg * 100)}% avg accuracy
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
             </div>
+          )}
+
+          {/* Quick Enhancement Section */}
+          <div className="border-t border-gray-100 mt-1 pt-1">
+            <button
+              type="button"
+              onClick={enhanceWithFallback}
+              className="w-full text-left p-3 hover:bg-gray-50 rounded-lg flex items-start gap-3 transition-colors group"
+            >
+              <div className="flex-shrink-0 mt-1">
+                <Sparkles size={20} className="text-blue-600 group-hover:text-blue-700" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900 text-sm mb-1">Quick Enhancement</div>
+                <div className="text-xs text-gray-600 mb-2">Pattern-based analysis</div>
+                <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  Fast • Basic Detection
+                </div>
+              </div>
+            </button>
           </div>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+  </div>
+);
+
 
   // ✅ ENHANCED: Improved submit handler with MCP metadata
   const handleSubmit = async (e) => {
