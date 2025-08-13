@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Package, DollarSign, Layers, Tag, Hash, Image, FileText, Info, Clock, 
   AlertCircle, Save, Sparkles, Check, RefreshCw, Loader2, Wand2, Brain,
-  ExternalLink, TrendingUp, CheckCircle, AlertTriangle, Zap, Target, History, ChevronDown, Settings
+  ExternalLink, TrendingUp, CheckCircle, AlertTriangle, Zap, Target, History, ChevronDown, Settings, User
 } from 'lucide-react';
 import { DocumentManager } from '../documents/DocumentManager';
 // ✅ SIMPLIFIED: Only import utilities from ProductEnrichmentService
