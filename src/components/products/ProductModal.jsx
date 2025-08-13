@@ -1787,6 +1787,141 @@ const ProductModal = ({
   <MCPEnhancementResults />
 )}
 
+
+              {/* ✅ STANDARDIZED: MCP Enhancement Results Display */}
+{(mcpResults || aiSuggestions) && (
+  <MCPEnhancementResults />
+)}
+
+{/* ADD THIS ENTIRE COMPONENT DEFINITION HERE */}
+<script dangerouslySetInnerHTML={{__html: `
+// ✅ STANDARDIZED: MCP Enhancement Results Component
+const MCPEnhancementResults = () => {
+  if (!mcpResults && !aiSuggestions) return null;
+
+  return (
+    <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200 mb-6">
+      {/* ✅ STANDARDIZED: Header Section */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <Brain className="h-6 w-6 text-blue-600" />
+          <span className="font-bold text-gray-900">MCP AI Enhancement Results</span>
+          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+            {Math.round((mcpResults?.confidence || aiSuggestions?.confidence || 0) * 100)}% Confidence
+          </span>
+        </div>
+        
+        {isRerunning && (
+          <div className="flex items-center gap-2 text-purple-600">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-sm">Re-running...</span>
+          </div>
+        )}
+      </div>
+
+      <div className="text-sm text-gray-600 mb-4">
+        Enhance your product data using advanced AI analysis with intelligent prompt selection.
+      </div>
+
+      {/* ✅ STANDARDIZED: Current Enhancement Display */}
+      <div className="bg-white rounded-lg p-4 mb-4 border border-blue-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <div className="text-xs font-medium text-gray-500 mb-1">🎯 Selected Prompt</div>
+            <div className="text-sm font-medium text-gray-900">
+              {mcpResults?.mcpMetadata?.prompt_used || aiSuggestions?.mcpMetadata?.prompt_used || 'Auto-Selected'}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-500 mb-1">⚡ Performance</div>
+            <div className="text-sm text-gray-700">
+              DeepSeek AI • {((mcpResults?.processingTime || 42100) / 1000).toFixed(1)}s • {Math.round((mcpResults?.confidence || aiSuggestions?.confidence || 0.95) * 100)}% confidence
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-500 mb-1">👤 Enhanced by</div>
+            <div className="text-sm text-gray-700 flex items-center gap-1">
+              <User className="w-3 h-3" />
+              {userEmail} • {new Date().toLocaleDateString()}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ✅ STANDARDIZED: Available Prompts Section */}
+      {availablePrompts.length > 0 && (
+        <div className="mb-4">
+          <div className="text-sm font-medium text-gray-700 mb-2">🔄 Available Prompts ({availablePrompts.length}):</div>
+          <div className="space-y-2">
+            {availablePrompts.map((prompt) => {
+              const isActive = selectedPromptId === prompt.id || 
+                             mcpResults?.mcpMetadata?.prompt_id === prompt.id;
+              return (
+                <div
+                  key={prompt.id}
+                  className={\`flex items-center justify-between p-3 rounded-lg border transition-colors \${
+                    isActive 
+                      ? 'bg-purple-50 border-purple-200' 
+                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                  }\`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={\`w-3 h-3 rounded-full \${isActive ? 'bg-purple-500' : 'bg-gray-300'}\`} />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{prompt.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {Math.round((prompt.confidence || 0.88) * 100)}% avg accuracy
+                      </div>
+                    </div>
+                    {isActive && <span className="text-xs text-purple-600 font-medium">← Currently Active</span>}
+                  </div>
+                  
+                  {!isActive && !isRerunning && (
+                    <button
+                      onClick={() => rerunWithDifferentPrompt(prompt.id)}
+                      className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Select
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ✅ STANDARDIZED: Action Buttons */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => rerunWithDifferentPrompt(selectedPromptId)}
+          disabled={isRerunning || !selectedPromptId}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          🔄 Re-run with Different Prompt
+        </button>
+        
+        <button
+          onClick={() => setActiveTab('history')}
+          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
+        >
+          <History className="w-4 h-4" />
+          📊 Enhancement History
+        </button>
+
+        <button
+          onClick={applyAllMCPSuggestions}
+          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+        >
+          <Zap className="w-4 h-4" />
+          ⚡ Apply All Suggestions
+        </button>
+      </div>
+    </div>
+  );
+};
+`}} />
               {/* ✅ NEW: MCP Enhancement Results Panel */}
               {mcpResults && (
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
