@@ -1782,32 +1782,10 @@ const ProductModal = ({
                 )}
               </div>
 
-              {/* ✅ NEW: Prompt Selector Panel */}
-              {availablePrompts.length > 0 && (aiSuggestions || mcpResults) && (
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                      <Brain className="h-5 w-5 text-purple-600" />
-                      MCP Enhancement Results
-                      <span className="text-sm bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
-                        {availablePrompts.length} Prompts Available
-                      </span>
-                    </h4>
-                    {isRerunning && (
-                      <div className="flex items-center gap-2 text-purple-600">
-                        <Loader2 size={16} className="animate-spin" />
-                        <span className="text-sm">Re-running...</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ✅ NEW: Prompt Selector Panel Component */}
-                  <PromptSelectorPanel />
-
-                  {/* ✅ NEW: Prompt History Component */}
-                  <PromptHistoryPanel />
-                </div>
-              )}
+              {/* ✅ STANDARDIZED: MCP Enhancement Results Display */}
+{(mcpResults || aiSuggestions) && (
+  <MCPEnhancementResults />
+)}
 
               {/* ✅ NEW: MCP Enhancement Results Panel */}
               {mcpResults && (
