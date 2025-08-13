@@ -910,15 +910,15 @@ const ProductModal = ({
           <Loader2 size={16} className="animate-spin" />
           {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
         </>
-      ) : (
-        <>
-          <Brain size={16} />
-          AI Enhance
-          <ChevronDown size={14} className={`transition-transform duration-200 ${
-            showEnhancementDropdown ? 'rotate-180' : 'rotate-0'
-          }`} />
-        </>
-      )}
+     ) : (
+  <>
+    <Brain size={16} />
+    MCP AI Enhance
+    <ChevronDown size={14} className={`transition-transform duration-200 ${
+      showEnhancementDropdown ? 'rotate-180' : 'rotate-0'
+    }`} />
+  </>
+)}
     </button>
 
     {showEnhancementDropdown && !isEnriching && (
@@ -935,8 +935,8 @@ const ProductModal = ({
                 <Brain size={20} className="text-purple-600 group-hover:text-purple-700" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-900 text-sm mb-1">MCP Enhancement</div>
-                <div className="text-xs text-gray-600 mb-2">Advanced AI with smart prompts</div>
+                <div className="font-semibold text-gray-900 text-sm mb-1">🎯 Auto-Select Best Prompt</div>
+<div className="text-xs text-gray-600 mb-2">Recommended - AI chooses optimal prompt</div>
                 <div className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
                   <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
                   Recommended • High Accuracy
@@ -983,15 +983,15 @@ const ProductModal = ({
               className="w-full text-left p-3 hover:bg-gray-50 rounded-lg flex items-start gap-3 transition-colors group"
             >
               <div className="flex-shrink-0 mt-1">
-                <Sparkles size={20} className="text-blue-600 group-hover:text-blue-700" />
+<Target size={20} className="text-gray-600 group-hover:text-gray-700" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-900 text-sm mb-1">Quick Enhancement</div>
-                <div className="text-xs text-gray-600 mb-2">Pattern-based analysis</div>
-                <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  Fast • Basic Detection
-                </div>
+                <div className="font-semibold text-gray-900 text-sm mb-1">⚙️ Basic Enhance</div>
+<div className="text-xs text-gray-600 mb-2">Pattern-based analysis</div>
+<div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+  <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+  Fast • Basic Detection
+</div>
               </div>
             </button>
           </div>
