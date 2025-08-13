@@ -1788,11 +1788,6 @@ const ProductModal = ({
 )}
 
 
-              {/* ✅ STANDARDIZED: MCP Enhancement Results Display */}
-{(mcpResults || aiSuggestions) && (
-  <MCPEnhancementResults />
-)}
-
 {/* ADD THIS ENTIRE COMPONENT DEFINITION HERE */}
 <script dangerouslySetInnerHTML={{__html: `
 // ✅ STANDARDIZED: MCP Enhancement Results Component
