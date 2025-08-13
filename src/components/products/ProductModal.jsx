@@ -100,7 +100,7 @@ const ProductModal = ({
     { id: 'basic', label: 'Basic Info', icon: Info },
     { 
       id: 'ai', 
-      label: 'AI Enhancement', 
+      label: 'MCP AI Enhancement', 
       icon: Brain, 
       badge: (aiSuggestions || mcpResults) ? '!' : null 
     },
@@ -1881,16 +1881,6 @@ const MCPEnhancementResults = () => {
                     >
                       <Sparkles size={20} />
                       Basic Enhance
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={performWebSearch}
-                      disabled={!formData.partNumber}
-                      className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      <ExternalLink size={20} />
-                      Web Search
                     </button>
                   </div>
                 )}
