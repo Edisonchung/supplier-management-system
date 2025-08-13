@@ -528,17 +528,15 @@ const ProductModal = ({
       console.log('🚀 MCP Enhancement (Primary Method)...');
       
       const enhancementData = {
-        partNumber: formData.partNumber,
-        name: formData.name,
-        brand: formData.brand,
-        description: formData.description,
-        category: formData.category
-      };
-
-      if (selectedPromptId && selectedPromptId !== 'fallback-basic') {
-        enhancementData.forcedPromptId = selectedPromptId;
-      }
-
+  partNumber: formData.partNumber,
+  name: formData.name,
+  brand: formData.brand,
+  description: formData.description,
+  category: formData.category,
+  ...(selectedPromptId && selectedPromptId !== 'fallback-basic' && {
+    forcedPromptId: selectedPromptId
+  })
+};
       const mcpResult = await MCPProductEnhancementService.enhanceProduct(enhancementData, userEmail);
 
       if (mcpResult.found && mcpResult.confidence > 0.5) {
