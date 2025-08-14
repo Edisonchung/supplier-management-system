@@ -1347,27 +1347,51 @@ const MCPEnhancementResults = () => {
   // ✅ NEW: Enhancement Dropdown Component
   const EnhancementDropdown = () => (
   <div className="relative" ref={dropdownRef}>
-    <button
+     <button
       type="button"
       onClick={() => setShowEnhancementDropdown(!showEnhancementDropdown)}
-      disabled={!formData.partNumber || isEnriching}
-      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 flex items-center gap-2 transition-colors min-w-[140px]"
+      disabled={isEnriching}
+      className={`
+        relative flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+        ${isEnriching && enhancementMethod === 'enhancing' 
+          ? 'bg-blue-100 text-blue-600 cursor-not-allowed' 
+          : isEnriching && enhancementMethod === 'completed'
+          ? 'bg-green-100 text-green-600'
+          : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700'
+        }
+        ${showEnhancementDropdown ? 'ring-2 ring-blue-300' : ''}
+      `}
     >
       {isEnriching ? (
         <>
-          <Loader2 size={16} className="animate-spin" />
-          {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
+          {enhancementMethod === 'enhancing' ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
+            </>
+          ) : enhancementMethod === 'completed' ? (
+            <>
+              <CheckCircle size={16} />
+              Enhanced
+            </>
+          ) : (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              {isMcpEnhancing ? 'MCP Analyzing...' : 'Enhancing...'}
+            </>
+          )}
         </>
-     ) : (
-  <>
-    <Brain size={16} />
-    MCP AI Enhance
-    <ChevronDown size={14} className={`transition-transform duration-200 ${
-      showEnhancementDropdown ? 'rotate-180' : 'rotate-0'
-    }`} />
-  </>
-)}
+      ) : (
+        <>
+          <Brain size={16} />
+          MCP AI Enhance
+          <ChevronDown size={14} className={`transition-transform duration-200 ${
+            showEnhancementDropdown ? 'rotate-180' : 'rotate-0'
+          }`} />
+        </>
+      )}
     </button>
+
 
     {showEnhancementDropdown && !isEnriching && (
       <div className="absolute top-full right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
@@ -2303,11 +2327,40 @@ const handleCategoryAISuggestionApply = (appliedValue) => {
             <button
               type="button"
               onClick={enhanceWithMCP}
-              disabled={!formData.partNumber}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              disabled={!formData.partNumber || isEnriching}
+              className={`
+                px-6 py-3 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+                ${isEnriching && enhancementMethod === 'enhancing' 
+                  ? 'bg-blue-100 text-blue-600' 
+                  : isEnriching && enhancementMethod === 'completed'
+                  ? 'bg-green-100 text-green-600'
+                  : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700'
+                }
+              `}
             >
-              <Brain size={20} />
-              MCP Enhance
+              {isEnriching && isMcpEnhancing ? (
+                enhancementMethod === 'enhancing' ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    MCP Analyzing...
+                  </>
+                ) : enhancementMethod === 'completed' ? (
+                  <>
+                    <CheckCircle size={20} />
+                    Enhanced
+                  </>
+                ) : (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    MCP Analyzing...
+                  </>
+                )
+              ) : (
+                <>
+                  <Brain size={20} />
+                  MCP Enhance
+                </>
+              )}
             </button>
           )}
           
