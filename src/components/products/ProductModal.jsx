@@ -294,69 +294,107 @@ const ProductModal = ({
 
   // ✅ NEW: Prompt re-run functionality
   const rerunWithDifferentPrompt = async (promptId) => {
-    if (!promptId || isRerunning) return;
+  if (!promptId || isRerunning) return;
+  
+  setIsRerunning(true);
+  
+  try {
+    console.log(`🔄 Re-running enhancement with prompt: ${promptId}`);
     
-    setIsRerunning(true);
-    
-    try {
-      const response = await fetch(`${MCP_SERVER_URL}/api/enhance-product`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productData: {
-            partNumber: formData.partNumber,
-            name: formData.name,
-            brand: formData.brand,
-            description: formData.description,
-            category: formData.category
-          },
-          userEmail: userEmail,
-          forcedPromptId: promptId,
-          metadata: {
-            rerun: true,
-            originalPrompt: aiSuggestions?.mcpMetadata?.prompt_id,
-            userSelected: true,
-            timestamp: new Date().toISOString()
-          }
-        })
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        // Save current result to history for comparison
-        if (aiSuggestions?.mcpEnhanced) {
-          setPromptHistory(prev => [...prev, {
-            promptId: aiSuggestions.mcpMetadata?.prompt_id,
-            promptName: aiSuggestions.mcpMetadata?.prompt_used,
-            result: aiSuggestions,
-            timestamp: new Date().toISOString()
-          }]);
+    const response = await fetch(`${MCP_SERVER_URL}/api/enhance-product`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productData: {
+          partNumber: formData.partNumber,
+          name: formData.name,
+          brand: formData.brand,
+          description: formData.description,
+          category: formData.category
+        },
+        userEmail: userEmail,
+        forcedPromptId: promptId,
+        metadata: {
+          rerun: true,
+          originalPrompt: mcpResults?.mcpMetadata?.prompt_id || aiSuggestions?.mcpMetadata?.prompt_id,
+          userSelected: true,
+          timestamp: new Date().toISOString(),
+          source: 'ProductModal',
+          version: '3.2.0',
+          promptSelectionMethod: 'user_selected'
         }
-        
-        // Apply new results
-        setAiSuggestions({
-          ...result.extractedData,
-          mcpMetadata: result.metadata,
-          mcpEnhanced: true,
-          source: 'MCP AI Enhancement (User Selected)',
-          userSelectedPrompt: true
-        });
-        
-        setSelectedPromptId(promptId);
-        
-        showNotification?.(
-          `Enhancement complete with ${result.metadata.prompt_used} (${Math.round(result.confidence_score * 100)}% confidence)`, 
-          'success'
-        );
+      })
+    });
+    
+    const result = await response.json();
+    console.log('✅ Re-run result:', result);
+    
+    if (result.success && result.extractedData) {
+      // ✅ FIXED: Save current result to history for comparison
+      if (mcpResults?.mcpEnhanced) {
+        setPromptHistory(prev => [...prev, {
+          promptId: mcpResults.mcpMetadata?.prompt_id,
+          promptName: mcpResults.mcpMetadata?.prompt_used,
+          result: mcpResults,
+          timestamp: new Date().toISOString()
+        }]);
       }
-    } catch (error) {
-      console.error('Failed to rerun with different prompt:', error);
-      showNotification?.('Failed to rerun enhancement', 'error');
-    } finally {
-      setIsRerunning(false);
+      
+      // ✅ FIXED: Map the fields correctly from extractedData
+      const extractedData = result.extractedData;
+      
+      // Create new MCP results with proper field mapping
+      const newMcpResults = {
+        found: true,
+        productName: extractedData.enhanced_name || extractedData.detected_name || extractedData.productName,
+        brand: extractedData.detected_brand || extractedData.brand,
+        category: extractedData.detected_category || extractedData.category,
+        description: extractedData.enhanced_description || extractedData.description,
+        specifications: extractedData.specifications || {},
+        confidence: result.confidence_score || 0.85,
+        processingTime: result.processing_time || 0,
+        source: 'MCP AI Enhancement (User Selected)',
+        mcpMetadata: {
+          prompt_used: result.metadata?.prompt_used,
+          prompt_id: result.metadata?.prompt_id || promptId,
+          ai_provider: result.metadata?.ai_provider || 'deepseek',
+          processing_time: result.processing_time,
+          system_version: result.metadata?.system_version || '3.2.0',
+          confidence_score: result.confidence_score,
+          enhancement_method: 'mcp_ai',
+          user_email: userEmail,
+          timestamp: new Date().toISOString(),
+          prompt_selection_method: 'user_selected',
+          rerun: true
+        },
+        mcpEnhanced: true
+      };
+      
+      // ✅ FIXED: Update both mcpResults and aiSuggestions for backward compatibility
+      setMcpResults(newMcpResults);
+      setAiSuggestions(newMcpResults);
+      setSelectedPromptId(promptId);
+      
+      // Clear applied suggestions since this is a re-run
+      setAppliedSuggestions(new Set());
+      
+      const promptName = availablePrompts.find(p => p.id === promptId)?.name || result.metadata?.prompt_used || 'Selected Prompt';
+      showNotification?.(
+        `Enhancement complete with ${promptName} (${Math.round(result.confidence_score * 100)}% confidence)`, 
+        'success'
+      );
+      
+    } else {
+      console.warn('Re-run enhancement failed or returned no data');
+      showNotification?.('Re-run enhancement failed', 'error');
     }
-  };
+  } catch (error) {
+    console.error('Failed to rerun with different prompt:', error);
+    showNotification?.('Failed to rerun enhancement', 'error');
+  } finally {
+    setIsRerunning(false);
+  }
+};
 
   // ✅ SIMPLIFIED: Master enhancement function - MCP primary, minimal fallback
   const enrichProductData = async (forceMethod = null) => {
@@ -2169,25 +2207,78 @@ const MCPEnhancementResults = () => {
         )}
 
         {/* ✅ ADD: Action Buttons */}
-        <div className="flex items-center gap-3 mt-6">
-          <button
-            onClick={() => rerunWithDifferentPrompt(selectedPromptId)}
-            disabled={isRerunning || !selectedPromptId}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Re-run Enhancement
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('history')}
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
-          >
-            <History className="w-4 h-4" />
-            Enhancement History
-          </button>
-        </div>
-      </div>
+        <div className="flex flex-wrap items-center gap-3 mt-6 pt-4 border-t border-blue-200">
+  <button
+    onClick={() => {
+      const currentPromptId = mcpResults?.mcpMetadata?.prompt_id || selectedPromptId;
+      if (currentPromptId) {
+        rerunWithDifferentPrompt(currentPromptId);
+      } else {
+        enrichProductData(); // Fallback to general enhancement
+      }
+    }}
+    disabled={isRerunning || isEnriching}
+    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+  >
+    {isRerunning ? (
+      <>
+        <Loader2 className="w-4 h-4 animate-spin" />
+        Re-running...
+      </>
+    ) : (
+      <>
+        <RefreshCw className="w-4 h-4" />
+        Re-run Enhancement
+      </>
+    )}
+  </button>
+  
+  <button
+    onClick={() => {
+      console.log('📊 Enhancement History clicked');
+      // Add enhancement to history
+      if (mcpResults) {
+        const historyEntry = {
+          timestamp: new Date().toISOString(),
+          confidence: mcpResults.confidence,
+          mcpEnhanced: mcpResults.mcpEnhanced,
+          enhancementSource: mcpResults.source,
+          mcpMetadata: mcpResults.mcpMetadata,
+          selectedPromptId: mcpResults.mcpMetadata?.prompt_id,
+          userEmail: userEmail,
+          enhancementMethod: 'mcp_ai',
+          processingTime: mcpResults.processingTime || 0,
+          partNumber: formData.partNumber,
+          appliedFields: Array.from(appliedSuggestions)
+        };
+        
+        // Update form data with history
+        setFormData(prev => ({
+          ...prev,
+          enhancementHistory: [...(prev.enhancementHistory || []), historyEntry]
+        }));
+        
+        // Switch to history tab
+        setActiveTab('history');
+        showNotification?.('Switched to Enhancement History', 'info');
+      } else {
+        showNotification?.('No enhancement history available', 'warning');
+      }
+    }}
+    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
+  >
+    <History className="w-4 h-4" />
+    Enhancement History
+  </button>
+
+  <button
+    onClick={applyAllMCPSuggestions}
+    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+  >
+    <Zap className="w-4 h-4" />
+    Apply All Suggestions
+  </button>
+</div>
     )}
 
     {/* ✅ FALLBACK: Basic AI Suggestions Panel (only when no MCP results) */}
