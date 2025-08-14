@@ -96,21 +96,18 @@ export const useProducts = () => {
   };
 
   // ✅ CRITICAL FIX: Updated updateProduct function
-  const updateProduct = async (id, productData) => {
+  // 🎯 PRODUCTION VERSION: Keep the aggressive cleaning but reduce debug logging
+
+const updateProduct = async (id, productData) => {
   try {
-    console.log('🚨 updateProduct received data:', productData);
-    
     // ✅ AGGRESSIVE FIX: Convert to JSON and back to remove undefined values completely
     const jsonString = JSON.stringify(productData, (key, value) => {
-      // This replacer function will convert undefined to null, then we'll remove nulls
       if (value === undefined) {
-        console.log(`🧹 Found undefined value for key: ${key}`);
-        return null; // Convert undefined to null for JSON.stringify
+        console.log(`🧹 Cleaning undefined value for key: ${key}`); // Keep minimal logging
+        return null;
       }
       return value;
     });
-    
-    console.log('🚨 JSON string (undefined values converted to null):', jsonString);
     
     // Parse back and remove null values
     const parsedData = JSON.parse(jsonString);
@@ -125,15 +122,12 @@ export const useProducts = () => {
           if (value !== null && value !== undefined) {
             if (typeof value === 'object' && value !== null) {
               const cleanedValue = deepClean(value);
-              // Only add if the cleaned object/array has content
               if (Array.isArray(cleanedValue) ? cleanedValue.length > 0 : Object.keys(cleanedValue).length > 0) {
                 cleaned[key] = cleanedValue;
               }
             } else {
               cleaned[key] = value;
             }
-          } else {
-            console.log(`🧹 Removed null/undefined field: ${key}`);
           }
         }
         return cleaned;
@@ -142,40 +136,11 @@ export const useProducts = () => {
     };
     
     const cleanedData = deepClean(parsedData);
-    
-    // Add updatedAt timestamp
     cleanedData.updatedAt = new Date().toISOString();
     
-    console.log('🚨 updateProduct DEEP cleaned data:', cleanedData);
-    
-    // ✅ FINAL SAFETY CHECK: Use Object.entries to find any remaining undefined
-    const finalCheck = (obj, path = '') => {
-      for (const [key, value] of Object.entries(obj)) {
-        const currentPath = path ? `${path}.${key}` : key;
-        if (value === undefined) {
-          console.error(`🚨 STILL FOUND UNDEFINED: ${currentPath}`);
-          delete obj[key];
-        } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-          finalCheck(value, currentPath);
-        } else if (Array.isArray(value)) {
-          value.forEach((item, index) => {
-            if (item === undefined) {
-              console.error(`🚨 UNDEFINED IN ARRAY: ${currentPath}[${index}]`);
-            } else if (item && typeof item === 'object') {
-              finalCheck(item, `${currentPath}[${index}]`);
-            }
-          });
-        }
-      }
-    };
-    
-    finalCheck(cleanedData);
-    
-    console.log('🚨 FINAL data being sent to Firestore:', cleanedData);
-    
-    // ✅ LAST RESORT: Create a completely new object with only known good fields
+    // ✅ SAFE DATA CONSTRUCTION: Manual construction for critical fields
     const safeData = {
-      // Core product fields - manually copy each one
+      // Core product fields
       name: cleanedData.name || '',
       brand: cleanedData.brand || '',
       category: cleanedData.category || '',
@@ -188,7 +153,7 @@ export const useProducts = () => {
       status: cleanedData.status || 'active',
       supplierId: cleanedData.supplierId || '',
       
-      // Optional fields - only add if they exist and are not undefined
+      // Optional fields - only add if they exist
       ...(cleanedData.manufacturerCode && { manufacturerCode: cleanedData.manufacturerCode }),
       ...(cleanedData.clientItemCode && { clientItemCode: cleanedData.clientItemCode }),
       ...(cleanedData.catalog && { catalog: cleanedData.catalog }),
@@ -221,49 +186,12 @@ export const useProducts = () => {
       updatedAt: new Date().toISOString()
     };
     
-    console.log('🛡️ SAFE data object (manually constructed):', safeData);
-    
-    // Final check on the safe data
-    const hasProblem = Object.entries(safeData).some(([key, value]) => value === undefined);
-    if (hasProblem) {
-      console.error('🚨 CRITICAL: Safe data still has undefined values!');
-      // Remove any undefined values from safe data
-      Object.keys(safeData).forEach(key => {
-        if (safeData[key] === undefined) {
-          delete safeData[key];
-          console.log(`🧹 REMOVED from safe data: ${key}`);
-        }
-      });
-    }
-    
     await updateDoc(doc(db, 'products', id), safeData);
     
-    console.log('✅ updateProduct: Firestore update successful');
+    console.log('✅ Product updated successfully'); // Keep success logging
     return { success: true };
   } catch (error) {
-    console.error('🚨 Error in updateProduct:', error);
-    console.error('🚨 Product ID:', id);
-    console.error('🚨 Original productData:', productData);
-    
-    // ✅ DEBUGGING: Try to identify the problematic field
-    if (error.message && error.message.includes('Unsupported field value: undefined')) {
-      console.error('🚨 FIRESTORE DEFINITELY REJECTING UNDEFINED VALUE');
-      console.error('🚨 This suggests there is a hidden undefined value not visible in our logs');
-      
-      // Try updating with just basic fields as a test
-      try {
-        console.log('🧪 TESTING: Attempting update with minimal safe data...');
-        const minimalData = {
-          name: productData.name || 'Test Product',
-          updatedAt: new Date().toISOString()
-        };
-        await updateDoc(doc(db, 'products', id), minimalData);
-        console.log('✅ MINIMAL UPDATE WORKED - Issue is in the data structure');
-      } catch (minimalError) {
-        console.error('❌ Even minimal update failed:', minimalError);
-      }
-    }
-    
+    console.error('❌ Error updating product:', error);
     return { success: false, error: error.message };
   }
 };
