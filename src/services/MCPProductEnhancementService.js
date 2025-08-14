@@ -1,9 +1,9 @@
-// src/services/MCPProductEnhancementService.js - UPDATED with Standardized UI Support
+// src/services/MCPProductEnhancementService.js - FIXED with Correct Field Mapping
 class MCPProductEnhancementService {
   static MCP_SERVER_URL = process.env.REACT_APP_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
 
   /**
-   * ✅ STANDARDIZED: Enhanced product enhancement with better error handling and user attribution
+   * ✅ FIXED: Enhanced product enhancement with correct field mapping
    */
   static async enhanceProduct(productData, userEmail = 'user@company.com', options = {}) {
     try {
@@ -55,14 +55,25 @@ class MCPProductEnhancementService {
       console.log('✅ MCP Enhancement Result:', result);
 
       if (result.success && result.extractedData) {
-        return {
+        // ✅ CRITICAL FIX: Map the actual field names from the response
+        const extractedData = result.extractedData;
+        
+        console.log('🔧 Mapping fields from extractedData:', {
+          'detected_brand': extractedData.detected_brand,
+          'enhanced_name': extractedData.enhanced_name,
+          'detected_category': extractedData.detected_category,
+          'enhanced_description': extractedData.enhanced_description
+        });
+
+        const mappedResult = {
           found: true,
-          productName: result.extractedData.productName || result.extractedData.name,
-          brand: result.extractedData.brand,
-          category: result.extractedData.category,
-          description: result.extractedData.description,
-          specifications: result.extractedData.specifications || {},
-          confidence: result.confidence_score || result.extractedData.confidence || 0.85,
+          // ✅ FIX: Map actual field names from response
+          productName: extractedData.enhanced_name || extractedData.detected_name || extractedData.productName || extractedData.name,
+          brand: extractedData.detected_brand || extractedData.brand,
+          category: extractedData.detected_category || extractedData.category,
+          description: extractedData.enhanced_description || extractedData.description,
+          specifications: extractedData.specifications || {},
+          confidence: result.confidence_score || extractedData.confidence || 0.85,
           processingTime: result.processing_time || 0,
           source: this.formatSourceDisplay(result.metadata?.source || 'MCP AI Enhancement'),
           mcpMetadata: {
@@ -79,8 +90,19 @@ class MCPProductEnhancementService {
           },
           mcpEnhanced: true
         };
+
+        // ✅ DEBUG: Log the final mapping
+        console.log('✅ Final mapped result:', {
+          'brand': mappedResult.brand,
+          'productName': mappedResult.productName,
+          'category': mappedResult.category,
+          'description': mappedResult.description,
+          'confidence': mappedResult.confidence
+        });
+
+        return mappedResult;
       } else {
-        console.warn('❌ MCP Enhancement failed or returned no data');
+        console.warn('⚠️ MCP Enhancement failed or returned no data');
         return {
           found: false,
           error: result.error || 'No enhancement data returned',
