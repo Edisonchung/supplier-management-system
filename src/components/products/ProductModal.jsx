@@ -762,28 +762,47 @@ const ProductModal = ({
 
   // ✅ NEW: Apply MCP suggestion
   const applyMCPSuggestion = (field, value, label) => {
-    const fieldMapping = {
-      productName: 'name',
-      category: 'category',
-      brand: 'brand',
-      description: 'description'
-    };
-    
-    const formField = fieldMapping[field] || field;
-    setFormData(prev => ({
+  console.log('🔧 applyMCPSuggestion called:', { 
+    field, 
+    value, 
+    label,
+    currentFormDataBrand: formData.brand,
+    currentFormData: formData
+  });
+  
+  const fieldMapping = {
+    productName: 'name',
+    category: 'category',
+    brand: 'brand',
+    description: 'description'
+  };
+  
+  const formField = fieldMapping[field] || field;
+  console.log('🔧 Field mapping:', { originalField: field, mappedField: formField });
+  
+  setFormData(prev => {
+    const updated = {
       ...prev,
       [formField]: value
-    }));
-    
-    setAppliedSuggestions(prev => new Set([...prev, field]));
-    
-    // Clear any validation errors for the updated field
-    if (errors[formField]) {
-      setErrors(prev => ({ ...prev, [formField]: '' }));
-    }
-    
-    showNotification?.(`Applied ${label}: ${value}`, 'success');
-  };
+    };
+    console.log('🔧 setFormData update:', {
+      previousValue: prev[formField],
+      newValue: value,
+      updatedBrand: updated.brand,
+      fullFormData: updated
+    });
+    return updated;
+  });
+  
+  setAppliedSuggestions(prev => new Set([...prev, field]));
+  
+  // Clear any validation errors for the updated field
+  if (errors[formField]) {
+    setErrors(prev => ({ ...prev, [formField]: '' }));
+  }
+  
+  showNotification?.(`Applied ${label}: ${value}`, 'success');
+};
 
   // ✅ NEW: Apply all MCP suggestions
   const applyAllMCPSuggestions = () => {
@@ -945,6 +964,89 @@ const MCPEnhancementResults = () => {
           </div>
         </div>
       </div>
+
+      {/* ✅ MISSING SECTION: Individual Suggestion Fields */}
+      {mcpResults && (
+        <div className="mb-6">
+          <h5 className="font-medium text-gray-900 mb-3">🎯 AI Enhancement Suggestions</h5>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <MCPSuggestionField 
+              label="Product Name" 
+              field="productName"
+              suggestion={mcpResults.productName}
+              current={formData.name}
+            />
+            <MCPSuggestionField 
+              label="Brand" 
+              field="brand"
+              suggestion={mcpResults.brand}
+              current={formData.brand}
+            />
+            <MCPSuggestionField 
+              label="Category" 
+              field="category"
+              suggestion={mcpResults.category}
+              current={formData.category}
+            />
+            <MCPSuggestionField 
+              label="Description" 
+              field="description"
+              suggestion={mcpResults.description}
+              current={formData.description}
+            />
+          </div>
+
+          {/* Technical Specifications from MCP */}
+          {mcpResults.specifications && Object.keys(mcpResults.specifications).length > 0 && (
+            <div className="mt-4 bg-white rounded-lg p-4 border">
+              <h5 className="font-medium text-gray-900 mb-3">🔧 MCP Detected Specifications</h5>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {Object.entries(mcpResults.specifications).map(([key, value]) => (
+                  value && (
+                    <div key={key} className="flex justify-between">
+                      <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                      <span className="font-medium">{value}</span>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ✅ FALLBACK: AI Suggestions (for non-MCP results) */}
+      {aiSuggestions && !mcpResults && (
+        <div className="mb-6">
+          <h5 className="font-medium text-gray-900 mb-3">⚙️ Basic Enhancement Suggestions</h5>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <SuggestionField 
+              label="Product Name" 
+              field="productName"
+              suggestion={aiSuggestions.productName}
+              current={formData.name}
+            />
+            <SuggestionField 
+              label="Brand" 
+              field="brand"
+              suggestion={aiSuggestions.brand}
+              current={formData.brand}
+            />
+            <SuggestionField 
+              label="Category" 
+              field="category"
+              suggestion={aiSuggestions.category}
+              current={formData.category}
+            />
+            <SuggestionField 
+              label="Description" 
+              field="description"
+              suggestion={aiSuggestions.description}
+              current={formData.description}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ✅ STANDARDIZED: Available Prompts Section */}
       {availablePrompts.length > 0 && (
