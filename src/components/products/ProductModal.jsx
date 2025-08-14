@@ -1302,107 +1302,148 @@ const MCPEnhancementResults = () => {
 );
 
 
-  // ✅ ENHANCED: Improved submit handler with MCP metadata
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const cleanFormDataForFirestore = (data) => {
+  const cleaned = {};
+  
+  Object.keys(data).forEach(key => {
+    const value = data[key];
     
-    if (!validateForm()) {
-      setActiveTab('basic');
-      return;
+    // Skip undefined values completely
+    if (value !== undefined) {
+      // Handle different data types
+      if (value === null) {
+        cleaned[key] = null; // Firestore accepts null
+      } else if (Array.isArray(value)) {
+        // Clean arrays of undefined values
+        const cleanedArray = value.filter(item => item !== undefined);
+        if (cleanedArray.length > 0) {
+          cleaned[key] = cleanedArray;
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        // Recursively clean nested objects
+        const cleanedObject = cleanFormDataForFirestore(value);
+        if (Object.keys(cleanedObject).length > 0) {
+          cleaned[key] = cleanedObject;
+        }
+      } else {
+        cleaned[key] = value;
+      }
     }
+  });
+  
+  return cleaned;
+};
 
-    setIsSubmitting(true);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  if (!validateForm()) {
+    setActiveTab('basic');
+    return;
+  }
+  setIsSubmitting(true);
+  
+  try {
+    // ✅ UTILITY: Normalize part number using ProductEnrichmentService utility
+    let normalizedPartNumber = formData.partNumber;
+    if (formData.partNumber) {
+      const validation = ProductEnrichmentService.validateAndNormalizePartNumber(formData.partNumber);
+      if (validation.isValid) {
+        normalizedPartNumber = validation.normalized;
+      }
+    }
     
-    try {
-      // ✅ UTILITY: Normalize part number using ProductEnrichmentService utility
-      let normalizedPartNumber = formData.partNumber;
-      if (formData.partNumber) {
-        const validation = ProductEnrichmentService.validateAndNormalizePartNumber(formData.partNumber);
-        if (validation.isValid) {
-          normalizedPartNumber = validation.normalized;
-        }
-      }
-
-      // ✅ UTILITY: Generate SKU using ProductEnrichmentService utility
-      let sku = formData.sku;
-      if (!sku && formData.partNumber) {
-        sku = ProductEnrichmentService.generateInternalSKU({
-          category: formData.category,
-          brand: formData.brand,
-          partNumber: normalizedPartNumber
-        });
-      }
-
-      // ✅ NEW: Build enhancement history including MCP data
-      const enhancementHistory = [...(formData.enhancementHistory || [])];
-      if (aiSuggestions || mcpResults) {
-        enhancementHistory.push({
-          timestamp: new Date().toISOString(),
-          confidence: mcpResults?.confidence || aiSuggestions?.confidence || 0,
-          appliedFields: Array.from(appliedSuggestions),
-          webEnhanced: !!aiSuggestions?.webEnhanced,
-          mcpEnhanced: !!mcpResults,
-          enhancementSource: mcpResults?.source || aiSuggestions?.source || 'unknown',
-          mcpMetadata: mcpResults?.mcpMetadata,
-          selectedPromptId: selectedPromptId,
-          userSelectedPrompt: !!aiSuggestions?.userSelectedPrompt
-        });
-      }
-
-      const productData = {
-        ...formData,
-        partNumber: normalizedPartNumber,
-        sku: sku,
-        price: parseFloat(formData.price),
-        stock: parseInt(formData.stock),
-        minStock: parseInt(formData.minStock),
-        // ✅ ENHANCED: Add AI + MCP enhancement metadata
-        aiEnriched: (aiSuggestions || mcpResults) ? true : formData.aiEnriched,
-        mcpEnhanced: mcpResults ? true : formData.mcpEnhanced,
-        confidence: mcpResults?.confidence || aiSuggestions?.confidence || formData.confidence,
-        lastEnhanced: (aiSuggestions || mcpResults) ? new Date().toISOString() : formData.lastEnhanced,
-        enhancementHistory: enhancementHistory,
-        enhancementSource: mcpResults?.source || aiSuggestions?.source || formData.enhancementSource,
-        detectedSpecs: mcpResults?.specifications || aiSuggestions?.specifications || formData.detectedSpecs,
-        mcpMetadata: mcpResults?.mcpMetadata || formData.mcpMetadata,
-        webEnhanced: !!aiSuggestions?.webEnhanced,
-        selectedPromptId: selectedPromptId,
-        updatedAt: new Date().toISOString(),
-        dateAdded: product?.dateAdded || new Date().toISOString()
-      };
-
-      if (product?.id) {
-        productData.id = product.id;
-      }
-
-      // Clean undefined values
-      Object.keys(productData).forEach(key => {
-        if (productData[key] === undefined || productData[key] === null) {
-          delete productData[key];
-        }
+    // ✅ UTILITY: Generate SKU using ProductEnrichmentService utility
+    let sku = formData.sku;
+    if (!sku && formData.partNumber) {
+      sku = ProductEnrichmentService.generateInternalSKU({
+        category: formData.category,
+        brand: formData.brand,
+        partNumber: normalizedPartNumber
       });
-
-      await onSave(productData);
-      
-      if (showNotification) {
-        const enhancementText = productData.mcpEnhanced ? ' with MCP AI enhancement' : 
-                              productData.aiEnriched ? ' with AI enhancement' : '';
-        showNotification(
-          `Product ${product?.id ? 'updated' : 'created'} successfully${enhancementText}`, 
-          'success'
-        );
-      }
-      
-      onClose();
-    } catch (error) {
-      console.error('Error saving product:', error);
-      if (showNotification) {
-        showNotification('Error saving product', 'error');
-      }
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+    
+    // ✅ NEW: Build enhancement history including MCP data
+    const enhancementHistory = [...(formData.enhancementHistory || [])];
+    if (aiSuggestions || mcpResults) {
+      enhancementHistory.push({
+        timestamp: new Date().toISOString(),
+        confidence: mcpResults?.confidence || aiSuggestions?.confidence || 0,
+        appliedFields: Array.from(appliedSuggestions),
+        webEnhanced: !!aiSuggestions?.webEnhanced,
+        mcpEnhanced: !!mcpResults,
+        enhancementSource: mcpResults?.source || aiSuggestions?.source || 'unknown',
+        // ✅ FIX: Add null fallbacks for potentially undefined values
+        mcpMetadata: mcpResults?.mcpMetadata || null,
+        selectedPromptId: selectedPromptId || null,
+        userSelectedPrompt: !!aiSuggestions?.userSelectedPrompt
+      });
+    }
+    
+    // ✅ ENHANCED: Build raw product data with better null fallbacks
+    const rawProductData = {
+      ...formData,
+      partNumber: normalizedPartNumber,
+      sku: sku || '',  // ✅ FIX: Add fallback to empty string
+      price: parseFloat(formData.price) || 0,  // ✅ FIX: Add fallback to 0
+      stock: parseInt(formData.stock) || 0,    // ✅ FIX: Add fallback to 0
+      minStock: parseInt(formData.minStock) || 0, // ✅ FIX: Add fallback to 0
+      // ✅ ENHANCED: Add AI + MCP enhancement metadata with proper fallbacks
+      aiEnriched: (aiSuggestions || mcpResults) ? true : (formData.aiEnriched || false),
+      mcpEnhanced: mcpResults ? true : (formData.mcpEnhanced || false),
+      confidence: mcpResults?.confidence || aiSuggestions?.confidence || formData.confidence || 0,
+      lastEnhanced: (aiSuggestions || mcpResults) ? new Date().toISOString() : (formData.lastEnhanced || null),
+      enhancementHistory: enhancementHistory,
+      // ✅ CRITICAL FIX: Add null fallbacks for the problematic fields
+      enhancementSource: mcpResults?.source || aiSuggestions?.source || formData.enhancementSource || null,
+      detectedSpecs: mcpResults?.specifications || aiSuggestions?.specifications || formData.detectedSpecs || {},
+      mcpMetadata: mcpResults?.mcpMetadata || formData.mcpMetadata || null,
+      webEnhanced: !!aiSuggestions?.webEnhanced,
+      selectedPromptId: selectedPromptId || null,  // ✅ FIX: Add null fallback
+      updatedAt: new Date().toISOString(),
+      dateAdded: product?.dateAdded || new Date().toISOString()
+    };
+    
+    if (product?.id) {
+      rawProductData.id = product.id;
+    }
+    
+    // ✅ CRITICAL FIX: Use enhanced cleaning instead of simple deletion
+    const productData = cleanFormDataForFirestore(rawProductData);
+    
+    // ✅ DEBUGGING: Enhanced logging
+    console.log('🔧 Raw product data before cleaning:', rawProductData);
+    console.log('🔧 Cleaned product data for Firestore:', productData);
+    
+    // ✅ DEBUGGING: Check for any remaining undefined values
+    const undefinedFields = Object.entries(productData).filter(([key, value]) => value === undefined);
+    if (undefinedFields.length > 0) {
+      console.warn('⚠️ Warning: Still found undefined values:', undefinedFields);
+    } else {
+      console.log('✅ No undefined values found - safe for Firestore');
+    }
+    
+    await onSave(productData);
+    
+    if (showNotification) {
+      const enhancementText = productData.mcpEnhanced ? ' with MCP AI enhancement' : 
+                            productData.aiEnriched ? ' with AI enhancement' : '';
+      showNotification(
+        `Product ${product?.id ? 'updated' : 'created'} successfully${enhancementText}`, 
+        'success'
+      );
+    }
+    
+    onClose();
+  } catch (error) {
+    console.error('Error saving product:', error);
+    if (showNotification) {
+      showNotification('Error saving product: ' + error.message, 'error');
+    }
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handleChange = (field, value) => {
     // Handle user corrections for learning
