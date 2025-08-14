@@ -16,7 +16,6 @@ import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
 import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
 import SampleDataTest from './components/test/SampleDataTest';
-const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
 import './App.css';
 
 
@@ -49,6 +48,9 @@ const LazyCompanyStructureManager = lazy(() => import('./components/admin/Compan
 // ✅ NEW: Add DualSystemDashboard and PromptManagement components
 const LazyDualSystemDashboard = lazy(() => import('./components/mcp/DualSystemDashboard'));
 const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagement'));
+
+const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
+
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
