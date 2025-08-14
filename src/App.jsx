@@ -16,7 +16,9 @@ import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
 import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
 import SampleDataTest from './components/test/SampleDataTest';
+const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
 import './App.css';
+
 
 // Import lazy components - CLEANED UP IMPORTS (UserManagement removed)
 import { 
@@ -456,6 +458,18 @@ function AppContent() {
                 <ProtectedRoute permission="canManageUsers">
                   <LazyWrapper componentName="Team Management">
                     <LazyTeamManagement showNotification={showNotification} />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+
+             {/* Category Management Route */}
+            <Route 
+              path="/admin/categories" 
+              element={
+                <ProtectedRoute permission="canManageUsers">
+                  <LazyWrapper componentName="Category Management">
+                    <LazyCategoryManagementDashboard showNotification={showNotification} />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
