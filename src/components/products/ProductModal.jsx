@@ -434,6 +434,132 @@ const ProductModal = ({
   setActiveTab('history');
   showNotification?.('Switched to Enhancement History', 'info');
 };
+
+  // 🧠 AI CATEGORY MAPPING FUNCTION 
+const mapAICategory = (aiSuggestedCategory) => {
+  if (!aiSuggestedCategory) return { category: 'components', confidence: 50, method: 'fallback' };
+  
+  const aiCategoryMappings = {
+    // VFD & Drives
+    'Industrial Automation > Variable Frequency Drives (VFD)': 'drives',
+    'Variable Frequency Drives': 'drives',
+    'VFD': 'drives',
+    'Motor Drives': 'drives',
+    'AC Drives': 'drives',
+    'Frequency Drives': 'drives',
+    
+    // Automation
+    'Industrial Automation > PLC': 'automation',
+    'Programmable Logic Controllers': 'automation',
+    'PLC': 'automation',
+    'Industrial Automation': 'automation',
+    'Process Control': 'automation',
+    'Motor Starters': 'automation',
+    
+    // Electronics
+    'Electronics > Power Supply': 'electronics',
+    'Power Electronics': 'electronics',
+    'Electronic Components': 'electronics',
+    'Circuit Protection': 'electronics',
+    'Power Supplies': 'electronics',
+    
+    // Networking
+    'Industrial Ethernet': 'networking',
+    'Industrial Networks': 'networking',
+    'Communication': 'networking',
+    'Fieldbus': 'networking',
+    'Ethernet Cables': 'cables',
+    
+    // Mechanical
+    'Mechanical Components': 'mechanical',
+    'Power Transmission': 'mechanical',
+    'Motion Control': 'mechanical',
+    'Bearings': 'bearings',
+    'Gears': 'gears',
+    'Couplings': 'couplings',
+    
+    // Safety
+    'Safety Systems': 'safety',
+    'Machine Safety': 'safety',
+    'Functional Safety': 'safety',
+    'Emergency Stop': 'safety',
+    
+    // Hydraulics/Pneumatics
+    'Fluid Power': 'hydraulics',
+    'Hydraulic Systems': 'hydraulics',
+    'Compressed Air': 'pneumatics',
+    'Pneumatic Systems': 'pneumatics',
+    
+    // Sensors
+    'Sensors & Instrumentation': 'sensors',
+    'Measurement': 'sensors',
+    'Instrumentation': 'instrumentation'
+  };
+  
+  // Direct mapping check
+  const directMatch = aiCategoryMappings[aiSuggestedCategory];
+  if (directMatch) {
+    return {
+      category: directMatch,
+      confidence: 100,
+      method: 'direct_mapping'
+    };
+  }
+  
+  // Fuzzy matching for partial matches
+  const aiCategoryLower = aiSuggestedCategory.toLowerCase();
+  
+  // Check if AI suggestion contains any category keywords
+  const categories = [
+    'electronics', 'hydraulics', 'pneumatics', 'automation', 'sensors',
+    'cables', 'components', 'mechanical', 'bearings', 'gears', 'couplings',
+    'drives', 'vfd', 'variable_frequency_drives', 'industrial_automation',
+    'motor_control', 'power_electronics', 'industrial_ethernet', 'motor_starters',
+    'safety_systems', 'instrumentation', 'networking', 'diaphragm_pumps',
+    'pumping_systems', 'fluid_handling', 'pumps', 'valves', 'safety', 'electrical'
+  ];
+  
+  for (const category of categories) {
+    const categoryWords = category.split('_');
+    const matchCount = categoryWords.filter(word => 
+      aiCategoryLower.includes(word.toLowerCase())
+    ).length;
+    
+    if (matchCount > 0) {
+      const confidence = Math.min(90, 60 + (matchCount * 15));
+      return {
+        category: category,
+        confidence: confidence,
+        method: 'fuzzy_matching'
+      };
+    }
+  }
+  
+  // Keyword-based matching
+  if (aiCategoryLower.includes('drive') || aiCategoryLower.includes('frequency') || aiCategoryLower.includes('vfd')) {
+    return { category: 'drives', confidence: 85, method: 'keyword_matching' };
+  }
+  if (aiCategoryLower.includes('plc') || aiCategoryLower.includes('logic') || aiCategoryLower.includes('automation')) {
+    return { category: 'automation', confidence: 85, method: 'keyword_matching' };
+  }
+  if (aiCategoryLower.includes('sensor') || aiCategoryLower.includes('detection')) {
+    return { category: 'sensors', confidence: 85, method: 'keyword_matching' };
+  }
+  if (aiCategoryLower.includes('network') || aiCategoryLower.includes('ethernet') || aiCategoryLower.includes('communication')) {
+    return { category: 'networking', confidence: 85, method: 'keyword_matching' };
+  }
+  if (aiCategoryLower.includes('safety') || aiCategoryLower.includes('emergency')) {
+    return { category: 'safety', confidence: 85, method: 'keyword_matching' };
+  }
+  
+  // Fallback
+  return {
+    category: 'components',
+    confidence: 50,
+    method: 'fallback'
+  };
+};
+  
   // ✅ SIMPLIFIED: Master enhancement function - MCP primary, minimal fallback
   const enrichProductData = async (forceMethod = null) => {
     if (!formData.partNumber) {
@@ -485,6 +611,26 @@ const ProductModal = ({
             
             setMcpResults(mcpResult);
             usedMethod = 'mcp';
+
+            // 🧠 PROCESS AI CATEGORY SUGGESTION 
+if (mcpResult.category) {
+  console.log('🧠 Processing AI category suggestion:', mcpResult.category);
+  
+  const mappingResult = mapAICategory(mcpResult.category);
+  setCategoryAISuggestion({
+    original: mcpResult.category,
+    mapped: mappingResult.category,
+    confidence: mappingResult.confidence,
+    method: mappingResult.method
+  });
+  
+  console.log('🧠 AI Category Mapping Result:', {
+    original: mcpResult.category,
+    mapped: mappingResult.category,
+    confidence: mappingResult.confidence,
+    method: mappingResult.method
+  });
+}
             
             showNotification?.(
               `MCP enhancement complete: ${Math.round(mcpResult.confidence * 100)}% confidence`, 
@@ -1454,70 +1600,6 @@ const handleSubmit = async (e) => {
   }
 };
 
-  // 🧠 AI CATEGORY MAPPING
-const mapAICategory = (aiSuggestedCategory) => {
-  const aiCategoryMappings = {
-    // VFD & Drives
-    'Industrial Automation > Variable Frequency Drives (VFD)': 'drives',
-    'Variable Frequency Drives': 'drives',
-    'VFD': 'vfd',
-    'Motor Drives': 'drives',
-    'AC Drives': 'drives',
-    
-    // Automation
-    'Industrial Automation > PLC': 'automation',
-    'Programmable Logic Controllers': 'automation',
-    'PLC': 'automation',
-    'Industrial Automation': 'automation',
-    'Process Control': 'automation',
-    
-    // Electronics
-    'Electronics > Power Supply': 'electronics',
-    'Power Electronics': 'power_electronics',
-    'Electronic Components': 'electronics',
-    'Circuit Protection': 'electronics',
-    
-    // Networking
-    'Industrial Ethernet': 'industrial_ethernet',
-    'Industrial Networks': 'networking',
-    'Communication': 'networking',
-    'Fieldbus': 'networking',
-    
-    // Safety
-    'Safety Systems': 'safety_systems',
-    'Machine Safety': 'safety',
-    'Functional Safety': 'safety'
-  };
-  
-  // Direct mapping check
-  const directMatch = aiCategoryMappings[aiSuggestedCategory];
-  if (directMatch && categories.includes(directMatch)) {
-    return {
-      category: directMatch,
-      confidence: 100,
-      method: 'direct_mapping'
-    };
-  }
-  
-  // Fuzzy matching for partial matches
-  const aiCategoryLower = aiSuggestedCategory.toLowerCase();
-  for (const category of categories) {
-    if (aiCategoryLower.includes(category) || category.includes(aiCategoryLower)) {
-      return {
-        category: category,
-        confidence: 80,
-        method: 'fuzzy_matching'
-      };
-    }
-  }
-  
-  // Fallback
-  return {
-    category: 'components',
-    confidence: 50,
-    method: 'fallback'
-  };
-};
   
   const handleChange = (field, value) => {
     // Handle user corrections for learning
@@ -1534,6 +1616,29 @@ const mapAICategory = (aiSuggestedCategory) => {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
+
+  // 🎯 CATEGORY CHANGE HANDLER
+const handleCategoryChange = (categoryValue) => {
+  handleChange('category', categoryValue);
+  
+  // Clear category AI suggestion once user makes a choice
+  if (categoryAISuggestion) {
+    setCategoryAISuggestion(null);
+  }
+  
+  console.log('📂 Category selected:', categoryValue);
+};
+
+// 🤖 CATEGORY AI SUGGESTION APPLY
+const handleCategoryAISuggestionApply = (appliedValue) => {
+  if (aiSuggestions) {
+    setAppliedSuggestions(prev => new Set([...prev, 'category']));
+  }
+  setCategoryAISuggestion(null);
+  
+  console.log('✅ Applied AI category suggestion:', appliedValue);
+};
+
 
   const handleDocumentSave = async (updatedProduct) => {
     try {
@@ -1910,25 +2015,66 @@ const mapAICategory = (aiSuggestedCategory) => {
 
                 {/* Category */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Category
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category *
                     {(formData.mcpEnhanced || formData.aiEnriched) && (
                       <span className="text-purple-600 ml-1" title="AI Enhanced">✨</span>
                     )}
                   </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => handleChange('category', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>
-                        {cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
+                  
+                  {/* 🎯 SMART CATEGORY DROPDOWN - NEW! */}
+                  <div className="relative">
+                    <select
+                      value={formData.category}
+                      onChange={(e) => handleCategoryChange(e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.category ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    >
+                      <option value="">Select category...</option>
+                      {categories.map(cat => (
+                        <option key={cat} value={cat}>
+                          {cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ')}
+                        </option>
+                      ))}
+                    </select>
+                    
+                    {/* 🧠 AI CATEGORY SUGGESTION */}
+                    {categoryAISuggestion && (
+                      <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center text-xs text-blue-600 mb-1">
+                              <Brain className="h-3 w-3 mr-1" />
+                              <span className="font-medium">AI Suggestion</span>
+                              <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">
+                                {categoryAISuggestion.confidence}% confidence
+                              </span>
+                            </div>
+                            <div className="text-sm text-blue-800">
+                              <p><strong>Original:</strong> {categoryAISuggestion.original}</p>
+                              <p><strong>Mapped to:</strong> {categoryAISuggestion.mapped}</p>
+                              <p className="text-xs text-blue-600 mt-1">
+                                Method: {categoryAISuggestion.method}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              handleChange('category', categoryAISuggestion.mapped);
+                              handleCategoryAISuggestionApply(categoryAISuggestion.mapped);
+                            }}
+                            className="ml-3 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex-shrink-0"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {errors.category && <p className="text-red-500 text-sm mt-1">{errors.category}</p>}
                 </div>
-
                 {/* Price */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
