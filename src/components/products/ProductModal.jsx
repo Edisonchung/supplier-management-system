@@ -1414,6 +1414,13 @@ const handleSubmit = async (e) => {
     // ✅ DEBUGGING: Enhanced logging
     console.log('🔧 Raw product data before cleaning:', rawProductData);
     console.log('🔧 Cleaned product data for Firestore:', productData);
+
+    // ✅ CRITICAL DEBUG: Check what onSave is doing with the data
+    console.log('🚨 DEBUGGING: About to call onSave with cleaned data');
+    console.log('🚨 onSave function:', onSave.toString()); // See the actual function code
+    // ✅ DEBUGGING: Check if onSave is modifying the data
+    const dataBeforeOnSave = JSON.parse(JSON.stringify(productData));
+    console.log('🚨 Data BEFORE onSave:', dataBeforeOnSave);
     
     // ✅ DEBUGGING: Check for any remaining undefined values
     const undefinedFields = Object.entries(productData).filter(([key, value]) => value === undefined);
