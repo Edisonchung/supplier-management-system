@@ -81,6 +81,8 @@ const ProductModal = ({
   const [mcpResults, setMcpResults] = useState(null);
   const [isMcpEnhancing, setIsMcpEnhancing] = useState(false);
   const [enhancementMethod, setEnhancementMethod] = useState('auto'); // 'auto', 'mcp', 'legacy'
+  const [categoryAISuggestion, setCategoryAISuggestion] = useState(null);
+
 
   // ✅ NEW: Prompt selector state
   const [availablePrompts, setAvailablePrompts] = useState([]);
@@ -1452,6 +1454,71 @@ const handleSubmit = async (e) => {
   }
 };
 
+  // 🧠 AI CATEGORY MAPPING
+const mapAICategory = (aiSuggestedCategory) => {
+  const aiCategoryMappings = {
+    // VFD & Drives
+    'Industrial Automation > Variable Frequency Drives (VFD)': 'drives',
+    'Variable Frequency Drives': 'drives',
+    'VFD': 'vfd',
+    'Motor Drives': 'drives',
+    'AC Drives': 'drives',
+    
+    // Automation
+    'Industrial Automation > PLC': 'automation',
+    'Programmable Logic Controllers': 'automation',
+    'PLC': 'automation',
+    'Industrial Automation': 'automation',
+    'Process Control': 'automation',
+    
+    // Electronics
+    'Electronics > Power Supply': 'electronics',
+    'Power Electronics': 'power_electronics',
+    'Electronic Components': 'electronics',
+    'Circuit Protection': 'electronics',
+    
+    // Networking
+    'Industrial Ethernet': 'industrial_ethernet',
+    'Industrial Networks': 'networking',
+    'Communication': 'networking',
+    'Fieldbus': 'networking',
+    
+    // Safety
+    'Safety Systems': 'safety_systems',
+    'Machine Safety': 'safety',
+    'Functional Safety': 'safety'
+  };
+  
+  // Direct mapping check
+  const directMatch = aiCategoryMappings[aiSuggestedCategory];
+  if (directMatch && categories.includes(directMatch)) {
+    return {
+      category: directMatch,
+      confidence: 100,
+      method: 'direct_mapping'
+    };
+  }
+  
+  // Fuzzy matching for partial matches
+  const aiCategoryLower = aiSuggestedCategory.toLowerCase();
+  for (const category of categories) {
+    if (aiCategoryLower.includes(category) || category.includes(aiCategoryLower)) {
+      return {
+        category: category,
+        confidence: 80,
+        method: 'fuzzy_matching'
+      };
+    }
+  }
+  
+  // Fallback
+  return {
+    category: 'components',
+    confidence: 50,
+    method: 'fallback'
+  };
+};
+  
   const handleChange = (field, value) => {
     // Handle user corrections for learning
     if (aiSuggestions && ['brand', 'category', 'name', 'description'].includes(field)) {
