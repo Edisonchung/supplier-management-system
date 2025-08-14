@@ -396,6 +396,42 @@ const ProductModal = ({
   }
 };
 
+  const handleEnhancementHistory = () => {
+  console.log('📊 Enhancement History clicked');
+  
+  // Add current enhancement to history if exists
+  if (mcpResults && !formData.enhancementHistory?.some(h => 
+    h.timestamp === mcpResults.mcpMetadata?.timestamp)) {
+    
+    const newHistoryEntry = {
+      timestamp: new Date().toISOString(),
+      confidence: mcpResults.confidence || 0,
+      mcpEnhanced: mcpResults.mcpEnhanced || false,
+      enhancementSource: mcpResults.source || 'Unknown',
+      mcpMetadata: mcpResults.mcpMetadata || null,
+      selectedPromptId: mcpResults.mcpMetadata?.prompt_id || selectedPromptId,
+      userEmail: userEmail,
+      enhancementMethod: mcpResults.mcpEnhanced ? 'mcp_ai' : 'basic_enhance',
+      processingTime: mcpResults.processingTime || 0,
+      partNumber: formData.partNumber,
+      appliedFields: Array.from(appliedSuggestions),
+      userSelectedPrompt: mcpResults.mcpMetadata?.prompt_selection_method === 'user_selected',
+      webEnhanced: false // Add if you track web enhancements
+    };
+    
+    // Update formData with new history entry
+    setFormData(prev => ({
+      ...prev,
+      enhancementHistory: [...(prev.enhancementHistory || []), newHistoryEntry]
+    }));
+    
+    console.log('📊 Added enhancement to history:', newHistoryEntry);
+  }
+  
+  // Switch to existing history tab
+  setActiveTab('history');
+  showNotification?.('Switched to Enhancement History', 'info');
+};
   // ✅ SIMPLIFIED: Master enhancement function - MCP primary, minimal fallback
   const enrichProductData = async (forceMethod = null) => {
     if (!formData.partNumber) {
@@ -2207,17 +2243,23 @@ const MCPEnhancementResults = () => {
         )}
 
         {/* ✅ ADD: Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3 mt-6 pt-4 border-t border-blue-200">
+<div className="flex flex-wrap items-center gap-3 mt-6 pt-4 border-t border-blue-200">
   <button
     onClick={() => {
       const currentPromptId = mcpResults?.mcpMetadata?.prompt_id || selectedPromptId;
       if (currentPromptId) {
         rerunWithDifferentPrompt(currentPromptId);
       } else {
-        enrichProductData(); // Fallback to general enhancement
+        // Fallback: re-run with the first available prompt
+        const firstPromptId = availablePrompts[0]?.id;
+        if (firstPromptId) {
+          rerunWithDifferentPrompt(firstPromptId);
+        } else {
+          showNotification?.('No prompts available for re-run', 'warning');
+        }
       }
     }}
-    disabled={isRerunning || isEnriching}
+    disabled={isRerunning || isEnriching || !formData.partNumber}
     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
   >
     {isRerunning ? (
@@ -2234,46 +2276,17 @@ const MCPEnhancementResults = () => {
   </button>
   
   <button
-    onClick={() => {
-      console.log('📊 Enhancement History clicked');
-      // Add enhancement to history
-      if (mcpResults) {
-        const historyEntry = {
-          timestamp: new Date().toISOString(),
-          confidence: mcpResults.confidence,
-          mcpEnhanced: mcpResults.mcpEnhanced,
-          enhancementSource: mcpResults.source,
-          mcpMetadata: mcpResults.mcpMetadata,
-          selectedPromptId: mcpResults.mcpMetadata?.prompt_id,
-          userEmail: userEmail,
-          enhancementMethod: 'mcp_ai',
-          processingTime: mcpResults.processingTime || 0,
-          partNumber: formData.partNumber,
-          appliedFields: Array.from(appliedSuggestions)
-        };
-        
-        // Update form data with history
-        setFormData(prev => ({
-          ...prev,
-          enhancementHistory: [...(prev.enhancementHistory || []), historyEntry]
-        }));
-        
-        // Switch to history tab
-        setActiveTab('history');
-        showNotification?.('Switched to Enhancement History', 'info');
-      } else {
-        showNotification?.('No enhancement history available', 'warning');
-      }
-    }}
+    onClick={handleEnhancementHistory}
     className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
   >
     <History className="w-4 h-4" />
-    Enhancement History
+    Enhancement History ({formData.enhancementHistory?.length || 0})
   </button>
 
   <button
     onClick={applyAllMCPSuggestions}
-    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+    disabled={!mcpResults}
+    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
   >
     <Zap className="w-4 h-4" />
     Apply All Suggestions
