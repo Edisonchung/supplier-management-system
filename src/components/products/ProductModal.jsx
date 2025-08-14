@@ -2279,7 +2279,8 @@ const MCPEnhancementResults = () => {
     Apply All Suggestions
   </button>
 </div>
-  
+</div>          
+  )}
 
     {/* ✅ FALLBACK: Basic AI Suggestions Panel (only when no MCP results) */}
     {aiSuggestions && !mcpResults && (
