@@ -568,6 +568,7 @@ const mapAICategory = (aiSuggestedCategory) => {
     }
     
     setIsEnriching(true);
+    setEnhancementMethod('enhancing');
     setIsMcpEnhancing(forceMethod === 'mcp' || enhancementMethod === 'mcp');
     
     try {
@@ -649,6 +650,7 @@ if (mcpResult.category) {
       
       // ✅ SIMPLIFIED: Basic fallback only (emergency use - 5% of cases)
       if (!suggestions) {
+        setEnhancementMethod('completed');
         console.log('🔄 Using basic fallback enhancement...');
         
         // Simple brand detection (only most common patterns)
@@ -721,6 +723,7 @@ if (mcpResult.category) {
       
     } catch (error) {
       console.error('Failed to enrich product:', error);
+      setEnhancementMethod('error');
       showNotification?.('Failed to enhance product data', 'error');
     } finally {
       setIsEnriching(false);
@@ -744,6 +747,7 @@ if (mcpResult.category) {
     
     setIsEnriching(true);
     setIsMcpEnhancing(true);
+    setEnhancementMethod('enhancing');
     setShowEnhancementDropdown(false);
     
     try {
@@ -778,6 +782,7 @@ if (mcpResult.category) {
         setMcpResults(mcpResult);
         setActiveTab('ai');
         setShowAIPanel(true);
+        setEnhancementMethod('completed'); 
         
         showNotification?.(
           `MCP enhancement complete: ${Math.round(mcpResult.confidence * 100)}% confidence`, 
@@ -789,6 +794,7 @@ if (mcpResult.category) {
       
     } catch (error) {
       console.warn('MCP enhancement failed, using fallback:', error);
+      setEnhancementMethod('error');
       await enhanceWithFallback();
     } finally {
       setIsEnriching(false);
@@ -2367,11 +2373,40 @@ const handleCategoryAISuggestionApply = (appliedValue) => {
           <button
             type="button"
             onClick={enrichProductData}
-            disabled={!formData.partNumber}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            disabled={!formData.partNumber || isEnriching}
+            className={`
+              px-6 py-3 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+              ${isEnriching && !isMcpEnhancing && enhancementMethod === 'enhancing' 
+                ? 'bg-blue-100 text-blue-600' 
+                : isEnriching && !isMcpEnhancing && enhancementMethod === 'completed'
+                ? 'bg-green-100 text-green-600'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+              }
+            `}
           >
-            <Sparkles size={20} />
-            Basic Enhance
+            {isEnriching && !isMcpEnhancing ? (
+              enhancementMethod === 'enhancing' ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  Enhancing...
+                </>
+              ) : enhancementMethod === 'completed' ? (
+                <>
+                  <CheckCircle size={20} />
+                  Enhanced
+                </>
+              ) : (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  Enhancing...
+                </>
+              )
+            ) : (
+              <>
+                <Sparkles size={20} />
+                Basic Enhance
+              </>
+            )}
           </button>
         </div>
       )}
