@@ -1951,331 +1951,395 @@ const MCPEnhancementResults = () => {
 
           {/* ✅ ENHANCED: AI Enhancement Tab with MCP Prompt Selector Integration */}
           {activeTab === 'ai' && (
-            <div className="p-6 space-y-6">
-              <div className="text-center">
-                <Brain className="mx-auto h-12 w-12 text-blue-600 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  MCP AI Product Enhancement
-                </h3>
-                <p className="text-gray-600 mb-6">
-                  Enhance your product data using advanced MCP AI analysis with intelligent prompt selection.
-                </p>
-                
-                {!aiSuggestions && !mcpResults && !isEnriching && (
-                  <div className="flex items-center justify-center gap-3 flex-wrap">
-                    {mcpStatus?.status === 'available' && (
+  <div className="p-6 space-y-6">
+    <div className="text-center">
+      <Brain className="mx-auto h-12 w-12 text-blue-600 mb-4" />
+      <h3 className="text-lg font-medium text-gray-900 mb-2">
+        MCP AI Product Enhancement
+      </h3>
+      <p className="text-gray-600 mb-6">
+        Enhance your product data using advanced MCP AI analysis with intelligent prompt selection.
+      </p>
+      
+      {/* ✅ SHOW ENHANCEMENT BUTTONS ONLY WHEN NO RESULTS */}
+      {!aiSuggestions && !mcpResults && !isEnriching && (
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          {mcpStatus?.status === 'available' && (
+            <button
+              type="button"
+              onClick={enhanceWithMCP}
+              disabled={!formData.partNumber}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <Brain size={20} />
+              MCP Enhance
+            </button>
+          )}
+          
+          <button
+            type="button"
+            onClick={enrichProductData}
+            disabled={!formData.partNumber}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Sparkles size={20} />
+            Basic Enhance
+          </button>
+        </div>
+      )}
+      
+      {/* ✅ LOADING STATE */}
+      {(isEnriching || isWebSearching) && (
+        <div className="flex items-center justify-center gap-2">
+          <Loader2 size={20} className="animate-spin text-blue-600" />
+          <span className="text-gray-600">
+            {isMcpEnhancing ? 'MCP analyzing product...' : 
+             isEnriching ? 'Analyzing product data...' : 'Searching web...'}
+          </span>
+        </div>
+      )}
+    </div>
+
+    {/* ✅ REMOVED: The duplicate MCPEnhancementResults component call */}
+    {/* OLD: {(mcpResults || aiSuggestions) && (<MCPEnhancementResults />)} */}
+
+    {/* ✅ SINGLE: MCP Enhancement Results Panel */}
+    {mcpResults && (
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
+        
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Brain className="h-6 w-6 text-blue-600" />
+              <span className="font-bold text-gray-900">MCP Enhancement Results</span>
+            </div>
+            
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+              mcpResults.source?.includes('MCP') 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-blue-100 text-blue-800'
+            }`}>
+              {mcpResults.source || 'MCP Analysis'}
+            </span>
+            
+            <span className="text-sm text-gray-600 flex items-center gap-1">
+              <Target className="h-4 w-4" />
+              {Math.round(mcpResults.confidence * 100)}% confidence
+            </span>
+
+            {aiSuggestions?.userSelectedPrompt && (
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                User Selected Prompt
+              </span>
+            )}
+          </div>
+          
+          <button
+            onClick={applyAllMCPSuggestions}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center gap-2"
+          >
+            <Zap className="h-4 w-4" />
+            Apply All Suggestions
+          </button>
+        </div>
+
+        {/* MCP Metadata Panel */}
+        {mcpResults.mcpMetadata && (
+          <div className="bg-white rounded-lg p-4 border mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Brain className="h-4 w-4 text-purple-600" />
+                <div>
+                  <span className="text-gray-500 block">Prompt:</span>
+                  <span className="font-medium text-blue-800">
+                    {mcpResults.mcpMetadata.prompt_used || 'MCP Analysis'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-green-600" />
+                <div>
+                  <span className="text-gray-500 block">AI Provider:</span>
+                  <span className="font-medium text-gray-900">
+                    {mcpResults.mcpMetadata.ai_provider || 'Advanced AI'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-orange-600" />
+                <div>
+                  <span className="text-gray-500 block">Time:</span>
+                  <span className="font-medium text-gray-900">
+                    {mcpResults.mcpMetadata.processing_time || 'Fast'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ AI Enhancement Suggestions Grid */}
+        <div className="mb-6">
+          <h5 className="font-medium text-gray-900 mb-3">🎯 AI Enhancement Suggestions</h5>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <MCPSuggestionField 
+              label="Product Name" 
+              field="productName"
+              suggestion={mcpResults.productName}
+              current={formData.name}
+            />
+            <MCPSuggestionField 
+              label="Brand" 
+              field="brand"
+              suggestion={mcpResults.brand}
+              current={formData.brand}
+            />
+            <MCPSuggestionField 
+              label="Category" 
+              field="category"
+              suggestion={mcpResults.category}
+              current={formData.category}
+            />
+            <MCPSuggestionField 
+              label="Description" 
+              field="description"
+              suggestion={mcpResults.description}
+              current={formData.description}
+            />
+          </div>
+        </div>
+
+        {/* Technical Specifications from MCP */}
+        {mcpResults.specifications && Object.keys(mcpResults.specifications).length > 0 && (
+          <div className="mt-4 bg-white rounded-lg p-4 border">
+            <h5 className="font-medium text-gray-900 mb-3">🔧 MCP Detected Specifications</h5>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {Object.entries(mcpResults.specifications).map(([key, value]) => (
+                value && (
+                  <div key={key} className="flex justify-between">
+                    <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                    <span className="font-medium">{value}</span>
+                  </div>
+                )
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ✅ ADD: Available Prompts Section for Re-running */}
+        {availablePrompts.length > 0 && (
+          <div className="mt-6">
+            <div className="text-sm font-medium text-gray-700 mb-2">🔄 Available Prompts ({availablePrompts.length}):</div>
+            <div className="space-y-2">
+              {availablePrompts.map((prompt) => {
+                const isActive = selectedPromptId === prompt.id || mcpResults?.mcpMetadata?.prompt_id === prompt.id;
+                return (
+                  <div
+                    key={prompt.id}
+                    className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                      isActive ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${isActive ? 'bg-purple-500' : 'bg-gray-300'}`} />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{prompt.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {Math.round((prompt.confidence || 0.88) * 100)}% avg accuracy
+                        </div>
+                      </div>
+                      {isActive && <span className="text-xs text-purple-600 font-medium">← Currently Active</span>}
+                    </div>
+                    
+                    {!isActive && !isRerunning && (
                       <button
-                        type="button"
-                        onClick={enhanceWithMCP}
-                        disabled={!formData.partNumber}
-                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        onClick={() => rerunWithDifferentPrompt(prompt.id)}
+                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                       >
-                        <Brain size={20} />
-                        MCP Enhance
+                        Select
                       </button>
                     )}
-                    
-                    <button
-                      type="button"
-                      onClick={enrichProductData}
-                      disabled={!formData.partNumber}
-                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      <Sparkles size={20} />
-                      Basic Enhance
-                    </button>
                   </div>
-                )}
-                
-                {(isEnriching || isWebSearching) && (
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 size={20} className="animate-spin text-blue-600" />
-                    <span className="text-gray-600">
-                      {isMcpEnhancing ? 'MCP analyzing product...' : 
-                       isEnriching ? 'Analyzing product data...' : 'Searching web...'}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* ✅ STANDARDIZED: MCP Enhancement Results Display */}
-{(mcpResults || aiSuggestions) && (
-  <MCPEnhancementResults />
-)}
-
-              {/* ✅ NEW: MCP Enhancement Results Panel */}
-              {mcpResults && (
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
-                  
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <Brain className="h-6 w-6 text-blue-600" />
-                        <span className="font-bold text-gray-900">MCP Enhancement Results</span>
-                      </div>
-                      
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        mcpResults.source?.includes('MCP') 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-blue-100 text-blue-800'
-                      }`}>
-                        {mcpResults.source || 'MCP Analysis'}
-                      </span>
-                      
-                      <span className="text-sm text-gray-600 flex items-center gap-1">
-                        <Target className="h-4 w-4" />
-                        {Math.round(mcpResults.confidence * 100)}% confidence
-                      </span>
-
-                      {aiSuggestions?.userSelectedPrompt && (
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                          User Selected Prompt
-                        </span>
-                      )}
-                    </div>
-                    
-                    <button
-                      onClick={applyAllMCPSuggestions}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center gap-2"
-                    >
-                      <Zap className="h-4 w-4" />
-                      Apply All Suggestions
-                    </button>
-                  </div>
-
-                  {/* MCP Metadata Panel */}
-                  {mcpResults.mcpMetadata && (
-                    <div className="bg-white rounded-lg p-4 border mb-4">
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <Brain className="h-4 w-4 text-purple-600" />
-                          <div>
-                            <span className="text-gray-500 block">Prompt:</span>
-                            <span className="font-medium text-blue-800">
-                              {mcpResults.mcpMetadata.prompt_used || 'MCP Analysis'}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Zap className="h-4 w-4 text-green-600" />
-                          <div>
-                            <span className="text-gray-500 block">AI Provider:</span>
-                            <span className="font-medium text-gray-900">
-                              {mcpResults.mcpMetadata.ai_provider || 'Advanced AI'}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-orange-600" />
-                          <div>
-                            <span className="text-gray-500 block">Time:</span>
-                            <span className="font-medium text-gray-900">
-                              {mcpResults.mcpMetadata.processing_time || 'Fast'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* MCP Enhancement Suggestions Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <MCPSuggestionField 
-                      label="Product Name" 
-                      field="productName"
-                      suggestion={mcpResults.productName}
-                      current={formData.name}
-                    />
-                    <MCPSuggestionField 
-                      label="Brand" 
-                      field="brand"
-                      suggestion={mcpResults.brand}
-                      current={formData.brand}
-                    />
-                    <MCPSuggestionField 
-                      label="Category" 
-                      field="category"
-                      suggestion={mcpResults.category}
-                      current={formData.category}
-                    />
-                    <MCPSuggestionField 
-                      label="Description" 
-                      field="description"
-                      suggestion={mcpResults.description}
-                      current={formData.description}
-                    />
-                  </div>
-
-                  {/* Technical Specifications from MCP */}
-                  {mcpResults.specifications && Object.keys(mcpResults.specifications).length > 0 && (
-                    <div className="mt-4 bg-white rounded-lg p-4 border">
-                      <h5 className="font-medium text-gray-900 mb-3">MCP Detected Specifications</h5>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        {Object.entries(mcpResults.specifications).map(([key, value]) => (
-                          value && (
-                            <div key={key} className="flex justify-between">
-                              <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                              <span className="font-medium">{value}</span>
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ✅ SIMPLIFIED: AI Suggestions Panel (basic fallback results) */}
-              {aiSuggestions && !mcpResults && (
-                <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="text-blue-600" size={20} />
-                      <h4 className="font-medium text-blue-900">
-                        {aiSuggestions.source === 'Basic Pattern Fallback' ? 'Basic Pattern Analysis' : 'Enhancement Results'}
-                      </h4>
-                      {aiSuggestions.webEnhanced && (
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                          Web Enhanced
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        aiSuggestions.confidence > 0.8 ? 'bg-green-100 text-green-800' :
-                        aiSuggestions.confidence > 0.6 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        Confidence: {Math.round(aiSuggestions.confidence * 100)}%
-                      </span>
-                      <button
-                        type="button"
-                        onClick={enrichProductData}
-                        disabled={isEnriching}
-                        className="text-blue-600 hover:text-blue-800 p-1"
-                        title="Refresh suggestions"
-                      >
-                        <RefreshCw size={16} className={isEnriching ? 'animate-spin' : ''} />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {/* ✅ SIMPLIFIED: Show low confidence warning for basic fallback */}
-                  {aiSuggestions.source === 'Basic Pattern Fallback' && (
-                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-yellow-800">
-                        <AlertCircle size={16} />
-                        <span className="text-sm font-medium">Basic Pattern Analysis</span>
-                      </div>
-                      <p className="text-sm text-yellow-700 mt-1">
-                        Using basic pattern matching. For better accuracy, ensure MCP system is available.
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <SuggestionField 
-                      label="Product Name" 
-                      field="productName"
-                      suggestion={aiSuggestions.productName}
-                      current={formData.name}
-                    />
-                    <SuggestionField 
-                      label="Brand" 
-                      field="brand"
-                      suggestion={aiSuggestions.brand}
-                      current={formData.brand}
-                    />
-                    <SuggestionField 
-                      label="Category" 
-                      field="category"
-                      suggestion={aiSuggestions.category}
-                      current={formData.category}
-                    />
-                    <SuggestionField 
-                      label="Description" 
-                      field="description"
-                      suggestion={aiSuggestions.description}
-                      current={formData.description}
-                    />
-                  </div>
-                  
-                  {/* Apply All Button */}
-                  <div className="text-center mb-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (aiSuggestions.productName) applySuggestion('productName', aiSuggestions.productName);
-                        if (aiSuggestions.brand) applySuggestion('brand', aiSuggestions.brand);
-                        if (aiSuggestions.category) applySuggestion('category', aiSuggestions.category);
-                        if (aiSuggestions.description) applySuggestion('description', aiSuggestions.description);
-                      }}
-                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2 mx-auto"
-                    >
-                      <Wand2 size={16} />
-                      Apply All Suggestions
-                    </button>
-                  </div>
-
-                  {/* Detected Specifications */}
-                  {aiSuggestions.specifications && Object.keys(aiSuggestions.specifications).length > 0 && (
-                    <div className="p-4 bg-white rounded-lg border border-gray-200">
-                      <h5 className="font-medium text-gray-900 mb-3">Detected Specifications</h5>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        {Object.entries(aiSuggestions.specifications).map(([key, value]) => (
-                          value && (
-                            <div key={key} className="flex justify-between">
-                              <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                              <span className="font-medium">{value}</span>
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Web Search Results */}
-                  {webSearchResults && webSearchResults.found && (
-                    <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                      <h5 className="font-medium text-green-900 mb-2 flex items-center gap-2">
-                        <ExternalLink size={16} />
-                        Additional Web Information
-                      </h5>
-                      {webSearchResults.datasheetUrl && (
-                        <a 
-                          href={webSearchResults.datasheetUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-green-700 hover:text-green-900 text-sm flex items-center gap-1"
-                        >
-                          <ExternalLink size={14} />
-                          View Datasheet
-                        </a>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!formData.partNumber && (
-                <div className="text-center py-8">
-                  <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
-                  <p className="text-gray-600">
-                    Please enter a part number in the Identifiers tab to enable AI enhancement.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('identifiers')}
-                    className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    Go to Identifiers
-                  </button>
-                </div>
-              )}
+                );
+              })}
             </div>
-          )}
+          </div>
+        )}
+
+        {/* ✅ ADD: Action Buttons */}
+        <div className="flex items-center gap-3 mt-6">
+          <button
+            onClick={() => rerunWithDifferentPrompt(selectedPromptId)}
+            disabled={isRerunning || !selectedPromptId}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Re-run Enhancement
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('history')}
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
+          >
+            <History className="w-4 h-4" />
+            Enhancement History
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* ✅ FALLBACK: Basic AI Suggestions Panel (only when no MCP results) */}
+    {aiSuggestions && !mcpResults && (
+      <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="text-blue-600" size={20} />
+            <h4 className="font-medium text-blue-900">
+              {aiSuggestions.source === 'Basic Pattern Fallback' ? 'Basic Pattern Analysis' : 'Enhancement Results'}
+            </h4>
+            {aiSuggestions.webEnhanced && (
+              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                Web Enhanced
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              aiSuggestions.confidence > 0.8 ? 'bg-green-100 text-green-800' :
+              aiSuggestions.confidence > 0.6 ? 'bg-yellow-100 text-yellow-800' :
+              'bg-red-100 text-red-800'
+            }`}>
+              Confidence: {Math.round(aiSuggestions.confidence * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={enrichProductData}
+              disabled={isEnriching}
+              className="text-blue-600 hover:text-blue-800 p-1"
+              title="Refresh suggestions"
+            >
+              <RefreshCw size={16} className={isEnriching ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+        
+        {/* Low confidence warning for basic fallback */}
+        {aiSuggestions.source === 'Basic Pattern Fallback' && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center gap-2 text-yellow-800">
+              <AlertCircle size={16} />
+              <span className="text-sm font-medium">Basic Pattern Analysis</span>
+            </div>
+            <p className="text-sm text-yellow-700 mt-1">
+              Using basic pattern matching. For better accuracy, ensure MCP system is available.
+            </p>
+          </div>
+        )}
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <SuggestionField 
+            label="Product Name" 
+            field="productName"
+            suggestion={aiSuggestions.productName}
+            current={formData.name}
+          />
+          <SuggestionField 
+            label="Brand" 
+            field="brand"
+            suggestion={aiSuggestions.brand}
+            current={formData.brand}
+          />
+          <SuggestionField 
+            label="Category" 
+            field="category"
+            suggestion={aiSuggestions.category}
+            current={formData.category}
+          />
+          <SuggestionField 
+            label="Description" 
+            field="description"
+            suggestion={aiSuggestions.description}
+            current={formData.description}
+          />
+        </div>
+        
+        {/* Apply All Button */}
+        <div className="text-center mb-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (aiSuggestions.productName) applySuggestion('productName', aiSuggestions.productName);
+              if (aiSuggestions.brand) applySuggestion('brand', aiSuggestions.brand);
+              if (aiSuggestions.category) applySuggestion('category', aiSuggestions.category);
+              if (aiSuggestions.description) applySuggestion('description', aiSuggestions.description);
+            }}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2 mx-auto"
+          >
+            <Wand2 size={16} />
+            Apply All Suggestions
+          </button>
+        </div>
+
+        {/* Detected Specifications */}
+        {aiSuggestions.specifications && Object.keys(aiSuggestions.specifications).length > 0 && (
+          <div className="p-4 bg-white rounded-lg border border-gray-200">
+            <h5 className="font-medium text-gray-900 mb-3">Detected Specifications</h5>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {Object.entries(aiSuggestions.specifications).map(([key, value]) => (
+                value && (
+                  <div key={key} className="flex justify-between">
+                    <span className="text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                    <span className="font-medium">{value}</span>
+                  </div>
+                )
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Web Search Results */}
+        {webSearchResults && webSearchResults.found && (
+          <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+            <h5 className="font-medium text-green-900 mb-2 flex items-center gap-2">
+              <ExternalLink size={16} />
+              Additional Web Information
+            </h5>
+            {webSearchResults.datasheetUrl && (
+              <a 
+                href={webSearchResults.datasheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-700 hover:text-green-900 text-sm flex items-center gap-1"
+              >
+                <ExternalLink size={14} />
+                View Datasheet
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* ✅ NO PART NUMBER STATE */}
+    {!formData.partNumber && (
+      <div className="text-center py-8">
+        <AlertCircle className="mx-auto h-12 w-12 text-yellow-500 mb-4" />
+        <p className="text-gray-600">
+          Please enter a part number in the Identifiers tab to enable AI enhancement.
+        </p>
+        <button
+          type="button"
+          onClick={() => setActiveTab('identifiers')}
+          className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Go to Identifiers
+        </button>
+      </div>
+    )}
+  </div>
+)}
 
           {/* ✅ KEEPING: Inventory Tab (existing functionality) */}
           {activeTab === 'inventory' && (
