@@ -33,7 +33,8 @@ import {
   Bot,
   GitBranch,
   FileEdit,
-  Layers
+  Layers,
+  FolderTree
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -54,6 +55,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     activeDeliveries: 0,
     overdueItems: 0,
     pendingPayments: 0
+  });
+  const [categoryCounts, setCategoryCounts] = useState({
+    pendingSuggestions: 0,
+    aiGenerated: 0,
+    totalCategories: 0
   });
   
   useEffect(() => {
@@ -108,6 +114,8 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
         // Simulate team online count (placeholder)
         setTeamOnline(Math.floor(Math.random() * 3) + 1);
+        // Category Management counts
+        updateCategoryCounts();
       } catch (error) {
         console.error('Error updating navigation counts:', error);
       }
@@ -117,6 +125,20 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     const interval = setInterval(updateCounts, 30000); // Update every 30 seconds
     return () => clearInterval(interval);
   }, [location.pathname]); // Update when navigation changes
+
+  const updateCategoryCounts = async () => {
+    try {
+      // Mock data for immediate testing
+      const mockCounts = {
+        pendingSuggestions: Math.floor(Math.random() * 5) + 1, // 1-5 pending
+        aiGenerated: Math.floor(Math.random() * 8) + 2,        // 2-9 AI generated
+        totalCategories: 25 + Math.floor(Math.random() * 10)   // 25-35 total
+      };
+      setCategoryCounts(mockCounts);
+    } catch (error) {
+      console.error('Error updating category counts:', error);
+    }
+  };
 
   // Enhanced navigation structure with multi-company admin
   const navigationItems = [
@@ -326,6 +348,18 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           permission: 'canManageUsers',
           badge: teamOnline > 0 ? `${teamOnline} online` : null,
           badgeColor: 'bg-green-500'
+        },
+        {
+          name: 'Category Management',
+          href: '/admin/categories',
+          icon: FolderTree,
+          description: 'Manage product categories and AI suggestions',
+          permission: 'canManageUsers',
+          badge: categoryCounts.pendingSuggestions > 0 ? 
+            `${categoryCounts.pendingSuggestions} pending` : 
+            categoryCounts.aiGenerated > 0 ? 
+            `${categoryCounts.aiGenerated} AI` : null,
+          badgeColor: categoryCounts.pendingSuggestions > 0 ? 'bg-orange-500' : 'bg-purple-500'
         },
         {
           name: 'Settings',
