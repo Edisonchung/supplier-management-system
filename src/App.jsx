@@ -16,6 +16,8 @@ import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
 import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
 import SampleDataTest from './components/test/SampleDataTest';
+import EcommerceSetup from './components/setup/EcommerceSetup';
+
 import './App.css';
 
 
@@ -529,6 +531,14 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+            <Route 
+              path="/setup-ecommerce" 
+              element={
+              <EcommerceSetup />
+              } 
+              />
+
             
             {/* Legacy route redirects */}
             <Route 
