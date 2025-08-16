@@ -17,6 +17,8 @@ import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSyst
 import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
 import SampleDataTest from './components/test/SampleDataTest';
 import EcommerceSetup from './components/setup/EcommerceSetup';
+import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
+
 
 import './App.css';
 
@@ -531,13 +533,17 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
-
+            
+            {/* Setup Ecommerce */}
             <Route 
               path="/setup-ecommerce" 
               element={
               <EcommerceSetup />
               } 
               />
+            
+            {/* Product Sync Dashboard */}
+            <Route path="/sync-dashboard" element={<ProductSyncDashboard />} />
 
             
             {/* Legacy route redirects */}
