@@ -1,7 +1,8 @@
 // src/components/sync/ProductSyncDashboard.jsx
 // Dashboard for monitoring and controlling Product Sync Service
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+const { useState, useEffect } = React;
 import { 
   Play, 
   Pause, 
