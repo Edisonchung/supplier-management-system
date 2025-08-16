@@ -18,6 +18,7 @@ import NavigationBlockerDebug from './components/debug/NavigationBlockerDebug';
 import SampleDataTest from './components/test/SampleDataTest';
 import EcommerceSetup from './components/setup/EcommerceSetup';
 import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
+import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
 
 
 import './App.css';
@@ -544,6 +545,9 @@ function AppContent() {
             
             {/* Product Sync Dashboard */}
             <Route path="/sync-dashboard" element={<ProductSyncDashboard />} />
+
+            {/* CORS-Safe Product Sync Test */}
+<Route path="/cors-safe-sync-test" element={<CORSSafeSyncTest />} />
 
             
             {/* Legacy route redirects */}
