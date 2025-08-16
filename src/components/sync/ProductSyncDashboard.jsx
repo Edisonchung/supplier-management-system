@@ -1,7 +1,6 @@
 // src/components/sync/ProductSyncDashboard.jsx
 // Dashboard for monitoring and controlling Product Sync Service
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Play, 
   Pause, 
@@ -21,7 +20,6 @@ import {
 import { initializeProductSync, useProductSyncStatus } from '../../services/sync/ProductSyncService';
 import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-const { useState, useEffect } = React;
 
 const ProductSyncDashboard = () => {
   const [syncService, setSyncService] = useState(null);
