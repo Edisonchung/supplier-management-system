@@ -1,5 +1,5 @@
-// src/config/firebase.js - Updated for Phase 2A E-commerce with existing configuration
-import { initializeApp } from 'firebase/app';
+// src/config/firebase.js - Updated for Phase 2A E-commerce with CORS fixes
+import { initializeApp, getApps } from 'firebase/app';
 import { 
   getAuth, 
   signInWithEmailAndPassword,
@@ -16,7 +16,8 @@ import {
   getFirestore,
   connectFirestoreEmulator,        // 🆕 For development emulator
   enableNetwork,                   // 🆕 For network control
-  disableNetwork                   // 🆕 For offline support
+  disableNetwork,                  // 🆕 For offline support
+  initializeFirestore              // 🔧 CORS fix
 } from 'firebase/firestore';
 import { 
   getStorage,
@@ -35,23 +36,72 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// 🔧 PREVENT MULTIPLE INITIALIZATION - This fixes the warning
+let app;
+let db;
+let auth;
+let storage;
+let analytics;
 
-// Initialize services
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-
-// Only initialize analytics in production
-export const analytics = import.meta.env.PROD && firebaseConfig.measurementId 
-  ? getAnalytics(app) 
-  : null;
+if (!getApps().length) {
+  // First time initialization
+  app = initializeApp(firebaseConfig);
+  
+  // 🔧 Initialize Firestore with CORS-friendly settings
+  try {
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true, // 🔧 CORS fix for production
+    });
+    console.log('🔥 Firebase initialized with CORS fixes');
+  } catch (error) {
+    // Fallback to regular getFirestore if initializeFirestore fails
+    console.warn('⚠️ Firestore persistence failed, using default with CORS fixes:', error.message);
+    db = getFirestore(app);
+  }
+  
+  // Initialize other services
+  auth = getAuth(app);
+  storage = getStorage(app);
+  
+  // Only initialize analytics in production and if measurement ID exists
+  if (import.meta.env.PROD && firebaseConfig.measurementId) {
+    try {
+      analytics = getAnalytics(app);
+      console.log('📊 Firebase Analytics initialized for e-commerce tracking');
+    } catch (error) {
+      console.warn('⚠️ Analytics initialization failed:', error.message);
+      analytics = null;
+    }
+  } else {
+    analytics = null;
+  }
+  
+  console.log('🔥 Firebase initialized');
+  console.log('🔧 Environment:', import.meta.env.MODE || 'development');
+  console.log('🔧 Project ID:', firebaseConfig.projectId);
+  
+} else {
+  // 🔧 Use existing app instance to prevent double initialization
+  app = getApps()[0];
+  db = getFirestore(app);
+  auth = getAuth(app);
+  storage = getStorage(app);
+  
+  if (import.meta.env.PROD && firebaseConfig.measurementId) {
+    try {
+      analytics = getAnalytics(app);
+    } catch (error) {
+      analytics = null;
+    }
+  }
+  
+  console.log('♻️ Using existing Firebase instance');
+}
 
 // 🆕 Connect to emulators in development (Phase 2A enhancement)
 if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   try {
-    // Connect to Firestore emulator
+    // Check if emulator is not already connected
     if (!db._delegate._databaseId.database.includes('emulator')) {
       connectFirestoreEmulator(db, 'localhost', 8080);
       console.log('🔥 Connected to Firestore emulator');
@@ -175,7 +225,7 @@ export class DatabaseService {
   static async disableOfflineSupport() {
     try {
       await disableNetwork(db);
-      console.log('📴 Database network disabled');
+      console.log('🔴 Database network disabled');
     } catch (error) {
       console.warn('⚠️ Failed to disable database network:', error);
     }
@@ -248,6 +298,9 @@ export class UserTypeService {
   }
 }
 
+// Export the main services (use these exports in your components)
+export { db, auth, storage, analytics };
+
 // Export ALL auth functions (including existing and new ones)
 export {
   signInWithEmailAndPassword,
@@ -263,12 +316,7 @@ export {
   disableNetwork                   // 🆕 For offline support
 };
 
-// 🆕 Initialize analytics with enhanced tracking for e-commerce
-if (analytics) {
-  console.log('📊 Firebase Analytics initialized for e-commerce tracking');
-}
-
-// 🆕 Enhanced error handling for production
+// 🔧 Enhanced error handling for production
 if (import.meta.env.PROD) {
   // Set up global error handling for Firebase operations
   window.addEventListener('unhandledrejection', (event) => {
