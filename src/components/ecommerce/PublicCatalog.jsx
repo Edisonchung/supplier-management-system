@@ -1,7 +1,7 @@
-// Public Catalog Component for Phase 2A
+// Public Catalog Component for Phase 2A - UPDATED VERSION
 // File: src/components/ecommerce/PublicCatalog.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Search, 
   Filter, 
@@ -22,7 +22,10 @@ import {
   AlertCircle,
   CheckCircle,
   User,
-  LogIn
+  LogIn,
+  Package,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { EnhancedEcommerceAPIService } from '../../services/ecommerce/EnhancedEcommerceAPIService.js';
@@ -45,6 +48,7 @@ const HiggsFlowPublicCatalog = () => {
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isMockData, setIsMockData] = useState(false);
   
   // Search and filtering state
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,14 +59,20 @@ const HiggsFlowPublicCatalog = () => {
   const [priceRange, setPriceRange] = useState([0, 10000]);
   const [inStockOnly, setInStockOnly] = useState(false);
   
-  // Guest cart state
-  const [guestCart, setGuestCart] = useState([]);
+  // Guest cart state - Fixed localStorage usage
+  const [guestCartItems, setGuestCartItems] = useState([]);
   const [sessionId] = useState(() => {
-    const stored = localStorage.getItem('higgsflow_session_id');
-    if (stored) return stored;
-    const newId = generateSessionId();
-    localStorage.setItem('higgsflow_session_id', newId);
-    return newId;
+    try {
+      // Use sessionStorage instead of localStorage for better compatibility
+      const stored = sessionStorage.getItem('higgsflow_session_id');
+      if (stored) return stored;
+      const newId = generateSessionId();
+      sessionStorage.setItem('higgsflow_session_id', newId);
+      return newId;
+    } catch (error) {
+      console.warn('Session storage not available, using memory session');
+      return generateSessionId();
+    }
   });
 
   // Pagination state
@@ -71,32 +81,60 @@ const HiggsFlowPublicCatalog = () => {
   const [totalCount, setTotalCount] = useState(0);
   const itemsPerPage = 20;
 
+  // Notification state
+  const [notification, setNotification] = useState(null);
+
   // Load initial data
   useEffect(() => {
     loadInitialData();
+    // Cleanup on unmount
+    return () => {
+      ecommerceAPI.cleanup();
+    };
   }, []);
 
-  // Load products when filters change
+  // Load products when filters change with debouncing
   useEffect(() => {
-    loadProducts();
-  }, [searchTerm, selectedCategory, sortBy, priceRange, inStockOnly, currentPage]);
+    const timeoutId = setTimeout(() => {
+      if (currentPage === 1) {
+        loadProducts();
+      }
+    }, searchTerm ? 500 : 0); // Debounce search input
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, selectedCategory, sortBy, priceRange, inStockOnly]);
+
+  // Load more products when page changes
+  useEffect(() => {
+    if (currentPage > 1) {
+      loadMoreProducts();
+    }
+  }, [currentPage]);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
       // Load categories and featured products in parallel
       const [categoriesData, featuredData] = await Promise.all([
-        ecommerceAPI.getProductCategories(),
-        ecommerceAPI.getFeaturedProducts(8)
+        ecommerceAPI.getProductCategories().catch(err => {
+          console.warn('Categories failed, using fallback:', err);
+          return [];
+        }),
+        ecommerceAPI.getFeaturedProducts(8).catch(err => {
+          console.warn('Featured products failed, using fallback:', err);
+          return [];
+        })
       ]);
 
-      // Add "All Categories" option
+      // Add "All Categories" option with total count
+      const totalProductCount = categoriesData.reduce((sum, cat) => sum + (cat.productCount || 0), 0);
       const allCategories = [
         { 
           id: 'all', 
           name: 'All Categories', 
-          productCount: categoriesData.reduce((sum, cat) => sum + (cat.productCount || 0), 0)
+          productCount: totalProductCount || 156 // Fallback count
         },
         ...categoriesData
       ];
@@ -104,9 +142,23 @@ const HiggsFlowPublicCatalog = () => {
       setCategories(allCategories);
       setFeaturedProducts(featuredData);
       
+      // Check if using mock data
+      const productsResult = await ecommerceAPI.getPublicProducts({ pageSize: 1 });
+      setIsMockData(productsResult.isMockData || false);
+      
     } catch (err) {
       console.error('Error loading initial data:', err);
-      setError('Failed to load catalog data');
+      setError('Failed to load catalog data. Switching to demo mode.');
+      setIsMockData(true);
+      
+      // Set fallback data
+      setCategories([
+        { id: 'all', name: 'All Categories', productCount: 156 },
+        { id: 'steel', name: 'Steel Products', productCount: 45 },
+        { id: 'hydraulics', name: 'Hydraulics', productCount: 23 },
+        { id: 'mechanical', name: 'Mechanical Components', productCount: 67 },
+        { id: 'electrical', name: 'Electrical', productCount: 21 }
+      ]);
     } finally {
       setLoading(false);
     }
@@ -121,8 +173,7 @@ const HiggsFlowPublicCatalog = () => {
         searchTerm: searchTerm.trim(),
         category: selectedCategory,
         sortBy,
-        priceMin: priceRange[0],
-        priceMax: priceRange[1],
+        priceRange: priceRange,
         inStock: inStockOnly,
         pageSize: itemsPerPage
       };
@@ -134,35 +185,75 @@ const HiggsFlowPublicCatalog = () => {
         result = await ecommerceAPI.getPublicProducts(filters);
       }
 
-      setProducts(result.products);
-      setTotalCount(result.totalCount);
-      setHasMore(result.hasMore);
+      setProducts(result.products || []);
+      setTotalCount(result.totalCount || 0);
+      setHasMore(result.hasMore || false);
+      setIsMockData(result.isMockData || false);
+
+      // Reset pagination
+      setCurrentPage(1);
 
       // Track search analytics
       if (searchTerm.trim()) {
-        ecommerceAPI.trackSearch(searchTerm, result.totalCount, {
+        ecommerceAPI.trackSearch(searchTerm, result.totalCount || 0, {
           userType: 'guest',
           sessionId,
           deviceInfo: {
             userAgent: navigator.userAgent,
-            viewport: `${window.innerWidth}x${window.innerHeight}`
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+            timestamp: new Date().toISOString()
           }
-        });
+        }).catch(err => console.warn('Analytics tracking failed:', err));
       }
 
     } catch (err) {
       console.error('Error loading products:', err);
-      setError('Failed to load products');
+      setError(`Failed to load products: ${err.message}`);
       setProducts([]);
+      setTotalCount(0);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const addToGuestCart = async (product) => {
+  const loadMoreProducts = async () => {
+    try {
+      setLoading(true);
+
+      const filters = {
+        searchTerm: searchTerm.trim(),
+        category: selectedCategory,
+        sortBy,
+        priceRange: priceRange,
+        inStock: inStockOnly,
+        pageSize: itemsPerPage,
+        page: currentPage
+      };
+
+      let result;
+      if (searchTerm.trim()) {
+        result = await ecommerceAPI.searchProducts(searchTerm, filters);
+      } else {
+        result = await ecommerceAPI.getPublicProducts(filters);
+      }
+
+      // Append new products
+      setProducts(prev => [...prev, ...(result.products || [])]);
+      setHasMore(result.hasMore || false);
+
+    } catch (err) {
+      console.error('Error loading more products:', err);
+      showNotification('Failed to load more products', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addToGuestCart = useCallback(async (product) => {
     try {
       // Add to local state immediately for instant feedback
-      setGuestCart(prev => {
+      setGuestCartItems(prev => {
         const existing = prev.find(item => item.id === product.id);
         if (existing) {
           return prev.map(item => 
@@ -171,47 +262,52 @@ const HiggsFlowPublicCatalog = () => {
               : item
           );
         }
-        return [...prev, { ...product, quantity: 1 }];
+        return [...prev, { ...product, quantity: 1, addedAt: new Date() }];
       });
 
-      // Add to backend
+      // Add to backend cart
       await ecommerceAPI.addToGuestCart(sessionId, product.id, 1);
 
-      // Show success feedback
-      showNotification(`${product.displayName} added to cart`, 'success');
+      showNotification(`${product.displayName || product.name} added to cart`, 'success');
 
     } catch (error) {
       console.error('Error adding to cart:', error);
       showNotification('Failed to add item to cart', 'error');
+      
+      // Revert local state on error
+      setGuestCartItems(prev => 
+        prev.filter(item => item.id !== product.id)
+      );
     }
-  };
+  }, [sessionId]);
 
-  const viewProductDetails = (product) => {
+  const viewProductDetails = useCallback((product) => {
     // Track product view
     ecommerceAPI.trackProductView(product.id, {
       userType: 'guest',
       sessionId,
-      isNewViewer: true
-    });
+      isNewViewer: true,
+      searchQuery: searchTerm || null,
+      category: selectedCategory !== 'All Categories' ? selectedCategory : null,
+      timestamp: new Date().toISOString()
+    }).catch(err => console.warn('View tracking failed:', err));
 
     navigate(`/product/${product.id}`);
-  };
+  }, [sessionId, searchTerm, selectedCategory, navigate]);
 
-  const showNotification = (message, type = 'info') => {
-    // Simple notification system - can be enhanced later
-    const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
-      type === 'success' ? 'bg-green-500 text-white' : 
-      type === 'error' ? 'bg-red-500 text-white' : 
-      'bg-blue-500 text-white'
-    }`;
-    notification.textContent = message;
-    document.body.appendChild(notification);
+  const showNotification = useCallback((message, type = 'info') => {
+    setNotification({ message, type, id: Date.now() });
     
+    // Auto-dismiss after 3 seconds
     setTimeout(() => {
-      document.body.removeChild(notification);
+      setNotification(null);
     }, 3000);
-  };
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    setError(null);
+    loadInitialData();
+  }, []);
 
   // Memoized filter options for performance
   const filterOptions = useMemo(() => {
@@ -222,22 +318,50 @@ const HiggsFlowPublicCatalog = () => {
         { value: 'price-high', label: 'Price: High to Low' },
         { value: 'name', label: 'Name A-Z' },
         { value: 'rating', label: 'Highest Rated' },
-        { value: 'newest', label: 'Newest First' }
+        { value: 'newest', label: 'Newest First' },
+        { value: 'popular', label: 'Most Popular' }
       ]
     };
   }, []);
 
+  // Calculate cart total items
+  const cartItemCount = useMemo(() => {
+    return guestCartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  }, [guestCartItems]);
+
   const ProductCard = ({ product }) => {
     const [isWishlisted, setIsWishlisted] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleAddToCart = async () => {
+      setIsLoading(true);
+      await addToGuestCart(product);
+      setIsLoading(false);
+    };
+
+    // Safe price calculation
+    const currentPrice = product.pricing?.discountPrice || product.pricing?.unitPrice || 0;
+    const originalPrice = product.pricing?.listPrice || product.pricing?.unitPrice || 0;
+    const hasDiscount = originalPrice > currentPrice;
+    const discountPercentage = hasDiscount 
+      ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+      : 0;
+
+    // Safe stock status
+    const stockStatus = product.inventory?.stockStatus || 'In Stock';
+    const isInStock = stockStatus === 'In Stock' || stockStatus === 'Limited Stock';
 
     return (
       <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 border border-gray-200 group">
         {/* Product Image */}
         <div className="relative">
           <img 
-            src={product.images?.primary || '/api/placeholder/300/300'}
-            alt={product.displayName}
+            src={product.images?.primary || product.images?.thumbnail || '/api/placeholder/300/300'}
+            alt={product.displayName || product.name}
             className="w-full h-48 object-cover bg-gray-100 group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              e.target.src = '/api/placeholder/300/300';
+            }}
           />
           
           {/* Badges */}
@@ -247,9 +371,9 @@ const HiggsFlowPublicCatalog = () => {
                 Featured
               </span>
             )}
-            {product.pricing?.discountPercentage > 0 && (
+            {hasDiscount && discountPercentage > 0 && (
               <span className="bg-red-500 text-white text-xs px-2 py-1 rounded font-medium">
-                -{product.pricing.discountPercentage}%
+                -{discountPercentage}%
               </span>
             )}
             {product.trending && (
@@ -281,20 +405,20 @@ const HiggsFlowPublicCatalog = () => {
           {/* Stock Status */}
           <div className="absolute bottom-2 left-2">
             <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${
-              product.inventory?.stockStatus === 'In Stock' 
+              stockStatus === 'In Stock' 
                 ? 'bg-green-100 text-green-800' 
-                : product.inventory?.stockStatus === 'Limited Stock'
+                : stockStatus === 'Limited Stock'
                 ? 'bg-yellow-100 text-yellow-800'
                 : 'bg-red-100 text-red-800'
             }`}>
               <div className={`w-2 h-2 rounded-full ${
-                product.inventory?.stockStatus === 'In Stock' 
+                stockStatus === 'In Stock' 
                   ? 'bg-green-500' 
-                  : product.inventory?.stockStatus === 'Limited Stock'
+                  : stockStatus === 'Limited Stock'
                   ? 'bg-yellow-500'
                   : 'bg-red-500'
               }`}></div>
-              {product.inventory?.stockStatus}
+              {stockStatus}
             </div>
           </div>
         </div>
@@ -305,7 +429,7 @@ const HiggsFlowPublicCatalog = () => {
           <div className="mb-2">
             <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2 hover:text-blue-600 transition-colors cursor-pointer"
                 onClick={() => viewProductDetails(product)}>
-              {product.displayName}
+              {product.displayName || product.name}
             </h3>
             <p className="text-xs text-gray-600 mt-1">{product.category}</p>
           </div>
@@ -317,11 +441,11 @@ const HiggsFlowPublicCatalog = () => {
               <span>{product.supplier?.rating || 4.5}</span>
             </div>
             <span>•</span>
-            <span className="truncate">{product.supplier?.name}</span>
+            <span className="truncate">{product.supplier?.name || 'Verified Supplier'}</span>
             <span>•</span>
             <div className="flex items-center gap-1">
               <MapPin className="w-3 h-3" />
-              <span>{product.supplier?.location}</span>
+              <span>{product.supplier?.location || 'Malaysia'}</span>
             </div>
           </div>
 
@@ -329,18 +453,18 @@ const HiggsFlowPublicCatalog = () => {
           <div className="mb-3">
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold text-blue-600">
-                RM {(product.pricing?.discountPrice || 0).toLocaleString()}
+                RM {currentPrice.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
               </span>
-              {product.pricing?.discountPercentage > 0 && (
+              {hasDiscount && (
                 <span className="text-sm text-gray-500 line-through">
-                  RM {(product.pricing?.listPrice || 0).toLocaleString()}
+                  RM {originalPrice.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
                 </span>
               )}
             </div>
             
             {product.pricing?.bulkPricing?.length > 0 && (
               <p className="text-xs text-purple-600">
-                Best price: RM {product.pricing.bulkPricing[0].price.toLocaleString()} 
+                Best price: RM {product.pricing.bulkPricing[0].price.toLocaleString('en-MY', { minimumFractionDigits: 2 })} 
                 ({product.pricing.bulkPricing[0].minQty}+ units)
               </p>
             )}
@@ -358,15 +482,19 @@ const HiggsFlowPublicCatalog = () => {
           {/* Actions */}
           <div className="flex gap-2">
             <button
-              onClick={() => addToGuestCart(product)}
-              disabled={product.inventory?.stockStatus === 'Out of Stock'}
+              onClick={handleAddToCart}
+              disabled={!isInStock || isLoading}
               className="flex-1 bg-blue-600 text-white py-2 px-3 rounded text-sm font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
             >
-              <ShoppingCart className="w-4 h-4" />
-              Add to Cart
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ShoppingCart className="w-4 h-4" />
+              )}
+              {isLoading ? 'Adding...' : 'Add to Cart'}
             </button>
             <button
-              onClick={() => navigate('/factory/register')}
+              onClick={() => navigate('/quote/request', { state: { product } })}
               className="px-3 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50 transition-colors"
             >
               Quote
@@ -377,91 +505,116 @@ const HiggsFlowPublicCatalog = () => {
     );
   };
 
-  const ProductListItem = ({ product }) => (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-      <div className="flex gap-4">
-        <img 
-          src={product.images?.primary || '/api/placeholder/80/80'}
-          alt={product.displayName}
-          className="w-20 h-20 object-cover rounded bg-gray-100 flex-shrink-0 cursor-pointer"
-          onClick={() => viewProductDetails(product)}
-        />
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-start mb-2">
-            <h3 className="font-semibold text-gray-900 text-base cursor-pointer hover:text-blue-600"
-                onClick={() => viewProductDetails(product)}>
-              {product.displayName}
-            </h3>
-            <div className="text-right">
-              <div className="text-lg font-bold text-blue-600">
-                RM {(product.pricing?.discountPrice || 0).toLocaleString()}
-              </div>
-              {product.pricing?.discountPercentage > 0 && (
-                <div className="text-sm text-gray-500 line-through">
-                  RM {(product.pricing?.listPrice || 0).toLocaleString()}
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <p className="text-sm text-gray-600 mb-2 line-clamp-2">{product.shortDescription}</p>
-          
-          <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
-            <span>{product.category}</span>
-            <span>•</span>
-            <div className="flex items-center gap-1">
-              <Star className="w-3 h-3 text-yellow-400 fill-current" />
-              <span>{product.supplier?.rating || 4.5}</span>
-            </div>
-            <span>•</span>
-            <span>{product.supplier?.name}</span>
-            <span>•</span>
-            <div className={`flex items-center gap-1 ${
-              product.inventory?.stockStatus === 'In Stock' ? 'text-green-600' : 
-              product.inventory?.stockStatus === 'Limited Stock' ? 'text-orange-600' : 'text-red-600'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                product.inventory?.stockStatus === 'In Stock' ? 'bg-green-500' : 
-                product.inventory?.stockStatus === 'Limited Stock' ? 'bg-orange-500' : 'bg-red-500'
-              }`}></div>
-              <span>{product.inventory?.stockStatus}</span>
-            </div>
-          </div>
+  const ProductListItem = ({ product }) => {
+    const [isLoading, setIsLoading] = useState(false);
 
-          <div className="flex justify-between items-center">
-            <div className="flex gap-1">
-              {product.featured && (
-                <span className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded">
-                  Featured
-                </span>
-              )}
-              {product.trending && (
-                <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded">
-                  Trending
-                </span>
-              )}
+    const handleAddToCart = async () => {
+      setIsLoading(true);
+      await addToGuestCart(product);
+      setIsLoading(false);
+    };
+
+    const currentPrice = product.pricing?.discountPrice || product.pricing?.unitPrice || 0;
+    const originalPrice = product.pricing?.listPrice || product.pricing?.unitPrice || 0;
+    const hasDiscount = originalPrice > currentPrice;
+    const stockStatus = product.inventory?.stockStatus || 'In Stock';
+    const isInStock = stockStatus === 'In Stock' || stockStatus === 'Limited Stock';
+
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+        <div className="flex gap-4">
+          <img 
+            src={product.images?.primary || product.images?.thumbnail || '/api/placeholder/80/80'}
+            alt={product.displayName || product.name}
+            className="w-20 h-20 object-cover rounded bg-gray-100 flex-shrink-0 cursor-pointer"
+            onClick={() => viewProductDetails(product)}
+            onError={(e) => {
+              e.target.src = '/api/placeholder/80/80';
+            }}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-start mb-2">
+              <h3 className="font-semibold text-gray-900 text-base cursor-pointer hover:text-blue-600"
+                  onClick={() => viewProductDetails(product)}>
+                {product.displayName || product.name}
+              </h3>
+              <div className="text-right">
+                <div className="text-lg font-bold text-blue-600">
+                  RM {currentPrice.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
+                </div>
+                {hasDiscount && (
+                  <div className="text-sm text-gray-500 line-through">
+                    RM {originalPrice.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => addToGuestCart(product)}
-                disabled={product.inventory?.stockStatus === 'Out of Stock'}
-                className="bg-blue-600 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-700 disabled:bg-gray-400 transition-colors flex items-center gap-1"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                Add to Cart
-              </button>
-              <button 
-                onClick={() => viewProductDetails(product)}
-                className="p-2 border border-gray-300 rounded hover:bg-gray-50"
-              >
-                <Eye className="w-4 h-4 text-gray-600" />
-              </button>
+            
+            <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+              {product.shortDescription || product.description}
+            </p>
+            
+            <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
+              <span>{product.category}</span>
+              <span>•</span>
+              <div className="flex items-center gap-1">
+                <Star className="w-3 h-3 text-yellow-400 fill-current" />
+                <span>{product.supplier?.rating || 4.5}</span>
+              </div>
+              <span>•</span>
+              <span>{product.supplier?.name || 'Verified Supplier'}</span>
+              <span>•</span>
+              <div className={`flex items-center gap-1 ${
+                stockStatus === 'In Stock' ? 'text-green-600' : 
+                stockStatus === 'Limited Stock' ? 'text-orange-600' : 'text-red-600'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  stockStatus === 'In Stock' ? 'bg-green-500' : 
+                  stockStatus === 'Limited Stock' ? 'bg-orange-500' : 'bg-red-500'
+                }`}></div>
+                <span>{stockStatus}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <div className="flex gap-1">
+                {product.featured && (
+                  <span className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded">
+                    Featured
+                  </span>
+                )}
+                {product.trending && (
+                  <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded">
+                    Trending
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleAddToCart}
+                  disabled={!isInStock || isLoading}
+                  className="bg-blue-600 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-700 disabled:bg-gray-400 transition-colors flex items-center gap-1"
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ShoppingCart className="w-4 h-4" />
+                  )}
+                  {isLoading ? 'Adding...' : 'Add to Cart'}
+                </button>
+                <button 
+                  onClick={() => viewProductDetails(product)}
+                  className="p-2 border border-gray-300 rounded hover:bg-gray-50"
+                >
+                  <Eye className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const FeaturedSection = () => (
     <div className="mb-12">
@@ -472,7 +625,6 @@ const HiggsFlowPublicCatalog = () => {
             setSelectedCategory('All Categories');
             setSearchTerm('');
             setSortBy('relevance');
-            loadProducts();
           }}
           className="text-blue-600 hover:text-blue-700 font-medium"
         >
@@ -528,6 +680,7 @@ const HiggsFlowPublicCatalog = () => {
     </div>
   );
 
+  // Show loading skeleton on initial load
   if (loading && products.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -554,16 +707,33 @@ const HiggsFlowPublicCatalog = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+          notification.type === 'success' ? 'bg-green-500 text-white' : 
+          notification.type === 'error' ? 'bg-red-500 text-white' : 
+          'bg-blue-500 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
+            {notification.type === 'error' && <AlertCircle className="w-5 h-5" />}
+            <span>{notification.message}</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-bold text-gray-900 cursor-pointer" 
-                  onClick={() => navigate('/')}>
+                  onClick={() => navigate('/catalog')}>
                 HiggsFlow
               </h1>
-              <span className="text-sm text-gray-500">Industrial E-commerce</span>
+              <span className="text-sm text-gray-500">
+                Industrial E-commerce {isMockData && '(Demo Mode)'}
+              </span>
             </div>
             <div className="flex items-center gap-4">
               <button 
@@ -576,12 +746,12 @@ const HiggsFlowPublicCatalog = () => {
               <div className="relative">
                 <button 
                   onClick={() => navigate('/cart')}
-                  className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 relative"
+                  className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 relative transition-colors"
                 >
                   <ShoppingCart className="w-5 h-5" />
-                  {guestCart.length > 0 && (
+                  {cartItemCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                      {guestCart.reduce((sum, item) => sum + item.quantity, 0)}
+                      {cartItemCount > 99 ? '99+' : cartItemCount}
                     </span>
                   )}
                 </button>
@@ -613,6 +783,13 @@ const HiggsFlowPublicCatalog = () => {
                 <span>Fast Delivery</span>
               </div>
             </div>
+            {isMockData && (
+              <div className="mt-4 bg-blue-700 bg-opacity-50 rounded-lg p-3">
+                <p className="text-sm">
+                  🚀 Demo Mode: Experiencing mock data. Full functionality available in production.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -731,12 +908,21 @@ const HiggsFlowPublicCatalog = () => {
           </div>
         </div>
 
-        {/* Error State */}
+        {/* Error State with Retry */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="w-5 h-5" />
-              <span>{error}</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertCircle className="w-5 h-5" />
+                <span>{error}</span>
+              </div>
+              <button
+                onClick={handleRetry}
+                className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Retry
+              </button>
             </div>
           </div>
         )}
@@ -764,9 +950,19 @@ const HiggsFlowPublicCatalog = () => {
                 <button
                   onClick={() => setCurrentPage(prev => prev + 1)}
                   disabled={loading}
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center gap-2 mx-auto"
                 >
-                  {loading ? 'Loading...' : 'Load More Products'}
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <Package className="w-4 h-4" />
+                      Load More Products
+                    </>
+                  )}
                 </button>
               </div>
             )}
@@ -813,7 +1009,7 @@ const HiggsFlowPublicCatalog = () => {
               onClick={() => navigate('/quote/request')}
               className="border border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors"
             >
-              Request Quote for {guestCart.length} Items
+              Request Quote {cartItemCount > 0 && `for ${cartItemCount} Items`}
             </button>
           </div>
         </div>
