@@ -1,4 +1,4 @@
-// src/App.jsx - UPDATED VERSION - Added Dark Mode Support
+// src/App.jsx - UPDATED VERSION - Added Phase 2A E-commerce Routes + Dark Mode Support
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -10,7 +10,7 @@ import Layout from './components/common/Layout';
 import PublicPIView from './components/procurement/PublicPIView';
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
-import { Truck, Upload, Users, Shield, Settings, Activity, Brain } from 'lucide-react';
+import { Truck, Upload, Users, Shield, Settings, Activity, Brain, ShoppingCart, Building2, Eye } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
@@ -20,11 +20,9 @@ import EcommerceSetup from './components/setup/EcommerceSetup';
 import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
 import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
 
-
 import './App.css';
 
-
-// Import lazy components - CLEANED UP IMPORTS (UserManagement removed)
+// Import lazy components - EXISTING IMPORTS (UserManagement removed)
 import { 
   LazyDashboard, 
   LazySuppliers, 
@@ -33,7 +31,6 @@ import {
   LazyPurchaseOrders,
   LazyClientInvoices,
   LazyQuickImport,
-  // ❌ LazyUserManagement removed - using TeamManagement instead
   LazySmartNotifications,
   LazyWrapper 
 } from './components/LazyComponents';
@@ -47,15 +44,20 @@ const LazyTeamManagement = lazy(() => import('./components/team/TeamManagement')
 const LazyUnifiedTrackingDashboard = lazy(() => import('./components/tracking/UnifiedTrackingDashboard'));
 const LazyMigrationPage = lazy(() => import('./components/migration/MigrationPage'));
 
-// ✅ NEW: Add missing Company Structure Manager component
+// Existing admin components
 const LazyCompanyStructureManager = lazy(() => import('./components/admin/CompanyStructureManager'));
-
-// ✅ NEW: Add DualSystemDashboard and PromptManagement components
 const LazyDualSystemDashboard = lazy(() => import('./components/mcp/DualSystemDashboard'));
 const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagement'));
-
 const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
 
+// 🆕 NEW: Phase 2A E-commerce Components
+const LazyPublicCatalog = lazy(() => import('./components/ecommerce/PublicCatalog'));
+const LazyProductDetailPage = lazy(() => import('./components/ecommerce/ProductDetailPage'));
+const LazyFactoryRegistration = lazy(() => import('./components/ecommerce/FactoryRegistration'));
+const LazyShoppingCart = lazy(() => import('./components/ecommerce/ShoppingCart'));
+const LazyQuoteRequest = lazy(() => import('./components/ecommerce/QuoteRequest'));
+const LazyFactoryLogin = lazy(() => import('./components/ecommerce/FactoryLogin'));
+const LazyFactoryDashboard = lazy(() => import('./components/ecommerce/FactoryDashboard'));
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -94,7 +96,38 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Protected Route Component
+// 🆕 NEW: Public Route Component (for e-commerce)
+const PublicRoute = ({ children }) => {
+  return children;
+};
+
+// 🆕 NEW: Factory Route Component (for authenticated factory users)
+const FactoryRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/factory/login" replace />;
+  }
+  
+  // Check if user is a factory user (not admin)
+  const isFactory = user.email && !user.email.includes('higgsflow.com') && !user.email.includes('admin');
+  
+  if (!isFactory) {
+    return <Navigate to="/admin" replace />;
+  }
+  
+  return children;
+};
+
+// Protected Route Component (for admin/internal users)
 const ProtectedRoute = ({ children, permission }) => {
   const { user, loading } = useAuth();
   const permissions = usePermissions();
@@ -216,19 +249,135 @@ function AppContent() {
       
       <Router>
         <Routes>
+          {/* ========== PUBLIC E-COMMERCE ROUTES ========== */}
+          
+          {/* Main public catalog - HIGHEST PRIORITY */}
+          <Route 
+            path="/catalog" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Public Catalog">
+                  <LazyPublicCatalog />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* Product detail pages */}
+          <Route 
+            path="/product/:productId" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Product Details">
+                  <LazyProductDetailPage />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* Category browsing */}
+          <Route 
+            path="/category/:categorySlug" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Category Products">
+                  <LazyPublicCatalog />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* Search results */}
+          <Route 
+            path="/search" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Search Results">
+                  <LazyPublicCatalog />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* ========== FACTORY ROUTES ========== */}
+          
+          {/* Factory registration */}
+          <Route 
+            path="/factory/register" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Factory Registration">
+                  <LazyFactoryRegistration />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* Factory login */}
+          <Route 
+            path="/factory/login" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Factory Login">
+                  <LazyFactoryLogin />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* Factory dashboard (authenticated factories) */}
+          <Route 
+            path="/factory/dashboard" 
+            element={
+              <FactoryRoute>
+                <LazyWrapper componentName="Factory Dashboard">
+                  <LazyFactoryDashboard />
+                </LazyWrapper>
+              </FactoryRoute>
+            } 
+          />
+          
+          {/* ========== SHOPPING & ORDERS ROUTES ========== */}
+          
+          {/* Shopping cart (public + authenticated) */}
+          <Route 
+            path="/cart" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Shopping Cart">
+                  <LazyShoppingCart />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* Quote request */}
+          <Route 
+            path="/quote/request" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Quote Request">
+                  <LazyQuoteRequest />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+
+          {/* ========== EXISTING ROUTES ========== */}
+
           <Route path="/test-sample-data" element={<SampleDataTest />} />
 
           {/* Public PI View Route */}
           <Route path="/pi/view/:shareableId" element={<PublicPIView />} />
           
-          {/* Login Route */}
-          <Route path="/login" element={!user ? <LoginForm /> : <Navigate to="/" replace />} />
+          {/* Admin Login Route */}
+          <Route path="/login" element={!user ? <LoginForm /> : <Navigate to="/admin" replace />} />
           
-          {/* Protected Routes with Layout */}
+          {/* ========== ADMIN/INTERNAL ROUTES WITH LAYOUT ========== */}
           <Route element={user ? <Layout /> : <Navigate to="/login" />}>
-            {/* Dashboard */}
+            {/* Admin Dashboard */}
             <Route 
-              path="/" 
+              path="/admin" 
               element={
                 <ProtectedRoute permission="canViewDashboard">
                   <LazyWrapper componentName="Dashboard">
@@ -398,7 +547,7 @@ function AppContent() {
               } 
             />
 
-            {/* ✅ NEW: Dual System Dashboard Route */}
+            {/* Dual System Dashboard Route */}
             <Route 
               path="/dual-system-dashboard" 
               element={
@@ -410,7 +559,7 @@ function AppContent() {
               } 
             />
 
-            {/* ✅ NEW: Prompt Management Route */}
+            {/* Prompt Management Route */}
             <Route 
               path="/prompt-management" 
               element={
@@ -422,9 +571,9 @@ function AppContent() {
               } 
             />
             
-            {/* ✅ FIXED: Administration Routes - Added missing Company Structure routes */}
+            {/* Administration Routes */}
             
-            {/* Company Structure Manager Routes - NEWLY ADDED */}
+            {/* Company Structure Manager Routes */}
             <Route 
               path="/admin/companies" 
               element={
@@ -547,18 +696,59 @@ function AppContent() {
             <Route path="/sync-dashboard" element={<ProductSyncDashboard />} />
 
             {/* CORS-Safe Product Sync Test */}
-<Route path="/cors-safe-sync-test" element={<CORSSafeSyncTest />} />
+            <Route path="/cors-safe-sync-test" element={<CORSSafeSyncTest />} />
 
-            
             {/* Legacy route redirects */}
             <Route 
               path="/users" 
               element={<Navigate to="/team-management" replace />}
             />
           </Route>
+
+          {/* ========== ROOT ROUTE LOGIC ========== */}
           
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
+          {/* Smart root routing based on user type */}
+          <Route 
+            path="/" 
+            element={
+              user ? (
+                // Check if user is admin (has higgsflow.com email) or factory user
+                user.email && (user.email.includes('higgsflow.com') || user.email.includes('admin')) ? (
+                  <Navigate to="/admin" replace />
+                ) : (
+                  <Navigate to="/factory/dashboard" replace />
+                )
+              ) : (
+                // Not logged in - show public catalog
+                <PublicRoute>
+                  <LazyWrapper componentName="Public Catalog">
+                    <LazyPublicCatalog />
+                  </LazyWrapper>
+                </PublicRoute>
+              )
+            } 
+          />
+
+          {/* ========== LEGACY REDIRECTS ========== */}
+          
+          {/* Redirect old admin routes */}
+          <Route path="/dashboard" element={<Navigate to="/admin" replace />} />
+          
+          {/* Catch all - smart redirect based on authentication */}
+          <Route 
+            path="*" 
+            element={
+              user ? (
+                user.email && (user.email.includes('higgsflow.com') || user.email.includes('admin')) ? (
+                  <Navigate to="/admin" replace />
+                ) : (
+                  <Navigate to="/factory/dashboard" replace />
+                )
+              ) : (
+                <Navigate to="/catalog" replace />
+              )
+            } 
+          />
         </Routes>
         
         {/* Global Notification */}
@@ -583,9 +773,6 @@ function AppContent() {
             </button>
           </>
         )}
-        
-        {/* Firestore Health Check */}
-        {/* {user && <FirestoreHealthCheck />} */}
       </Router>
     </ErrorBoundary>
   );
