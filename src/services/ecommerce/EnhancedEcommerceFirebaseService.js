@@ -23,7 +23,7 @@ import {
   getDownloadURL, 
   deleteObject 
 } from 'firebase/storage';
-import { db, storage } from '../firebase/config';
+import { db, storage } from '../../config/firebase';
 
 class EnhancedEcommerceFirebaseService {
   constructor() {
