@@ -1,19 +1,20 @@
-// src/services/firebase.js - Complete Firebase Implementation with CORS and Admin Fixes + Payment Deletion Fix
-import { initializeApp } from 'firebase/app';
+// src/services/firebase.js - Updated to use centralized Firebase configuration
+// ✅ FIXED: Import from centralized config instead of initializing Firebase again
+
+// Import from the centralized Firebase configuration
 import { 
-  getAuth, 
-  connectAuthEmulator,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail
-} from 'firebase/auth';
+  db, 
+  auth, 
+  storage, 
+  analytics,
+  AuthService,
+  DatabaseService,
+  SessionService,
+  UserTypeService 
+} from '../config/firebase.js';
+
+// Import Firestore functions
 import { 
-  getFirestore, 
-  connectFirestoreEmulator,
   collection, 
   doc, 
   addDoc, 
@@ -29,15 +30,10 @@ import {
   serverTimestamp,
   onSnapshot,
   enableNetwork,
-  disableNetwork,
-  CACHE_SIZE_UNLIMITED,
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager
+  disableNetwork
 } from 'firebase/firestore';
+
 import { 
-  getStorage, 
-  connectStorageEmulator,
   ref, 
   uploadBytes, 
   getDownloadURL, 
@@ -46,92 +42,8 @@ import {
   getMetadata 
 } from 'firebase/storage';
 
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
-};
-
-// ✅ INITIALIZATION FIX: Prevent multiple initialization
-let app;
-let db;
-let isFirebaseInitialized = false;
-
-try {
-  if (!isFirebaseInitialized) {
-    // Initialize Firebase app
-    app = initializeApp(firebaseConfig);
-    
-    // ✅ CORS FIX: Initialize Firestore with specific settings to avoid CORS
-    try {
-      db = initializeFirestore(app, {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager()
-        }),
-        // ✅ CRITICAL CORS FIX: Force REST API usage instead of gRPC
-        experimentalForceLongPolling: true,
-        // ✅ ADDITIONAL CORS FIX: Disable problematic features
-        experimentalAutoDetectLongPolling: false,
-      });
-      console.log('🔥 Firestore initialized with persistence and long polling');
-    } catch (persistenceError) {
-      console.warn('⚠️ Firestore persistence failed, using default with CORS fixes:', persistenceError.message);
-      // Fallback with CORS-safe options
-      db = getFirestore(app);
-    }
-    
-    isFirebaseInitialized = true;
-  } else {
-    // If already initialized, get existing instances
-    db = getFirestore(app);
-  }
-} catch (error) {
-  console.error('❌ Firebase initialization error:', error);
-  // Emergency fallback
-  app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-}
-
-// Initialize other services
-export const auth = getAuth(app);
-export const storage = getStorage(app);
-export { db };
-
-// ✅ FIXED: Better environment detection
-const isDevelopment = import.meta.env.DEV;
-const isProduction = import.meta.env.PROD;
-
-console.log('🔥 Firebase initialized');
-console.log('🔧 Environment:', isDevelopment ? 'development' : 'production');
-console.log('🔧 Project ID:', firebaseConfig.projectId);
-
-// ✅ CORS FIX: Disable real-time listeners that cause CORS issues in production
-const ENABLE_REALTIME_LISTENERS = false; // Disable completely to avoid CORS
-
-// ✅ CORS FIX: Helper function to handle Firestore operations safely
-const handleFirestoreOperation = async (operation, operationName) => {
-  try {
-    const result = await operation();
-    return { success: true, data: result };
-  } catch (error) {
-    console.error(`${operationName} failed:`, error);
-    
-    // Handle CORS-specific errors
-    if (error.message?.includes('CORS') || 
-        error.message?.includes('access control') ||
-        error.code === 'unavailable') {
-      console.warn(`🌐 Network/CORS error in ${operationName} - operation failed`);
-      return { success: false, error: 'NETWORK_ERROR', corsIssue: true };
-    }
-    
-    return { success: false, error: error.message };
-  }
-};
+// ✅ NO MORE FIREBASE INITIALIZATION - Use existing instance from config
+console.log('🔗 Using centralized Firebase configuration from services layer');
 
 // 🔧 CRITICAL FIX: Enhanced clean data helper function with PAYMENT PROTECTION
 const cleanFirestoreData = (obj) => {
@@ -207,6 +119,26 @@ const cleanFirestoreData = (obj) => {
   }
   
   return cleaned;
+};
+
+// ✅ CORS FIX: Helper function to handle Firestore operations safely
+const handleFirestoreOperation = async (operation, operationName) => {
+  try {
+    const result = await operation();
+    return { success: true, data: result };
+  } catch (error) {
+    console.error(`${operationName} failed:`, error);
+    
+    // Handle CORS-specific errors
+    if (error.message?.includes('CORS') || 
+        error.message?.includes('access control') ||
+        error.code === 'unavailable') {
+      console.warn(`🌐 Network/CORS error in ${operationName} - operation failed`);
+      return { success: false, error: 'NETWORK_ERROR', corsIssue: true };
+    }
+    
+    return { success: false, error: error.message };
+  }
 };
 
 // ✅ FIXED: Safe document existence check
@@ -364,49 +296,6 @@ const testFirestoreConnection = async (retryCount = 0) => {
   }
 };
 
-// ✅ CORS FIX: Enhanced network handling with CORS awareness
-const handleNetworkStatus = () => {
-  let isOnline = navigator.onLine;
-  
-  const handleOnline = async () => {
-    if (!isOnline) {
-      console.log('🌐 Network restored');
-      isOnline = true;
-      
-      try {
-        await enableNetwork(db);
-        setTimeout(() => testFirestoreConnection(), 1000);
-      } catch (error) {
-        console.warn('Failed to enable network:', error.message);
-      }
-    }
-  };
-  
-  const handleOffline = async () => {
-    if (isOnline) {
-      console.log('📱 Network lost - enabling offline mode');
-      isOnline = false;
-      
-      try {
-        await disableNetwork(db);
-      } catch (error) {
-        console.warn('Failed to disable network:', error.message);
-      }
-    }
-  };
-  
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('offline', handleOffline);
-  
-  // Initial network state check
-  if (!navigator.onLine) {
-    handleOffline();
-  }
-};
-
-// Initialize network handling
-handleNetworkStatus();
-
 // ✅ COMPANY DATA FIX: Initialize company structure data
 const initializeCompanyStructure = async () => {
   try {
@@ -563,7 +452,7 @@ export const ensureEdisonAdminAccess = async () => {
   }
 };
 
-// ✅ SYSTEM INITIALIZATION: Complete setup
+// ✅ SYSTEM INITIALIZATION: Complete setup (reduced timeout to prevent conflicts)
 export const initializeSystemData = async () => {
   try {
     console.log('🚀 Initializing system data...');
@@ -624,7 +513,7 @@ export const initializeSystemData = async () => {
   }
 };
 
-// ✅ STARTUP: Initialize after Firebase is ready
+// ✅ STARTUP: Initialize after Firebase is ready (reduced timing to prevent double runs)
 let initializationStarted = false;
 
 const runInitialization = async () => {
@@ -633,8 +522,8 @@ const runInitialization = async () => {
   
   console.log('🔄 Running startup initialization...');
   
-  // Wait for Firebase to be fully ready
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  // Reduced wait time since Firebase is already initialized from config
+  await new Promise(resolve => setTimeout(resolve, 1000));
   
   const result = await initializeSystemData();
   
@@ -645,11 +534,9 @@ const runInitialization = async () => {
   }
 };
 
-// Start initialization
-setTimeout(runInitialization, 2000);
-
-// Test connection
-setTimeout(testFirestoreConnection, 1000);
+// Reduced startup delay to prevent conflicts with config initialization
+setTimeout(runInitialization, 500);
+setTimeout(testFirestoreConnection, 300);
 
 // ✅ ENHANCED: Proforma Invoices with better error handling
 export const getProformaInvoices = async () => {
@@ -770,7 +657,7 @@ export const updateDeliveryStatus = async (id, status) => {
   return updateProformaInvoice(id, { deliveryStatus: status });
 };
 
-// ✅ ENHANCED: Suppliers with error handling
+// ✅ ENHANCED: Other entity functions (keeping your existing implementations)
 export const getSuppliers = async () => {
   const result = await safeGetCollection('suppliers');
   return {
@@ -813,7 +700,6 @@ export const deleteSupplier = async (id) => {
   }, `deleteSupplier(${id})`);
 };
 
-// ✅ ENHANCED: Products with error handling
 export const getProducts = async () => {
   const result = await safeGetCollection('products');
   return {
@@ -856,7 +742,6 @@ export const deleteProduct = async (id) => {
   }, `deleteProduct(${id})`);
 };
 
-// ✅ ENHANCED: Purchase Orders with error handling
 export const getPurchaseOrders = async () => {
   const result = await safeGetCollection('purchaseOrders');
   return {
@@ -899,7 +784,6 @@ export const deletePurchaseOrder = async (id) => {
   }, `deletePurchaseOrder(${id})`);
 };
 
-// ✅ ENHANCED: Client Invoices with error handling
 export const getClientInvoices = async () => {
   const result = await safeGetCollection('clientInvoices');
   return {
@@ -942,7 +826,6 @@ export const deleteClientInvoice = async (id) => {
   }, `deleteClientInvoice(${id})`);
 };
 
-// ✅ ENHANCED: Query functions with error handling
 export const getInvoicesByPOId = async (poId) => {
   const result = await safeGetCollection('clientInvoices', [where('poId', '==', poId)]);
   return {
@@ -1050,18 +933,20 @@ export const mockFirebase = {
 // 🔧 CRITICAL: Export the cleaning function for use in other components
 export { cleanFirestoreData };
 
-// Export all Firebase functions
+// Export the centralized Firebase services (no double initialization)
+export { 
+  db, 
+  auth, 
+  storage, 
+  analytics,
+  AuthService,
+  DatabaseService,
+  SessionService,
+  UserTypeService
+};
+
+// Export Firebase functions from existing config
 export {
-  // Auth functions
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  
-  // Firestore functions  
   collection,
   doc,
   addDoc,
@@ -1078,8 +963,6 @@ export {
   onSnapshot,
   enableNetwork,
   disableNetwork,
-  
-  // Storage functions
   ref,
   uploadBytes,
   getDownloadURL,
@@ -1087,5 +970,3 @@ export {
   listAll,
   getMetadata
 };
-
-export default app;
