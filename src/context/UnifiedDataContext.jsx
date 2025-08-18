@@ -1,5 +1,5 @@
 // src/context/UnifiedDataContext.jsx
-// 🔥 ENHANCED VERSION: Your existing code + Smart Catalog Real Data Integration
+// 🔥 ENHANCED VERSION: Your existing code + Smart Catalog Real Data Integration + CORS & Date Fixes
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
 import { 
   collection, 
@@ -18,7 +18,12 @@ import {
   writeBatch,
   increment
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { 
+  db, 
+  convertFirestoreTimestamp, 
+  transformFirestoreDoc, 
+  safeFirestoreOperation 
+} from '../config/firebase';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
 
@@ -438,7 +443,7 @@ function unifiedDataReducer(state, action) {
 // Context
 const UnifiedDataContext = createContext();
 
-// Enhanced Storage Service (keeping your existing structure + Smart Catalog)
+// Enhanced Storage Service (keeping your existing structure + Smart Catalog + CORS fixes)
 class StorageService {
   static getStorageKey(entityType) {
     return `higgsflow_${entityType}`;
@@ -472,47 +477,38 @@ class StorageService {
     return results;
   }
   
-  // Firestore operations
+  // 🔥 FIXED: Firestore operations with CORS handling
   static async saveToFirestore(collectionName, data) {
-    try {
+    return safeFirestoreOperation(async () => {
       const docRef = await addDoc(collection(db, collectionName), {
         ...data,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      return { success: true, id: docRef.id };
-    } catch (error) {
-      console.error(`Firestore save error (${collectionName}):`, error);
-      return { success: false, error: error.message };
-    }
+      return { id: docRef.id };
+    }, `saveToFirestore(${collectionName})`);
   }
   
   static async updateInFirestore(collectionName, id, updates) {
-    try {
+    return safeFirestoreOperation(async () => {
       await updateDoc(doc(db, collectionName, id), {
         ...updates,
         updatedAt: serverTimestamp()
       });
-      return { success: true };
-    } catch (error) {
-      console.error(`Firestore update error (${collectionName}):`, error);
-      return { success: false, error: error.message };
-    }
+      return { id };
+    }, `updateInFirestore(${collectionName}/${id})`);
   }
   
   static async deleteFromFirestore(collectionName, id) {
-    try {
+    return safeFirestoreOperation(async () => {
       await deleteDoc(doc(db, collectionName, id));
-      return { success: true };
-    } catch (error) {
-      console.error(`Firestore delete error (${collectionName}):`, error);
-      return { success: false, error: error.message };
-    }
+      return { id };
+    }, `deleteFromFirestore(${collectionName}/${id})`);
   }
   
-  // 🔥 NEW: Smart Catalog Firestore Operations
+  // 🔥 FIXED: Smart Catalog Firestore Operations with date handling
   static async searchCatalogProducts(searchParams) {
-    try {
+    return safeFirestoreOperation(async () => {
       const { 
         searchTerm, 
         category, 
@@ -549,50 +545,37 @@ class StorageService {
       q = query(q, limit(limitCount));
       
       const snapshot = await getDocs(q);
-      const products = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
-        updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
-      }));
+      
+      // 🔥 FIX: Proper date transformation
+      const products = snapshot.docs.map(doc => transformFirestoreDoc(doc));
       
       return { 
-        success: true, 
         products,
         lastDoc: snapshot.docs[snapshot.docs.length - 1],
         hasMore: snapshot.docs.length === limitCount
       };
-    } catch (error) {
-      console.error('Catalog search error:', error);
-      return { success: false, error: error.message };
-    }
+    }, 'searchCatalogProducts');
   }
   
   static async trackUserInteraction(interaction) {
-    try {
+    return safeFirestoreOperation(async () => {
       await addDoc(collection(db, 'userInteractions'), {
         ...interaction,
         timestamp: serverTimestamp()
       });
-      return { success: true };
-    } catch (error) {
-      console.error('Interaction tracking error:', error);
-      return { success: false, error: error.message };
-    }
+      return { tracked: true };
+    }, 'trackUserInteraction');
   }
   
   static async updateProductViews(productId) {
-    try {
+    return safeFirestoreOperation(async () => {
       const productRef = doc(db, 'catalogProducts', productId);
       await updateDoc(productRef, {
         viewCount: increment(1),
         lastViewed: serverTimestamp()
       });
-      return { success: true };
-    } catch (error) {
-      console.error('Product view update error:', error);
-      return { success: false, error: error.message };
-    }
+      return { productId };
+    }, `updateProductViews(${productId})`);
   }
 }
 
@@ -665,7 +648,7 @@ export function UnifiedDataProvider({ children }) {
     }
   }, []);
 
-  // Real-time subscriptions setup
+  // 🔥 FIXED: Real-time subscriptions setup with proper date handling
   const setupRealtimeSubscriptions = useCallback(() => {
     console.log('🔥 Setting up Firestore real-time subscriptions...');
     
@@ -679,13 +662,10 @@ export function UnifiedDataProvider({ children }) {
       const unsubscribeDelivery = onSnapshot(deliveryQuery, (snapshot) => {
         const deliveryData = {};
         snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          deliveryData[data.poId] = {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-          };
+          const transformed = transformFirestoreDoc(doc);
+          if (transformed && transformed.poId) {
+            deliveryData[transformed.poId] = transformed;
+          }
         });
         
         dispatch({
@@ -696,7 +676,9 @@ export function UnifiedDataProvider({ children }) {
         console.log('📦 Delivery tracking updated:', Object.keys(deliveryData).length, 'items');
       }, (error) => {
         console.error('Delivery tracking subscription error:', error);
-        toast.error('Lost connection to delivery tracking');
+        if (!error.message?.includes('CORS')) {
+          toast.error('Lost connection to delivery tracking');
+        }
       });
       
       // Payment Tracking Subscription
@@ -708,13 +690,10 @@ export function UnifiedDataProvider({ children }) {
       const unsubscribePayment = onSnapshot(paymentQuery, (snapshot) => {
         const paymentData = {};
         snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          paymentData[data.supplierId] = {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
-          };
+          const transformed = transformFirestoreDoc(doc);
+          if (transformed && transformed.supplierId) {
+            paymentData[transformed.supplierId] = transformed;
+          }
         });
         
         dispatch({
@@ -725,24 +704,21 @@ export function UnifiedDataProvider({ children }) {
         console.log('💰 Payment tracking updated:', Object.keys(paymentData).length, 'items');
       }, (error) => {
         console.error('Payment tracking subscription error:', error);
-        toast.error('Lost connection to payment tracking');
+        if (!error.message?.includes('CORS')) {
+          toast.error('Lost connection to payment tracking');
+        }
       });
       
-      // 🔥 NEW: Catalog Products Subscription
+      // 🔥 FIXED: Catalog Products Subscription with date handling
       const catalogQuery = query(
         collection(db, 'catalogProducts'),
         where('isActive', '==', true),
         orderBy('updatedAt', 'desc'),
-        limit(50) // Load first 50 products
+        limit(50)
       );
       
       const unsubscribeCatalog = onSnapshot(catalogQuery, (snapshot) => {
-        const catalogData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
-          updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
-        }));
+        const catalogData = snapshot.docs.map(doc => transformFirestoreDoc(doc)).filter(Boolean);
         
         dispatch({
           type: ACTION_TYPES.LOAD_CATALOG_PRODUCTS,
@@ -752,7 +728,9 @@ export function UnifiedDataProvider({ children }) {
         console.log('🛍️ Catalog products updated:', catalogData.length, 'items');
       }, (error) => {
         console.error('Catalog products subscription error:', error);
-        toast.error('Lost connection to catalog updates');
+        if (!error.message?.includes('CORS')) {
+          toast.error('Lost connection to catalog updates');
+        }
       });
       
       // Purchase Orders Subscription
@@ -762,12 +740,7 @@ export function UnifiedDataProvider({ children }) {
       );
       
       const unsubscribePO = onSnapshot(poQuery, (snapshot) => {
-        const poData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
-          updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
-        }));
+        const poData = snapshot.docs.map(doc => transformFirestoreDoc(doc)).filter(Boolean);
         
         dispatch({
           type: ACTION_TYPES.LOAD_DATA,
@@ -777,7 +750,9 @@ export function UnifiedDataProvider({ children }) {
         console.log('📋 Purchase orders updated:', poData.length, 'items');
       }, (error) => {
         console.error('Purchase orders subscription error:', error);
-        toast.error('Lost connection to purchase orders');
+        if (!error.message?.includes('CORS')) {
+          toast.error('Lost connection to purchase orders');
+        }
       });
       
       // Store subscriptions for cleanup
@@ -801,14 +776,20 @@ export function UnifiedDataProvider({ children }) {
       
     } catch (error) {
       console.error('Failed to setup real-time subscriptions:', error);
-      toast.error('Failed to connect to real-time updates');
+      if (!error.message?.includes('CORS')) {
+        toast.error('Failed to connect to real-time updates');
+      }
     }
   }, [user]);
 
   const cleanupSubscriptions = useCallback(() => {
     Object.values(realtimeSubscriptions).forEach(unsubscribe => {
       if (typeof unsubscribe === 'function') {
-        unsubscribe();
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.warn('Error cleaning up subscription:', error);
+        }
       }
     });
     setRealtimeSubscriptions({});
@@ -842,7 +823,7 @@ export function UnifiedDataProvider({ children }) {
     }
   }, [state.dataSource]);
 
-  // Keep all your existing CRUD operations but enhance them for Firestore
+  // 🔥 ENHANCED: CRUD operations with CORS handling
   const createEntity = useCallback(async (entityType, data) => {
     const id = data.id || `${entityType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const entity = {
@@ -861,7 +842,13 @@ export function UnifiedDataProvider({ children }) {
     try {
       if (state.dataSource === 'firestore') {
         const result = await StorageService.saveToFirestore(entityType, entity);
-        if (!result.success) throw new Error(result.error);
+        if (!result.success) {
+          if (result.corsIssue) {
+            toast.error('Network issue: Please check your connection');
+          } else {
+            throw new Error(result.error);
+          }
+        }
       } else {
         // Save to localStorage
         const success = await StorageService.saveData(entityType, [...state[entityType], entity]);
@@ -907,7 +894,13 @@ export function UnifiedDataProvider({ children }) {
         const firestoreItem = state[entityType].find(item => item.id === id);
         if (firestoreItem?.firestoreId) {
           const result = await StorageService.updateInFirestore(entityType, firestoreItem.firestoreId, updatedData);
-          if (!result.success) throw new Error(result.error);
+          if (!result.success) {
+            if (result.corsIssue) {
+              toast.error('Network issue: Please check your connection');
+            } else {
+              throw new Error(result.error);
+            }
+          }
         }
       } else {
         // Update localStorage
@@ -953,7 +946,13 @@ export function UnifiedDataProvider({ children }) {
         const firestoreItem = state[entityType].find(item => item.id === id);
         if (firestoreItem?.firestoreId) {
           const result = await StorageService.deleteFromFirestore(entityType, firestoreItem.firestoreId);
-          if (!result.success) throw new Error(result.error);
+          if (!result.success) {
+            if (result.corsIssue) {
+              toast.error('Network issue: Please check your connection');
+            } else {
+              throw new Error(result.error);
+            }
+          }
         }
       } else {
         const filteredArray = state[entityType].filter(item => item.id !== id);
@@ -986,7 +985,13 @@ export function UnifiedDataProvider({ children }) {
         
         if (deliveryDoc?.id) {
           const result = await StorageService.updateInFirestore('deliveryTracking', deliveryDoc.id, updates);
-          if (!result.success) throw new Error(result.error);
+          if (!result.success) {
+            if (result.corsIssue) {
+              toast.error('Network issue: Please check your connection');
+            } else {
+              throw new Error(result.error);
+            }
+          }
         } else {
           // Create new delivery tracking document
           const result = await StorageService.saveToFirestore('deliveryTracking', {
@@ -994,7 +999,13 @@ export function UnifiedDataProvider({ children }) {
             ...updates,
             createdBy: user?.uid
           });
-          if (!result.success) throw new Error(result.error);
+          if (!result.success) {
+            if (result.corsIssue) {
+              toast.error('Network issue: Please check your connection');
+            } else {
+              throw new Error(result.error);
+            }
+          }
         }
       } else {
         // Update localStorage
@@ -1034,7 +1045,13 @@ export function UnifiedDataProvider({ children }) {
         
         if (paymentDoc?.id) {
           const result = await StorageService.updateInFirestore('paymentTracking', paymentDoc.id, updates);
-          if (!result.success) throw new Error(result.error);
+          if (!result.success) {
+            if (result.corsIssue) {
+              toast.error('Network issue: Please check your connection');
+            } else {
+              throw new Error(result.error);
+            }
+          }
         } else {
           // Create new payment tracking document
           const result = await StorageService.saveToFirestore('paymentTracking', {
@@ -1042,7 +1059,13 @@ export function UnifiedDataProvider({ children }) {
             ...updates,
             createdBy: user?.uid
           });
-          if (!result.success) throw new Error(result.error);
+          if (!result.success) {
+            if (result.corsIssue) {
+              toast.error('Network issue: Please check your connection');
+            } else {
+              throw new Error(result.error);
+            }
+          }
         }
       } else {
         // Update localStorage
@@ -1066,7 +1089,7 @@ export function UnifiedDataProvider({ children }) {
     }
   }, [state.dataSource, state.paymentTracking, user]);
 
-  // 🔥 NEW: Smart Catalog Functions
+  // 🔥 FIXED: Smart Catalog Functions with error handling
   const searchCatalogProducts = useCallback(async (searchParams) => {
     dispatch({ type: ACTION_TYPES.SET_LOADING, payload: { key: 'searchResults', value: true } });
     
@@ -1076,7 +1099,7 @@ export function UnifiedDataProvider({ children }) {
         if (result.success) {
           dispatch({
             type: ACTION_TYPES.SET_SEARCH_RESULTS,
-            payload: result.products
+            payload: result.data.products
           });
           
           if (searchParams.searchTerm) {
@@ -1084,12 +1107,18 @@ export function UnifiedDataProvider({ children }) {
             trackUserInteraction({
               type: 'search',
               searchTerm: searchParams.searchTerm,
-              resultCount: result.products.length
+              resultCount: result.data.products.length
             });
           }
           
-          return result;
+          return result.data;
         }
+        
+        if (result.corsIssue) {
+          toast.error('Network issue: Please check your connection');
+          return { success: false, error: 'NETWORK_ERROR' };
+        }
+        
         throw new Error(result.error);
       } else {
         // Local search implementation
@@ -1098,7 +1127,7 @@ export function UnifiedDataProvider({ children }) {
         if (searchParams.searchTerm) {
           const term = searchParams.searchTerm.toLowerCase();
           filtered = filtered.filter(product => 
-            product.name.toLowerCase().includes(term) ||
+            product.name?.toLowerCase().includes(term) ||
             product.description?.toLowerCase().includes(term) ||
             product.category?.toLowerCase().includes(term)
           );
@@ -1142,7 +1171,10 @@ export function UnifiedDataProvider({ children }) {
     // Send to Firestore if available
     if (state.dataSource === 'firestore') {
       try {
-        await StorageService.trackUserInteraction(interactionData);
+        const result = await StorageService.trackUserInteraction(interactionData);
+        if (!result.success && result.corsIssue) {
+          console.warn('Network issue tracking interaction, stored locally only');
+        }
       } catch (error) {
         console.error('Failed to track interaction:', error);
       }
@@ -1160,9 +1192,13 @@ export function UnifiedDataProvider({ children }) {
       
       // Save to storage
       if (state.dataSource === 'firestore' && user) {
-        await StorageService.updateInFirestore('userProfiles', user.uid, {
+        const result = await StorageService.updateInFirestore('userProfiles', user.uid, {
           personalization: { ...state.personalization, ...updates }
         });
+        
+        if (!result.success && result.corsIssue) {
+          console.warn('Network issue updating personalization, stored locally only');
+        }
       } else {
         await StorageService.saveData('personalization', { ...state.personalization, ...updates });
       }
@@ -1217,7 +1253,7 @@ export function UnifiedDataProvider({ children }) {
         migrationCount++;
       });
       
-      // 🔥 NEW: Migrate catalog products
+      // Migrate catalog products
       state.catalogProducts.forEach((product) => {
         const docRef = doc(collection(db, 'catalogProducts'));
         batch.set(docRef, {
@@ -1313,7 +1349,7 @@ export function UnifiedDataProvider({ children }) {
     getCachedData,
     setCachedData,
     
-    // 🔥 NEW: Smart Catalog Operations
+    // Smart Catalog Operations
     searchCatalogProducts,
     trackUserInteraction,
     updatePersonalization,
