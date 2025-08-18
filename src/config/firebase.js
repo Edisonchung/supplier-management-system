@@ -37,71 +37,147 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// 🔥 NEW: Enhanced date conversion utility
+// 🔥 ENHANCED: More robust date conversion utility
 export const convertFirestoreTimestamp = (timestamp) => {
   if (!timestamp) return null;
   
   try {
-    // Handle Firestore Timestamp objects
+    // Handle different timestamp formats more robustly
+    
+    // Case 1: Firestore Timestamp objects with toDate method
     if (timestamp && typeof timestamp.toDate === 'function') {
       return timestamp.toDate().toISOString();
     }
     
-    // Handle Firestore timestamp objects with seconds/nanoseconds
-    if (timestamp && timestamp.seconds) {
-      const date = new Timestamp(timestamp.seconds, timestamp.nanoseconds || 0);
-      return date.toDate().toISOString();
+    // Case 2: Firestore timestamp objects with seconds/nanoseconds
+    if (timestamp && typeof timestamp === 'object' && timestamp.seconds !== undefined) {
+      // Handle both number and string seconds
+      const seconds = typeof timestamp.seconds === 'string' ? 
+        parseInt(timestamp.seconds, 10) : timestamp.seconds;
+      const nanoseconds = timestamp.nanoseconds || 0;
+      
+      if (!isNaN(seconds)) {
+        const date = new Date(seconds * 1000 + Math.floor(nanoseconds / 1000000));
+        return date.toISOString();
+      }
     }
     
-    // Handle Date objects
+    // Case 3: Already a Date object
     if (timestamp instanceof Date) {
       return timestamp.toISOString();
     }
     
-    // Handle ISO strings
+    // Case 4: ISO string
     if (typeof timestamp === 'string') {
-      return timestamp;
+      // Try to parse as ISO date
+      const parsed = new Date(timestamp);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
     }
     
-    // Handle numbers (Unix timestamps)
+    // Case 5: Unix timestamp (number)
     if (typeof timestamp === 'number') {
-      return new Date(timestamp).toISOString();
+      // Handle both seconds and milliseconds
+      const date = timestamp > 9999999999 ? 
+        new Date(timestamp) : // Already in milliseconds
+        new Date(timestamp * 1000); // Convert from seconds
+      
+      if (!isNaN(date.getTime())) {
+        return date.toISOString();
+      }
     }
     
-    console.warn('Unknown timestamp format:', timestamp);
+    // Case 6: Firebase Timestamp-like object (fallback)
+    if (timestamp && timestamp._seconds !== undefined) {
+      const seconds = timestamp._seconds;
+      const nanoseconds = timestamp._nanoseconds || 0;
+      const date = new Date(seconds * 1000 + Math.floor(nanoseconds / 1000000));
+      return date.toISOString();
+    }
+    
+    console.warn('🕒 Unknown timestamp format, returning null:', timestamp);
     return null;
   } catch (error) {
-    console.error('Error converting timestamp:', error, timestamp);
+    console.error('❌ Error converting timestamp:', error, timestamp);
     return null;
   }
 };
 
-// 🔥 NEW: Safe data transformation for Firestore documents
+// 🔥 ENHANCED: More robust document transformation
 export const transformFirestoreDoc = (doc) => {
-  if (!doc || !doc.exists()) return null;
+  if (!doc) return null;
   
-  const data = doc.data();
-  const transformed = { id: doc.id };
+  // Handle different document types
+  let data;
+  if (typeof doc.data === 'function') {
+    data = doc.data();
+  } else if (doc.data && typeof doc.data === 'object') {
+    data = doc.data;
+  } else {
+    console.warn('🔍 Unknown document format:', doc);
+    return null;
+  }
+  
+  if (!data) return null;
+  
+  const transformed = { 
+    id: doc.id || doc._id || `doc_${Date.now()}` 
+  };
   
   // Transform all fields, handling dates properly
   Object.entries(data).forEach(([key, value]) => {
-    if (value && typeof value === 'object' && typeof value.toDate === 'function') {
-      // Firestore Timestamp
-      transformed[key] = convertFirestoreTimestamp(value);
-    } else if (value && typeof value === 'object' && value.seconds) {
-      // Firestore timestamp object
-      transformed[key] = convertFirestoreTimestamp(value);
-    } else if (Array.isArray(value)) {
+    try {
+      if (!value) {
+        transformed[key] = value;
+        return;
+      }
+      
+      // Handle timestamp fields
+      if (typeof value === 'object' && (
+        typeof value.toDate === 'function' ||
+        value.seconds !== undefined ||
+        value._seconds !== undefined
+      )) {
+        transformed[key] = convertFirestoreTimestamp(value);
+      }
       // Handle arrays that might contain timestamps
-      transformed[key] = value.map(item => {
-        if (item && typeof item === 'object' && typeof item.toDate === 'function') {
-          return convertFirestoreTimestamp(item);
-        }
-        return item;
-      });
-    } else {
+      else if (Array.isArray(value)) {
+        transformed[key] = value.map(item => {
+          if (item && typeof item === 'object' && (
+            typeof item.toDate === 'function' ||
+            item.seconds !== undefined ||
+            item._seconds !== undefined
+          )) {
+            return convertFirestoreTimestamp(item);
+          }
+          return item;
+        });
+      }
+      // Handle nested objects
+      else if (typeof value === 'object' && !Array.isArray(value)) {
+        // Recursively transform nested objects
+        const nested = {};
+        Object.entries(value).forEach(([nestedKey, nestedValue]) => {
+          if (nestedValue && typeof nestedValue === 'object' && (
+            typeof nestedValue.toDate === 'function' ||
+            nestedValue.seconds !== undefined ||
+            nestedValue._seconds !== undefined
+          )) {
+            nested[nestedKey] = convertFirestoreTimestamp(nestedValue);
+          } else {
+            nested[nestedKey] = nestedValue;
+          }
+        });
+        transformed[key] = nested;
+      }
       // Regular values
-      transformed[key] = value;
+      else {
+        transformed[key] = value;
+      }
+    } catch (error) {
+      console.warn(`⚠️ Error transforming field ${key}:`, error);
+      transformed[key] = value; // Keep original value on error
     }
   });
   
@@ -158,15 +234,14 @@ if (!getApps().length) {
   // 🔧 Initialize Firestore with CORS-friendly settings
   try {
     db = initializeFirestore(app, {
-      // 🔥 ENHANCED CORS FIXES
+      // 🔥 ENHANCED CORS FIXES - SSL option removed to fix warning
       experimentalForceLongPolling: true,     // Prevents WebSocket CORS issues
-      ssl: true,                              // Ensure SSL is used
       cacheSizeBytes: 40 * 1024 * 1024,     // 40MB cache
       ignoreUndefinedProperties: true,        // Handle undefined gracefully
       merge: true,                            // Merge settings safely
       useFetchStreams: false                  // Disable fetch streams for CORS compatibility
     });
-    console.log('🔥 Firebase initialized with enhanced CORS fixes');
+    console.log('🔥 Firebase initialized with enhanced CORS fixes (SSL warning resolved)');
   } catch (error) {
     // Fallback to regular getFirestore if initializeFirestore fails
     console.warn('⚠️ Firestore persistence failed, using default with CORS fixes:', error.message);
