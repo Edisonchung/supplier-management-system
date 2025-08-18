@@ -23,8 +23,8 @@ import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
 // 🚀 Phase 2B Analytics Service with Real Data
 import { higgsFlowAnalytics, useHiggsFlowAnalytics } from './services/analyticsService';
 
-// 🚀 Real Data Services for Smart Catalog (using existing UnifiedDataContext)
-// SmartCatalogAPIService will use UnifiedDataContext for data source management
+// 🚀 Using existing Enhanced E-commerce services from your codebase
+// EnhancedEcommerceAPIService and EnhancedEcommerceFirebaseService handle catalog functionality
 
 import './App.css';
 
@@ -179,8 +179,8 @@ const FactoryRoute = ({ children }) => {
             timestamp: new Date().toISOString(),
             dataSource: 'real',
             userType: 'factory',
-            // Enhanced factory tracking (when SmartCatalogAPIService is available)
-            // factoryProfile: await SmartCatalogAPIService.getFactoryProfile(user.uid),
+            // Enhanced factory tracking uses existing Enhanced E-commerce services
+            // Your EnhancedEcommerceAPIService already handles factory profiles
             lastActivity: new Date().toISOString()
           };
 
@@ -1145,8 +1145,8 @@ function AppContent() {
               <button
                 onClick={() => console.log('HiggsFlow Real Data Analytics Status:', { 
                   analytics: higgsFlowAnalytics, 
-                  realDataEnabled
-                  // smartCatalogService: SmartCatalogAPIService 
+                  dataSource: dataSource,
+                  isRealTimeActive: isRealTimeActive
                 })}
                 className="fixed bottom-4 left-32 bg-blue-600 text-white text-xs px-3 py-1 rounded-full hover:bg-blue-700 z-50 shadow-lg transition-colors"
                 title="Check Real Data Analytics Status"
