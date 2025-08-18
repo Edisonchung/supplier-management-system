@@ -360,7 +360,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Data Migration',
           href: '/catalog/migration',
           icon: RefreshCw,
-          description: 'Migrate from mock to real data',
+          description: 'Migrate from localStorage to Firestore',
           permission: 'canManageData',
           badge: realDataStatus.syncInProgress ? 'SYNCING' : 
                 realDataStatus.enabled ? 'READY' : 'PENDING',
