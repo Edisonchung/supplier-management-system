@@ -66,6 +66,9 @@ const LazyFactoryDashboard = lazy(() => import('./components/ecommerce/FactoryDa
 const LazySmartPublicCatalog = lazy(() => import('./components/SmartPublicCatalog'));
 const LazyAnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
 
+// 🚀 NEW: HiggsFlow Analytics Phase 2B Dashboard
+const LazyHiggsFlowAnalyticsDashboard = lazy(() => import('./components/analytics/HiggsFlowAnalyticsDashboard'));
+
 // 🚀 NEW: Professional Landing Page Component
 const LazyHiggsFlowLandingPage = lazy(() => import('./components/HiggsFlowLandingPage'));
 
@@ -125,7 +128,7 @@ const PublicRoute = ({ children }) => {
         await analytics.trackSession(sessionData);
         console.log('📊 Public route analytics tracked');
       } catch (error) {
-        console.error('❌ Error tracking public route:', error);
+        console.error('⚠ Error tracking public route:', error);
       }
     };
 
@@ -156,7 +159,7 @@ const FactoryRoute = ({ children }) => {
           await analytics.trackSession(sessionData);
           console.log('🏭 Factory user analytics tracked');
         } catch (error) {
-          console.error('❌ Error tracking factory session:', error);
+          console.error('⚠ Error tracking factory session:', error);
         }
       };
 
@@ -209,7 +212,7 @@ const ProtectedRoute = ({ children, permission }) => {
           await analytics.trackSession(sessionData);
           console.log('👨‍💼 Admin user analytics tracked');
         } catch (error) {
-          console.error('❌ Error tracking admin session:', error);
+          console.error('⚠ Error tracking admin session:', error);
         }
       };
 
@@ -307,7 +310,7 @@ function AppContent() {
           
           console.log('✅ Analytics initialized successfully');
         } catch (error) {
-          console.error('❌ Error initializing analytics:', error);
+          console.error('⚠ Error initializing analytics:', error);
         }
       }
     };
@@ -531,24 +534,48 @@ function AppContent() {
               } 
             />
             
-            {/* 🚀 NEW: Advanced Analytics Dashboard */}
+            {/* 🚀 NEW: HiggsFlow Analytics Phase 2B Dashboard - PRIMARY ANALYTICS ROUTE */}
             <Route 
               path="/analytics" 
               element={
                 <ProtectedRoute permission="canViewDashboard">
-                  <LazyWrapper componentName="Analytics Dashboard">
-                    <LazyAnalyticsDashboard />
+                  <LazyWrapper componentName="HiggsFlow Analytics Dashboard">
+                    <LazyHiggsFlowAnalyticsDashboard />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
             />
             
-            {/* 🚀 NEW: Business Intelligence Route */}
+            {/* 🚀 NEW: Business Intelligence Route - SECONDARY ANALYTICS ACCESS */}
             <Route 
               path="/business-intelligence" 
               element={
                 <ProtectedRoute permission="canViewDashboard">
-                  <LazyWrapper componentName="Business Intelligence">
+                  <LazyWrapper componentName="HiggsFlow Analytics Dashboard">
+                    <LazyHiggsFlowAnalyticsDashboard />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* 🚀 NEW: Advanced Analytics Route - TERTIARY ANALYTICS ACCESS */}
+            <Route 
+              path="/advanced-analytics" 
+              element={
+                <ProtectedRoute permission="canViewDashboard">
+                  <LazyWrapper componentName="HiggsFlow Analytics Dashboard">
+                    <LazyHiggsFlowAnalyticsDashboard />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Legacy Analytics Dashboard (keeping for backward compatibility) */}
+            <Route 
+              path="/analytics-legacy" 
+              element={
+                <ProtectedRoute permission="canViewDashboard">
+                  <LazyWrapper componentName="Analytics Dashboard">
                     <LazyAnalyticsDashboard />
                   </LazyWrapper>
                 </ProtectedRoute>
@@ -917,6 +944,9 @@ function AppContent() {
           {/* 🚀 NEW: Analytics route redirects */}
           <Route path="/reports" element={<Navigate to="/analytics" replace />} />
           <Route path="/insights" element={<Navigate to="/analytics" replace />} />
+          <Route path="/bi" element={<Navigate to="/analytics" replace />} />
+          <Route path="/business-analytics" element={<Navigate to="/analytics" replace />} />
+          <Route path="/phase-2b" element={<Navigate to="/analytics" replace />} />
           
           {/* Catch all - smart redirect based on authentication */}
           <Route 
@@ -947,7 +977,7 @@ function AppContent() {
         {/* 🚀 NEW: Analytics Status Indicator */}
         {analyticsInitialized && import.meta.env.DEV && (
           <div className="fixed bottom-20 right-4 bg-green-500 text-white text-xs px-3 py-1 rounded-full shadow-lg z-50">
-            📊 Analytics Active
+            📊 Phase 2B Analytics Active
           </div>
         )}
         
@@ -970,6 +1000,15 @@ function AppContent() {
               title="Check Analytics Status"
             >
               📊 Analytics Debug
+            </button>
+            
+            {/* 🚀 NEW: Quick Analytics Access */}
+            <button
+              onClick={() => window.location.href = '/analytics'}
+              className="fixed bottom-4 left-52 bg-purple-600 text-white text-xs px-3 py-1 rounded-full hover:bg-purple-700 z-50 shadow-lg transition-colors"
+              title="Open Analytics Dashboard"
+            >
+              🚀 Phase 2B
             </button>
           </>
         )}
