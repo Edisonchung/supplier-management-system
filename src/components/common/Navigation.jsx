@@ -1,4 +1,4 @@
-// src/components/common/Navigation.jsx - Enhanced with DualSystemDashboard, PromptManagement and Dark Mode
+// src/components/common/Navigation.jsx - Enhanced with Phase 2B Analytics & E-commerce Features
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -34,7 +34,22 @@ import {
   GitBranch,
   FileEdit,
   Layers,
-  FolderTree
+  FolderTree,
+  // 🚀 NEW: Phase 2B Analytics & E-commerce Icons
+  TrendingUp,
+  Eye,
+  Target,
+  Store,
+  CreditCard,
+  Headphones,
+  Award,
+  Smartphone,
+  Mail,
+  Heart,
+  Search,
+  Filter,
+  Home,
+  Briefcase
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -61,6 +76,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     aiGenerated: 0,
     totalCategories: 0
   });
+  
+  // 🚀 NEW: Phase 2B Analytics & E-commerce Counters
+  const [analyticsCount, setAnalyticsCount] = useState(0);
+  const [ecommerceCount, setEcommerceCount] = useState(0);
+  const [factoryCount, setFactoryCount] = useState(0);
   
   useEffect(() => {
     // Check localStorage for various counts
@@ -112,6 +132,24 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           ).length
         });
 
+        // 🚀 NEW: Phase 2B Analytics Count
+        const analyticsEvents = JSON.parse(localStorage.getItem('higgsflow_analytics') || '[]');
+        const recentAnalytics = analyticsEvents.filter(event => {
+          const eventDate = new Date(event.timestamp);
+          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          return eventDate > dayAgo;
+        }).length;
+        setAnalyticsCount(recentAnalytics);
+
+        // 🚀 NEW: E-commerce Count (active factories, quotes, etc.)
+        const factoryRegistrations = JSON.parse(localStorage.getItem('higgsflow_factories') || '[]');
+        const activeFactories = factoryRegistrations.filter(factory => factory.status === 'active').length;
+        setFactoryCount(activeFactories);
+        
+        const quoteRequests = JSON.parse(localStorage.getItem('higgsflow_quotes') || '[]');
+        const pendingQuotes = quoteRequests.filter(quote => quote.status === 'pending').length;
+        setEcommerceCount(pendingQuotes);
+
         // Simulate team online count (placeholder)
         setTeamOnline(Math.floor(Math.random() * 3) + 1);
         // Category Management counts
@@ -140,7 +178,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     }
   };
 
-  // Enhanced navigation structure with multi-company admin
+  // Enhanced navigation structure with Phase 2B Analytics & E-commerce
   const navigationItems = [
     // Dashboard (no section)
     {
@@ -149,6 +187,90 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       icon: LayoutDashboard,
       description: 'Overview and analytics',
       permission: 'canViewDashboard'
+    },
+
+    // 🚀 NEW: Phase 2B Analytics Section
+    {
+      name: 'Analytics & Intelligence',
+      section: true,
+      children: [
+        {
+          name: 'HiggsFlow Analytics',
+          href: '/analytics',
+          icon: TrendingUp,
+          description: 'Executive business intelligence dashboard',
+          permission: 'canViewAnalytics',
+          badge: analyticsCount > 0 ? analyticsCount : 'LIVE',
+          badgeColor: 'bg-purple-500'
+        },
+        {
+          name: 'Real-time Insights',
+          href: '/insights',
+          icon: Eye,
+          description: 'Live data and performance metrics',
+          permission: 'canViewAnalytics',
+          badge: 'BETA',
+          badgeColor: 'bg-blue-500'
+        },
+        {
+          name: 'Business Intelligence',
+          href: '/business-intelligence',
+          icon: Brain,
+          description: 'Advanced analytics and reports',
+          permission: 'canViewReports',
+          badge: 'AI',
+          badgeColor: 'bg-indigo-500'
+        }
+      ]
+    },
+
+    // 🚀 NEW: E-commerce & Public Platform Section
+    {
+      name: 'E-commerce Platform',
+      section: true,
+      children: [
+        {
+          name: 'Smart Catalog',
+          href: '/catalog',
+          icon: Store,
+          description: 'AI-powered public product catalog',
+          permission: 'canViewProducts',
+          badge: 'PUBLIC',
+          badgeColor: 'bg-green-500'
+        },
+        {
+          name: 'Factory Registration',
+          href: '/factory-registration',
+          icon: Factory,
+          description: 'New factory onboarding portal',
+          permission: 'canViewFactories',
+          badge: factoryCount > 0 ? `${factoryCount} Active` : null,
+          badgeColor: 'bg-orange-500'
+        },
+        {
+          name: 'Factory Dashboard',
+          href: '/factory-dashboard',
+          icon: Briefcase,
+          description: 'Factory management portal',
+          permission: 'canManageFactories'
+        },
+        {
+          name: 'Quote Requests',
+          href: '/quote-requests',
+          icon: CreditCard,
+          description: 'Manage customer quote requests',
+          permission: 'canViewQuotes',
+          badge: ecommerceCount > 0 ? ecommerceCount : null,
+          badgeColor: 'bg-yellow-500'
+        },
+        {
+          name: 'Shopping Cart',
+          href: '/shopping-cart',
+          icon: ShoppingCart,
+          description: 'Customer shopping cart management',
+          permission: 'canViewOrders'
+        }
+      ]
     },
 
     // Core Management Section
@@ -583,7 +705,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                   <p className="text-xs text-blue-100">
                     {permissions.isMultiCompanyUser ? 
                       `Multi-Company Platform` : 
-                      'Accelerating Supply Chain'
+                      'Phase 2B Analytics Ready'
                     }
                   </p>
                 </div>
@@ -694,7 +816,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                   <p className="text-xs text-blue-100">
                     {permissions.isMultiCompanyUser ? 
                       'Multi-Company Dashboard' : 
-                      'Team Dashboard'
+                      'Phase 2B Analytics'
                     }
                   </p>
                 </div>
