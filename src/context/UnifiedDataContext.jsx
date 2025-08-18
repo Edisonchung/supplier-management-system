@@ -1,5 +1,5 @@
 // src/context/UnifiedDataContext.jsx
-// 🔥 ENHANCED VERSION: Your existing code + Firestore real-time capabilities
+// 🔥 ENHANCED VERSION: Your existing code + Smart Catalog Real Data Integration
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
 import { 
   collection, 
@@ -11,15 +11,18 @@ import {
   query, 
   where, 
   orderBy,
+  limit,
+  startAfter,
+  getDocs,
   serverTimestamp,
   writeBatch,
-  getDocs
+  increment
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
 
-// Enhanced Action Types (keeping all your existing ones)
+// Enhanced Action Types (keeping all your existing ones + Smart Catalog)
 const ACTION_TYPES = {
   // Loading States
   SET_LOADING: 'SET_LOADING',
@@ -45,13 +48,24 @@ const ACTION_TYPES = {
   UPDATE_PAYMENT_STATUS: 'UPDATE_PAYMENT_STATUS',
   SYNC_TRACKING_DATA: 'SYNC_TRACKING_DATA',
   
-  // 🔥 NEW: Firestore Management
+  // Firestore Management
   SET_DATA_SOURCE: 'SET_DATA_SOURCE',
   SET_MIGRATION_STATUS: 'SET_MIGRATION_STATUS',
-  SET_REAL_TIME_STATUS: 'SET_REAL_TIME_STATUS'
+  SET_REAL_TIME_STATUS: 'SET_REAL_TIME_STATUS',
+  
+  // 🔥 NEW: Smart Catalog Actions
+  LOAD_CATALOG_PRODUCTS: 'LOAD_CATALOG_PRODUCTS',
+  UPDATE_CATALOG_PRODUCT: 'UPDATE_CATALOG_PRODUCT',
+  SET_CATALOG_FILTERS: 'SET_CATALOG_FILTERS',
+  SET_SEARCH_RESULTS: 'SET_SEARCH_RESULTS',
+  TRACK_USER_INTERACTION: 'TRACK_USER_INTERACTION',
+  UPDATE_PERSONALIZATION: 'UPDATE_PERSONALIZATION',
+  SET_CATALOG_PAGINATION: 'SET_CATALOG_PAGINATION',
+  SYNC_CATALOG_WITH_INVENTORY: 'SYNC_CATALOG_WITH_INVENTORY',
+  UPDATE_FACTORY_PROFILE: 'UPDATE_FACTORY_PROFILE'
 };
 
-// Enhanced Initial State (keeping all your existing structure)
+// Enhanced Initial State (keeping all your existing structure + Smart Catalog)
 const initialState = {
   // Core Data
   purchaseOrders: [],
@@ -63,12 +77,49 @@ const initialState = {
   deliveryTracking: {},
   paymentTracking: {},
   
+  // 🔥 NEW: Smart Catalog Data
+  catalogProducts: [],
+  featuredProducts: [],
+  categories: [],
+  searchResults: [],
+  userInteractions: [],
+  factoryProfiles: {},
+  personalization: {
+    recommendedProducts: [],
+    viewHistory: [],
+    searchHistory: [],
+    preferences: {}
+  },
+  
+  // Catalog Filters & Search
+  catalogFilters: {
+    category: '',
+    priceRange: [0, 10000],
+    availability: 'all',
+    rating: 0,
+    location: '',
+    certifications: [],
+    sortBy: 'relevance'
+  },
+  
+  // Pagination
+  catalogPagination: {
+    currentPage: 1,
+    pageSize: 24,
+    totalProducts: 0,
+    hasMore: true,
+    lastDoc: null
+  },
+  
   // UI State
   loading: {
     global: false,
     purchaseOrders: false,
     deliveryTracking: false,
-    paymentTracking: false
+    paymentTracking: false,
+    catalogProducts: false,
+    searchResults: false,
+    personalization: false
   },
   
   // Error State
@@ -88,10 +139,10 @@ const initialState = {
   metadata: {
     totalRecords: 0,
     lastModified: null,
-    version: '1.0.0'
+    version: '2.0.0' // Updated version for Smart Catalog
   },
   
-  // 🔥 NEW: Firestore State
+  // Firestore State
   dataSource: localStorage.getItem('dataSource') || 'localStorage',
   migrationStatus: {
     inProgress: false,
@@ -105,7 +156,7 @@ const initialState = {
   }
 };
 
-// Enhanced Reducer (keeping all your existing cases + new ones)
+// Enhanced Reducer (keeping all your existing cases + new Smart Catalog cases)
 function unifiedDataReducer(state, action) {
   switch (action.type) {
     case ACTION_TYPES.SET_LOADING:
@@ -283,7 +334,7 @@ function unifiedDataReducer(state, action) {
         }
       };
       
-    // 🔥 NEW: Firestore-specific actions
+    // Firestore-specific actions
     case ACTION_TYPES.SET_DATA_SOURCE:
       return {
         ...state,
@@ -306,6 +357,79 @@ function unifiedDataReducer(state, action) {
         realTimeStatus: { ...state.realTimeStatus, ...action.payload }
       };
       
+    // 🔥 NEW: Smart Catalog Actions
+    case ACTION_TYPES.LOAD_CATALOG_PRODUCTS:
+      return {
+        ...state,
+        catalogProducts: action.payload.append 
+          ? [...state.catalogProducts, ...action.payload.products]
+          : action.payload.products,
+        loading: {
+          ...state.loading,
+          catalogProducts: false
+        }
+      };
+      
+    case ACTION_TYPES.UPDATE_CATALOG_PRODUCT:
+      return {
+        ...state,
+        catalogProducts: state.catalogProducts.map(product =>
+          product.id === action.payload.id
+            ? { ...product, ...action.payload.updates }
+            : product
+        )
+      };
+      
+    case ACTION_TYPES.SET_CATALOG_FILTERS:
+      return {
+        ...state,
+        catalogFilters: { ...state.catalogFilters, ...action.payload }
+      };
+      
+    case ACTION_TYPES.SET_SEARCH_RESULTS:
+      return {
+        ...state,
+        searchResults: action.payload,
+        loading: {
+          ...state.loading,
+          searchResults: false
+        }
+      };
+      
+    case ACTION_TYPES.TRACK_USER_INTERACTION:
+      return {
+        ...state,
+        userInteractions: [action.payload, ...state.userInteractions.slice(0, 99)] // Keep last 100
+      };
+      
+    case ACTION_TYPES.UPDATE_PERSONALIZATION:
+      return {
+        ...state,
+        personalization: { ...state.personalization, ...action.payload },
+        loading: {
+          ...state.loading,
+          personalization: false
+        }
+      };
+      
+    case ACTION_TYPES.SET_CATALOG_PAGINATION:
+      return {
+        ...state,
+        catalogPagination: { ...state.catalogPagination, ...action.payload }
+      };
+      
+    case ACTION_TYPES.UPDATE_FACTORY_PROFILE:
+      return {
+        ...state,
+        factoryProfiles: {
+          ...state.factoryProfiles,
+          [action.payload.factoryId]: {
+            ...state.factoryProfiles[action.payload.factoryId],
+            ...action.payload.profile
+          }
+        }
+      };
+      
     default:
       return state;
   }
@@ -314,7 +438,7 @@ function unifiedDataReducer(state, action) {
 // Context
 const UnifiedDataContext = createContext();
 
-// Enhanced Storage Service (keeping your existing structure)
+// Enhanced Storage Service (keeping your existing structure + Smart Catalog)
 class StorageService {
   static getStorageKey(entityType) {
     return `higgsflow_${entityType}`;
@@ -348,7 +472,7 @@ class StorageService {
     return results;
   }
   
-  // 🔥 NEW: Firestore operations
+  // Firestore operations
   static async saveToFirestore(collectionName, data) {
     try {
       const docRef = await addDoc(collection(db, collectionName), {
@@ -385,6 +509,91 @@ class StorageService {
       return { success: false, error: error.message };
     }
   }
+  
+  // 🔥 NEW: Smart Catalog Firestore Operations
+  static async searchCatalogProducts(searchParams) {
+    try {
+      const { 
+        searchTerm, 
+        category, 
+        priceRange, 
+        availability, 
+        rating,
+        limit: limitCount = 24,
+        lastDoc = null 
+      } = searchParams;
+      
+      let q = collection(db, 'catalogProducts');
+      
+      // Apply filters
+      if (category && category !== 'all') {
+        q = query(q, where('category', '==', category));
+      }
+      
+      if (availability === 'in-stock') {
+        q = query(q, where('stockQuantity', '>', 0));
+      }
+      
+      if (rating > 0) {
+        q = query(q, where('rating', '>=', rating));
+      }
+      
+      // Apply sorting
+      q = query(q, orderBy('updatedAt', 'desc'));
+      
+      // Apply pagination
+      if (lastDoc) {
+        q = query(q, startAfter(lastDoc));
+      }
+      
+      q = query(q, limit(limitCount));
+      
+      const snapshot = await getDocs(q);
+      const products = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+        updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
+      }));
+      
+      return { 
+        success: true, 
+        products,
+        lastDoc: snapshot.docs[snapshot.docs.length - 1],
+        hasMore: snapshot.docs.length === limitCount
+      };
+    } catch (error) {
+      console.error('Catalog search error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  static async trackUserInteraction(interaction) {
+    try {
+      await addDoc(collection(db, 'userInteractions'), {
+        ...interaction,
+        timestamp: serverTimestamp()
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Interaction tracking error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  static async updateProductViews(productId) {
+    try {
+      const productRef = doc(db, 'catalogProducts', productId);
+      await updateDoc(productRef, {
+        viewCount: increment(1),
+        lastViewed: serverTimestamp()
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Product view update error:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Enhanced Provider Component
@@ -393,7 +602,7 @@ export function UnifiedDataProvider({ children }) {
   const { user } = useAuth();
   const [realtimeSubscriptions, setRealtimeSubscriptions] = useState({});
   
-  // 🔥 NEW: Set up real-time subscriptions when data source changes to Firestore
+  // Set up real-time subscriptions when data source changes to Firestore
   useEffect(() => {
     if (state.dataSource === 'firestore' && user) {
       setupRealtimeSubscriptions();
@@ -413,7 +622,7 @@ export function UnifiedDataProvider({ children }) {
     dispatch({ type: ACTION_TYPES.SET_LOADING, payload: { key: 'global', value: true } });
     
     try {
-      const entityTypes = ['purchaseOrders', 'proformaInvoices', 'suppliers', 'products'];
+      const entityTypes = ['purchaseOrders', 'proformaInvoices', 'suppliers', 'products', 'catalogProducts'];
       const loadPromises = entityTypes.map(async (entityType) => {
         const data = await StorageService.loadData(entityType);
         dispatch({
@@ -456,7 +665,7 @@ export function UnifiedDataProvider({ children }) {
     }
   }, []);
 
-  // 🔥 NEW: Real-time subscriptions setup
+  // Real-time subscriptions setup
   const setupRealtimeSubscriptions = useCallback(() => {
     console.log('🔥 Setting up Firestore real-time subscriptions...');
     
@@ -519,7 +728,34 @@ export function UnifiedDataProvider({ children }) {
         toast.error('Lost connection to payment tracking');
       });
       
-      // Purchase Orders Subscription (optional - can be added)
+      // 🔥 NEW: Catalog Products Subscription
+      const catalogQuery = query(
+        collection(db, 'catalogProducts'),
+        where('isActive', '==', true),
+        orderBy('updatedAt', 'desc'),
+        limit(50) // Load first 50 products
+      );
+      
+      const unsubscribeCatalog = onSnapshot(catalogQuery, (snapshot) => {
+        const catalogData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+          updatedAt: doc.data().updatedAt?.toDate?.()?.toISOString() || doc.data().updatedAt
+        }));
+        
+        dispatch({
+          type: ACTION_TYPES.LOAD_CATALOG_PRODUCTS,
+          payload: { products: catalogData, append: false }
+        });
+        
+        console.log('🛍️ Catalog products updated:', catalogData.length, 'items');
+      }, (error) => {
+        console.error('Catalog products subscription error:', error);
+        toast.error('Lost connection to catalog updates');
+      });
+      
+      // Purchase Orders Subscription
       const poQuery = query(
         collection(db, 'purchaseOrders'),
         orderBy('createdAt', 'desc')
@@ -548,6 +784,7 @@ export function UnifiedDataProvider({ children }) {
       setRealtimeSubscriptions({
         delivery: unsubscribeDelivery,
         payment: unsubscribePayment,
+        catalog: unsubscribeCatalog,
         purchaseOrders: unsubscribePO
       });
       
@@ -556,7 +793,7 @@ export function UnifiedDataProvider({ children }) {
         payload: { 
           connected: true, 
           lastSync: new Date().toISOString(),
-          activeSubscriptions: 3
+          activeSubscriptions: 4
         }
       });
       
@@ -585,7 +822,7 @@ export function UnifiedDataProvider({ children }) {
     });
   }, [realtimeSubscriptions]);
 
-  // 🔥 NEW: Data Source Management
+  // Data Source Management
   const switchDataSource = useCallback(async (newSource) => {
     if (newSource === state.dataSource) return;
     
@@ -829,7 +1066,115 @@ export function UnifiedDataProvider({ children }) {
     }
   }, [state.dataSource, state.paymentTracking, user]);
 
-  // 🔥 NEW: Firestore Migration Function
+  // 🔥 NEW: Smart Catalog Functions
+  const searchCatalogProducts = useCallback(async (searchParams) => {
+    dispatch({ type: ACTION_TYPES.SET_LOADING, payload: { key: 'searchResults', value: true } });
+    
+    try {
+      if (state.dataSource === 'firestore') {
+        const result = await StorageService.searchCatalogProducts(searchParams);
+        if (result.success) {
+          dispatch({
+            type: ACTION_TYPES.SET_SEARCH_RESULTS,
+            payload: result.products
+          });
+          
+          if (searchParams.searchTerm) {
+            // Track search interaction
+            trackUserInteraction({
+              type: 'search',
+              searchTerm: searchParams.searchTerm,
+              resultCount: result.products.length
+            });
+          }
+          
+          return result;
+        }
+        throw new Error(result.error);
+      } else {
+        // Local search implementation
+        let filtered = state.catalogProducts;
+        
+        if (searchParams.searchTerm) {
+          const term = searchParams.searchTerm.toLowerCase();
+          filtered = filtered.filter(product => 
+            product.name.toLowerCase().includes(term) ||
+            product.description?.toLowerCase().includes(term) ||
+            product.category?.toLowerCase().includes(term)
+          );
+        }
+        
+        if (searchParams.category && searchParams.category !== 'all') {
+          filtered = filtered.filter(product => product.category === searchParams.category);
+        }
+        
+        dispatch({
+          type: ACTION_TYPES.SET_SEARCH_RESULTS,
+          payload: filtered
+        });
+        
+        return { success: true, products: filtered };
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      dispatch({
+        type: ACTION_TYPES.SET_ERROR,
+        payload: { key: 'searchResults', error: error.message }
+      });
+      return { success: false, error: error.message };
+    }
+  }, [state.dataSource, state.catalogProducts]);
+  
+  const trackUserInteraction = useCallback(async (interaction) => {
+    const interactionData = {
+      ...interaction,
+      userId: user?.uid,
+      timestamp: new Date().toISOString(),
+      sessionId: `session_${Date.now()}`
+    };
+    
+    // Store locally immediately
+    dispatch({
+      type: ACTION_TYPES.TRACK_USER_INTERACTION,
+      payload: interactionData
+    });
+    
+    // Send to Firestore if available
+    if (state.dataSource === 'firestore') {
+      try {
+        await StorageService.trackUserInteraction(interactionData);
+      } catch (error) {
+        console.error('Failed to track interaction:', error);
+      }
+    }
+  }, [user, state.dataSource]);
+  
+  const updatePersonalization = useCallback(async (updates) => {
+    dispatch({ type: ACTION_TYPES.SET_LOADING, payload: { key: 'personalization', value: true } });
+    
+    try {
+      dispatch({
+        type: ACTION_TYPES.UPDATE_PERSONALIZATION,
+        payload: updates
+      });
+      
+      // Save to storage
+      if (state.dataSource === 'firestore' && user) {
+        await StorageService.updateInFirestore('userProfiles', user.uid, {
+          personalization: { ...state.personalization, ...updates }
+        });
+      } else {
+        await StorageService.saveData('personalization', { ...state.personalization, ...updates });
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to update personalization:', error);
+      return { success: false, error: error.message };
+    }
+  }, [state.dataSource, state.personalization, user]);
+
+  // Firestore Migration Function
   const migrateToFirestore = useCallback(async () => {
     if (state.dataSource === 'firestore') {
       toast.error('Already using Firestore');
@@ -872,6 +1217,18 @@ export function UnifiedDataProvider({ children }) {
         migrationCount++;
       });
       
+      // 🔥 NEW: Migrate catalog products
+      state.catalogProducts.forEach((product) => {
+        const docRef = doc(collection(db, 'catalogProducts'));
+        batch.set(docRef, {
+          ...product,
+          migratedAt: serverTimestamp(),
+          createdBy: user?.uid,
+          isActive: true
+        });
+        migrationCount++;
+      });
+      
       // Execute batch
       await batch.commit();
       
@@ -902,7 +1259,7 @@ export function UnifiedDataProvider({ children }) {
       
       return { success: false, error: error.message };
     }
-  }, [state.dataSource, state.deliveryTracking, state.paymentTracking, user, switchDataSource]);
+  }, [state.dataSource, state.deliveryTracking, state.paymentTracking, state.catalogProducts, user, switchDataSource]);
   
   // Keep all your existing query operations unchanged
   const findEntity = useCallback((entityType, predicate) => {
@@ -933,9 +1290,9 @@ export function UnifiedDataProvider({ children }) {
     });
   }, []);
   
-  // Enhanced Context Value (keeping all your existing + new features)
+  // Enhanced Context Value (keeping all your existing + new Smart Catalog features)
   const value = {
-    // State (all your existing)
+    // State (all your existing + Smart Catalog)
     state,
     
     // CRUD Operations (all your existing)
@@ -956,12 +1313,17 @@ export function UnifiedDataProvider({ children }) {
     getCachedData,
     setCachedData,
     
+    // 🔥 NEW: Smart Catalog Operations
+    searchCatalogProducts,
+    trackUserInteraction,
+    updatePersonalization,
+    
     // Utility (all your existing)
     isLoading: (key) => state.loading[key] || false,
     getError: (key) => state.errors[key] || null,
     clearError: (key) => dispatch({ type: ACTION_TYPES.CLEAR_ERROR, payload: { key } }),
     
-    // 🔥 NEW: Firestore Features
+    // Firestore Features
     dataSource: state.dataSource,
     switchDataSource,
     migrateToFirestore,
@@ -977,7 +1339,7 @@ export function UnifiedDataProvider({ children }) {
   );
 }
 
-// Keep all your existing hooks unchanged
+// Keep all your existing hooks unchanged + new Smart Catalog hooks
 export function useUnifiedData() {
   const context = useContext(UnifiedDataContext);
   if (!context) {
@@ -1021,5 +1383,51 @@ export function usePaymentTracking() {
     updatePaymentStatus,
     isRealTimeActive,
     getPaymentStatus: (supplierId) => state.paymentTracking[supplierId] || null
+  };
+}
+
+// 🔥 NEW: Smart Catalog Hooks
+export function useSmartCatalog() {
+  const { 
+    state, 
+    searchCatalogProducts, 
+    trackUserInteraction, 
+    updatePersonalization,
+    isRealTimeActive 
+  } = useUnifiedData();
+  
+  return {
+    catalogProducts: state.catalogProducts,
+    searchResults: state.searchResults,
+    catalogFilters: state.catalogFilters,
+    catalogPagination: state.catalogPagination,
+    personalization: state.personalization,
+    userInteractions: state.userInteractions,
+    searchCatalogProducts,
+    trackUserInteraction,
+    updatePersonalization,
+    isRealTimeActive,
+    
+    // Helper functions
+    getFeaturedProducts: () => state.catalogProducts.filter(p => p.featured === true),
+    getProductsByCategory: (category) => state.catalogProducts.filter(p => p.category === category),
+    getRecommendedProducts: () => state.personalization.recommendedProducts || [],
+    getSearchHistory: () => state.personalization.searchHistory || [],
+    getViewHistory: () => state.personalization.viewHistory || []
+  };
+}
+
+export function useFactoryProfile() {
+  const { state, trackUserInteraction } = useUnifiedData();
+  
+  return {
+    factoryProfiles: state.factoryProfiles,
+    currentProfile: state.factoryProfiles[state.user?.uid] || null,
+    trackFactoryInteraction: trackUserInteraction,
+    
+    // Factory-specific helpers
+    getFactoryPreferences: (factoryId) => state.factoryProfiles[factoryId]?.preferences || {},
+    getFactoryPurchaseHistory: (factoryId) => state.factoryProfiles[factoryId]?.purchaseHistory || [],
+    getFactoryRecommendations: (factoryId) => state.factoryProfiles[factoryId]?.recommendations || []
   };
 }
