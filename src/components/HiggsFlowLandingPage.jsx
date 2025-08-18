@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Building2, ShoppingCart, BarChart3, Zap, Star, Users, Globe, CheckCircle, Play, Menu, X } from 'lucide-react';
+import { 
+  ArrowRight, Building2, ShoppingCart, BarChart3, Zap, Star, Users, Globe, 
+  CheckCircle, Play, Menu, X, Factory, Award, Shield, Truck, Phone, Mail, 
+  Calendar, Target, Brain, TrendingUp, Eye, Search, Heart, Download,
+  MessageSquare, ChevronDown, ChevronUp
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { higgsFlowAnalytics } from '../services/analyticsService';
 
@@ -95,11 +101,15 @@ const HiggsFlowLandingPage = () => {
 
   const handleCTAClick = (action) => {
     // Track CTA clicks
-    higgsFlowAnalytics.trackProductInteraction({
-      productId: 'landing_page_cta',
-      action: 'cta_click',
-      searchQuery: action
-    });
+    try {
+      higgsFlowAnalytics.trackProductInteraction({
+        productId: 'landing_page_cta',
+        action: 'cta_click',
+        searchQuery: action
+      });
+    } catch (error) {
+      console.error('Error tracking CTA click:', error);
+    }
   };
 
   return (
@@ -130,28 +140,28 @@ const HiggsFlowLandingPage = () => {
               
               <div className="flex items-center space-x-4">
                 {user ? (
-                  <a 
-                    href={user.email?.includes('higgsflow.com') ? '/admin' : '/factory/dashboard'}
+                  <Link 
+                    to={user.email?.includes('higgsflow.com') ? '/admin' : '/factory-dashboard'}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
                   >
                     Go to Dashboard
-                  </a>
+                  </Link>
                 ) : (
                   <>
-                    <a 
-                      href="/factory/login" 
+                    <Link 
+                      to="/login" 
                       className="text-gray-600 hover:text-gray-900 font-medium"
                       onClick={() => handleCTAClick('factory_login')}
                     >
                       Factory Login
-                    </a>
-                    <a 
-                      href="/catalog" 
+                    </Link>
+                    <Link 
+                      to="/catalog" 
                       className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
                       onClick={() => handleCTAClick('browse_catalog')}
                     >
                       Browse Catalog
-                    </a>
+                    </Link>
                   </>
                 )}
               </div>
@@ -179,16 +189,16 @@ const HiggsFlowLandingPage = () => {
               <a href="#contact" className="block px-3 py-2 text-gray-600 hover:text-gray-900">Contact</a>
               <div className="pt-2 space-y-2">
                 {user ? (
-                  <a 
-                    href={user.email?.includes('higgsflow.com') ? '/admin' : '/factory/dashboard'}
+                  <Link 
+                    to={user.email?.includes('higgsflow.com') ? '/admin' : '/factory-dashboard'}
                     className="block bg-blue-600 text-white px-3 py-2 rounded-lg font-medium text-center"
                   >
                     Go to Dashboard
-                  </a>
+                  </Link>
                 ) : (
                   <>
-                    <a href="/factory/login" className="block text-center px-3 py-2 text-gray-600">Factory Login</a>
-                    <a href="/catalog" className="block bg-blue-600 text-white px-3 py-2 rounded-lg font-medium text-center">Browse Catalog</a>
+                    <Link to="/login" className="block text-center px-3 py-2 text-gray-600">Factory Login</Link>
+                    <Link to="/catalog" className="block bg-blue-600 text-white px-3 py-2 rounded-lg font-medium text-center">Browse Catalog</Link>
                   </>
                 )}
               </div>
@@ -219,22 +229,22 @@ const HiggsFlowLandingPage = () => {
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4">
-                <a 
-                  href="/catalog" 
+                <Link 
+                  to="/catalog" 
                   className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center"
                   onClick={() => handleCTAClick('hero_browse_catalog')}
                 >
                   <ShoppingCart className="w-5 h-5 mr-2" />
                   Browse Smart Catalog
-                </a>
-                <a 
-                  href="/factory/register" 
+                </Link>
+                <Link 
+                  to="/factory-registration" 
                   className="border border-blue-600 text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors flex items-center justify-center"
                   onClick={() => handleCTAClick('hero_register_factory')}
                 >
                   <Building2 className="w-5 h-5 mr-2" />
                   Register Your Factory
-                </a>
+                </Link>
               </div>
               
               <div className="mt-8 flex items-center space-x-6 text-sm text-gray-600">
@@ -411,22 +421,22 @@ const HiggsFlowLandingPage = () => {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a 
-              href="/catalog" 
+            <Link 
+              to="/catalog" 
               className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors flex items-center justify-center"
               onClick={() => handleCTAClick('cta_browse_catalog')}
             >
               <ShoppingCart className="w-5 h-5 mr-2" />
               Start Browsing Now
-            </a>
-            <a 
-              href="/factory/register" 
+            </Link>
+            <Link 
+              to="/factory-registration" 
               className="border border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors flex items-center justify-center"
               onClick={() => handleCTAClick('cta_register_factory')}
             >
               <Building2 className="w-5 h-5 mr-2" />
               Register Your Factory
-            </a>
+            </Link>
           </div>
           
           <div className="mt-8 text-blue-100 text-sm">
@@ -460,10 +470,10 @@ const HiggsFlowLandingPage = () => {
             <div>
               <h3 className="text-lg font-semibold mb-4">Platform</h3>
               <ul className="space-y-2 text-gray-400">
-                <li><a href="/catalog" className="hover:text-white transition-colors">Browse Catalog</a></li>
-                <li><a href="/factory/register" className="hover:text-white transition-colors">Register Factory</a></li>
-                <li><a href="/factory/login" className="hover:text-white transition-colors">Factory Login</a></li>
-                <li><a href="/admin" className="hover:text-white transition-colors">Admin Portal</a></li>
+                <li><Link to="/catalog" className="hover:text-white transition-colors">Browse Catalog</Link></li>
+                <li><Link to="/factory-registration" className="hover:text-white transition-colors">Register Factory</Link></li>
+                <li><Link to="/login" className="hover:text-white transition-colors">Factory Login</Link></li>
+                <li><Link to="/admin" className="hover:text-white transition-colors">Admin Portal</Link></li>
               </ul>
             </div>
             
