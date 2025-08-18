@@ -1,5 +1,5 @@
 // src/hooks/usePermissions.js
-// Enhanced Multi-Company Permissions Hook - FULLY FIXED SYNTAX
+// Enhanced Multi-Company Permissions Hook - Phase 2B Analytics & E-commerce Integration
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -66,6 +66,23 @@ export const usePermissions = () => {
       canViewActivity: false,
       canManageSettings: false,
       
+      // 🚀 NEW: Phase 2B Analytics Permissions
+      canViewAnalytics: false,
+      canViewReports: false,
+      canViewInsights: false,
+      canExportAnalytics: false,
+      canManageAnalytics: false,
+      
+      // 🚀 NEW: Phase 2B E-commerce Permissions
+      canViewFactories: false,
+      canManageFactories: false,
+      canViewQuotes: false,
+      canManageQuotes: false,
+      canViewCatalog: false,
+      canEditCatalog: false,
+      canProcessOrders: false,
+      canManageShoppingCart: false,
+      
       // Multi-company permissions
       canViewAllCompanies: false,
       canManageCompanies: false,
@@ -82,6 +99,12 @@ export const usePermissions = () => {
       isDivisionAdmin: false,
       isCompanyAdmin: false,
       isRegionalAdmin: false,
+      
+      // 🚀 NEW: Phase 2B User Types
+      isFactoryUser: false,
+      isSupplierUser: false,
+      isAnalyticsUser: false,
+      isMultiCompanyUser: false,
       
       // Company access
       accessibleCompanies: [],
@@ -105,6 +128,12 @@ export const usePermissions = () => {
   const isDivisionAdmin = companyPermissions?.role === 'division_admin';
   const isCompanyAdmin = companyPermissions?.role === 'company_admin';
   const isRegionalAdmin = companyPermissions?.role === 'regional_admin';
+  
+  // 🚀 NEW: Phase 2B User Type Detection
+  const isFactoryUser = user.email?.includes('factory') || user.userType === 'factory';
+  const isSupplierUser = user.email?.includes('supplier') || user.userType === 'supplier';
+  const isAnalyticsUser = ['admin', 'manager'].includes(userRole) || isGroupAdmin || isDivisionAdmin;
+  const isMultiCompanyUser = isGroupAdmin || isDivisionAdmin || isCompanyAdmin || isRegionalAdmin;
   
   // Company permissions based on role
   const hasCompanyPermission = (permission) => {
@@ -224,7 +253,7 @@ export const usePermissions = () => {
                        isGroupAdmin ||
                        hasCompanyPermission('manage_companies'),
 
-    // AI & MCP Tool permissions - NEW SECTION
+    // AI & MCP Tool permissions - EXISTING SECTION
     canViewAI: (PERMISSIONS?.canViewAI?.includes(userRole) ?? 
                ['admin', 'manager', 'employee'].includes(userRole)) ||
                isGroupAdmin ||
@@ -260,6 +289,148 @@ export const usePermissions = () => {
                   ['admin'].includes(userRole)) ||
                   isGroupAdmin ||
                   hasCompanyPermission('manage_companies')
+  };
+
+  // 🚀 NEW: Phase 2B Analytics Permissions
+  const analyticsPermissions = {
+    // Analytics Dashboard Access
+    canViewAnalytics: (PERMISSIONS?.canViewAnalytics?.includes(userRole) ?? 
+                      ['admin', 'manager'].includes(userRole)) ||
+                      isGroupAdmin ||
+                      isDivisionAdmin ||
+                      hasCompanyPermission('view_analytics'),
+    
+    // Reports and Insights
+    canViewReports: (PERMISSIONS?.canViewReports?.includes(userRole) ?? 
+                    ['admin', 'manager'].includes(userRole)) ||
+                    isGroupAdmin ||
+                    isDivisionAdmin ||
+                    hasCompanyPermission('view_reports'),
+                    
+    canViewInsights: (PERMISSIONS?.canViewInsights?.includes(userRole) ?? 
+                     ['admin', 'manager'].includes(userRole)) ||
+                     isGroupAdmin ||
+                     isDivisionAdmin ||
+                     hasCompanyPermission('view_analytics'),
+    
+    // Data Export and Management
+    canExportAnalytics: (PERMISSIONS?.canExportAnalytics?.includes(userRole) ?? 
+                        ['admin', 'manager'].includes(userRole)) ||
+                        isGroupAdmin ||
+                        hasCompanyPermission('export_data'),
+                        
+    canManageAnalytics: (PERMISSIONS?.canManageAnalytics?.includes(userRole) ?? 
+                        ['admin'].includes(userRole)) ||
+                        isGroupAdmin ||
+                        hasCompanyPermission('manage_analytics'),
+    
+    // Real-time Insights Access
+    canViewRealTimeData: (PERMISSIONS?.canViewRealTimeData?.includes(userRole) ?? 
+                         ['admin', 'manager'].includes(userRole)) ||
+                         isGroupAdmin ||
+                         isDivisionAdmin ||
+                         hasCompanyPermission('view_realtime'),
+                         
+    // Business Intelligence
+    canViewBusinessIntelligence: (PERMISSIONS?.canViewBusinessIntelligence?.includes(userRole) ?? 
+                                 ['admin', 'manager'].includes(userRole)) ||
+                                 isGroupAdmin ||
+                                 isDivisionAdmin ||
+                                 hasCompanyPermission('view_bi')
+  };
+
+  // 🚀 NEW: Phase 2B E-commerce Permissions
+  const ecommercePermissions = {
+    // Factory Management
+    canViewFactories: (PERMISSIONS?.canViewFactories?.includes(userRole) ?? 
+                      ['admin', 'manager', 'employee'].includes(userRole)) ||
+                      isGroupAdmin ||
+                      hasCompanyPermission('view_all') ||
+                      isFactoryUser,
+                      
+    canManageFactories: (PERMISSIONS?.canManageFactories?.includes(userRole) ?? 
+                        ['admin', 'manager'].includes(userRole)) ||
+                        isGroupAdmin ||
+                        hasCompanyPermission('manage_factories'),
+                        
+    canRegisterFactory: true, // Public registration allowed
+    
+    // Quote Management
+    canViewQuotes: (PERMISSIONS?.canViewQuotes?.includes(userRole) ?? 
+                   ['admin', 'manager', 'employee'].includes(userRole)) ||
+                   isGroupAdmin ||
+                   hasCompanyPermission('view_all') ||
+                   isFactoryUser ||
+                   isSupplierUser,
+                   
+    canManageQuotes: (PERMISSIONS?.canManageQuotes?.includes(userRole) ?? 
+                     ['admin', 'manager'].includes(userRole)) ||
+                     isGroupAdmin ||
+                     hasCompanyPermission('manage_quotes') ||
+                     isSupplierUser,
+                     
+    canCreateQuotes: isFactoryUser || 
+                     ['admin', 'manager', 'employee'].includes(userRole) ||
+                     isGroupAdmin,
+                     
+    canRespondToQuotes: isSupplierUser ||
+                        ['admin', 'manager'].includes(userRole) ||
+                        isGroupAdmin,
+    
+    // Catalog Access
+    canViewCatalog: true, // Public catalog access
+    
+    canEditCatalog: (PERMISSIONS?.canEditCatalog?.includes(userRole) ?? 
+                    ['admin', 'manager'].includes(userRole)) ||
+                    isGroupAdmin ||
+                    hasCompanyPermission('edit_catalog') ||
+                    isSupplierUser,
+                    
+    canManageCatalog: (PERMISSIONS?.canManageCatalog?.includes(userRole) ?? 
+                      ['admin'].includes(userRole)) ||
+                      isGroupAdmin ||
+                      hasCompanyPermission('manage_catalog'),
+    
+    // Order Processing
+    canProcessOrders: (PERMISSIONS?.canProcessOrders?.includes(userRole) ?? 
+                      ['admin', 'manager', 'employee'].includes(userRole)) ||
+                      isGroupAdmin ||
+                      hasCompanyPermission('process_orders') ||
+                      isSupplierUser,
+                      
+    canViewOrderHistory: (PERMISSIONS?.canViewOrderHistory?.includes(userRole) ?? 
+                         ['admin', 'manager', 'employee'].includes(userRole)) ||
+                         isGroupAdmin ||
+                         hasCompanyPermission('view_all') ||
+                         isFactoryUser ||
+                         isSupplierUser,
+    
+    // Shopping Cart
+    canManageShoppingCart: isFactoryUser ||
+                          ['admin', 'manager', 'employee'].includes(userRole) ||
+                          isGroupAdmin,
+                          
+    canCheckout: isFactoryUser ||
+                 ['admin', 'manager', 'employee'].includes(userRole) ||
+                 isGroupAdmin,
+    
+    // Supplier Features
+    canManageSupplierProfile: isSupplierUser ||
+                             ['admin'].includes(userRole) ||
+                             isGroupAdmin,
+                             
+    canUploadProducts: isSupplierUser ||
+                       ['admin', 'manager'].includes(userRole) ||
+                       isGroupAdmin,
+    
+    // Factory Features
+    canManageFactoryProfile: isFactoryUser ||
+                            ['admin'].includes(userRole) ||
+                            isGroupAdmin,
+                            
+    canAccessFactoryDashboard: isFactoryUser ||
+                              ['admin', 'manager'].includes(userRole) ||
+                              isGroupAdmin
   };
 
   // Multi-company specific permissions
@@ -313,6 +484,12 @@ export const usePermissions = () => {
     isCompanyAdmin: isCompanyAdmin,
     isRegionalAdmin: isRegionalAdmin,
     
+    // 🚀 NEW: Phase 2B User Type Flags
+    isFactoryUser: isFactoryUser,
+    isSupplierUser: isSupplierUser,
+    isAnalyticsUser: isAnalyticsUser,
+    isMultiCompanyUser: isMultiCompanyUser,
+    
     // Edison special privileges
     isEdisonAdmin: isEdisonAdmin,
     
@@ -324,7 +501,7 @@ export const usePermissions = () => {
     accessibleCompanies: accessibleCompanies,
     accessibleBranches: accessibleBranches,
     userCompanyRole: companyPermissions?.role || 'viewer',
-    userBadge: companyPermissions?.badge || 'Viewer',
+    userBadge: companyPermissions?.badge || (isAnalyticsUser ? 'Analytics User' : (isFactoryUser ? 'Factory User' : (isSupplierUser ? 'Supplier User' : 'Viewer'))),
     userTitle: companyPermissions?.title || 'Team Member',
     userLevel: companyPermissions?.level || 4,
     totalAccessibleCompanies: accessibleCompanies.length,
@@ -333,6 +510,8 @@ export const usePermissions = () => {
 
   return {
     ...basePermissions,
+    ...analyticsPermissions,
+    ...ecommercePermissions,
     ...multiCompanyPermissions,
     ...roleFlags,
     ...companyAccess,
@@ -359,6 +538,39 @@ export const usePermissions = () => {
     
     hasPermission: (permission) => hasCompanyPermission(permission),
     
+    // 🚀 NEW: Phase 2B Helper Methods
+    getUserType: () => {
+      if (isGroupAdmin) return 'group_admin';
+      if (isDivisionAdmin) return 'division_admin';
+      if (isCompanyAdmin) return 'company_admin';
+      if (isFactoryUser) return 'factory';
+      if (isSupplierUser) return 'supplier';
+      if (isAnalyticsUser) return 'analytics';
+      return userRole;
+    },
+    
+    canAccessAnalyticsSection: (section) => {
+      const sectionPermissions = {
+        'dashboard': analyticsPermissions.canViewAnalytics,
+        'reports': analyticsPermissions.canViewReports,
+        'insights': analyticsPermissions.canViewInsights,
+        'real-time': analyticsPermissions.canViewRealTimeData,
+        'business-intelligence': analyticsPermissions.canViewBusinessIntelligence
+      };
+      return sectionPermissions[section] || false;
+    },
+    
+    canAccessEcommerceSection: (section) => {
+      const sectionPermissions = {
+        'catalog': ecommercePermissions.canViewCatalog,
+        'factory-registration': ecommercePermissions.canRegisterFactory,
+        'factory-dashboard': ecommercePermissions.canAccessFactoryDashboard,
+        'quotes': ecommercePermissions.canViewQuotes,
+        'shopping-cart': ecommercePermissions.canManageShoppingCart
+      };
+      return sectionPermissions[section] || false;
+    },
+    
     // Company filtering helper
     filterPOsByAccess: (purchaseOrders) => {
       if (isGroupAdmin) return purchaseOrders;
@@ -382,10 +594,16 @@ export const usePermissions = () => {
     debug: {
       userEmail: user.email,
       userRole: userRole,
+      userType: isFactoryUser ? 'factory' : (isSupplierUser ? 'supplier' : 'internal'),
       companyPermissions: companyPermissions,
       accessibleCompaniesCount: accessibleCompanies.length,
       accessibleBranchesCount: accessibleBranches.length,
-      isInitialized: !loading
+      isInitialized: !loading,
+      phase2bFeatures: {
+        analytics: isAnalyticsUser,
+        ecommerce: isFactoryUser || isSupplierUser,
+        multiCompany: isMultiCompanyUser
+      }
     }
   };
 };
