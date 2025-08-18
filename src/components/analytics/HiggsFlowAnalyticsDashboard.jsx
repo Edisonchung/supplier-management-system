@@ -697,9 +697,10 @@ const HiggsFlowAnalyticsDashboard = () => {
     const loadUnifiedDataContext = async () => {
       try {
         const unifiedDataModule = await import('../../context/UnifiedDataContext');
+        console.log('✅ UnifiedDataContext loaded successfully');
         setUseUnifiedData(() => unifiedDataModule.useUnifiedData);
       } catch (error) {
-        console.warn('⚠️ UnifiedDataContext not available, using fallback');
+        console.warn('⚠️ UnifiedDataContext not available, using fallback:', error.message);
         setUseUnifiedData(() => () => ({
           state: {
             dataSource: 'localStorage',
@@ -714,8 +715,12 @@ const HiggsFlowAnalyticsDashboard = () => {
           isLoading: () => false,
           getError: () => null,
           isRealTimeActive: false,
-          switchDataSource: () => {},
-          refreshData: () => {}
+          switchDataSource: () => {
+            console.log('📦 Switching data source (fallback mode)');
+          },
+          refreshData: () => {
+            console.log('🔄 Refreshing data (fallback mode)');
+          }
         }));
       }
     };
@@ -723,30 +728,59 @@ const HiggsFlowAnalyticsDashboard = () => {
     loadUnifiedDataContext();
   }, []);
   
-  // Safe context usage
+  // Safe context usage with improved error handling
   const unifiedData = useMemo(() => {
     if (!useUnifiedData) {
+      console.log('📦 Using fallback data (context not loaded yet)');
       return {
-        state: { dataSource: 'localStorage' },
+        state: { 
+          dataSource: 'localStorage',
+          purchaseOrders: [],
+          suppliers: [],
+          products: [],
+          catalogProducts: [],
+          deliveryTracking: {},
+          paymentTracking: {},
+          metadata: { totalRecords: 0, lastModified: null }
+        },
         isLoading: () => false,
         getError: () => null,
         isRealTimeActive: false,
-        switchDataSource: () => {},
-        refreshData: () => {}
+        switchDataSource: () => {
+          console.log('📦 Switching data source (loading mode)');
+        },
+        refreshData: () => {
+          console.log('🔄 Refreshing data (loading mode)');
+        }
       };
     }
 
     try {
-      return useUnifiedData();
+      const contextData = useUnifiedData();
+      console.log('✅ UnifiedDataContext active, data source:', contextData.state?.dataSource);
+      return contextData;
     } catch (error) {
-      console.warn('⚠️ UnifiedDataContext error, using fallback:', error);
+      console.warn('⚠️ UnifiedDataContext error, using fallback:', error.message);
       return {
-        state: { dataSource: 'localStorage' },
+        state: { 
+          dataSource: 'localStorage-fallback',
+          purchaseOrders: [],
+          suppliers: [],
+          products: [],
+          catalogProducts: [],
+          deliveryTracking: {},
+          paymentTracking: {},
+          metadata: { totalRecords: 0, lastModified: null }
+        },
         isLoading: () => false,
         getError: () => null,
         isRealTimeActive: false,
-        switchDataSource: () => {},
-        refreshData: () => {}
+        switchDataSource: () => {
+          console.log('📦 Switching data source (error fallback)');
+        },
+        refreshData: () => {
+          console.log('🔄 Refreshing data (error fallback)');
+        }
       };
     }
   }, [useUnifiedData]);
