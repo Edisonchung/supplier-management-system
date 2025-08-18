@@ -1,5 +1,5 @@
-// src/App.jsx - UPDATED VERSION - Added Phase 2A E-commerce Routes + Dark Mode Support
-import React, { useState } from 'react';
+// src/App.jsx - PHASE 2B ENHANCED VERSION - Added Advanced Analytics + Smart Catalog
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -10,7 +10,7 @@ import Layout from './components/common/Layout';
 import PublicPIView from './components/procurement/PublicPIView';
 import Notification from './components/common/Notification';
 import { usePermissions } from './hooks/usePermissions';
-import { Truck, Upload, Users, Shield, Settings, Activity, Brain, ShoppingCart, Building2, Eye } from 'lucide-react';
+import { Truck, Upload, Users, Shield, Settings, Activity, Brain, ShoppingCart, Building2, Eye, BarChart3, Target } from 'lucide-react';
 import FirestoreHealthCheck from './components/FirestoreHealthCheck';
 import FirestoreTest from './components/FirestoreTest';
 import { LoadingFeedbackProvider } from './components/common/LoadingFeedbackSystem';
@@ -19,6 +19,9 @@ import SampleDataTest from './components/test/SampleDataTest';
 import EcommerceSetup from './components/setup/EcommerceSetup';
 import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
 import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
+
+// 🚀 NEW: Import Phase 2B Analytics Service
+import { higgsFlowAnalytics, useHiggsFlowAnalytics } from './services/analyticsService';
 
 import './App.css';
 
@@ -50,7 +53,7 @@ const LazyDualSystemDashboard = lazy(() => import('./components/mcp/DualSystemDa
 const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagement'));
 const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
 
-// 🆕 NEW: Phase 2A E-commerce Components
+// 🆕 EXISTING: Phase 2A E-commerce Components
 const LazyPublicCatalog = lazy(() => import('./components/ecommerce/PublicCatalog'));
 const LazyProductDetailPage = lazy(() => import('./components/ecommerce/ProductDetailPage'));
 const LazyFactoryRegistration = lazy(() => import('./components/ecommerce/FactoryRegistration'));
@@ -58,6 +61,13 @@ const LazyShoppingCart = lazy(() => import('./components/ecommerce/ShoppingCart'
 const LazyQuoteRequest = lazy(() => import('./components/ecommerce/QuoteRequest'));
 const LazyFactoryLogin = lazy(() => import('./components/ecommerce/FactoryLogin'));
 const LazyFactoryDashboard = lazy(() => import('./components/ecommerce/FactoryDashboard'));
+
+// 🚀 NEW: Phase 2B Advanced Analytics Components
+const LazySmartPublicCatalog = lazy(() => import('./components/SmartPublicCatalog'));
+const LazyAnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
+
+// 🚀 NEW: Professional Landing Page Component
+const LazyHiggsFlowLandingPage = lazy(() => import('./components/HiggsFlowLandingPage'));
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -96,14 +106,63 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// 🆕 NEW: Public Route Component (for e-commerce)
+// 🚀 NEW: Enhanced Public Route Component with Analytics
 const PublicRoute = ({ children }) => {
+  const analytics = useHiggsFlowAnalytics();
+
+  useEffect(() => {
+    // Track public route access
+    const trackPublicAccess = async () => {
+      try {
+        const sessionData = {
+          userAgent: navigator.userAgent,
+          entryPoint: 'public_route',
+          landingPage: window.location.pathname,
+          referrer: document.referrer,
+          ipAddress: await getClientIP()
+        };
+
+        await analytics.trackSession(sessionData);
+        console.log('📊 Public route analytics tracked');
+      } catch (error) {
+        console.error('❌ Error tracking public route:', error);
+      }
+    };
+
+    trackPublicAccess();
+  }, [analytics]);
+
   return children;
 };
 
-// 🆕 NEW: Factory Route Component (for authenticated factory users)
+// 🆕 EXISTING: Factory Route Component (for authenticated factory users)
 const FactoryRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const analytics = useHiggsFlowAnalytics();
+  
+  useEffect(() => {
+    if (user) {
+      // Track factory user session
+      const trackFactorySession = async () => {
+        try {
+          const sessionData = {
+            userId: user.uid,
+            email: user.email,
+            userAgent: navigator.userAgent,
+            entryPoint: 'factory_dashboard',
+            ipAddress: await getClientIP()
+          };
+
+          await analytics.trackSession(sessionData);
+          console.log('🏭 Factory user analytics tracked');
+        } catch (error) {
+          console.error('❌ Error tracking factory session:', error);
+        }
+      };
+
+      trackFactorySession();
+    }
+  }, [user, analytics]);
   
   if (loading) {
     return (
@@ -127,10 +186,36 @@ const FactoryRoute = ({ children }) => {
   return children;
 };
 
-// Protected Route Component (for admin/internal users)
+// 🚀 ENHANCED: Protected Route Component with Analytics
 const ProtectedRoute = ({ children, permission }) => {
   const { user, loading } = useAuth();
   const permissions = usePermissions();
+  const analytics = useHiggsFlowAnalytics();
+  
+  useEffect(() => {
+    if (user && permission) {
+      // Track admin access with permissions
+      const trackAdminAccess = async () => {
+        try {
+          const sessionData = {
+            userId: user.uid,
+            email: user.email,
+            userAgent: navigator.userAgent,
+            entryPoint: 'admin_panel',
+            permission: permission,
+            ipAddress: await getClientIP()
+          };
+
+          await analytics.trackSession(sessionData);
+          console.log('👨‍💼 Admin user analytics tracked');
+        } catch (error) {
+          console.error('❌ Error tracking admin session:', error);
+        }
+      };
+
+      trackAdminAccess();
+    }
+  }, [user, permission, analytics]);
   
   if (loading) {
     return (
@@ -175,14 +260,60 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
   </div>
 );
 
+// 🚀 NEW: Get Client IP Helper Function
+const getClientIP = async () => {
+  try {
+    // In production, use actual IP detection service
+    // For demo, return localhost
+    return '127.0.0.1';
+  } catch {
+    return 'unknown';
+  }
+};
+
 function AppContent() {
   const { user, loading } = useAuth();
   const [notification, setNotification] = useState(null);
   const [showFirestoreTest, setShowFirestoreTest] = useState(true);
+  const [analyticsInitialized, setAnalyticsInitialized] = useState(false);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
   };
+
+  // 🚀 NEW: Initialize Analytics on App Load
+  useEffect(() => {
+    const initializeAnalytics = async () => {
+      if (!analyticsInitialized) {
+        try {
+          console.log('🚀 Initializing HiggsFlow Phase 2B Analytics...');
+          
+          // Basic analytics initialization
+          const sessionData = {
+            userAgent: navigator.userAgent,
+            entryPoint: 'app_initialization',
+            landingPage: window.location.pathname,
+            referrer: document.referrer,
+            ipAddress: await getClientIP()
+          };
+
+          if (user) {
+            sessionData.userId = user.uid;
+            sessionData.email = user.email;
+          }
+
+          await higgsFlowAnalytics.trackUserSession(sessionData);
+          setAnalyticsInitialized(true);
+          
+          console.log('✅ Analytics initialized successfully');
+        } catch (error) {
+          console.error('❌ Error initializing analytics:', error);
+        }
+      }
+    };
+
+    initializeAnalytics();
+  }, [user, analyticsInitialized]);
 
   if (loading) {
     return (
@@ -191,6 +322,7 @@ function AppContent() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">Loading HiggsFlow...</p>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Accelerating Supply Chain</p>
+          <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Phase 2B • Advanced Analytics</p>
         </div>
       </div>
     );
@@ -249,21 +381,33 @@ function AppContent() {
       
       <Router>
         <Routes>
-          {/* ========== PUBLIC E-COMMERCE ROUTES ========== */}
+          {/* ========== PUBLIC E-COMMERCE ROUTES WITH SMART ANALYTICS ========== */}
           
-          {/* Main public catalog - HIGHEST PRIORITY */}
+          {/* 🚀 NEW: Smart Catalog with AI Analytics - DEFAULT PUBLIC ROUTE */}
           <Route 
             path="/catalog" 
             element={
               <PublicRoute>
-                <LazyWrapper componentName="Public Catalog">
+                <LazyWrapper componentName="Smart Public Catalog">
+                  <LazySmartPublicCatalog />
+                </LazyWrapper>
+              </PublicRoute>
+            } 
+          />
+          
+          {/* Legacy catalog for comparison */}
+          <Route 
+            path="/catalog/legacy" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="Legacy Public Catalog">
                   <LazyPublicCatalog />
                 </LazyWrapper>
               </PublicRoute>
             } 
           />
           
-          {/* Product detail pages */}
+          {/* Product detail pages with analytics */}
           <Route 
             path="/product/:productId" 
             element={
@@ -275,25 +419,25 @@ function AppContent() {
             } 
           />
           
-          {/* Category browsing */}
+          {/* Category browsing with smart filtering */}
           <Route 
             path="/category/:categorySlug" 
             element={
               <PublicRoute>
-                <LazyWrapper componentName="Category Products">
-                  <LazyPublicCatalog />
+                <LazyWrapper componentName="Smart Category Browser">
+                  <LazySmartPublicCatalog />
                 </LazyWrapper>
               </PublicRoute>
             } 
           />
           
-          {/* Search results */}
+          {/* Search results with AI recommendations */}
           <Route 
             path="/search" 
             element={
               <PublicRoute>
-                <LazyWrapper componentName="Search Results">
-                  <LazyPublicCatalog />
+                <LazyWrapper componentName="Smart Search Results">
+                  <LazySmartPublicCatalog />
                 </LazyWrapper>
               </PublicRoute>
             } 
@@ -382,6 +526,30 @@ function AppContent() {
                 <ProtectedRoute permission="canViewDashboard">
                   <LazyWrapper componentName="Dashboard">
                     <LazyDashboard />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* 🚀 NEW: Advanced Analytics Dashboard */}
+            <Route 
+              path="/analytics" 
+              element={
+                <ProtectedRoute permission="canViewDashboard">
+                  <LazyWrapper componentName="Analytics Dashboard">
+                    <LazyAnalyticsDashboard />
+                  </LazyWrapper>
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* 🚀 NEW: Business Intelligence Route */}
+            <Route 
+              path="/business-intelligence" 
+              element={
+                <ProtectedRoute permission="canViewDashboard">
+                  <LazyWrapper componentName="Business Intelligence">
+                    <LazyAnalyticsDashboard />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
@@ -705,27 +873,39 @@ function AppContent() {
             />
           </Route>
 
-          {/* ========== ROOT ROUTE LOGIC ========== */}
+          {/* ========== ROOT ROUTE WITH PROFESSIONAL LANDING PAGE ========== */}
           
-          {/* Smart root routing based on user type */}
+          {/* 🚀 NEW: Professional Landing Page for www.higgsflow.com */}
           <Route 
             path="/" 
             element={
               user ? (
-                // Check if user is admin (has higgsflow.com email) or factory user
+                // Logged in users get redirected to appropriate dashboard
                 user.email && (user.email.includes('higgsflow.com') || user.email.includes('admin')) ? (
                   <Navigate to="/admin" replace />
                 ) : (
                   <Navigate to="/factory/dashboard" replace />
                 )
               ) : (
-                // Not logged in - show public catalog
+                // Anonymous users see the professional landing page
                 <PublicRoute>
-                  <LazyWrapper componentName="Public Catalog">
-                    <LazyPublicCatalog />
+                  <LazyWrapper componentName="HiggsFlow Landing Page">
+                    <LazyHiggsFlowLandingPage />
                   </LazyWrapper>
                 </PublicRoute>
               )
+            } 
+          />
+
+          {/* Additional route for direct landing page access */}
+          <Route 
+            path="/home" 
+            element={
+              <PublicRoute>
+                <LazyWrapper componentName="HiggsFlow Landing Page">
+                  <LazyHiggsFlowLandingPage />
+                </LazyWrapper>
+              </PublicRoute>
             } 
           />
 
@@ -733,6 +913,10 @@ function AppContent() {
           
           {/* Redirect old admin routes */}
           <Route path="/dashboard" element={<Navigate to="/admin" replace />} />
+          
+          {/* 🚀 NEW: Analytics route redirects */}
+          <Route path="/reports" element={<Navigate to="/analytics" replace />} />
+          <Route path="/insights" element={<Navigate to="/analytics" replace />} />
           
           {/* Catch all - smart redirect based on authentication */}
           <Route 
@@ -760,6 +944,13 @@ function AppContent() {
           />
         )}
         
+        {/* 🚀 NEW: Analytics Status Indicator */}
+        {analyticsInitialized && import.meta.env.DEV && (
+          <div className="fixed bottom-20 right-4 bg-green-500 text-white text-xs px-3 py-1 rounded-full shadow-lg z-50">
+            📊 Analytics Active
+          </div>
+        )}
+        
         {/* Development Tools */}
         {user && import.meta.env.DEV && (
           <>
@@ -770,6 +961,15 @@ function AppContent() {
               title={`${showFirestoreTest ? 'Hide' : 'Show'} Firestore Test Panel`}
             >
               {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
+            </button>
+            
+            {/* 🚀 NEW: Analytics Debug Panel */}
+            <button
+              onClick={() => console.log('HiggsFlow Analytics Status:', higgsFlowAnalytics)}
+              className="fixed bottom-4 left-32 bg-blue-600 text-white text-xs px-3 py-1 rounded-full hover:bg-blue-700 z-50 shadow-lg transition-colors"
+              title="Check Analytics Status"
+            >
+              📊 Analytics Debug
             </button>
           </>
         )}
