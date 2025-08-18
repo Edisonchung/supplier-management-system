@@ -30,9 +30,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  onSnapshot,
-  enableIndexedDbPersistence,
-  CACHE_SIZE_UNLIMITED
+  onSnapshot
 } from 'firebase/firestore';
 import { 
   getStorage,
@@ -224,27 +222,22 @@ export const safeFirestoreOperation = async (operation, operationName, retries =
 // 🔥 ENHANCED: Firestore initialization with maximum CORS protection
 const initializeFirestoreWithCORS = (app) => {
   try {
-    // Method 1: Force offline-first mode with HTTP polling
+    // Method 1: Force offline-first mode with HTTP polling and modern cache settings
     const db = initializeFirestore(app, {
       experimentalForceLongPolling: true,           // Force HTTP polling instead of WebSocket
-      cacheSizeBytes: CACHE_SIZE_UNLIMITED,        // Unlimited cache
       ignoreUndefinedProperties: true,              // Handle undefined values
       merge: true,                                  // Merge configurations
       useFetchStreams: false,                       // Disable fetch streams
       experimentalTabSynchronization: false,        // Disable tab sync
       experimentalAutoDetectLongPolling: false,     // Force long polling
-    });
-    
-    // Enable offline persistence
-    enableIndexedDbPersistence(db, {
-      forceOwnership: true
-    }).catch((err) => {
-      if (err.code === 'failed-precondition') {
-        console.warn('⚠️ Multiple tabs open, persistence enabled in one tab only');
-      } else if (err.code === 'unimplemented') {
-        console.warn('⚠️ Browser doesn\'t support persistence');
+      // 🔥 NEW: Modern cache configuration (replaces enableIndexedDbPersistence)
+      cache: {
+        kind: 'persistent',
+        cacheSizeBytes: CACHE_SIZE_UNLIMITED
       }
     });
+    
+    // Note: enableIndexedDbPersistence is deprecated, using cache settings in initializeFirestore instead
     
     console.log('🔥 Firestore initialized with maximum CORS protection');
     return db;
