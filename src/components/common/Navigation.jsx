@@ -178,12 +178,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     }
   };
 
-  // Enhanced navigation structure with Phase 2B Analytics & E-commerce
+  // Enhanced navigation structure with Phase 2B Analytics & E-commerce - UPDATED ROUTES
   const navigationItems = [
-    // Dashboard (no section)
+    // Dashboard (no section) - Dynamic routing based on user type
     {
       name: 'Dashboard',
-      href: '/',
+      href: user && (isAdmin || canManageUsers) ? '/admin' : '/',
       icon: LayoutDashboard,
       description: 'Overview and analytics',
       permission: 'canViewDashboard'
@@ -224,11 +224,20 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // 🚀 NEW: E-commerce & Public Platform Section
+    // 🚀 UPDATED: E-commerce & Public Platform Section - FIXED ROUTES
     {
       name: 'E-commerce Platform',
       section: true,
       children: [
+        {
+          name: 'Landing Page',
+          href: '/',
+          icon: Home,
+          description: 'HiggsFlow professional landing page',
+          permission: 'canViewPublic',
+          badge: 'PUBLIC',
+          badgeColor: 'bg-blue-500'
+        },
         {
           name: 'Smart Catalog',
           href: '/catalog',
@@ -239,8 +248,15 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           badgeColor: 'bg-green-500'
         },
         {
+          name: 'Factory Login',
+          href: '/factory/login',  // ✅ FIXED: Added factory login route
+          icon: Users,
+          description: 'Factory authentication portal',
+          permission: 'canViewPublic'
+        },
+        {
           name: 'Factory Registration',
-          href: '/factory-registration',
+          href: '/factory/register',  // ✅ FIXED: Was '/factory-registration'
           icon: Factory,
           description: 'New factory onboarding portal',
           permission: 'canViewFactories',
@@ -249,7 +265,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         },
         {
           name: 'Factory Dashboard',
-          href: '/factory-dashboard',
+          href: '/factory/dashboard',  // ✅ FIXED: Was '/factory-dashboard'
           icon: Briefcase,
           description: 'Factory management portal',
           permission: 'canManageFactories'
@@ -539,8 +555,10 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     return location.pathname.startsWith(href);
   };
 
+  // 🚀 UPDATED: Enhanced permission checking with public route support
   const hasPermission = (permission) => {
     if (!permission) return true;
+    if (permission === 'canViewPublic') return true; // Public routes always accessible
     return permissions[permission] !== false;
   };
 
