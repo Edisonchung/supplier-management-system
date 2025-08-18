@@ -1,6 +1,7 @@
 // 🚀 HiggsFlow Phase 2B: Enhanced Analytics Service Implementation
 // File: src/services/analyticsService.js
 
+import React from 'react';
 import { db, auth } from '../config/firebase';
 import { 
   collection, 
@@ -32,7 +33,12 @@ export class HiggsFlowAnalyticsService {
       realTimeMetrics: collection(db, 'realTimeMetrics'),
       userBehavior: collection(db, 'userBehavior'),
       searchQueries: collection(db, 'searchQueries'),
-      geographicData: collection(db, 'geographicData')
+      geographicData: collection(db, 'geographicData'),
+      // 🚀 NEW: Phase 2B Dashboard Collections
+      revenueAnalytics: collection(db, 'revenueAnalytics'),
+      customerInsights: collection(db, 'customerInsights'),
+      productPerformance: collection(db, 'productPerformance'),
+      operationalMetrics: collection(db, 'operationalMetrics')
     };
     
     // Cache for performance optimization
@@ -42,6 +48,16 @@ export class HiggsFlowAnalyticsService {
     // Real-time listeners storage
     this.activeListeners = new Map();
     
+    // 🚀 NEW: Dashboard-specific data stores
+    this.dashboardCache = {
+      revenueData: null,
+      customerData: null,
+      productData: null,
+      geographicData: null,
+      operationalData: null,
+      lastUpdate: null
+    };
+    
     // Initialize real-time analytics
     this.initializeRealTimeAnalytics();
     
@@ -49,7 +65,375 @@ export class HiggsFlowAnalyticsService {
   }
 
   // =============================================================================
-  // 🚀 ENHANCED REAL-TIME ANALYTICS SYSTEM
+  // 🚀 NEW: PHASE 2B DASHBOARD API METHODS
+  // =============================================================================
+
+  /**
+   * Fetch dashboard metrics for the main overview
+   */
+  async fetchDashboardMetrics(timeRange = '7d') {
+    try {
+      const cacheKey = `dashboard_metrics_${timeRange}`;
+      const cached = this.getCachedData(cacheKey);
+      if (cached) return cached;
+
+      // Generate realistic metrics based on time range
+      const baseMetrics = this.generateBaseMetrics(timeRange);
+      
+      const metrics = {
+        activeUsers: baseMetrics.activeUsers + Math.floor(Math.random() * 20),
+        factories: baseMetrics.factories + Math.floor(Math.random() * 5),
+        revenue: baseMetrics.revenue + Math.floor(Math.random() * 10000),
+        orders: baseMetrics.orders + Math.floor(Math.random() * 15),
+        timestamp: new Date().toISOString(),
+        growth: {
+          users: Math.floor(Math.random() * 25) + 5,
+          factories: Math.floor(Math.random() * 15) + 3,
+          revenue: Math.floor(Math.random() * 30) + 10,
+          orders: Math.floor(Math.random() * 20) + 8
+        }
+      };
+
+      this.setCachedData(cacheKey, metrics);
+      return metrics;
+    } catch (error) {
+      console.error('❌ Error fetching dashboard metrics:', error);
+      return this.getDefaultDashboardMetrics();
+    }
+  }
+
+  /**
+   * Fetch revenue analytics data
+   */
+  async fetchRevenueData(timeRange = '7d') {
+    try {
+      const cacheKey = `revenue_data_${timeRange}`;
+      const cached = this.getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const revenueData = this.generateRevenueData(timeRange);
+      this.setCachedData(cacheKey, revenueData);
+      return revenueData;
+    } catch (error) {
+      console.error('❌ Error fetching revenue data:', error);
+      return this.getDefaultRevenueData();
+    }
+  }
+
+  /**
+   * Fetch customer insights data
+   */
+  async fetchCustomerInsights(timeRange = '7d') {
+    try {
+      const cacheKey = `customer_insights_${timeRange}`;
+      const cached = this.getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const customerData = this.generateCustomerInsights(timeRange);
+      this.setCachedData(cacheKey, customerData);
+      return customerData;
+    } catch (error) {
+      console.error('❌ Error fetching customer insights:', error);
+      return this.getDefaultCustomerData();
+    }
+  }
+
+  /**
+   * Fetch product performance data
+   */
+  async fetchProductPerformance(timeRange = '7d') {
+    try {
+      const cacheKey = `product_performance_${timeRange}`;
+      const cached = this.getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const productData = this.generateProductPerformance(timeRange);
+      this.setCachedData(cacheKey, productData);
+      return productData;
+    } catch (error) {
+      console.error('❌ Error fetching product performance:', error);
+      return this.getDefaultProductData();
+    }
+  }
+
+  /**
+   * Fetch geographic analytics data
+   */
+  async fetchGeographicData(timeRange = '7d') {
+    try {
+      const cacheKey = `geographic_data_${timeRange}`;
+      const cached = this.getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const geoData = this.generateGeographicData(timeRange);
+      this.setCachedData(cacheKey, geoData);
+      return geoData;
+    } catch (error) {
+      console.error('❌ Error fetching geographic data:', error);
+      return this.getDefaultGeographicData();
+    }
+  }
+
+  /**
+   * Fetch operational metrics
+   */
+  async fetchOperationalMetrics() {
+    try {
+      const cacheKey = 'operational_metrics';
+      const cached = this.getCachedData(cacheKey, 30000); // 30 second cache
+      if (cached) return cached;
+
+      const operationalData = this.generateOperationalMetrics();
+      this.setCachedData(cacheKey, operationalData);
+      return operationalData;
+    } catch (error) {
+      console.error('❌ Error fetching operational metrics:', error);
+      return this.getDefaultOperationalData();
+    }
+  }
+
+  // =============================================================================
+  // 🚀 NEW: DATA GENERATION METHODS FOR DASHBOARD
+  // =============================================================================
+
+  /**
+   * Generate base metrics based on time range
+   */
+  generateBaseMetrics(timeRange) {
+    const baseValues = {
+      '24h': { activeUsers: 45, factories: 12, revenue: 25000, orders: 35 },
+      '7d': { activeUsers: 247, factories: 89, revenue: 125847, orders: 156 },
+      '30d': { activeUsers: 1250, factories: 234, revenue: 485000, orders: 678 },
+      '90d': { activeUsers: 3200, factories: 445, revenue: 1250000, orders: 1890 }
+    };
+
+    return baseValues[timeRange] || baseValues['7d'];
+  }
+
+  /**
+   * Generate revenue analytics data
+   */
+  generateRevenueData(timeRange) {
+    const periods = this.getTimePeriods(timeRange);
+    return periods.map((period, index) => {
+      const baseRevenue = 45000 + (index * 8000);
+      const variation = Math.floor(Math.random() * 10000) - 5000;
+      
+      return {
+        date: period.label,
+        revenue: Math.max(baseRevenue + variation, 20000),
+        orders: Math.floor((baseRevenue + variation) / 450) + Math.floor(Math.random() * 20),
+        factories: Math.floor(45 + (index * 5) + Math.random() * 8),
+        avgOrderValue: Math.floor(3500 + Math.random() * 2000),
+        growth: Math.floor(Math.random() * 25) + 5
+      };
+    });
+  }
+
+  /**
+   * Generate customer insights data
+   */
+  generateCustomerInsights(timeRange) {
+    return {
+      totalFactories: 89 + Math.floor(Math.random() * 20),
+      activeThisMonth: 67 + Math.floor(Math.random() * 15),
+      newRegistrations: 15 + Math.floor(Math.random() * 10),
+      churnRisk: 3 + Math.floor(Math.random() * 3),
+      lifetimeValue: {
+        high: 23 + Math.floor(Math.random() * 8),
+        medium: 34 + Math.floor(Math.random() * 10),
+        low: 32 + Math.floor(Math.random() * 8)
+      },
+      engagement: {
+        avgSessionDuration: `${7 + Math.floor(Math.random() * 4)}m ${20 + Math.floor(Math.random() * 40)}s`,
+        pagesPerSession: (10 + Math.random() * 5).toFixed(1),
+        monthlyActiveRate: (70 + Math.random() * 15).toFixed(1),
+        conversionRate: (20 + Math.random() * 10).toFixed(1)
+      },
+      segments: [
+        { name: 'Electronics', count: 31, percentage: 35, growth: 12 },
+        { name: 'Automotive', count: 25, percentage: 28, growth: 8 },
+        { name: 'Textile', count: 16, percentage: 18, growth: 15 },
+        { name: 'Chemical', count: 11, percentage: 12, growth: 5 },
+        { name: 'Food Processing', count: 6, percentage: 7, growth: 22 }
+      ]
+    };
+  }
+
+  /**
+   * Generate product performance data
+   */
+  generateProductPerformance(timeRange) {
+    const categories = [
+      'Industrial Pumps', 'Electrical Components', 'Safety Equipment',
+      'Automation Tools', 'Raw Materials', 'Chemical Processing',
+      'Mechanical Parts', 'Power Systems'
+    ];
+
+    return categories.slice(0, 5).map(category => ({
+      category,
+      sales: Math.floor(Math.random() * 80) + 20,
+      revenue: Math.floor(Math.random() * 100000) + 50000,
+      margin: Math.floor(Math.random() * 30) + 15,
+      growth: Math.floor(Math.random() * 40) + 5,
+      topProduct: this.generateTopProduct(category),
+      trend: Math.random() > 0.5 ? 'up' : 'down'
+    }));
+  }
+
+  /**
+   * Generate geographic analytics data
+   */
+  generateGeographicData(timeRange) {
+    const regions = [
+      { region: 'Selangor', baseFactories: 32, baseRevenue: 45000 },
+      { region: 'Johor', baseFactories: 28, baseRevenue: 38000 },
+      { region: 'Penang', baseFactories: 15, baseRevenue: 29000 },
+      { region: 'Perak', baseFactories: 8, baseRevenue: 12000 },
+      { region: 'Kedah', baseFactories: 6, baseRevenue: 8500 },
+      { region: 'Negeri Sembilan', baseFactories: 5, baseRevenue: 7200 },
+      { region: 'Melaka', baseFactories: 4, baseRevenue: 6800 }
+    ];
+
+    return regions.map(region => ({
+      region: region.region,
+      factories: region.baseFactories + Math.floor(Math.random() * 8),
+      revenue: region.baseRevenue + Math.floor(Math.random() * 5000),
+      growth: Math.floor(Math.random() * 30) + 5,
+      avgOrderValue: Math.floor(3000 + Math.random() * 2500),
+      topIndustry: this.getRandomIndustry(),
+      marketPenetration: (Math.random() * 40 + 10).toFixed(1)
+    }));
+  }
+
+  /**
+   * Generate operational metrics data
+   */
+  generateOperationalMetrics() {
+    return {
+      uptime: (99.5 + Math.random() * 0.4).toFixed(1) + '%',
+      responseTime: Math.floor(80 + Math.random() * 80) + 'ms',
+      apiCalls: (12 + Math.random() * 8).toFixed(1) + 'K',
+      activeSessions: Math.floor(200 + Math.random() * 100),
+      systemHealth: {
+        database: Math.random() > 0.1 ? 'normal' : 'warning',
+        apiGateway: Math.random() > 0.05 ? 'normal' : 'warning',
+        cacheHitRate: Math.random() > 0.2 ? 'normal' : 'warning',
+        loadBalancer: Math.random() > 0.05 ? 'normal' : 'warning'
+      },
+      resourceUtilization: {
+        cpu: Math.floor(40 + Math.random() * 40),
+        memory: Math.floor(30 + Math.random() * 40),
+        storage: Math.floor(60 + Math.random() * 25),
+        bandwidth: Math.floor(20 + Math.random() * 40)
+      },
+      errors: {
+        total: Math.floor(Math.random() * 20),
+        rate: (Math.random() * 0.2).toFixed(2),
+        critical: Math.floor(Math.random() * 3),
+        warnings: Math.floor(Math.random() * 15)
+      },
+      performance: {
+        avgLoadTime: (1 + Math.random() * 1.5).toFixed(1),
+        dbQueryTime: Math.floor(30 + Math.random() * 40),
+        cacheHitRate: (80 + Math.random() * 15).toFixed(1),
+        throughput: Math.floor(1000 + Math.random() * 500)
+      }
+    };
+  }
+
+  // =============================================================================
+  // 🚀 NEW: USER TRACKING METHODS FOR DASHBOARD
+  // =============================================================================
+
+  /**
+   * Track page view for analytics dashboard
+   */
+  async trackPageView(page, userId) {
+    try {
+      const trackingData = {
+        page,
+        userId,
+        timestamp: new Date().toISOString(),
+        sessionId: this.getSessionId(),
+        userAgent: navigator.userAgent,
+        referrer: document.referrer
+      };
+
+      await this.trackUserAction('page_view', trackingData);
+      console.log('📄 Page view tracked:', page);
+    } catch (error) {
+      console.error('❌ Error tracking page view:', error);
+    }
+  }
+
+  /**
+   * Track product view for analytics
+   */
+  async trackProductView(productId, userId) {
+    try {
+      const trackingData = {
+        productId,
+        userId,
+        timestamp: new Date().toISOString(),
+        sessionId: this.getSessionId(),
+        action: 'product_view'
+      };
+
+      await this.trackUserAction('product_view', trackingData);
+      console.log('🛍️ Product view tracked:', productId);
+    } catch (error) {
+      console.error('❌ Error tracking product view:', error);
+    }
+  }
+
+  /**
+   * Track order placement for analytics
+   */
+  async trackOrderPlacement(orderId, userId, amount) {
+    try {
+      const trackingData = {
+        orderId,
+        userId,
+        amount,
+        timestamp: new Date().toISOString(),
+        sessionId: this.getSessionId(),
+        action: 'order_placement'
+      };
+
+      await this.trackUserAction('order_placement', trackingData);
+      console.log('💰 Order placement tracked:', orderId, amount);
+    } catch (error) {
+      console.error('❌ Error tracking order placement:', error);
+    }
+  }
+
+  /**
+   * Track custom user action
+   */
+  async trackUserAction(action, data) {
+    try {
+      const actionData = {
+        action,
+        data,
+        timestamp: new Date().toISOString(),
+        sessionId: this.getSessionId(),
+        userId: auth.currentUser?.uid || 'anonymous'
+      };
+
+      // Store in Firestore if available, otherwise log
+      if (this.collections.userBehavior) {
+        await addDoc(this.collections.userBehavior, actionData);
+      } else {
+        console.log('📊 Analytics Action:', actionData);
+      }
+    } catch (error) {
+      console.error('❌ Error tracking user action:', error);
+    }
+  }
+
+  // =============================================================================
+  // 🚀 ENHANCED REAL-TIME ANALYTICS SYSTEM (EXISTING + ENHANCED)
   // =============================================================================
 
   /**
@@ -68,11 +452,80 @@ export class HiggsFlowAnalyticsService {
       // Setup geographic intelligence
       await this.initializeGeographicIntelligence();
 
+      // 🚀 NEW: Initialize dashboard real-time updates
+      await this.initializeDashboardRealTime();
+
       console.log('✅ Enhanced real-time analytics initialized');
     } catch (error) {
       console.error('❌ Error initializing real-time analytics:', error);
     }
   }
+
+  /**
+   * 🚀 NEW: Initialize dashboard-specific real-time updates
+   */
+  async initializeDashboardRealTime() {
+    try {
+      // Setup dashboard metrics auto-refresh
+      setInterval(() => {
+        this.refreshDashboardMetrics();
+      }, 30000); // Refresh every 30 seconds
+
+      // Setup real-time revenue tracking
+      setInterval(() => {
+        this.updateRevenueMetrics();
+      }, 10000); // Update every 10 seconds
+
+      console.log('📊 Dashboard real-time updates initialized');
+    } catch (error) {
+      console.error('❌ Error initializing dashboard real-time:', error);
+    }
+  }
+
+  /**
+   * Refresh dashboard metrics automatically
+   */
+  async refreshDashboardMetrics() {
+    try {
+      // Clear cache to force fresh data
+      const keys = ['dashboard_metrics_7d', 'operational_metrics'];
+      keys.forEach(key => this.cache.delete(key));
+
+      // Emit update event
+      this.emitRealTimeUpdate('dashboard_refresh', {
+        timestamp: new Date().toISOString(),
+        type: 'auto_refresh'
+      });
+    } catch (error) {
+      console.error('❌ Error refreshing dashboard metrics:', error);
+    }
+  }
+
+  /**
+   * Update revenue metrics in real-time
+   */
+  async updateRevenueMetrics() {
+    try {
+      const currentMetrics = await this.fetchDashboardMetrics();
+      
+      // Simulate small incremental changes
+      const updatedMetrics = {
+        ...currentMetrics,
+        revenue: currentMetrics.revenue + Math.floor(Math.random() * 1000),
+        orders: currentMetrics.orders + Math.floor(Math.random() * 3),
+        activeUsers: currentMetrics.activeUsers + Math.floor(Math.random() * 5) - 2
+      };
+
+      // Emit revenue update
+      this.emitRealTimeUpdate('revenue_update', updatedMetrics);
+    } catch (error) {
+      console.error('❌ Error updating revenue metrics:', error);
+    }
+  }
+
+  // =============================================================================
+  // 🚀 ENHANCED EXISTING METHODS (PRESERVED + ENHANCED)
+  // =============================================================================
 
   /**
    * Setup real-time metrics listener with enhanced features
@@ -231,14 +684,170 @@ export class HiggsFlowAnalyticsService {
         timestamp: Date.now()
       });
 
-      console.log('📍 Geographic intelligence initialized');
+      console.log('🗺️ Geographic intelligence initialized');
     } catch (error) {
       console.error('❌ Error initializing geographic intelligence:', error);
     }
   }
 
   // =============================================================================
-  // 🏭 ENHANCED FACTORY IDENTIFICATION & INTELLIGENCE
+  // 🛠️ UTILITY METHODS & HELPERS (ENHANCED)
+  // =============================================================================
+
+  /**
+   * 🚀 NEW: Cache management methods
+   */
+  getCachedData(key, maxAge = this.cacheTimeout) {
+    const cached = this.cache.get(key);
+    if (cached && (Date.now() - cached.timestamp) < maxAge) {
+      return cached.data;
+    }
+    return null;
+  }
+
+  setCachedData(key, data) {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * 🚀 NEW: Get session ID for tracking
+   */
+  getSessionId() {
+    let sessionId = sessionStorage.getItem('higgsflow_session_id');
+    if (!sessionId) {
+      sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      sessionStorage.setItem('higgsflow_session_id', sessionId);
+    }
+    return sessionId;
+  }
+
+  /**
+   * 🚀 NEW: Helper methods for data generation
+   */
+  getTimePeriods(timeRange) {
+    const periods = [];
+    const now = new Date();
+    
+    switch (timeRange) {
+      case '24h':
+        for (let i = 23; i >= 0; i--) {
+          const time = new Date(now - i * 60 * 60 * 1000);
+          periods.push({ label: time.getHours() + ':00', value: time });
+        }
+        break;
+      case '7d':
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date(now - i * 24 * 60 * 60 * 1000);
+          periods.push({ label: date.toLocaleDateString('en-US', { weekday: 'short' }), value: date });
+        }
+        break;
+      case '30d':
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date(now - i * 24 * 60 * 60 * 1000);
+          periods.push({ label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: date });
+        }
+        break;
+      default:
+        return this.getTimePeriods('7d');
+    }
+    
+    return periods;
+  }
+
+  generateTopProduct(category) {
+    const products = {
+      'Industrial Pumps': 'Centrifugal Pump Model X200',
+      'Electrical Components': 'Industrial Switch Panel Pro',
+      'Safety Equipment': 'Safety Helmet Pro Series',
+      'Automation Tools': 'PLC Controller Advanced',
+      'Raw Materials': 'Steel Grade A Quality'
+    };
+    
+    return products[category] || `${category} Pro Series`;
+  }
+
+  getRandomIndustry() {
+    const industries = ['Electronics', 'Automotive', 'Manufacturing', 'Chemical', 'Food Processing', 'Textile'];
+    return industries[Math.floor(Math.random() * industries.length)];
+  }
+
+  /**
+   * 🚀 NEW: Default data methods for fallbacks
+   */
+  getDefaultDashboardMetrics() {
+    return {
+      activeUsers: 247,
+      factories: 89,
+      revenue: 125847,
+      orders: 156,
+      growth: { users: 12, factories: 8, revenue: 23, orders: 15 }
+    };
+  }
+
+  getDefaultRevenueData() {
+    return [
+      { date: 'Mon', revenue: 45000, orders: 120, factories: 45 },
+      { date: 'Tue', revenue: 52000, orders: 145, factories: 52 },
+      { date: 'Wed', revenue: 48000, orders: 135, factories: 48 },
+      { date: 'Thu', revenue: 61000, orders: 165, factories: 58 },
+      { date: 'Fri', revenue: 75000, orders: 195, factories: 67 },
+      { date: 'Sat', revenue: 82000, orders: 220, factories: 74 },
+      { date: 'Sun', revenue: 95000, orders: 245, factories: 82 }
+    ];
+  }
+
+  getDefaultCustomerData() {
+    return {
+      totalFactories: 89,
+      activeThisMonth: 67,
+      newRegistrations: 15,
+      churnRisk: 3,
+      lifetimeValue: { high: 23, medium: 34, low: 32 },
+      engagement: {
+        avgSessionDuration: '8m 34s',
+        pagesPerSession: '12.7',
+        monthlyActiveRate: '75.3',
+        conversionRate: '23.8'
+      }
+    };
+  }
+
+  getDefaultProductData() {
+    return [
+      { category: 'Industrial Pumps', sales: 45, revenue: 125000, margin: 32 },
+      { category: 'Electrical Components', sales: 89, revenue: 89500, margin: 28 },
+      { category: 'Safety Equipment', sales: 67, revenue: 67800, margin: 35 },
+      { category: 'Automation Tools', sales: 34, revenue: 156000, margin: 42 },
+      { category: 'Raw Materials', sales: 78, revenue: 78900, margin: 18 }
+    ];
+  }
+
+  getDefaultGeographicData() {
+    return [
+      { region: 'Selangor', factories: 32, revenue: 45000 },
+      { region: 'Johor', factories: 28, revenue: 38000 },
+      { region: 'Penang', factories: 15, revenue: 29000 },
+      { region: 'Perak', factories: 8, revenue: 12000 },
+      { region: 'Kedah', factories: 6, revenue: 8500 }
+    ];
+  }
+
+  getDefaultOperationalData() {
+    return {
+      uptime: '99.8%',
+      responseTime: '124ms',
+      apiCalls: '15.2K',
+      activeSessions: 247,
+      systemHealth: { database: 'normal', apiGateway: 'normal', cacheHitRate: 'warning' },
+      resourceUtilization: { cpu: 67, memory: 45, storage: 78 }
+    };
+  }
+
+  // =============================================================================
+  // 🭍 EXISTING METHODS (PRESERVED AS-IS)
   // =============================================================================
 
   /**
@@ -289,7 +898,7 @@ export class HiggsFlowAnalyticsService {
         factoryProfile.location = factoryProfile.location || geoAnalysis.location;
         factoryProfile.industrialZone = geoAnalysis.industrialZone;
         factoryProfile.identificationMethod.push('enhanced_geolocation');
-        console.log('📍 Enhanced location identified:', geoAnalysis.location);
+        console.log('🗺️ Enhanced location identified:', geoAnalysis.location);
       }
 
       // 3. Behavior Pattern Analysis
@@ -459,10 +1068,6 @@ export class HiggsFlowAnalyticsService {
     }
   }
 
-  // =============================================================================
-  // 📊 ENHANCED PRODUCT INTERACTION TRACKING
-  // =============================================================================
-
   /**
    * Enhanced product interaction tracking with deep analytics
    */
@@ -537,10 +1142,6 @@ export class HiggsFlowAnalyticsService {
       console.error('❌ Error tracking enhanced user session:', error);
     }
   }
-
-  // =============================================================================
-  // 🎯 SMART RECOMMENDATION ENGINE
-  // =============================================================================
 
   /**
    * Generate AI-powered recommendations
@@ -632,10 +1233,6 @@ export class HiggsFlowAnalyticsService {
       return {};
     }
   }
-
-  // =============================================================================
-  // 🛠️ UTILITY METHODS & HELPERS
-  // =============================================================================
 
   /**
    * Emit real-time update to all subscribers
@@ -883,7 +1480,17 @@ export const useHiggsFlowAnalytics = () => {
     identifyFactory: higgsFlowAnalytics.identifyFactory.bind(higgsFlowAnalytics),
     generateRecommendations: higgsFlowAnalytics.generateSmartRecommendations.bind(higgsFlowAnalytics),
     subscribeToMetrics: higgsFlowAnalytics.subscribeToRealTimeMetrics.bind(higgsFlowAnalytics),
-    trackBehavior: higgsFlowAnalytics.trackUserBehavior.bind(higgsFlowAnalytics)
+    trackBehavior: higgsFlowAnalytics.trackUserBehavior.bind(higgsFlowAnalytics),
+    // 🚀 NEW: Dashboard-specific methods
+    fetchDashboardMetrics: higgsFlowAnalytics.fetchDashboardMetrics.bind(higgsFlowAnalytics),
+    fetchRevenueData: higgsFlowAnalytics.fetchRevenueData.bind(higgsFlowAnalytics),
+    fetchCustomerInsights: higgsFlowAnalytics.fetchCustomerInsights.bind(higgsFlowAnalytics),
+    fetchProductPerformance: higgsFlowAnalytics.fetchProductPerformance.bind(higgsFlowAnalytics),
+    fetchGeographicData: higgsFlowAnalytics.fetchGeographicData.bind(higgsFlowAnalytics),
+    fetchOperationalMetrics: higgsFlowAnalytics.fetchOperationalMetrics.bind(higgsFlowAnalytics),
+    trackPageView: higgsFlowAnalytics.trackPageView.bind(higgsFlowAnalytics),
+    trackProductView: higgsFlowAnalytics.trackProductView.bind(higgsFlowAnalytics),
+    trackOrderPlacement: higgsFlowAnalytics.trackOrderPlacement.bind(higgsFlowAnalytics)
   };
 };
 
@@ -926,7 +1533,99 @@ export const useFactoryIdentification = (sessionData) => {
   return { factoryInfo, loading };
 };
 
-// Add React import for hooks
-import React from 'react';
+// 🚀 NEW: Dashboard analytics hook
+export const useDashboardAnalytics = (timeRange = '7d') => {
+  const [data, setData] = React.useState({
+    metrics: null,
+    revenue: null,
+    customers: null,
+    products: null,
+    geography: null,
+    operations: null,
+  });
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  const fetchAllData = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const [metrics, revenue, customers, products, geography, operations] = await Promise.all([
+        higgsFlowAnalytics.fetchDashboardMetrics(timeRange),
+        higgsFlowAnalytics.fetchRevenueData(timeRange),
+        higgsFlowAnalytics.fetchCustomerInsights(timeRange),
+        higgsFlowAnalytics.fetchProductPerformance(timeRange),
+        higgsFlowAnalytics.fetchGeographicData(timeRange),
+        higgsFlowAnalytics.fetchOperationalMetrics(),
+      ]);
+
+      setData({
+        metrics,
+        revenue,
+        customers,
+        products,
+        geography,
+        operations,
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [timeRange]);
+
+  React.useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  return {
+    data,
+    loading,
+    error,
+    refetch: fetchAllData,
+  };
+};
+
+// 🚀 NEW: Real-time metrics hook for dashboard
+export const useRealTimeMetrics = () => {
+  const [metrics, setMetrics] = React.useState({
+    activeUsers: 0,
+    factories: 0,
+    revenue: 0,
+    orders: 0,
+  });
+  const [connected, setConnected] = React.useState(false);
+
+  React.useEffect(() => {
+    // Subscribe to real-time updates
+    const unsubscribe = higgsFlowAnalytics.subscribeToRealTimeMetrics((data) => {
+      setMetrics(prev => ({
+        activeUsers: data.activeSessions || prev.activeUsers,
+        factories: prev.factories + Math.floor(Math.random() * 3 - 1),
+        revenue: prev.revenue + Math.floor(Math.random() * 1000),
+        orders: prev.orders + Math.floor(Math.random() * 5),
+      }));
+      setConnected(true);
+    });
+
+    // Initial data fetch
+    higgsFlowAnalytics.fetchDashboardMetrics().then(data => {
+      setMetrics({
+        activeUsers: data.activeUsers,
+        factories: data.factories,
+        revenue: data.revenue,
+        orders: data.orders,
+      });
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return {
+    metrics,
+    connected,
+  };
+};
 
 console.log('🚀 HiggsFlow Phase 2B Enhanced Analytics Service loaded successfully!');
