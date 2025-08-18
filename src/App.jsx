@@ -23,9 +23,8 @@ import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
 // 🚀 Phase 2B Analytics Service with Real Data
 import { higgsFlowAnalytics, useHiggsFlowAnalytics } from './services/analyticsService';
 
-// 🚀 Real Data Services for Smart Catalog
-import { SmartCatalogAPIService } from './services/SmartCatalogAPIService';
-import { RealDataProvider } from './context/RealDataContext';
+// 🚀 Real Data Services for Smart Catalog (using existing UnifiedDataContext)
+// SmartCatalogAPIService will use UnifiedDataContext for data source management
 
 import './App.css';
 
@@ -180,8 +179,8 @@ const FactoryRoute = ({ children }) => {
             timestamp: new Date().toISOString(),
             dataSource: 'real',
             userType: 'factory',
-            // 🚀 Enhanced factory tracking
-            factoryProfile: await SmartCatalogAPIService.getFactoryProfile(user.uid),
+            // Enhanced factory tracking (when SmartCatalogAPIService is available)
+            // factoryProfile: await SmartCatalogAPIService.getFactoryProfile(user.uid),
             lastActivity: new Date().toISOString()
           };
 
@@ -326,10 +325,13 @@ const getClientIP = async () => {
 
 function AppContent() {
   const { user, loading } = useAuth();
+  const { dataSource, isRealTimeActive, migrationStatus } = useUnifiedData();
   const [notification, setNotification] = useState(null);
   const [showFirestoreTest, setShowFirestoreTest] = useState(true);
   const [analyticsInitialized, setAnalyticsInitialized] = useState(false);
-  const [realDataEnabled, setRealDataEnabled] = useState(false);
+  
+  // Real data status based on existing UnifiedDataContext
+  const realDataEnabled = dataSource === 'firestore';
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -342,8 +344,8 @@ function AppContent() {
         try {
           console.log('🚀 Initializing HiggsFlow Phase 2B Real Data Services...');
           
-          // Initialize SmartCatalogAPIService
-          await SmartCatalogAPIService.initialize();
+          // Initialize SmartCatalogAPIService (when available)
+          // await SmartCatalogAPIService.initialize();
           
           // Basic analytics initialization with real data
           const sessionData = {
@@ -366,19 +368,16 @@ function AppContent() {
 
           await higgsFlowAnalytics.trackUserSession(sessionData);
           setAnalyticsInitialized(true);
-          setRealDataEnabled(true);
           
-          console.log('✅ Real Data Services & Analytics initialized successfully');
+          console.log(`✅ Analytics initialized - Data Source: ${dataSource}`);
         } catch (error) {
-          console.error('⚠️ Error initializing real data services:', error);
-          // Fallback to mock data mode
-          setRealDataEnabled(false);
+          console.error('⚠️ Error initializing analytics:', error);
         }
       }
     };
 
     initializeRealDataServices();
-  }, [user, analyticsInitialized]);
+  }, [user, analyticsInitialized, dataSource]); // Add dataSource dependency
 
   if (loading) {
     return (
@@ -388,7 +387,7 @@ function AppContent() {
           <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">Loading HiggsFlow...</p>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Accelerating Supply Chain</p>
           <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-            Phase 2B • Real Data Integration
+            Phase 2B • {dataSource === 'firestore' ? 'Real Data (Firestore)' : 'Mock Data (localStorage)'}
           </p>
           {realDataEnabled && (
             <p className="mt-1 text-xs text-green-600 dark:text-green-400">
@@ -402,7 +401,6 @@ function AppContent() {
 
   return (
     <ErrorBoundary>
-      <RealDataProvider enabled={realDataEnabled}>
         <Toaster 
           position="top-right"
           reverseOrder={false}
@@ -1147,8 +1145,8 @@ function AppContent() {
               <button
                 onClick={() => console.log('HiggsFlow Real Data Analytics Status:', { 
                   analytics: higgsFlowAnalytics, 
-                  realDataEnabled,
-                  smartCatalogService: SmartCatalogAPIService 
+                  realDataEnabled
+                  // smartCatalogService: SmartCatalogAPIService 
                 })}
                 className="fixed bottom-4 left-32 bg-blue-600 text-white text-xs px-3 py-1 rounded-full hover:bg-blue-700 z-50 shadow-lg transition-colors"
                 title="Check Real Data Analytics Status"
@@ -1176,7 +1174,6 @@ function AppContent() {
             </>
           )}
         </Router>
-      </RealDataProvider>
     </ErrorBoundary>
   );
 }
