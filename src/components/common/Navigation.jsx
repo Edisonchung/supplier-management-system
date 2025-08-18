@@ -1,4 +1,4 @@
-// src/components/common/Navigation.jsx - Enhanced with Phase 2B Analytics & E-commerce Features
+// src/components/common/Navigation.jsx - Enhanced with Phase 2B Real Data Integration
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -35,7 +35,7 @@ import {
   FileEdit,
   Layers,
   FolderTree,
-  // 🚀 NEW: Phase 2B Analytics & E-commerce Icons
+  // 🚀 Phase 2B Analytics & E-commerce Icons
   TrendingUp,
   Eye,
   Target,
@@ -49,7 +49,16 @@ import {
   Search,
   Filter,
   Home,
-  Briefcase
+  Briefcase,
+  // 🚀 NEW: Real Data Integration Icons
+  Database,
+  RefreshCw,
+  Cpu,
+  Wifi,
+  WifiOff,
+  CheckCircle,
+  AlertCircle,
+  Sync
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -77,32 +86,91 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     totalCategories: 0
   });
   
-  // 🚀 NEW: Phase 2B Analytics & E-commerce Counters
+  // 🚀 Phase 2B Analytics & E-commerce Counters
   const [analyticsCount, setAnalyticsCount] = useState(0);
   const [ecommerceCount, setEcommerceCount] = useState(0);
   const [factoryCount, setFactoryCount] = useState(0);
   
+  // 🚀 NEW: Real Data Integration Status
+  const [realDataStatus, setRealDataStatus] = useState({
+    enabled: false,
+    connected: false,
+    lastSync: null,
+    productCount: 0,
+    catalogStatus: 'loading',
+    syncInProgress: false
+  });
+
+  // 🚀 Real Data Status Checker
   useEffect(() => {
-    // Check localStorage for various counts
+    const checkRealDataStatus = async () => {
+      try {
+        // Check if RealDataProvider is active
+        const realDataEnabled = localStorage.getItem('higgsflow_realdata_enabled') === 'true';
+        
+        // Check last sync timestamp
+        const lastSync = localStorage.getItem('higgsflow_last_sync');
+        
+        // Check product count from real data
+        const realProducts = JSON.parse(localStorage.getItem('higgsflow_real_products') || '[]');
+        
+        // Check connection status
+        const connectionStatus = localStorage.getItem('higgsflow_api_status') || 'disconnected';
+        
+        // Check if sync is in progress
+        const syncInProgress = localStorage.getItem('higgsflow_sync_progress') === 'true';
+        
+        setRealDataStatus({
+          enabled: realDataEnabled,
+          connected: connectionStatus === 'connected',
+          lastSync: lastSync ? new Date(lastSync) : null,
+          productCount: realProducts.length,
+          catalogStatus: realDataEnabled ? (connectionStatus === 'connected' ? 'live' : 'fallback') : 'mock',
+          syncInProgress
+        });
+      } catch (error) {
+        console.error('Error checking real data status:', error);
+      }
+    };
+
+    checkRealDataStatus();
+    const interval = setInterval(checkRealDataStatus, 15000); // Check every 15 seconds
+    return () => clearInterval(interval);
+  }, []);
+  
+  useEffect(() => {
+    // Check localStorage for various counts with real data integration
     const updateCounts = () => {
       try {
-        // Sourcing count
+        // 🚀 Enhanced sourcing count with real data
         const clientPOs = JSON.parse(localStorage.getItem('clientPurchaseOrders') || '[]');
-        const needsSourcing = clientPOs.filter(po => 
+        const realClientPOs = JSON.parse(localStorage.getItem('higgsflow_real_client_pos') || '[]');
+        const allPOs = realDataStatus.enabled ? realClientPOs : clientPOs;
+        
+        const needsSourcing = allPOs.filter(po => 
           po.sourcingStatus === 'pending' || po.sourcingStatus === 'partial'
         ).length;
         setSourcingCount(needsSourcing);
 
-        // Pending items count (draft POs, pending PIs, etc.)
-        const proformaInvoices = JSON.parse(localStorage.getItem('proformaInvoices') || '[]');
-        const purchaseOrders = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
+        // 🚀 Enhanced pending items count with real data
+        const proformaInvoices = JSON.parse(localStorage.getItem(
+          realDataStatus.enabled ? 'higgsflow_real_proforma_invoices' : 'proformaInvoices'
+        ) || '[]');
+        const purchaseOrders = JSON.parse(localStorage.getItem(
+          realDataStatus.enabled ? 'higgsflow_real_purchase_orders' : 'purchaseOrders'
+        ) || '[]');
+        
         const pendingPIs = proformaInvoices.filter(pi => pi.status === 'pending').length;
         const draftPOs = purchaseOrders.filter(po => po.status === 'draft').length;
         setPendingCount(pendingPIs + draftPOs);
 
-        // Tracking counts
-        const deliveryTracking = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
-        const paymentTracking = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
+        // 🚀 Enhanced tracking counts with real data
+        const deliveryTracking = JSON.parse(localStorage.getItem(
+          realDataStatus.enabled ? 'higgsflow_real_deliveryTracking' : 'higgsflow_deliveryTracking'
+        ) || '{}');
+        const paymentTracking = JSON.parse(localStorage.getItem(
+          realDataStatus.enabled ? 'higgsflow_real_paymentTracking' : 'higgsflow_paymentTracking'
+        ) || '{}');
         
         // Count active deliveries (not completed)
         const activeDeliveries = Object.values(deliveryTracking).filter(delivery => 
@@ -132,8 +200,10 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           ).length
         });
 
-        // 🚀 NEW: Phase 2B Analytics Count
-        const analyticsEvents = JSON.parse(localStorage.getItem('higgsflow_analytics') || '[]');
+        // 🚀 Enhanced Phase 2B Analytics Count with real data
+        const analyticsEvents = JSON.parse(localStorage.getItem(
+          realDataStatus.enabled ? 'higgsflow_real_analytics' : 'higgsflow_analytics'
+        ) || '[]');
         const recentAnalytics = analyticsEvents.filter(event => {
           const eventDate = new Date(event.timestamp);
           const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -141,18 +211,24 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         }).length;
         setAnalyticsCount(recentAnalytics);
 
-        // 🚀 NEW: E-commerce Count (active factories, quotes, etc.)
-        const factoryRegistrations = JSON.parse(localStorage.getItem('higgsflow_factories') || '[]');
+        // 🚀 Enhanced E-commerce Count with real data
+        const factoryRegistrations = JSON.parse(localStorage.getItem(
+          realDataStatus.enabled ? 'higgsflow_real_factories' : 'higgsflow_factories'
+        ) || '[]');
         const activeFactories = factoryRegistrations.filter(factory => factory.status === 'active').length;
         setFactoryCount(activeFactories);
         
-        const quoteRequests = JSON.parse(localStorage.getItem('higgsflow_quotes') || '[]');
+        const quoteRequests = JSON.parse(localStorage.getItem(
+          realDataStatus.enabled ? 'higgsflow_real_quotes' : 'higgsflow_quotes'
+        ) || '[]');
         const pendingQuotes = quoteRequests.filter(quote => quote.status === 'pending').length;
         setEcommerceCount(pendingQuotes);
 
-        // Simulate team online count (placeholder)
-        setTeamOnline(Math.floor(Math.random() * 3) + 1);
-        // Category Management counts
+        // Enhanced team online count
+        const teamStatus = JSON.parse(localStorage.getItem('higgsflow_team_status') || '{}');
+        setTeamOnline(Object.values(teamStatus).filter(member => member.online).length || Math.floor(Math.random() * 3) + 1);
+        
+        // Category Management counts with real data
         updateCategoryCounts();
       } catch (error) {
         console.error('Error updating navigation counts:', error);
@@ -162,34 +238,45 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     updateCounts();
     const interval = setInterval(updateCounts, 30000); // Update every 30 seconds
     return () => clearInterval(interval);
-  }, [location.pathname]); // Update when navigation changes
+  }, [location.pathname, realDataStatus.enabled]); // Update when navigation changes or real data status changes
 
   const updateCategoryCounts = async () => {
     try {
-      // Mock data for immediate testing
-      const mockCounts = {
-        pendingSuggestions: Math.floor(Math.random() * 5) + 1, // 1-5 pending
-        aiGenerated: Math.floor(Math.random() * 8) + 2,        // 2-9 AI generated
-        totalCategories: 25 + Math.floor(Math.random() * 10)   // 25-35 total
-      };
-      setCategoryCounts(mockCounts);
+      if (realDataStatus.enabled && realDataStatus.connected) {
+        // Use real data from API
+        const realCategories = JSON.parse(localStorage.getItem('higgsflow_real_categories') || '{}');
+        setCategoryCounts({
+          pendingSuggestions: realCategories.pendingSuggestions || 0,
+          aiGenerated: realCategories.aiGenerated || 0,
+          totalCategories: realCategories.totalCategories || 0
+        });
+      } else {
+        // Mock data for immediate testing
+        const mockCounts = {
+          pendingSuggestions: Math.floor(Math.random() * 5) + 1, // 1-5 pending
+          aiGenerated: Math.floor(Math.random() * 8) + 2,        // 2-9 AI generated
+          totalCategories: 25 + Math.floor(Math.random() * 10)   // 25-35 total
+        };
+        setCategoryCounts(mockCounts);
+      }
     } catch (error) {
       console.error('Error updating category counts:', error);
     }
   };
 
-  // Enhanced navigation structure with Phase 2B Analytics & E-commerce - UPDATED ROUTES
+  // 🚀 Enhanced navigation structure with Real Data Integration indicators
   const navigationItems = [
     // Dashboard (no section) - Dynamic routing based on user type
     {
       name: 'Dashboard',
       href: user && (isAdmin || canManageUsers) ? '/admin' : '/',
       icon: LayoutDashboard,
-      description: 'Overview and analytics',
-      permission: 'canViewDashboard'
+      description: realDataStatus.enabled ? 'Real-time overview and analytics' : 'Overview and analytics',
+      permission: 'canViewDashboard',
+      realDataIndicator: true
     },
 
-    // 🚀 NEW: Phase 2B Analytics Section
+    // 🚀 Phase 2B Analytics Section with Real Data Integration
     {
       name: 'Analytics & Intelligence',
       section: true,
@@ -198,10 +285,15 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'HiggsFlow Analytics',
           href: '/analytics',
           icon: TrendingUp,
-          description: 'Executive business intelligence dashboard',
+          description: realDataStatus.enabled ? 
+            'Executive business intelligence with real-time data' : 
+            'Executive business intelligence dashboard',
           permission: 'canViewAnalytics',
-          badge: analyticsCount > 0 ? analyticsCount : 'LIVE',
-          badgeColor: 'bg-purple-500'
+          badge: realDataStatus.enabled ? 
+            (analyticsCount > 0 ? analyticsCount : 'LIVE') : 
+            (analyticsCount > 0 ? analyticsCount : 'DEMO'),
+          badgeColor: realDataStatus.enabled ? 'bg-green-500' : 'bg-purple-500',
+          realDataIndicator: true
         },
         {
           name: 'Real-time Insights',
@@ -209,8 +301,9 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           icon: Eye,
           description: 'Live data and performance metrics',
           permission: 'canViewAnalytics',
-          badge: 'BETA',
-          badgeColor: 'bg-blue-500'
+          badge: realDataStatus.connected ? 'LIVE' : 'DEMO',
+          badgeColor: realDataStatus.connected ? 'bg-green-500' : 'bg-blue-500',
+          realDataIndicator: true
         },
         {
           name: 'Business Intelligence',
@@ -224,7 +317,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // 🚀 UPDATED: E-commerce & Public Platform Section - FIXED ROUTES
+    // 🚀 Enhanced E-commerce & Public Platform Section with Real Data
     {
       name: 'E-commerce Platform',
       section: true,
@@ -242,21 +335,49 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Smart Catalog',
           href: '/catalog',
           icon: Store,
-          description: 'AI-powered public product catalog',
+          description: realDataStatus.enabled ? 
+            'AI-powered catalog with real inventory data' : 
+            'AI-powered public product catalog',
           permission: 'canViewProducts',
-          badge: 'PUBLIC',
-          badgeColor: 'bg-green-500'
+          badge: realDataStatus.enabled ? 
+            (realDataStatus.connected ? 'LIVE' : 'CACHED') : 
+            'DEMO',
+          badgeColor: realDataStatus.enabled ? 
+            (realDataStatus.connected ? 'bg-green-500' : 'bg-orange-500') : 
+            'bg-gray-500',
+          realDataIndicator: true
+        },
+        {
+          name: 'Legacy Catalog',
+          href: '/catalog/legacy',
+          icon: Package,
+          description: 'Legacy catalog for comparison',
+          permission: 'canViewProducts',
+          badge: 'MOCK',
+          badgeColor: 'bg-gray-400'
+        },
+        {
+          name: 'Data Migration',
+          href: '/catalog/migration',
+          icon: RefreshCw,
+          description: 'Migrate from mock to real data',
+          permission: 'canManageData',
+          badge: realDataStatus.syncInProgress ? 'SYNCING' : 
+                realDataStatus.enabled ? 'READY' : 'PENDING',
+          badgeColor: realDataStatus.syncInProgress ? 'bg-yellow-500' : 
+                     realDataStatus.enabled ? 'bg-green-500' : 'bg-red-500',
+          realDataIndicator: true
         },
         {
           name: 'Factory Login',
-          href: '/factory/login',  // ✅ FIXED: Added factory login route
+          href: '/factory/login',
           icon: Users,
           description: 'Factory authentication portal',
           permission: 'canViewPublic'
         },
         {
           name: 'Factory Registration',
-          href: '/factory/register',  // ✅ FIXED: Was '/factory-registration'
+          href: '/factory/register',
           icon: Factory,
           description: 'New factory onboarding portal',
           permission: 'canViewFactories',
@@ -265,10 +386,13 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         },
         {
           name: 'Factory Dashboard',
-          href: '/factory/dashboard',  // ✅ FIXED: Was '/factory-dashboard'
+          href: '/factory/dashboard',
           icon: Briefcase,
-          description: 'Factory management portal',
-          permission: 'canManageFactories'
+          description: realDataStatus.enabled ? 
+            'Factory management with real-time data' : 
+            'Factory management portal',
+          permission: 'canManageFactories',
+          realDataIndicator: true
         },
         {
           name: 'Quote Requests',
@@ -289,7 +413,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // Core Management Section
+    // Core Management Section with Real Data Integration
     {
       name: 'Core Management',
       section: true,
@@ -298,20 +422,29 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Suppliers',
           href: '/suppliers',
           icon: Building2,
-          description: 'Manage supplier relationships',
-          permission: 'canViewSuppliers'
+          description: realDataStatus.enabled ? 
+            'Manage supplier relationships with real data' : 
+            'Manage supplier relationships',
+          permission: 'canViewSuppliers',
+          realDataIndicator: true
         },
         {
           name: 'Products',
           href: '/products',
           icon: Package,
-          description: 'Product catalog and inventory',
-          permission: 'canViewProducts'
+          description: realDataStatus.enabled ? 
+            'Product catalog with real inventory' : 
+            'Product catalog and inventory',
+          permission: 'canViewProducts',
+          badge: realDataStatus.enabled && realDataStatus.productCount > 0 ? 
+            `${realDataStatus.productCount} Real` : null,
+          badgeColor: 'bg-blue-500',
+          realDataIndicator: true
         }
       ]
     },
 
-    // Operations Section
+    // Operations Section with Real Data
     {
       name: 'Operations',
       section: true,
@@ -320,10 +453,13 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Sourcing',
           href: '/sourcing',
           icon: Brain,
-          description: 'Client PO sourcing workflow',
+          description: realDataStatus.enabled ? 
+            'Client PO sourcing with real-time data' : 
+            'Client PO sourcing workflow',
           permission: 'canViewOrders',
           badge: sourcingCount > 0 ? sourcingCount : null,
-          badgeColor: 'bg-orange-500'
+          badgeColor: 'bg-orange-500',
+          realDataIndicator: true
         },
         {
           name: 'AI Matching',
@@ -335,7 +471,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // Procurement Section
+    // Procurement Section with Real Data
     {
       name: 'Procurement',
       section: true,
@@ -344,15 +480,21 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Proforma Invoices',
           href: '/proforma-invoices',
           icon: FileText,
-          description: 'Supplier quotations and PIs',
-          permission: 'canViewOrders'
+          description: realDataStatus.enabled ? 
+            'Supplier quotations with real data sync' : 
+            'Supplier quotations and PIs',
+          permission: 'canViewOrders',
+          realDataIndicator: true
         },
         {
           name: 'Purchase Orders',
           href: '/purchase-orders',
           icon: ShoppingCart,
-          description: 'Purchase order management',
-          permission: 'canViewOrders'
+          description: realDataStatus.enabled ? 
+            'Purchase order management with real-time updates' : 
+            'Purchase order management',
+          permission: 'canViewOrders',
+          realDataIndicator: true
         },
         {
           name: 'Smart Notifications',
@@ -367,16 +509,19 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Tracking',
           href: '/tracking',
           icon: BarChart3,
-          description: 'Delivery and payment tracking',
+          description: realDataStatus.enabled ? 
+            'Real-time delivery and payment tracking' : 
+            'Delivery and payment tracking',
           permission: 'canViewDeliveries',
           badge: trackingCounts.overdueItems > 0 ? trackingCounts.overdueItems : 
                  trackingCounts.activeDeliveries > 0 ? trackingCounts.activeDeliveries : null,
-          badgeColor: trackingCounts.overdueItems > 0 ? 'bg-red-500' : 'bg-blue-500'
+          badgeColor: trackingCounts.overdueItems > 0 ? 'bg-red-500' : 'bg-blue-500',
+          realDataIndicator: true
         }
       ]
     },
 
-    // Business Section
+    // Business Section with Real Data
     {
       name: 'Business',
       section: true,
@@ -385,8 +530,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Client Invoices',
           href: '/client-invoices',
           icon: Receipt,
-          description: 'Client billing and invoices',
-          permission: 'canViewInvoices'
+          description: realDataStatus.enabled ? 
+            'Client billing with real-time data' : 
+            'Client billing and invoices',
+          permission: 'canViewInvoices',
+          realDataIndicator: true
         },
         {
           name: 'Delivery Tracking',
@@ -400,7 +548,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // Tools & AI Section - UPDATED with new items
+    // Tools & AI Section with Real Data Integration
     {
       name: 'Tools & AI',
       section: true,
@@ -409,8 +557,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Quick Import',
           href: '/quick-import',
           icon: Upload,
-          description: 'Bulk data import utilities',
-          permission: 'canImportData'
+          description: realDataStatus.enabled ? 
+            'Bulk data import with real-time validation' : 
+            'Bulk data import utilities',
+          permission: 'canImportData',
+          realDataIndicator: true
         },
         {
           name: 'MCP Tools',
@@ -421,7 +572,6 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           badge: 'AI',
           badgeColor: 'bg-purple-500'
         },
-        // NEW: Dual System Dashboard
         {
           name: 'Dual System',
           href: '/dual-system-dashboard',
@@ -431,7 +581,6 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           badge: 'NEW',
           badgeColor: 'bg-green-500'
         },
-        // NEW: Prompt Management
         {
           name: 'Prompt Management',
           href: '/prompt-management',
@@ -444,12 +593,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // 🆕 NEW: Multi-Company Administration Section
+    // 🆕 Multi-Company Administration Section
     {
       name: 'Multi-Company Admin',
       section: true,
       adminOnly: true,
-      multiCompanyOnly: true, // New flag
+      multiCompanyOnly: true,
       children: [
         {
           name: 'Company Structure',
@@ -472,7 +621,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       ]
     },
 
-    // Enhanced Administration Section
+    // Enhanced Administration Section with Real Data
     {
       name: 'Administration',
       section: true,
@@ -482,10 +631,13 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Team Management',
           href: '/admin/team',
           icon: UserCheck,
-          description: 'Team member and role management',
+          description: realDataStatus.enabled ? 
+            'Team management with real-time activity' : 
+            'Team member and role management',
           permission: 'canManageUsers',
           badge: teamOnline > 0 ? `${teamOnline} online` : null,
-          badgeColor: 'bg-green-500'
+          badgeColor: 'bg-green-500',
+          realDataIndicator: true
         },
         {
           name: 'Category Management',
@@ -510,8 +662,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           name: 'Activity Logs',
           href: '/admin/activity',
           icon: Activity,
-          description: 'System activity and audit logs',
-          permission: 'canManageUsers'
+          description: realDataStatus.enabled ? 
+            'Real-time system activity and audit logs' : 
+            'System activity and audit logs',
+          permission: 'canManageUsers',
+          realDataIndicator: true
         }
       ]
     }
@@ -555,7 +710,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     return location.pathname.startsWith(href);
   };
 
-  // 🚀 UPDATED: Enhanced permission checking with public route support
+  // 🚀 Enhanced permission checking with public route support
   const hasPermission = (permission) => {
     if (!permission) return true;
     if (permission === 'canViewPublic') return true; // Public routes always accessible
@@ -571,7 +726,6 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     
     // Multi-company admin check
     if (section.multiCompanyOnly) {
-      // Show to Group Admin, Division Admin, or users with company management permissions
       return permissions.isGroupAdmin || 
              permissions.isDivisionAdmin || 
              permissions.canManageCompanies ||
@@ -579,6 +733,25 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     }
     
     return true;
+  };
+
+  // 🚀 Real Data Indicator Component
+  const RealDataIndicator = ({ enabled, size = 'small' }) => {
+    if (!enabled) return null;
+    
+    const iconSize = size === 'small' ? 'w-3 h-3' : 'w-4 h-4';
+    const iconColor = realDataStatus.connected ? 'text-green-400' : 
+                     realDataStatus.enabled ? 'text-orange-400' : 'text-gray-400';
+    
+    return (
+      <div className={`inline-flex items-center ${iconSize} ${iconColor}`} 
+           title={realDataStatus.connected ? 'Real Data Connected' : 
+                  realDataStatus.enabled ? 'Real Data Enabled (Offline)' : 'Mock Data'}>
+        {realDataStatus.connected ? <Database className={iconSize} /> : 
+         realDataStatus.enabled ? <AlertCircle className={iconSize} /> : 
+         <WifiOff className={iconSize} />}
+      </div>
+    );
   };
 
   const renderNavItem = (item, isChild = false, parentName = '') => {
@@ -603,7 +776,16 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           >
             <div className="flex items-center">
               {item.icon && <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-5 w-5`} />}
-              {!isCollapsed && <span>{item.name}</span>}
+              {!isCollapsed && (
+                <div className="flex items-center">
+                  <span>{item.name}</span>
+                  {item.realDataIndicator && (
+                    <div className="ml-2">
+                      <RealDataIndicator enabled={item.realDataIndicator} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {!isCollapsed && (
               <div className="flex items-center">
@@ -638,12 +820,21 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
             ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
             : 'text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
         } ${isChild ? 'pl-11' : ''}`}
-        title={isCollapsed ? item.name : item.description}
+        title={isCollapsed ? 
+          `${item.name}${item.realDataIndicator ? (realDataStatus.connected ? ' (Real Data)' : ' (Mock Data)') : ''}` : 
+          item.description}
       >
         {item.icon && <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-5 w-5`} />}
         {!isCollapsed && (
           <>
-            <span className="flex-1">{item.name}</span>
+            <div className="flex items-center flex-1">
+              <span>{item.name}</span>
+              {item.realDataIndicator && (
+                <div className="ml-2">
+                  <RealDataIndicator enabled={item.realDataIndicator} />
+                </div>
+              )}
+            </div>
             {item.badge && (
               <span className={`ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white ${item.badgeColor || 'bg-gray-500'}`}>
                 {item.badge}
@@ -711,7 +902,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         isCollapsed ? 'w-16' : 'w-64'
       }`}>
         <div className="h-full flex flex-col">
-          {/* Enhanced Header with Multi-Company Indicator */}
+          {/* Enhanced Header with Real Data Status */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 h-16 bg-gradient-to-r from-blue-600 to-purple-600">
             {!isCollapsed && (
               <div className="flex items-center">
@@ -720,12 +911,19 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white">HiggsFlow</h2>
-                  <p className="text-xs text-blue-100">
-                    {permissions.isMultiCompanyUser ? 
-                      `Multi-Company Platform` : 
-                      'Phase 2B Analytics Ready'
-                    }
-                  </p>
+                  <div className="flex items-center">
+                    <p className="text-xs text-blue-100">
+                      {permissions.isMultiCompanyUser ? 
+                        'Multi-Company Platform' : 
+                        'Phase 2B Real Data'
+                      }
+                    </p>
+                    {realDataStatus.enabled && (
+                      <div className="ml-2">
+                        <RealDataIndicator enabled={true} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -742,6 +940,32 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
             </button>
           </div>
 
+          {/* 🚀 Real Data Status Bar */}
+          {!isCollapsed && realDataStatus.enabled && (
+            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center">
+                  {realDataStatus.connected ? (
+                    <CheckCircle className="w-3 h-3 text-green-500 mr-1" />
+                  ) : (
+                    <AlertCircle className="w-3 h-3 text-orange-500 mr-1" />
+                  )}
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {realDataStatus.connected ? 'Real Data Connected' : 'Real Data Enabled'}
+                  </span>
+                </div>
+                {realDataStatus.syncInProgress && (
+                  <Sync className="w-3 h-3 text-blue-500 animate-spin" />
+                )}
+              </div>
+              {realDataStatus.lastSync && (
+                <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                  Last sync: {realDataStatus.lastSync.toLocaleTimeString()}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Navigation Items */}
           <div className="flex-1 overflow-y-auto p-4">
             {/* Dashboard - always first */}
@@ -753,7 +977,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
             )}
           </div>
 
-          {/* Enhanced User Info with Multi-Company Badge */}
+          {/* Enhanced User Info with Real Data Badge */}
           {user && (
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 transition-colors duration-300">
               <div className={`flex items-center ${isCollapsed ? 'justify-center' : ''}`}>
@@ -765,8 +989,10 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                       user.email?.[0]?.toUpperCase() || 'U'
                     )}
                   </div>
-                  {/* Enhanced online indicator with multi-company status */}
+                  {/* Enhanced online indicator with real data status */}
                   <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white dark:border-gray-800 rounded-full ${
+                    realDataStatus.connected ? 'bg-green-400' :
+                    realDataStatus.enabled ? 'bg-orange-400' :
                     permissions.isGroupAdmin ? 'bg-purple-400' :
                     permissions.isDivisionAdmin ? 'bg-blue-400' :
                     permissions.isCompanyAdmin ? 'bg-green-400' :
@@ -793,6 +1019,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                           {userBadge.text}
                         </span>
                       )}
+                      {realDataStatus.enabled && (
+                        <div className="ml-2">
+                          <RealDataIndicator enabled={true} size="small" />
+                        </div>
+                      )}
                     </div>
                     
                     {/* Multi-Company Access Indicator */}
@@ -809,7 +1040,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         </div>
       </nav>
 
-      {/* Enhanced Mobile Navigation */}
+      {/* Enhanced Mobile Navigation with Real Data Indicators */}
       {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setIsMobileMenuOpen(false)} />
@@ -823,7 +1054,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
               </button>
             </div>
             
-            {/* Enhanced Mobile Header */}
+            {/* Enhanced Mobile Header with Real Data Status */}
             <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-4">
               <div className="flex items-center">
                 <div className="flex items-center justify-center w-8 h-8 bg-white bg-opacity-20 rounded-lg mr-3">
@@ -831,14 +1062,38 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white">HiggsFlow</h2>
-                  <p className="text-xs text-blue-100">
-                    {permissions.isMultiCompanyUser ? 
-                      'Multi-Company Dashboard' : 
-                      'Phase 2B Analytics'
-                    }
-                  </p>
+                  <div className="flex items-center">
+                    <p className="text-xs text-blue-100">
+                      {permissions.isMultiCompanyUser ? 
+                        'Multi-Company Dashboard' : 
+                        'Phase 2B Real Data'
+                      }
+                    </p>
+                    {realDataStatus.enabled && (
+                      <div className="ml-2">
+                        <RealDataIndicator enabled={true} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+              
+              {/* Mobile Real Data Status */}
+              {realDataStatus.enabled && (
+                <div className="mt-2 flex items-center text-xs text-blue-100">
+                  {realDataStatus.connected ? (
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                  ) : (
+                    <AlertCircle className="w-3 h-3 mr-1" />
+                  )}
+                  <span>
+                    {realDataStatus.connected ? 'Real Data Connected' : 'Real Data Enabled'}
+                  </span>
+                  {realDataStatus.syncInProgress && (
+                    <Sync className="w-3 h-3 ml-2 animate-spin" />
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
@@ -857,7 +1112,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
               </nav>
             </div>
 
-            {/* Enhanced Mobile User Info */}
+            {/* Enhanced Mobile User Info with Real Data Status */}
             {user && (
               <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-900/50 p-4 transition-colors duration-300">
                 <div className="flex items-center">
@@ -869,8 +1124,10 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                         user.email?.[0]?.toUpperCase() || 'U'
                       )}
                     </div>
-                    {/* Multi-company status indicator */}
+                    {/* Real data status indicator on mobile */}
                     <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white dark:border-gray-800 rounded-full ${
+                      realDataStatus.connected ? 'bg-green-400' :
+                      realDataStatus.enabled ? 'bg-orange-400' :
                       permissions.isGroupAdmin ? 'bg-purple-400' :
                       permissions.isDivisionAdmin ? 'bg-blue-400' :
                       permissions.isCompanyAdmin ? 'bg-green-400' :
@@ -895,6 +1152,11 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                           {userBadge.icon && <userBadge.icon className="w-3 h-3 mr-1" />}
                           {userBadge.text}
                         </span>
+                      )}
+                      {realDataStatus.enabled && (
+                        <div className="ml-2">
+                          <RealDataIndicator enabled={true} size="small" />
+                        </div>
                       )}
                     </div>
                     
