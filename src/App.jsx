@@ -75,8 +75,8 @@ const LazyHiggsFlowAnalyticsDashboard = lazy(() => import('./components/analytic
 // 🚀 Professional Landing Page Component
 const LazyHiggsFlowLandingPage = lazy(() => import('./components/HiggsFlowLandingPage'));
 
-// 🚀 Real Data Migration Dashboard
-const LazyDataMigrationDashboard = lazy(() => import('./components/migration/DataMigrationDashboard'));
+// 🚀 Real Data Migration Dashboard (using existing FirestoreMigrationPanel)
+const LazyFirestoreMigrationPanel = lazy(() => import('./components/migration/FirestoreMigrationPanel'));
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -483,8 +483,8 @@ function AppContent() {
               path="/catalog/migration" 
               element={
                 <ProtectedRoute permission="canManageData">
-                  <LazyWrapper componentName="Data Migration Dashboard">
-                    <LazyDataMigrationDashboard />
+                  <LazyWrapper componentName="Firestore Migration Panel">
+                    <LazyFirestoreMigrationPanel />
                   </LazyWrapper>
                 </ProtectedRoute>
               } 
