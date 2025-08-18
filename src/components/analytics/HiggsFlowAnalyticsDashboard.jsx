@@ -35,31 +35,7 @@ import {
   createCORSSafeListener
 } from '../../config/firebase';
 
-// 🔥 SAFE: Context import with fallback
-let useUnifiedData;
-try {
-  const unifiedDataModule = await import('../../context/UnifiedDataContext');
-  useUnifiedData = unifiedDataModule.useUnifiedData;
-} catch (error) {
-  console.warn('⚠️ UnifiedDataContext not available, using fallback');
-  useUnifiedData = () => ({
-    state: {
-      dataSource: 'localStorage',
-      purchaseOrders: [],
-      suppliers: [],
-      products: [],
-      catalogProducts: [],
-      deliveryTracking: {},
-      paymentTracking: {},
-      metadata: { totalRecords: 0, lastModified: null }
-    },
-    isLoading: () => false,
-    getError: () => null,
-    isRealTimeActive: false,
-    switchDataSource: () => {},
-    refreshData: () => {}
-  });
-}
+// 🔥 SAFE: Context import with fallback - moved to component level to avoid top-level await
 
 // ========== ENHANCED ANALYTICS SERVICE ==========
 class HiggsFlowAnalyticsService {
@@ -711,12 +687,55 @@ const HiggsFlowAnalyticsDashboard = () => {
   const [timeRange, setTimeRange] = useState('24h');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [useUnifiedData, setUseUnifiedData] = useState(null);
 
   // Initialize services
   const analyticsService = useMemo(() => new HiggsFlowAnalyticsService(), []);
   
+  // Load UnifiedDataContext dynamically
+  useEffect(() => {
+    const loadUnifiedDataContext = async () => {
+      try {
+        const unifiedDataModule = await import('../../context/UnifiedDataContext');
+        setUseUnifiedData(() => unifiedDataModule.useUnifiedData);
+      } catch (error) {
+        console.warn('⚠️ UnifiedDataContext not available, using fallback');
+        setUseUnifiedData(() => () => ({
+          state: {
+            dataSource: 'localStorage',
+            purchaseOrders: [],
+            suppliers: [],
+            products: [],
+            catalogProducts: [],
+            deliveryTracking: {},
+            paymentTracking: {},
+            metadata: { totalRecords: 0, lastModified: null }
+          },
+          isLoading: () => false,
+          getError: () => null,
+          isRealTimeActive: false,
+          switchDataSource: () => {},
+          refreshData: () => {}
+        }));
+      }
+    };
+
+    loadUnifiedDataContext();
+  }, []);
+  
   // Safe context usage
   const unifiedData = useMemo(() => {
+    if (!useUnifiedData) {
+      return {
+        state: { dataSource: 'localStorage' },
+        isLoading: () => false,
+        getError: () => null,
+        isRealTimeActive: false,
+        switchDataSource: () => {},
+        refreshData: () => {}
+      };
+    }
+
     try {
       return useUnifiedData();
     } catch (error) {
@@ -730,7 +749,7 @@ const HiggsFlowAnalyticsDashboard = () => {
         refreshData: () => {}
       };
     }
-  }, []);
+  }, [useUnifiedData]);
 
   // Load analytics data
   const loadAnalyticsData = useCallback(async () => {
