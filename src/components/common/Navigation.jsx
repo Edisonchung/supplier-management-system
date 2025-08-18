@@ -58,7 +58,7 @@ import {
   WifiOff,
   CheckCircle,
   AlertCircle,
-  Sync
+  RotateCw
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -955,7 +955,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                   </span>
                 </div>
                 {realDataStatus.syncInProgress && (
-                  <Sync className="w-3 h-3 text-blue-500 animate-spin" />
+                  <RotateCw className="w-3 h-3 text-blue-500 animate-spin" />
                 )}
               </div>
               {realDataStatus.lastSync && (
@@ -1090,7 +1090,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                     {realDataStatus.connected ? 'Real Data Connected' : 'Real Data Enabled'}
                   </span>
                   {realDataStatus.syncInProgress && (
-                    <Sync className="w-3 h-3 ml-2 animate-spin" />
+                    <RotateCw className="w-3 h-3 ml-2 animate-spin" />
                   )}
                 </div>
               )}
