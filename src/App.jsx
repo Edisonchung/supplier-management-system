@@ -325,7 +325,21 @@ const getClientIP = async () => {
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const { dataSource, isRealTimeActive, migrationStatus } = useUnifiedData();
+  
+  // Add fallback for useUnifiedData in case context is not available
+  let dataSource, isRealTimeActive, migrationStatus;
+  try {
+    const unifiedData = useUnifiedData();
+    dataSource = unifiedData.dataSource;
+    isRealTimeActive = unifiedData.isRealTimeActive;
+    migrationStatus = unifiedData.migrationStatus;
+  } catch (error) {
+    console.warn('UnifiedDataContext not available, using fallback values:', error);
+    dataSource = 'localStorage';
+    isRealTimeActive = false;
+    migrationStatus = { inProgress: false };
+  }
+  
   const [notification, setNotification] = useState(null);
   const [showFirestoreTest, setShowFirestoreTest] = useState(true);
   const [analyticsInitialized, setAnalyticsInitialized] = useState(false);
