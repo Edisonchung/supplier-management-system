@@ -533,6 +533,8 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+            
             
             {/* 🚀 NEW: HiggsFlow Analytics Phase 2B Dashboard - PRIMARY ANALYTICS ROUTE */}
             <Route 
@@ -557,6 +559,8 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+            
             
             {/* 🚀 NEW: Advanced Analytics Route - TERTIARY ANALYTICS ACCESS */}
             <Route 
@@ -581,6 +585,66 @@ function AppContent() {
                 </ProtectedRoute>
               } 
             />
+
+             {/* Real-time Insights Route */}
+  <Route 
+    path="/insights" 
+    element={
+      <ProtectedRoute permission="canViewDashboard">
+        <LazyWrapper componentName="Real-time Insights">
+          <LazyAnalyticsDashboard />
+        </LazyWrapper>
+      </ProtectedRoute>
+    } 
+  />
+
+  {/* ========== E-COMMERCE PLATFORM ROUTES ========== */}
+  
+  {/* Factory Registration - Public Route */}
+  <Route 
+    path="/factory-registration" 
+    element={
+      <LazyWrapper componentName="Factory Registration">
+        <LazyFactoryRegistration />
+      </LazyWrapper>
+    } 
+  />
+
+  {/* Factory Dashboard - Protected Route */}
+  <Route 
+    path="/factory-dashboard" 
+    element={
+      <ProtectedRoute permission="canManageFactories">
+        <LazyWrapper componentName="Factory Dashboard">
+          <LazyFactoryDashboard />
+        </LazyWrapper>
+      </ProtectedRoute>
+    } 
+  />
+
+  {/* Quote Requests Management */}
+  <Route 
+    path="/quote-requests" 
+    element={
+      <ProtectedRoute permission="canViewOrders">
+        <LazyWrapper componentName="Quote Requests">
+          <LazyQuoteRequest />
+        </LazyWrapper>
+      </ProtectedRoute>
+    } 
+  />
+
+  {/* Shopping Cart Management */}
+  <Route 
+    path="/shopping-cart" 
+    element={
+      <ProtectedRoute permission="canViewOrders">
+        <LazyWrapper componentName="Shopping Cart">
+          <LazyShoppingCart />
+        </LazyWrapper>
+      </ProtectedRoute>
+    } 
+  />
             
             {/* Core Management Routes */}
             <Route 
