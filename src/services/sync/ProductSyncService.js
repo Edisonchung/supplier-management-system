@@ -50,7 +50,7 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // DASHBOARD MANAGEMENT METHODS (NEW)
+  // DASHBOARD MANAGEMENT METHODS
   // ====================================================================
 
   async getInternalProductsWithSyncStatus() {
@@ -248,7 +248,10 @@ class ProductSyncService {
     }
   }
 
-  // Helper method for individual product sync
+  // ====================================================================
+  // SYNC HELPER METHODS
+  // ====================================================================
+
   async syncSingleProductToPublic(internalProductId) {
     // Get internal product
     const internalDoc = await getDoc(doc(this.db, 'products', internalProductId));
@@ -272,7 +275,7 @@ class ProductSyncService {
     
     let publicProductId;
     if (existingSnapshot.empty) {
-      // Create new public product using existing transform method
+      // Create new public product
       const publicProduct = this.transformToEcommerceProduct(internalProduct);
       const docRef = await addDoc(collection(this.db, 'products_public'), publicProduct);
       publicProductId = docRef.id;
@@ -291,7 +294,94 @@ class ProductSyncService {
     return publicProductId;
   }
 
-  // Dashboard-specific helper methods
+  transformToEcommerceProduct(internalProduct) {
+    return {
+      // Link to internal system
+      internalProductId: internalProduct.id,
+      
+      // Customer-facing information
+      displayName: this.generateDisplayName(internalProduct),
+      customerDescription: this.generateCustomerDescription(internalProduct),
+      
+      // Pricing
+      price: this.calculatePublicPrice(internalProduct.price || 0),
+      originalPrice: internalProduct.price || 0,
+      markup: this.syncRules.priceMarkup,
+      currency: 'MYR',
+      
+      // Inventory
+      stock: internalProduct.stock || 0,
+      availability: this.calculateAvailability(internalProduct),
+      
+      // Category & Classification
+      category: this.mapCategory(internalProduct.category),
+      subcategory: this.mapSubcategory(internalProduct.category),
+      
+      // Technical specifications
+      specifications: this.formatSpecifications(internalProduct),
+      
+      // SEO and search
+      seo: this.generateSEOData(internalProduct),
+      
+      // E-commerce settings
+      visibility: this.determineVisibility(internalProduct),
+      featured: this.shouldBeFeatured(internalProduct),
+      minOrderQty: 1,
+      
+      // Metadata
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      syncedAt: serverTimestamp(),
+      lastModifiedBy: 'product_sync_service',
+      version: 1.0
+    };
+  }
+
+  generateEcommerceUpdates(internalProduct, existingData) {
+    const updates = {};
+
+    // Check for price changes
+    const newPrice = this.calculatePublicPrice(internalProduct.price || 0);
+    if (newPrice !== existingData.price) {
+      updates.price = newPrice;
+      updates.originalPrice = internalProduct.price || 0;
+    }
+
+    // Check for stock changes
+    const newStock = internalProduct.stock || 0;
+    if (newStock !== existingData.stock) {
+      updates.stock = newStock;
+      updates.availability = this.calculateAvailability(internalProduct);
+    }
+
+    // Check for name changes
+    const newDisplayName = this.generateDisplayName(internalProduct);
+    if (newDisplayName !== existingData.displayName) {
+      updates.displayName = newDisplayName;
+      updates.customerDescription = this.generateCustomerDescription(internalProduct);
+    }
+
+    // Check for category changes
+    const newCategory = this.mapCategory(internalProduct.category);
+    if (newCategory !== existingData.category) {
+      updates.category = newCategory;
+      updates.subcategory = this.mapSubcategory(internalProduct.category);
+    }
+
+    // Always update sync timestamp if there are changes
+    if (Object.keys(updates).length > 0) {
+      updates.syncedAt = serverTimestamp();
+      updates.updatedAt = serverTimestamp();
+      updates.lastModifiedBy = 'product_sync_service';
+    }
+
+    return updates;
+  }
+
+  // ====================================================================
+  // VALIDATION AND CALCULATION METHODS
+  // ====================================================================
+
   isEligibleForSync(product) {
     // Check stock levels
     if ((product.stock || 0) < this.syncRules.minStock) {
@@ -371,6 +461,135 @@ class ProductSyncService {
     return Math.round(internalPrice * (1 + markup) * 100) / 100;
   }
 
+  calculateAvailability(product) {
+    const stockLevel = product.stock || 0;
+    
+    if (stockLevel === 0) return 'out-of-stock';
+    if (stockLevel < 5) return 'low-stock';
+    if (stockLevel < 20) return 'limited';
+    return 'in-stock';
+  }
+
+  // ====================================================================
+  // TRANSFORMATION HELPER METHODS
+  // ====================================================================
+
+  generateDisplayName(internalProduct) {
+    let displayName = internalProduct.name || 'Industrial Product';
+    
+    // Add brand if available
+    if (internalProduct.brand && !displayName.toLowerCase().includes(internalProduct.brand.toLowerCase())) {
+      displayName = `${internalProduct.brand} ${displayName}`;
+    }
+    
+    // Add descriptive qualifiers based on category
+    const categoryQualifiers = {
+      'electronics': 'Professional Grade',
+      'hydraulics': 'Industrial Hydraulic',
+      'pneumatics': 'Pneumatic System',
+      'automation': 'Automation Grade',
+      'sensors': 'Industrial Sensor',
+      'cables': 'Industrial Cable',
+      'components': 'Industrial Component'
+    };
+    
+    const qualifier = categoryQualifiers[internalProduct.category?.toLowerCase()];
+    if (qualifier && !displayName.toLowerCase().includes(qualifier.toLowerCase())) {
+      displayName = `${qualifier} ${displayName}`;
+    }
+    
+    return displayName;
+  }
+
+  generateCustomerDescription(internalProduct) {
+    let description = internalProduct.description || '';
+    
+    // If no description, generate one based on available data
+    if (!description || description.length < 50) {
+      const category = internalProduct.category || 'industrial';
+      const brand = internalProduct.brand || 'Professional';
+      
+      description = `High-quality ${category} product from ${brand}. Suitable for professional industrial applications with reliable performance and durability.`;
+      
+      if (internalProduct.sku) {
+        description += ` Model/SKU: ${internalProduct.sku}.`;
+      }
+    }
+    
+    return description;
+  }
+
+  mapCategory(internalCategory) {
+    const categoryMap = {
+      'electronics': 'Electronics & Components',
+      'hydraulics': 'Hydraulic Systems',
+      'pneumatics': 'Pneumatic Systems', 
+      'automation': 'Automation & Control',
+      'sensors': 'Sensors & Instrumentation',
+      'cables': 'Cables & Wiring',
+      'components': 'Industrial Components'
+    };
+    
+    return categoryMap[internalCategory?.toLowerCase()] || 'Industrial Equipment';
+  }
+
+  mapSubcategory(internalCategory) {
+    const subcategoryMap = {
+      'electronics': 'Electronic Components',
+      'hydraulics': 'Hydraulic Components',
+      'pneumatics': 'Pneumatic Components',
+      'automation': 'Control Systems',
+      'sensors': 'Industrial Sensors',
+      'cables': 'Industrial Cables',
+      'components': 'General Components'
+    };
+    
+    return subcategoryMap[internalCategory?.toLowerCase()] || 'General Equipment';
+  }
+
+  formatSpecifications(internalProduct) {
+    return {
+      sku: internalProduct.sku || 'Contact for details',
+      brand: internalProduct.brand || 'Professional Grade',
+      category: internalProduct.category || 'Industrial',
+      description: internalProduct.description || 'Contact for detailed specifications',
+      warranty: '1 year manufacturer warranty',
+      compliance: ['Industry Standard']
+    };
+  }
+
+  generateSEOData(internalProduct) {
+    const name = (internalProduct.name || '').toLowerCase();
+    const category = (internalProduct.category || '').toLowerCase();
+    const brand = (internalProduct.brand || '').toLowerCase();
+    
+    const keywords = [name, category, brand, 'industrial', 'malaysia', 'professional'].filter(Boolean);
+
+    return {
+      keywords: keywords,
+      metaTitle: `${internalProduct.name} - Professional ${category} | HiggsFlow`,
+      metaDescription: `Professional ${category} - ${internalProduct.name}. High-quality industrial equipment from verified Malaysian suppliers.`
+    };
+  }
+
+  determineVisibility(internalProduct) {
+    const hasStock = (internalProduct.stock || 0) > 0;
+    const isActive = internalProduct.status !== 'pending';
+    
+    return (hasStock && isActive) ? 'public' : 'private';
+  }
+
+  shouldBeFeatured(internalProduct) {
+    const hasGoodStock = (internalProduct.stock || 0) > 20;
+    const isHighValue = (internalProduct.price || 0) > 500;
+    
+    return hasGoodStock && isHighValue;
+  }
+
+  // ====================================================================
+  // DEMO DATA
+  // ====================================================================
+
   getDemoProductsWithSyncStatus() {
     return [
       {
@@ -447,7 +666,7 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // EXISTING REAL-TIME SYNC METHODS (PRESERVED)
+  // REAL-TIME SYNC METHODS (PLACEHOLDER IMPLEMENTATIONS)
   // ====================================================================
 
   async startSync() {
@@ -460,16 +679,10 @@ class ProductSyncService {
     this.isRunning = true;
 
     try {
-      // 1. Initial full sync (existing products)
+      // Placeholder for full sync implementation
       await this.performInitialSync();
-      
-      // 2. Set up real-time listeners
       this.setupRealTimeSync();
-      
-      // 3. Start batch processing queue
       this.startBatchProcessor();
-      
-      // 4. Start AI image generation processor
       this.startImageProcessor();
       
       console.log('✅ Product sync service started successfully');
@@ -484,30 +697,30 @@ class ProductSyncService {
   async stopSync() {
     console.log('🛑 Stopping product sync service...');
     this.isRunning = false;
-
-    // Clean up all listeners
     this.syncListeners.forEach(unsubscribe => unsubscribe());
     this.syncListeners.clear();
-
     console.log('✅ Product sync service stopped');
   }
 
-  // [Include all your existing methods here - performInitialSync, setupRealTimeSync, etc.]
-  // I'm preserving the structure but showing just the key methods for brevity
-  
   async performInitialSync() {
-    // Your existing implementation
-    console.log('📦 Performing initial product sync from internal to e-commerce...');
-    // ... rest of existing method
+    console.log('📦 Performing initial product sync...');
+    // Placeholder implementation
   }
 
   setupRealTimeSync() {
-    // Your existing implementation
     console.log('👂 Setting up real-time sync listeners...');
-    // ... rest of existing method
+    // Placeholder implementation
   }
 
-  // ... all other existing methods preserved
+  startBatchProcessor() {
+    console.log('⚡ Starting batch processor...');
+    // Placeholder implementation
+  }
+
+  startImageProcessor() {
+    console.log('🎨 Starting image processor...');
+    // Placeholder implementation
+  }
 
   getSyncStats() {
     return {
@@ -522,7 +735,6 @@ class ProductSyncService {
 
   async getSyncHealth() {
     try {
-      // Count products in both collections
       const internalSnapshot = await getDocs(collection(this.db, 'products'));
       const ecommerceSnapshot = await getDocs(collection(this.db, 'products_public'));
       
