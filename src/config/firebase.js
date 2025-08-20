@@ -14,6 +14,7 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore,
+  CACHE_SIZE_UNLIMITED,
   connectFirestoreEmulator,
   enableNetwork,
   disableNetwork,
