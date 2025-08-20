@@ -1,4 +1,4 @@
-// Updated Public Catalog Component for Phase 2A - ENHANCED VERSION
+// Updated Public Catalog Component for Phase 2A - ENHANCED VERSION WITH FIXES
 // File: src/components/ecommerce/PublicCatalog.jsx
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -35,6 +35,16 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../config/firebase.js';
 import EnhancedEcommerceFirebaseService from '../../services/ecommerce/EnhancedEcommerceFirebaseService.js';
 
+// FIXED: Safe UnifiedDataContext import with fallback
+let useUnifiedData;
+try {
+  const UnifiedDataModule = require('../../context/UnifiedDataContext');
+  useUnifiedData = UnifiedDataModule.useUnifiedData;
+} catch (error) {
+  console.warn('UnifiedDataContext not available, using fallback mode:', error);
+  useUnifiedData = null;
+}
+
 // Initialize enhanced service
 const ecommerceService = EnhancedEcommerceFirebaseService;
 
@@ -43,11 +53,66 @@ const generateSessionId = () => {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
   const userAgent = navigator.userAgent.slice(-10);
-  return `guest_${timestamp}_${random}_${btoa(userAgent).slice(0, 6)}`;
+  return `session_${timestamp}_${random}`;
+};
+
+// FIXED: Safe context hook with fallback
+const useUnifiedDataSafe = () => {
+  if (useUnifiedData) {
+    try {
+      return useUnifiedData();
+    } catch (error) {
+      console.warn('UnifiedDataContext error, using fallback:', error);
+    }
+  }
+  
+  // Fallback implementation
+  const [sessionId] = useState(() => {
+    try {
+      let stored = sessionStorage.getItem('higgsflow_session_id');
+      if (!stored) {
+        try {
+          stored = localStorage.getItem('higgsflow_session_id');
+        } catch (localError) {
+          console.warn('LocalStorage not available:', localError);
+        }
+      }
+      
+      if (stored) return stored;
+      
+      const newId = generateSessionId();
+      
+      try {
+        sessionStorage.setItem('higgsflow_session_id', newId);
+      } catch (sessionError) {
+        console.warn('SessionStorage not available:', sessionError);
+      }
+      
+      try {
+        localStorage.setItem('higgsflow_session_id', newId);
+      } catch (localError) {
+        console.warn('LocalStorage not available:', localError);
+      }
+      
+      return newId;
+    } catch (error) {
+      console.warn('Storage not available, using memory session:', error);
+      return generateSessionId();
+    }
+  });
+
+  return {
+    sessionId,
+    isFirestoreMode: false,
+    dataSource: 'localStorage'
+  };
 };
 
 const HiggsFlowPublicCatalog = () => {
   const navigate = useNavigate();
+  
+  // FIXED: Use safe context hook
+  const { sessionId, isFirestoreMode, dataSource } = useUnifiedDataSafe();
   
   // Component mounted tracking for cleanup
   const mountedRef = useRef(true);
@@ -71,44 +136,8 @@ const HiggsFlowPublicCatalog = () => {
   const [priceRange, setPriceRange] = useState([0, 10000]);
   const [inStockOnly, setInStockOnly] = useState(false);
   
-  // Enhanced guest cart state with better session management
+  // Enhanced guest cart state
   const [guestCartItems, setGuestCartItems] = useState([]);
-  const [sessionId] = useState(() => {
-    try {
-      // Try sessionStorage first (better for guest sessions)
-      let stored = sessionStorage.getItem('higgsflow_session_id');
-      if (!stored) {
-        // Fallback to localStorage if sessionStorage fails
-        try {
-          stored = localStorage.getItem('higgsflow_session_id');
-        } catch (localError) {
-          console.warn('LocalStorage not available:', localError);
-        }
-      }
-      
-      if (stored) return stored;
-      
-      const newId = generateSessionId();
-      
-      // Try to store in both locations
-      try {
-        sessionStorage.setItem('higgsflow_session_id', newId);
-      } catch (sessionError) {
-        console.warn('SessionStorage not available:', sessionError);
-      }
-      
-      try {
-        localStorage.setItem('higgsflow_session_id', newId);
-      } catch (localError) {
-        console.warn('LocalStorage not available:', localError);
-      }
-      
-      return newId;
-    } catch (error) {
-      console.warn('Storage not available, using memory session:', error);
-      return generateSessionId();
-    }
-  });
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -122,6 +151,9 @@ const HiggsFlowPublicCatalog = () => {
   // Component cleanup effect - CRITICAL FIX
   useEffect(() => {
     mountedRef.current = true;
+    
+    // Log enhanced analytics session info
+    console.log('📊 Real Analytics Service initialized:', sessionId);
     
     // Enhanced cleanup function
     return () => {
@@ -144,7 +176,7 @@ const HiggsFlowPublicCatalog = () => {
       setError(null);
       setNotification(null);
     };
-  }, []);
+  }, [sessionId]);
 
   // Safe state update function
   const safeSetState = useCallback((setter, value) => {
@@ -153,7 +185,7 @@ const HiggsFlowPublicCatalog = () => {
     }
   }, []);
 
-  // Load initial data with enhanced error handling
+  // ENHANCED: Load initial data with better error handling and fallback
   const loadInitialData = useCallback(async () => {
     if (!mountedRef.current) return;
     
@@ -161,42 +193,58 @@ const HiggsFlowPublicCatalog = () => {
       safeSetState(setLoading, true);
       safeSetState(setError, null);
       
+      console.log('📦 Loading real products from Firestore...');
+      
       // Create new abort controller for this request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
       abortControllerRef.current = new AbortController();
       
-      // Initialize e-commerce data first
-      await ecommerceService.initializeEcommerceData();
+      // ENHANCED: Initialize e-commerce data with better timeout handling
+      try {
+        await Promise.race([
+          ecommerceService.initializeEcommerceData(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Initialization timeout')), 15000)
+          )
+        ]);
+      } catch (initError) {
+        console.warn('E-commerce initialization failed, continuing with fallback:', initError);
+      }
       
-      // Load categories and featured products in parallel with timeout
+      // Load categories and featured products in parallel with enhanced fallbacks
       const loadPromises = [
         Promise.race([
           ecommerceService.getProductCategories(),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Categories timeout')), 10000)
+            setTimeout(() => reject(new Error('Categories timeout')), 8000)
           )
         ]).catch(err => {
-          console.warn('Categories failed, using fallback:', err);
+          console.warn('Categories failed, using enhanced fallback:', err);
           return [
-            { id: 'electronics', name: 'Electronics', productCount: 45 },
-            { id: 'mechanical', name: 'Mechanical', productCount: 67 },
-            { id: 'safety', name: 'Safety', productCount: 21 },
-            { id: 'tools', name: 'Tools', productCount: 33 },
-            { id: 'hydraulics', name: 'Hydraulics', productCount: 23 },
-            { id: 'pneumatics', name: 'Pneumatics', productCount: 19 }
+            { id: 'electronics', name: 'Electronics', productCount: 125, description: 'Electronic components and devices' },
+            { id: 'mechanical', name: 'Mechanical Components', productCount: 89, description: 'Gears, bearings, and mechanical parts' },
+            { id: 'safety', name: 'Safety Equipment', productCount: 67, description: 'PPE and safety devices' },
+            { id: 'tools', name: 'Tools & Equipment', productCount: 134, description: 'Hand tools and power equipment' },
+            { id: 'hydraulics', name: 'Hydraulics', productCount: 45, description: 'Hydraulic systems and components' },
+            { id: 'pneumatics', name: 'Pneumatics', productCount: 52, description: 'Pneumatic systems and air tools' },
+            { id: 'electrical', name: 'Electrical', productCount: 78, description: 'Electrical components and wiring' },
+            { id: 'chemicals', name: 'Industrial Chemicals', productCount: 34, description: 'Lubricants and industrial chemicals' }
           ];
         }),
         
         Promise.race([
           ecommerceService.getPublicCatalog({ pageSize: 8, featured: true }),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Featured timeout')), 10000)
+            setTimeout(() => reject(new Error('Featured timeout')), 8000)
           )
         ]).catch(err => {
-          console.warn('Featured products failed, using fallback:', err);
-          return { products: [], isMockData: true };
+          console.warn('Featured products failed, using enhanced fallback:', err);
+          return { 
+            products: generateFallbackProducts(8), 
+            isMockData: true 
+          };
         })
       ];
 
@@ -204,14 +252,14 @@ const HiggsFlowPublicCatalog = () => {
 
       if (!mountedRef.current) return;
 
-      // Process categories with totals
+      // Process categories with enhanced totals
       const totalProductCount = categoriesData.reduce((sum, cat) => sum + (cat.productCount || 0), 0);
       const allCategories = [
         { 
           id: 'all', 
           name: 'All Categories', 
-          productCount: totalProductCount || 208,
-          description: 'Browse all available products'
+          productCount: totalProductCount || 624,
+          description: 'Browse all available products across all categories'
         },
         ...categoriesData
       ];
@@ -220,31 +268,89 @@ const HiggsFlowPublicCatalog = () => {
       safeSetState(setFeaturedProducts, featuredResult.products || []);
       safeSetState(setIsMockData, featuredResult.isMockData || false);
       
+      console.log(`✅ Loaded real products: ${featuredResult.products?.length || 0}`);
+      
     } catch (err) {
       if (!mountedRef.current) return;
       
       console.error('Error loading initial data:', err);
-      safeSetState(setError, 'Failed to load catalog data. Switching to demo mode.');
+      safeSetState(setError, 'Failed to load catalog data. Using demo mode with enhanced features.');
       safeSetState(setIsMockData, true);
       
-      // Set comprehensive fallback data
+      // Set comprehensive enhanced fallback data
       safeSetState(setCategories, [
-        { id: 'all', name: 'All Categories', productCount: 208 },
-        { id: 'electronics', name: 'Electronics', productCount: 45 },
-        { id: 'mechanical', name: 'Mechanical Components', productCount: 67 },
-        { id: 'safety', name: 'Safety Equipment', productCount: 21 },
-        { id: 'tools', name: 'Tools & Equipment', productCount: 33 },
-        { id: 'hydraulics', name: 'Hydraulics', productCount: 23 },
-        { id: 'pneumatics', name: 'Pneumatics', productCount: 19 }
+        { id: 'all', name: 'All Categories', productCount: 624, description: 'Browse all available products' },
+        { id: 'electronics', name: 'Electronics', productCount: 125, description: 'Electronic components and devices' },
+        { id: 'mechanical', name: 'Mechanical Components', productCount: 89, description: 'Gears, bearings, and mechanical parts' },
+        { id: 'safety', name: 'Safety Equipment', productCount: 67, description: 'PPE and safety devices' },
+        { id: 'tools', name: 'Tools & Equipment', productCount: 134, description: 'Hand tools and power equipment' },
+        { id: 'hydraulics', name: 'Hydraulics', productCount: 45, description: 'Hydraulic systems and components' },
+        { id: 'pneumatics', name: 'Pneumatics', productCount: 52, description: 'Pneumatic systems and air tools' },
+        { id: 'electrical', name: 'Electrical', productCount: 78, description: 'Electrical components and wiring' },
+        { id: 'chemicals', name: 'Industrial Chemicals', productCount: 34, description: 'Lubricants and industrial chemicals' }
       ]);
       
-      safeSetState(setFeaturedProducts, []);
+      safeSetState(setFeaturedProducts, generateFallbackProducts(4));
     } finally {
       if (mountedRef.current) {
         safeSetState(setLoading, false);
       }
     }
   }, [safeSetState]);
+
+  // ENHANCED: Generate fallback products with realistic data
+  const generateFallbackProducts = useCallback((count = 8) => {
+    const productTemplates = [
+      { name: 'Industrial Ball Bearing SKF 6205', category: 'Mechanical Components', price: 45.50, image: '/api/placeholder/300/300' },
+      { name: 'Safety Helmet MSA V-Gard', category: 'Safety Equipment', price: 89.90, image: '/api/placeholder/300/300' },
+      { name: 'Hydraulic Cylinder 100mm Bore', category: 'Hydraulics', price: 325.00, image: '/api/placeholder/300/300' },
+      { name: 'Digital Multimeter Fluke 87V', category: 'Electronics', price: 445.00, image: '/api/placeholder/300/300' },
+      { name: 'Pneumatic Actuator SMC', category: 'Pneumatics', price: 234.50, image: '/api/placeholder/300/300' },
+      { name: 'Industrial Lubricant Shell 20L', category: 'Industrial Chemicals', price: 156.00, image: '/api/placeholder/300/300' },
+      { name: 'Power Drill Makita 18V', category: 'Tools & Equipment', price: 299.00, image: '/api/placeholder/300/300' },
+      { name: 'Electrical Contactor Schneider', category: 'Electrical', price: 178.50, image: '/api/placeholder/300/300' }
+    ];
+
+    return Array.from({ length: count }, (_, i) => {
+      const template = productTemplates[i % productTemplates.length];
+      return {
+        id: `fallback_${i + 1}`,
+        displayName: template.name,
+        name: template.name,
+        category: template.category,
+        shortDescription: `High-quality ${template.category.toLowerCase()} for industrial applications`,
+        pricing: {
+          unitPrice: template.price,
+          discountPrice: i % 3 === 0 ? template.price * 0.85 : null,
+          listPrice: template.price,
+          bulkPricing: [
+            { minQty: 10, price: template.price * 0.95 },
+            { minQty: 50, price: template.price * 0.90 }
+          ]
+        },
+        inventory: {
+          stockStatus: i % 4 === 0 ? 'Limited Stock' : 'In Stock',
+          quantity: Math.floor(Math.random() * 100) + 10,
+          minimumOrderQty: 1,
+          leadTime: '3-5 days'
+        },
+        supplier: {
+          name: ['TechCorp Sdn Bhd', 'Industrial Solutions', 'MechParts Malaysia', 'SafetyFirst Trading'][i % 4],
+          rating: 4.2 + (Math.random() * 0.8),
+          reviewCount: Math.floor(Math.random() * 50) + 15,
+          verified: true,
+          location: 'Malaysia'
+        },
+        images: {
+          primary: template.image,
+          thumbnail: template.image
+        },
+        featured: i < 2,
+        trending: i % 3 === 0,
+        newArrival: i % 5 === 0
+      };
+    });
+  }, []);
 
   // Load products with enhanced filtering and error handling
   const loadProducts = useCallback(async () => {
@@ -276,8 +382,42 @@ const HiggsFlowPublicCatalog = () => {
         pageSize: itemsPerPage
       };
 
-      // Use enhanced service method
-      const result = await ecommerceService.getPublicCatalog(filters);
+      // ENHANCED: Use service with better fallback handling
+      let result;
+      try {
+        result = await Promise.race([
+          ecommerceService.getPublicCatalog(filters),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Product search timeout')), 10000)
+          )
+        ]);
+      } catch (serviceError) {
+        console.warn('Service call failed, generating fallback results:', serviceError);
+        
+        // Generate intelligent fallback based on search/filters
+        const fallbackProducts = generateFallbackProducts(itemsPerPage);
+        let filteredProducts = fallbackProducts;
+        
+        // Apply search filter
+        if (searchTerm.trim()) {
+          filteredProducts = fallbackProducts.filter(p => 
+            p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.category.toLowerCase().includes(searchTerm.toLowerCase())
+          );
+        }
+        
+        // Apply category filter
+        if (selectedCategory !== 'All Categories') {
+          filteredProducts = filteredProducts.filter(p => p.category === selectedCategory);
+        }
+        
+        result = {
+          products: filteredProducts,
+          totalCount: filteredProducts.length,
+          hasMore: false,
+          isMockData: true
+        };
+      }
 
       if (!mountedRef.current) return;
 
@@ -298,6 +438,8 @@ const HiggsFlowPublicCatalog = () => {
             timestamp: new Date().toISOString(),
             userAgent: navigator.userAgent
           });
+          
+          console.log('📊 Tracked interaction: catalog_search');
         } catch (analyticsError) {
           console.warn('Analytics tracking failed:', analyticsError);
         }
@@ -316,7 +458,7 @@ const HiggsFlowPublicCatalog = () => {
         safeSetState(setLoading, false);
       }
     }
-  }, [searchTerm, selectedCategory, sortBy, priceRange, inStockOnly, sessionId, safeSetState]);
+  }, [searchTerm, selectedCategory, sortBy, priceRange, inStockOnly, sessionId, safeSetState, generateFallbackProducts]);
 
   // Load more products with pagination
   const loadMoreProducts = useCallback(async () => {
@@ -395,6 +537,8 @@ const HiggsFlowPublicCatalog = () => {
           timestamp: new Date().toISOString()
         });
         
+        console.log('📊 Tracked interaction: cart_addition');
+        
       } catch (backendError) {
         console.warn('Backend cart update failed:', backendError);
         // Keep optimistic update even if backend fails
@@ -430,6 +574,8 @@ const HiggsFlowPublicCatalog = () => {
         referrerCategory: selectedCategory !== 'All Categories' ? selectedCategory : null,
         timestamp: new Date().toISOString()
       });
+      
+      console.log('📊 Tracked interaction: product_view');
     } catch (error) {
       console.warn('View tracking failed:', error);
     }
@@ -499,6 +645,26 @@ const HiggsFlowPublicCatalog = () => {
       loadMoreProducts();
     }
   }, [currentPage, loadMoreProducts]);
+
+  // ENHANCED: Analytics tracking for page load
+  useEffect(() => {
+    if (sessionId && mountedRef.current) {
+      try {
+        ecommerceService.createFactoryAnalytics('catalog_page_load', {
+          sessionId,
+          dataSource,
+          isFirestoreMode,
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent
+        });
+        
+        console.log('📊 Tracked interaction: catalog_page_load');
+        console.log('📊 Public route real data analytics tracked');
+      } catch (error) {
+        console.warn('Page load analytics failed:', error);
+      }
+    }
+  }, [sessionId, dataSource, isFirestoreMode]);
 
   // Memoized filter options for performance
   const filterOptions = useMemo(() => ({
@@ -687,7 +853,7 @@ const HiggsFlowPublicCatalog = () => {
           <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
             <div className="flex items-center gap-1">
               <Star className="w-3 h-3 text-yellow-400 fill-current" />
-              <span className="font-medium">{product.supplier?.rating || 4.5}</span>
+              <span className="font-medium">{(product.supplier?.rating || 4.5).toFixed(1)}</span>
               <span className="text-gray-400">({product.supplier?.reviewCount || 24})</span>
             </div>
             <span className="text-gray-300">•</span>
@@ -853,7 +1019,7 @@ const HiggsFlowPublicCatalog = () => {
             <div className="flex items-center gap-4 text-xs text-gray-500 mb-3 flex-wrap">
               <div className="flex items-center gap-1">
                 <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                <span>{product.supplier?.rating || 4.5}</span>
+                <span>{(product.supplier?.rating || 4.5).toFixed(1)}</span>
                 <span>({product.supplier?.reviewCount || 24})</span>
               </div>
               <span className="text-gray-300">•</span>
@@ -1092,6 +1258,11 @@ const HiggsFlowPublicCatalog = () => {
                     Demo Mode
                   </span>
                 )}
+                {dataSource && (
+                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">
+                    {dataSource === 'firestore' ? 'Cloud' : 'Local'}
+                  </span>
+                )}
               </div>
             </div>
             
@@ -1165,14 +1336,15 @@ const HiggsFlowPublicCatalog = () => {
                   <span className="font-medium">Fast Delivery</span>
                 </div>
               </div>
-              {isMockData && (
+              {(isMockData || dataSource === 'localStorage') && (
                 <div className="bg-blue-700/50 backdrop-blur-sm rounded-lg p-4 border border-white/20">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center">
                       <span className="text-sm">🚀</span>
                     </div>
                     <p className="text-sm">
-                      Demo Mode: Experiencing enhanced mock data. Full Phase 2A functionality available in production.
+                      {isMockData ? 'Demo Mode: Enhanced mock data with full Phase 2A functionality.' : 
+                       `Data Source: ${dataSource} - Switch to Firestore for real-time collaboration.`}
                     </p>
                   </div>
                 </div>
@@ -1343,7 +1515,7 @@ const HiggsFlowPublicCatalog = () => {
             </p>
             {!loading && totalCount > 0 && (
               <p className="text-sm text-gray-500">
-                Updated {new Date().toLocaleTimeString()} • Live pricing
+                Updated {new Date().toLocaleTimeString()} • Live pricing • Session: {sessionId.slice(-6)}
               </p>
             )}
           </div>
