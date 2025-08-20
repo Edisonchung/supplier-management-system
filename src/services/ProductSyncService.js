@@ -1,5 +1,5 @@
 // src/services/ProductSyncService.js
-// Smart Product Sync Service - Internal to Public Catalog
+// Smart Product Sync Service - Internal to Public Catalog Integration
 
 import { 
   collection, 
@@ -29,17 +29,21 @@ export class ProductSyncService {
     this.db = db;
     this.syncRules = {
       minStock: 5,
-      categories: ['electronics', 'hydraulics', 'pneumatics', 'automation', 'cables'],
+      categories: ['electronics', 'hydraulics', 'pneumatics', 'automation', 'cables', 'sensors', 'components'],
       priceMarkup: 15, // 15% markup
       autoSync: false,
       requireApproval: true
     };
   }
 
+  // ====================================================================
+  // CORE SYNC OPERATIONS
+  // ====================================================================
+
   // Get all internal products with sync status
   async getInternalProductsWithSyncStatus() {
     return safeFirestoreOperation(async () => {
-      console.log('Fetching internal products with sync status...');
+      console.log('📦 Fetching internal products with sync status...');
       
       try {
         // Get internal products
@@ -73,478 +77,666 @@ export class ProductSyncService {
           
           return {
             ...product,
-            publicStatus: publicVersion ? 'synced' : 'not_synced',
-            publicProductId: publicVersion?.id || null,
-            publicPrice: publicVersion?.price || null,
-            publicViews: publicVersion?.viewCount || 0,
-            publicQuotes: publicVersion?.quoteCount || 0,
-            suggestedPublicPrice: this.calculatePublicPrice(product.price || 0),
-            eligible: isEligible,
-            eligibilityReasons: this.getEligibilityReasons(product),
-            lastSyncAt: publicVersion?.lastSyncAt || null,
+            publicStatus: publicVersion ? {
+              synced: true,
+              publicId: publicVersion.id,
+              lastSync: publicVersion.lastSync,
+              syncedAt: publicVersion.syncedAt,
+              publicPrice: publicVersion.price,
+              publicStock: publicVersion.stock
+            } : {
+              synced: false,
+              eligible: isEligible,
+              reason: isEligible ? 'Ready to sync' : this.getIneligibilityReason(product)
+            },
+            isEligible,
             priority: this.calculateSyncPriority(product)
           };
         });
 
-        console.log('Loaded products with sync status:', productsWithStatus.length);
+        console.log(`✅ Loaded ${productsWithStatus.length} products with sync status`);
         return productsWithStatus;
+
       } catch (error) {
-        console.warn('Error loading from Firestore, using fallback data:', error);
-        return this.getFallbackProducts();
+        console.warn('⚠️ Firestore unavailable, using demo data for development');
+        return this.getDemoProductsWithSyncStatus();
       }
-    }, 'Get Internal Products With Sync Status');
-  }
-
-  // Fallback products for when Firestore is not available
-  getFallbackProducts() {
-    return [
-      {
-        id: 'PROD-001',
-        name: 'Hydraulic Pump Model HP-200',
-        category: 'hydraulics',
-        stock: 25,
-        price: 850,
-        suggestedPublicPrice: 977.50,
-        status: 'active',
-        supplier: 'TechFlow Systems',
-        publicStatus: 'not_synced',
-        eligible: true,
-        priority: 'high',
-        eligibilityReasons: ['Eligible for sync']
-      },
-      {
-        id: 'PROD-002',
-        name: 'Pneumatic Cylinder PC-150',
-        category: 'pneumatics',
-        stock: 12,
-        price: 320,
-        suggestedPublicPrice: 368,
-        status: 'active',
-        supplier: 'AirTech Solutions',
-        publicStatus: 'synced',
-        eligible: true,
-        priority: 'medium',
-        eligibilityReasons: ['Eligible for sync']
-      },
-      {
-        id: 'PROD-003',
-        name: 'Electronic Sensor ES-75',
-        category: 'electronics',
-        stock: 8,
-        price: 125,
-        suggestedPublicPrice: 143.75,
-        status: 'active',
-        supplier: 'SensorTech Malaysia',
-        publicStatus: 'pending',
-        eligible: true,
-        priority: 'high',
-        eligibilityReasons: ['Eligible for sync']
-      }
-    ];
-  }
-
-  // Get public catalog products
-  async getPublicProducts() {
-    return safeFirestoreOperation(async () => {
-      const publicQuery = query(
-        collection(this.db, 'catalogProducts'),
-        orderBy('updatedAt', 'desc')
-      );
-      
-      const snapshot = await getDocs(publicQuery);
-      return snapshot.docs.map(doc => transformFirestoreDoc(doc));
-    }, 'Get Public Products');
+    });
   }
 
   // Check if product is eligible for sync
   isEligibleForSync(product) {
-    const hasStock = (product.stock || 0) >= this.syncRules.minStock;
-    const validCategory = this.syncRules.categories.includes(product.category || '');
-    const isActive = product.status === 'active';
-    const hasPrice = (product.price || 0) > 0;
-    
-    return hasStock && validCategory && isActive && hasPrice;
+    // Check stock levels
+    if (product.stock < this.syncRules.minStock) {
+      return false;
+    }
+
+    // Check category
+    if (!this.syncRules.categories.includes(product.category?.toLowerCase())) {
+      return false;
+    }
+
+    // Check required fields
+    if (!product.name || !product.price || product.price <= 0) {
+      return false;
+    }
+
+    // Check product status
+    if (product.status === 'discontinued' || product.status === 'out-of-stock') {
+      return false;
+    }
+
+    return true;
   }
 
-  // Get detailed eligibility reasons
-  getEligibilityReasons(product) {
-    const reasons = [];
-    
-    if ((product.stock || 0) < this.syncRules.minStock) {
-      reasons.push(`Stock below minimum (${product.stock || 0} < ${this.syncRules.minStock})`);
+  // Get reason why product is not eligible
+  getIneligibilityReason(product) {
+    if (product.stock < this.syncRules.minStock) {
+      return `Low stock (${product.stock} < ${this.syncRules.minStock})`;
     }
     
-    if (!this.syncRules.categories.includes(product.category || '')) {
-      reasons.push(`Category not enabled (${product.category || 'unknown'})`);
+    if (!this.syncRules.categories.includes(product.category?.toLowerCase())) {
+      return `Category '${product.category}' not enabled`;
     }
     
-    if (product.status !== 'active') {
-      reasons.push(`Status not active (${product.status || 'unknown'})`);
+    if (!product.name || !product.price || product.price <= 0) {
+      return 'Missing required fields';
     }
     
-    if ((product.price || 0) <= 0) {
-      reasons.push('No price set');
+    if (product.status === 'discontinued' || product.status === 'out-of-stock') {
+      return `Status: ${product.status}`;
     }
     
-    if (reasons.length === 0) {
-      reasons.push('Eligible for sync');
-    }
-    
-    return reasons;
-  }
-
-  // Calculate suggested public price
-  calculatePublicPrice(internalPrice) {
-    if (!internalPrice || internalPrice <= 0) return 0;
-    
-    const markup = this.syncRules.priceMarkup / 100;
-    return Math.round(internalPrice * (1 + markup) * 100) / 100;
+    return 'Unknown reason';
   }
 
   // Calculate sync priority
   calculateSyncPriority(product) {
-    const stock = product.stock || 0;
-    const price = product.price || 0;
+    let score = 0;
     
-    // High priority: high stock and high value
-    if (stock > 50 && price > 1000) return 'high';
+    // Stock level (higher stock = higher priority)
+    if (product.stock > 20) score += 3;
+    else if (product.stock > 10) score += 2;
+    else if (product.stock > 5) score += 1;
     
-    // Medium priority: decent stock or good value
-    if (stock > 20 || price > 500) return 'medium';
+    // Price range (mid-range products often sell better)
+    if (product.price > 100 && product.price < 1000) score += 2;
+    else if (product.price >= 1000) score += 1;
     
-    // Low priority: everything else
+    // Category popularity
+    const popularCategories = ['electronics', 'automation', 'sensors'];
+    if (popularCategories.includes(product.category?.toLowerCase())) {
+      score += 2;
+    }
+    
+    // Recent updates
+    if (product.updatedAt && Date.now() - product.updatedAt.toDate() < 7 * 24 * 60 * 60 * 1000) {
+      score += 1;
+    }
+    
+    if (score >= 6) return 'high';
+    if (score >= 3) return 'medium';
     return 'low';
   }
 
-  // Sync single product to public catalog
-  async syncProductToPublic(internalProductId, options = {}) {
+  // Sync individual product to public catalog
+  async syncProductToPublic(internalProductId) {
     return safeFirestoreOperation(async () => {
-      console.log('Syncing product to public catalog:', internalProductId);
+      console.log(`🔄 Syncing product ${internalProductId} to public catalog...`);
       
-      try {
-        // Get internal product
-        const internalDoc = await getDoc(doc(this.db, 'products', internalProductId));
-        if (!internalDoc.exists()) {
-          throw new Error('Internal product not found');
-        }
-        
-        const internalProduct = transformFirestoreDoc(internalDoc);
-        
-        // Check eligibility
-        if (!this.isEligibleForSync(internalProduct) && !options.forceSync) {
-          throw new Error('Product not eligible for sync');
-        }
-        
-        // Check if already exists in public catalog
-        const existingQuery = query(
-          collection(this.db, 'catalogProducts'),
-          where('internalProductId', '==', internalProductId)
-        );
-        
-        const existingSnapshot = await getDocs(existingQuery);
-        
-        // Prepare public product data
-        const publicProductData = this.transformToPublicProduct(internalProduct, options);
-        
-        let result;
-        
-        if (!existingSnapshot.empty) {
-          // Update existing public product
-          const existingDoc = existingSnapshot.docs[0];
-          await updateDoc(existingDoc.ref, {
-            ...publicProductData,
-            lastSyncAt: serverTimestamp(),
-            syncCount: (existingDoc.data().syncCount || 0) + 1
-          });
-          
-          result = {
-            action: 'updated',
-            publicProductId: existingDoc.id,
-            internalProductId
-          };
-        } else {
-          // Create new public product
-          const docRef = await addDoc(collection(this.db, 'catalogProducts'), {
-            ...publicProductData,
-            createdAt: serverTimestamp(),
-            lastSyncAt: serverTimestamp(),
-            syncCount: 1
-          });
-          
-          result = {
-            action: 'created',
-            publicProductId: docRef.id,
-            internalProductId
-          };
-        }
-        
-        // Log sync operation
-        await this.logSyncOperation(internalProductId, result.action, result.publicProductId);
-        
-        console.log('Product sync completed:', result);
-        return result;
-      } catch (error) {
-        console.error('Error syncing product:', error);
-        // Return simulated success for demo
-        return {
-          action: 'simulated',
-          publicProductId: 'demo-' + internalProductId,
-          internalProductId
-        };
+      // Get internal product
+      const internalDoc = await getDoc(doc(this.db, 'products', internalProductId));
+      if (!internalDoc.exists()) {
+        throw new Error('Internal product not found');
       }
-    }, 'Sync Product To Public');
-  }
-
-  // Transform internal product to public catalog format
-  transformToPublicProduct(internalProduct, options = {}) {
-    const publicPrice = options.customPrice || this.calculatePublicPrice(internalProduct.price);
-    
-    return {
-      // Core product information
-      internalProductId: internalProduct.id,
-      name: options.customName || internalProduct.name || 'Industrial Product',
-      description: options.customDescription || internalProduct.description || 'Contact for detailed specifications',
-      category: internalProduct.category || 'industrial',
       
-      // Pricing
-      price: publicPrice,
-      internalPrice: internalProduct.price, // For reference only
-      currency: 'MYR',
+      const internalProduct = transformFirestoreDoc(internalDoc);
       
-      // Availability
-      stock: internalProduct.stock || 0,
-      availability: this.calculateAvailability(internalProduct.stock),
-      deliveryTime: this.calculateDeliveryTime(internalProduct.stock),
+      // Check eligibility
+      if (!this.isEligibleForSync(internalProduct)) {
+        throw new Error(`Product not eligible: ${this.getIneligibilityReason(internalProduct)}`);
+      }
       
-      // Product details
-      sku: internalProduct.sku || `PUB-${internalProduct.id?.slice(-6)}`,
-      brand: internalProduct.brand || 'Professional Grade',
-      model: internalProduct.model || internalProduct.name,
+      // Transform to public format
+      const publicProduct = await this.transformToPublicProduct(internalProduct);
       
-      // Specifications
-      specifications: {
-        weight: internalProduct.weight || null,
-        dimensions: internalProduct.dimensions || null,
-        color: internalProduct.color || null,
-        material: internalProduct.material || null,
-        warranty: '1 year manufacturer warranty',
-        compliance: ['Industry Standard'],
-        origin: 'Malaysia'
-      },
+      // Check if already exists in public catalog
+      const existingQuery = query(
+        collection(this.db, 'catalogProducts'),
+        where('internalProductId', '==', internalProductId)
+      );
+      const existingSnapshot = await getDocs(existingQuery);
       
-      // Supplier information (anonymized)
-      supplier: {
-        verified: true,
-        rating: 4.5,
-        location: 'Malaysia',
-        responseTime: '< 24 hours'
-      },
+      let publicProductId;
+      if (existingSnapshot.empty) {
+        // Create new public product
+        const docRef = await addDoc(collection(this.db, 'catalogProducts'), publicProduct);
+        publicProductId = docRef.id;
+        console.log(`✅ Created new public product: ${publicProductId}`);
+      } else {
+        // Update existing public product
+        publicProductId = existingSnapshot.docs[0].id;
+        await updateDoc(doc(this.db, 'catalogProducts', publicProductId), {
+          ...publicProduct,
+          updatedAt: serverTimestamp()
+        });
+        console.log(`✅ Updated existing public product: ${publicProductId}`);
+      }
       
-      // SEO and search
-      tags: this.generateProductTags(internalProduct),
-      searchKeywords: this.generateSearchKeywords(internalProduct),
+      // Log sync operation
+      await this.logSyncOperation(internalProductId, publicProductId, 'sync', 'success');
       
-      // Status and visibility
-      isActive: true,
-      isFeatured: options.featured || false,
-      visibility: options.visibility || 'public',
-      
-      // Analytics
-      viewCount: 0,
-      quoteCount: 0,
-      popularityScore: 0,
-      
-      // Metadata
-      updatedAt: serverTimestamp(),
-      syncRules: this.syncRules,
-      syncOptions: options
-    };
+      return publicProductId;
+    });
   }
 
   // Bulk sync multiple products
-  async bulkSyncProducts(productIds, options = {}) {
+  async bulkSyncProducts(internalProductIds) {
     return safeFirestoreOperation(async () => {
-      console.log('Starting bulk sync for products:', productIds.length);
+      console.log(`🔄 Bulk syncing ${internalProductIds.length} products...`);
       
-      const results = [];
-      const errors = [];
+      const results = {
+        success: [],
+        failed: [],
+        total: internalProductIds.length
+      };
       
-      // Process in batches of 10 to avoid overwhelming Firestore
+      // Process in batches to avoid Firestore limits
       const batchSize = 10;
-      for (let i = 0; i < productIds.length; i += batchSize) {
-        const batch = productIds.slice(i, i + batchSize);
+      for (let i = 0; i < internalProductIds.length; i += batchSize) {
+        const batch = internalProductIds.slice(i, i + batchSize);
         
-        const batchPromises = batch.map(async (productId) => {
-          try {
-            const result = await this.syncProductToPublic(productId, options);
-            results.push(result);
-          } catch (error) {
-            console.error('Sync failed for product:', productId, error);
-            errors.push({ productId, error: error.message });
-          }
-        });
+        await Promise.allSettled(
+          batch.map(async (productId) => {
+            try {
+              const publicId = await this.syncProductToPublic(productId);
+              results.success.push({ internalId: productId, publicId });
+            } catch (error) {
+              results.failed.push({ internalId: productId, error: error.message });
+              await this.logSyncOperation(productId, null, 'sync', 'failed', error.message);
+            }
+          })
+        );
         
-        await Promise.all(batchPromises);
-        
-        // Small delay between batches
-        if (i + batchSize < productIds.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+        // Add delay between batches to avoid rate limits
+        if (i + batchSize < internalProductIds.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
       
-      console.log('Bulk sync completed:', {
-        total: productIds.length,
-        successful: results.length,
-        errors: errors.length
-      });
-      
-      return { results, errors };
-    }, 'Bulk Sync Products');
+      console.log(`✅ Bulk sync complete: ${results.success.length} success, ${results.failed.length} failed`);
+      return results;
+    });
   }
 
   // Remove product from public catalog
   async removeFromPublic(internalProductId) {
     return safeFirestoreOperation(async () => {
+      console.log(`🗑️ Removing product ${internalProductId} from public catalog...`);
+      
+      // Find public product
       const publicQuery = query(
         collection(this.db, 'catalogProducts'),
         where('internalProductId', '==', internalProductId)
       );
+      const publicSnapshot = await getDocs(publicQuery);
       
-      const snapshot = await getDocs(publicQuery);
-      
-      if (!snapshot.empty) {
-        await deleteDoc(snapshot.docs[0].ref);
-        await this.logSyncOperation(internalProductId, 'removed', snapshot.docs[0].id);
+      if (publicSnapshot.empty) {
+        throw new Error('Product not found in public catalog');
       }
       
-      return { removed: true, internalProductId };
-    }, 'Remove From Public');
+      const publicProductId = publicSnapshot.docs[0].id;
+      
+      // Delete from public catalog
+      await deleteDoc(doc(this.db, 'catalogProducts', publicProductId));
+      
+      // Log operation
+      await this.logSyncOperation(internalProductId, publicProductId, 'remove', 'success');
+      
+      console.log(`✅ Removed from public catalog: ${publicProductId}`);
+      return publicProductId;
+    });
+  }
+
+  // ====================================================================
+  // CONFIGURATION MANAGEMENT
+  // ====================================================================
+
+  // Get sync rules configuration
+  async getSyncRules() {
+    return safeFirestoreOperation(async () => {
+      try {
+        const rulesDoc = await getDoc(doc(this.db, 'settings', 'productSyncRules'));
+        if (rulesDoc.exists()) {
+          return { ...this.syncRules, ...rulesDoc.data() };
+        }
+        return this.syncRules;
+      } catch (error) {
+        console.warn('⚠️ Using default sync rules');
+        return this.syncRules;
+      }
+    });
   }
 
   // Update sync rules
   async updateSyncRules(newRules) {
-    this.syncRules = { ...this.syncRules, ...newRules };
-    
-    // Save to Firestore for persistence
     return safeFirestoreOperation(async () => {
-      try {
-        const rulesDoc = doc(this.db, 'settings', 'productSyncRules');
-        await updateDoc(rulesDoc, {
-          ...this.syncRules,
-          updatedAt: serverTimestamp()
-        });
-      } catch (error) {
-        console.warn('Could not save sync rules to Firestore:', error);
-      }
+      const updatedRules = { ...this.syncRules, ...newRules };
       
-      return this.syncRules;
-    }, 'Update Sync Rules');
+      await updateDoc(doc(this.db, 'settings', 'productSyncRules'), {
+        ...updatedRules,
+        updatedAt: serverTimestamp()
+      });
+      
+      this.syncRules = updatedRules;
+      console.log('✅ Sync rules updated');
+      return updatedRules;
+    });
   }
+
+  // ====================================================================
+  // ANALYTICS & REPORTING
+  // ====================================================================
 
   // Get sync statistics
   async getSyncStatistics() {
     return safeFirestoreOperation(async () => {
       try {
-        const [internalProducts, publicProducts] = await Promise.all([
+        const [internalSnapshot, publicSnapshot] = await Promise.all([
           getDocs(collection(this.db, 'products')),
           getDocs(collection(this.db, 'catalogProducts'))
         ]);
         
-        const totalInternal = internalProducts.size;
-        const totalPublic = publicProducts.size;
+        const totalInternal = internalSnapshot.size;
+        const totalPublic = publicSnapshot.size;
         
         // Count eligible products
-        let eligible = 0;
-        internalProducts.docs.forEach(doc => {
-          const product = transformFirestoreDoc(doc);
-          if (this.isEligibleForSync(product)) {
-            eligible++;
-          }
-        });
+        const internalProducts = internalSnapshot.docs.map(doc => transformFirestoreDoc(doc));
+        const eligibleCount = internalProducts.filter(product => this.isEligibleForSync(product)).length;
         
-        const syncRate = totalInternal > 0 ? (totalPublic / totalInternal * 100).toFixed(1) : '0';
+        // Calculate sync rate
+        const syncRate = totalInternal > 0 ? Math.round((totalPublic / totalInternal) * 100) : 0;
         
         return {
           totalInternal,
           totalPublic,
-          eligible,
-          syncRate: parseFloat(syncRate),
-          notSynced: totalInternal - totalPublic,
-          eligibilityRate: totalInternal > 0 ? (eligible / totalInternal * 100).toFixed(1) : '0'
+          eligible: eligibleCount,
+          syncRate,
+          lastUpdated: new Date()
         };
       } catch (error) {
-        console.warn('Error getting sync statistics, using fallback:', error);
-        // Return fallback statistics
+        console.warn('⚠️ Using demo statistics');
         return {
-          totalInternal: 3,
-          totalPublic: 1,
-          eligible: 3,
-          syncRate: 33.3,
-          notSynced: 2,
-          eligibilityRate: 100
+          totalInternal: 150,
+          totalPublic: 87,
+          eligible: 92,
+          syncRate: 58,
+          lastUpdated: new Date()
         };
       }
-    }, 'Get Sync Statistics');
+    });
   }
 
-  // Helper methods
-  calculateAvailability(stock) {
-    if (stock > 10) return 'In Stock';
-    if (stock > 0) return 'Low Stock';
-    return 'Out of Stock';
+  // Get sync logs
+  async getSyncLogs(limit = 50) {
+    return safeFirestoreOperation(async () => {
+      try {
+        const logsQuery = query(
+          collection(this.db, 'syncLogs'),
+          orderBy('timestamp', 'desc'),
+          limit(limit)
+        );
+        
+        const logsSnapshot = await getDocs(logsQuery);
+        return logsSnapshot.docs.map(doc => transformFirestoreDoc(doc));
+      } catch (error) {
+        console.warn('⚠️ Using demo sync logs');
+        return this.getDemoSyncLogs();
+      }
+    });
   }
 
-  calculateDeliveryTime(stock) {
-    if (stock > 10) return '1-2 business days';
-    if (stock > 0) return '3-5 business days';
-    return '7-14 business days';
-  }
+  // ====================================================================
+  // INTERNAL HELPER FUNCTIONS
+  // ====================================================================
 
-  generateProductTags(product) {
-    const tags = [];
+  // Transform internal product to public catalog format
+  async transformToPublicProduct(internalProduct) {
+    const publicPrice = this.calculatePublicPrice(internalProduct.price);
     
-    if (product.category) tags.push(product.category);
-    if (product.brand) tags.push(product.brand.toLowerCase());
-    if ((product.stock || 0) > 100) tags.push('high-stock');
-    if ((product.stock || 0) <= 5) tags.push('limited-stock');
-    if ((product.price || 0) > 1000) tags.push('premium');
+    const publicProduct = {
+      // Core product data
+      internalProductId: internalProduct.id,
+      name: this.generateDisplayName(internalProduct),
+      description: this.generateCustomerDescription(internalProduct),
+      category: internalProduct.category,
+      subcategory: internalProduct.subcategory,
+      
+      // Pricing
+      price: publicPrice,
+      originalPrice: internalProduct.price,
+      markup: this.syncRules.priceMarkup,
+      currency: internalProduct.currency || 'USD',
+      
+      // Inventory
+      stock: internalProduct.stock,
+      minOrderQty: internalProduct.minOrderQty || 1,
+      availability: this.calculateAvailability(internalProduct),
+      
+      // Technical details
+      specifications: internalProduct.specifications || {},
+      technicalSpecs: internalProduct.technicalSpecs || {},
+      dimensions: internalProduct.dimensions || {},
+      weight: internalProduct.weight,
+      
+      // Media
+      images: await this.generateAIImages(internalProduct),
+      documents: internalProduct.documents || [],
+      
+      // Business info
+      brand: internalProduct.brand || 'HiggsFlow',
+      model: internalProduct.model || internalProduct.partNumber,
+      partNumber: internalProduct.partNumber,
+      
+      // SEO and discovery
+      tags: this.generateTags(internalProduct),
+      keywords: this.generateKeywords(internalProduct),
+      searchTerms: this.generateSearchTerms(internalProduct),
+      
+      // Sync metadata
+      syncedAt: serverTimestamp(),
+      lastSync: serverTimestamp(),
+      syncVersion: '1.0',
+      priority: this.calculateSyncPriority(internalProduct),
+      
+      // Timestamps
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
     
-    return tags;
+    return publicProduct;
   }
 
-  generateSearchKeywords(product) {
-    const keywords = [];
+  // Calculate public-facing price with markup
+  calculatePublicPrice(internalPrice) {
+    const markup = this.syncRules.priceMarkup / 100;
+    return Math.round(internalPrice * (1 + markup) * 100) / 100;
+  }
+
+  // Calculate product availability status
+  calculateAvailability(product) {
+    if (product.stock <= 0) return 'out-of-stock';
+    if (product.stock < 5) return 'low-stock';
+    if (product.stock < 20) return 'limited';
+    return 'in-stock';
+  }
+
+  // Generate customer-friendly display name
+  generateDisplayName(internalProduct) {
+    let displayName = internalProduct.name || 'Industrial Product';
     
-    if (product.name) keywords.push(...product.name.toLowerCase().split(' '));
-    if (product.category) keywords.push(product.category.toLowerCase());
-    if (product.brand) keywords.push(product.brand.toLowerCase());
-    if (product.description) {
-      // Extract key terms from description
-      const descWords = product.description.toLowerCase()
-        .split(' ')
-        .filter(word => word.length > 3)
-        .slice(0, 10);
-      keywords.push(...descWords);
+    // Add brand if available
+    if (internalProduct.brand && !displayName.toLowerCase().includes(internalProduct.brand.toLowerCase())) {
+      displayName = `${internalProduct.brand} ${displayName}`;
     }
     
-    return [...new Set(keywords)].filter(Boolean);
+    // Add descriptive qualifiers based on category
+    const categoryQualifiers = {
+      'electronics': 'Professional Grade',
+      'hydraulics': 'Industrial Hydraulic',
+      'pneumatics': 'Pneumatic System',
+      'automation': 'Automation Grade',
+      'sensors': 'Industrial Sensor',
+      'cables': 'Industrial Cable',
+      'components': 'Industrial Component'
+    };
+    
+    const qualifier = categoryQualifiers[internalProduct.category?.toLowerCase()];
+    if (qualifier && !displayName.toLowerCase().includes(qualifier.toLowerCase())) {
+      displayName = `${qualifier} ${displayName}`;
+    }
+    
+    return displayName;
+  }
+
+  // Generate customer-friendly description
+  generateCustomerDescription(internalProduct) {
+    let description = internalProduct.description || '';
+    
+    // If no description, generate one based on available data
+    if (!description || description.length < 50) {
+      const category = internalProduct.category || 'industrial';
+      const brand = internalProduct.brand || 'Professional';
+      
+      description = `High-quality ${category} product from ${brand}. Ideal for industrial applications requiring reliable performance and durability.`;
+      
+      // Add technical highlights if available
+      if (internalProduct.specifications) {
+        const specs = Object.entries(internalProduct.specifications).slice(0, 2);
+        if (specs.length > 0) {
+          const specText = specs.map(([key, value]) => `${key}: ${value}`).join(', ');
+          description += ` Key specifications: ${specText}.`;
+        }
+      }
+    }
+    
+    return description;
+  }
+
+  // Generate SEO tags
+  generateTags(product) {
+    const tags = new Set();
+    
+    // Category-based tags
+    if (product.category) {
+      tags.add(product.category.toLowerCase());
+    }
+    
+    // Brand tags
+    if (product.brand) {
+      tags.add(product.brand.toLowerCase());
+    }
+    
+    // Application tags based on category
+    const applicationTags = {
+      'electronics': ['electronic', 'electrical', 'power', 'control'],
+      'hydraulics': ['hydraulic', 'fluid-power', 'pressure', 'pump'],
+      'pneumatics': ['pneumatic', 'air', 'compressed-air', 'actuator'],
+      'automation': ['automation', 'control', 'plc', 'industrial-control'],
+      'sensors': ['sensor', 'measurement', 'detection', 'monitoring'],
+      'cables': ['cable', 'wire', 'connection', 'electrical-connection']
+    };
+    
+    const categoryTags = applicationTags[product.category?.toLowerCase()] || [];
+    categoryTags.forEach(tag => tags.add(tag));
+    
+    // General industrial tags
+    tags.add('industrial');
+    tags.add('professional');
+    tags.add('commercial');
+    
+    return Array.from(tags);
+  }
+
+  // Generate search keywords
+  generateKeywords(product) {
+    const keywords = new Set();
+    
+    // Product name words
+    if (product.name) {
+      product.name.toLowerCase().split(/\s+/).forEach(word => {
+        if (word.length > 2) keywords.add(word);
+      });
+    }
+    
+    // Category keywords
+    if (product.category) {
+      keywords.add(product.category.toLowerCase());
+    }
+    
+    // Brand keywords
+    if (product.brand) {
+      keywords.add(product.brand.toLowerCase());
+    }
+    
+    // Part number
+    if (product.partNumber) {
+      keywords.add(product.partNumber.toLowerCase());
+    }
+    
+    return Array.from(keywords);
+  }
+
+  // Generate search terms for better discoverability
+  generateSearchTerms(product) {
+    const terms = new Set();
+    
+    // Primary terms
+    terms.add(product.name?.toLowerCase() || '');
+    terms.add(product.brand?.toLowerCase() || '');
+    terms.add(product.category?.toLowerCase() || '');
+    
+    // Category-specific terms
+    const categoryTerms = {
+      'electronics': ['electronic component', 'electrical part', 'control system'],
+      'hydraulics': ['hydraulic component', 'fluid power', 'hydraulic system'],
+      'pneumatics': ['pneumatic part', 'air system', 'compressed air'],
+      'automation': ['automation component', 'industrial control', 'plc component'],
+      'sensors': ['industrial sensor', 'measurement device', 'detection system'],
+      'cables': ['industrial cable', 'electrical wire', 'connection cable']
+    };
+    
+    const specificTerms = categoryTerms[product.category?.toLowerCase()] || [];
+    specificTerms.forEach(term => terms.add(term));
+    
+    return Array.from(terms).filter(term => term.length > 0);
+  }
+
+  // Generate AI-enhanced product images
+  async generateAIImages(internalProduct) {
+    // TODO: Integrate with your Railway MCP service for AI image generation
+    // For now, return placeholder structure that maintains the expected format
+    
+    const category = (internalProduct.category || 'industrial').toLowerCase();
+    const productName = internalProduct.name?.toLowerCase() || 'product';
+    const safeName = encodeURIComponent(productName.substring(0, 20));
+    
+    return {
+      primary: `https://via.placeholder.com/400x400/4F46E5/FFFFFF?text=${safeName}`,
+      technical: `https://via.placeholder.com/400x300/6366F1/FFFFFF?text=Technical+Specs`,
+      application: `https://via.placeholder.com/400x300/8B5CF6/FFFFFF?text=${encodeURIComponent(category)}+Application`,
+      gallery: [
+        `https://via.placeholder.com/300x300/4F46E5/FFFFFF?text=Angle+1`,
+        `https://via.placeholder.com/300x300/6366F1/FFFFFF?text=Angle+2`,
+        `https://via.placeholder.com/300x300/8B5CF6/FFFFFF?text=Detail+View`
+      ]
+    };
   }
 
   // Log sync operations for audit trail
-  async logSyncOperation(internalProductId, action, publicProductId = null) {
+  async logSyncOperation(internalProductId, publicProductId, operation, status, error = null) {
     try {
       await addDoc(collection(this.db, 'syncLogs'), {
         internalProductId,
         publicProductId,
-        action, // 'created', 'updated', 'removed'
+        operation, // 'sync', 'remove', 'update'
+        status, // 'success', 'failed'
+        error,
         timestamp: serverTimestamp(),
-        rules: this.syncRules
+        user: 'system' // TODO: Get actual user from auth context
       });
     } catch (error) {
-      console.warn('Failed to log sync operation:', error);
+      console.warn('⚠️ Failed to log sync operation:', error);
     }
+  }
+
+  // ====================================================================
+  // DEMO DATA FOR DEVELOPMENT
+  // ====================================================================
+
+  getDemoProductsWithSyncStatus() {
+    return [
+      {
+        id: 'demo-1',
+        name: 'Industrial Pressure Sensor',
+        category: 'sensors',
+        price: 245.99,
+        stock: 25,
+        brand: 'Siemens',
+        status: 'active',
+        publicStatus: {
+          synced: true,
+          publicId: 'pub-demo-1',
+          lastSync: new Date(),
+          publicPrice: 282.89
+        },
+        isEligible: true,
+        priority: 'high',
+        updatedAt: { toDate: () => new Date() }
+      },
+      {
+        id: 'demo-2',
+        name: 'Hydraulic Valve Assembly',
+        category: 'hydraulics',
+        price: 156.50,
+        stock: 3,
+        brand: 'Parker',
+        status: 'active',
+        publicStatus: {
+          synced: false,
+          eligible: false,
+          reason: 'Low stock (3 < 5)'
+        },
+        isEligible: false,
+        priority: 'low',
+        updatedAt: { toDate: () => new Date() }
+      },
+      {
+        id: 'demo-3',
+        name: 'Automation Control Module',
+        category: 'automation',
+        price: 445.00,
+        stock: 15,
+        brand: 'Allen Bradley',
+        status: 'active',
+        publicStatus: {
+          synced: false,
+          eligible: true,
+          reason: 'Ready to sync'
+        },
+        isEligible: true,
+        priority: 'medium',
+        updatedAt: { toDate: () => new Date() }
+      }
+    ];
+  }
+
+  getDemoSyncLogs() {
+    return [
+      {
+        id: 'log-1',
+        internalProductId: 'demo-1',
+        publicProductId: 'pub-demo-1',
+        operation: 'sync',
+        status: 'success',
+        timestamp: { toDate: () => new Date(Date.now() - 2 * 60 * 60 * 1000) },
+        user: 'admin'
+      },
+      {
+        id: 'log-2',
+        internalProductId: 'demo-4',
+        operation: 'sync',
+        status: 'failed',
+        error: 'Low stock level',
+        timestamp: { toDate: () => new Date(Date.now() - 4 * 60 * 60 * 1000) },
+        user: 'system'
+      }
+    ];
   }
 }
 
 // Export singleton instance
 export const productSyncService = new ProductSyncService();
+
+// Export default for easier importing
+export default productSyncService;
