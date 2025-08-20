@@ -546,3 +546,6 @@ export const productSyncService = new ProductSyncService();
 
 // Export the class as default
 export default ProductSyncService;
+export const productSyncService = new ProductSyncService();
+
+
