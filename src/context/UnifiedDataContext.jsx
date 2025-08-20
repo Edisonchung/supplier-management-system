@@ -24,7 +24,6 @@ import {
   transformFirestoreDoc, 
   safeFirestoreOperation 
 } from '../config/firebase';
-import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
 
 // Enhanced Action Types (keeping all your existing ones + Smart Catalog)
@@ -58,7 +57,7 @@ const ACTION_TYPES = {
   SET_MIGRATION_STATUS: 'SET_MIGRATION_STATUS',
   SET_REAL_TIME_STATUS: 'SET_REAL_TIME_STATUS',
   
-  // 🔥 NEW: Smart Catalog Actions
+  // Smart Catalog Actions
   LOAD_CATALOG_PRODUCTS: 'LOAD_CATALOG_PRODUCTS',
   UPDATE_CATALOG_PRODUCT: 'UPDATE_CATALOG_PRODUCT',
   SET_CATALOG_FILTERS: 'SET_CATALOG_FILTERS',
@@ -82,7 +81,7 @@ const initialState = {
   deliveryTracking: {},
   paymentTracking: {},
   
-  // 🔥 NEW: Smart Catalog Data
+  // Smart Catalog Data
   catalogProducts: [],
   featuredProducts: [],
   categories: [],
@@ -362,7 +361,7 @@ function unifiedDataReducer(state, action) {
         realTimeStatus: { ...state.realTimeStatus, ...action.payload }
       };
       
-    // 🔥 NEW: Smart Catalog Actions
+    // Smart Catalog Actions
     case ACTION_TYPES.LOAD_CATALOG_PRODUCTS:
       return {
         ...state,
@@ -477,7 +476,7 @@ class StorageService {
     return results;
   }
   
-  // 🔥 FIXED: Firestore operations with CORS handling
+  // FIXED: Firestore operations with CORS handling
   static async saveToFirestore(collectionName, data) {
     return safeFirestoreOperation(async () => {
       const docRef = await addDoc(collection(db, collectionName), {
@@ -506,7 +505,7 @@ class StorageService {
     }, `deleteFromFirestore(${collectionName}/${id})`);
   }
   
-  // 🔥 FIXED: Smart Catalog Firestore Operations with date handling
+  // FIXED: Smart Catalog Firestore Operations with date handling
   static async searchCatalogProducts(searchParams) {
     return safeFirestoreOperation(async () => {
       const { 
@@ -546,7 +545,7 @@ class StorageService {
       
       const snapshot = await getDocs(q);
       
-      // 🔥 FIX: Proper date transformation
+      // FIX: Proper date transformation
       const products = snapshot.docs.map(doc => transformFirestoreDoc(doc));
       
       return { 
@@ -582,7 +581,7 @@ class StorageService {
 // Enhanced Provider Component
 export function UnifiedDataProvider({ children }) {
   const [state, dispatch] = useReducer(unifiedDataReducer, initialState);
-  const { user } = useAuth();
+  const [user, setUser] = useState(null); // Simple user state since we removed useAuth dependency
   const [realtimeSubscriptions, setRealtimeSubscriptions] = useState({});
   
   // Set up real-time subscriptions when data source changes to Firestore
@@ -648,9 +647,9 @@ export function UnifiedDataProvider({ children }) {
     }
   }, []);
 
-  // 🔥 FIXED: Real-time subscriptions setup with proper date handling
+  // FIXED: Real-time subscriptions setup with proper date handling
   const setupRealtimeSubscriptions = useCallback(() => {
-    console.log('🔥 Setting up Firestore real-time subscriptions...');
+    console.log('Setting up Firestore real-time subscriptions...');
     
     try {
       // Delivery Tracking Subscription
@@ -673,7 +672,7 @@ export function UnifiedDataProvider({ children }) {
           payload: { entityType: 'deliveryTracking', data: deliveryData }
         });
         
-        console.log('📦 Delivery tracking updated:', Object.keys(deliveryData).length, 'items');
+        console.log('Delivery tracking updated:', Object.keys(deliveryData).length, 'items');
       }, (error) => {
         console.error('Delivery tracking subscription error:', error);
         if (!error.message?.includes('CORS')) {
@@ -701,7 +700,7 @@ export function UnifiedDataProvider({ children }) {
           payload: { entityType: 'paymentTracking', data: paymentData }
         });
         
-        console.log('💰 Payment tracking updated:', Object.keys(paymentData).length, 'items');
+        console.log('Payment tracking updated:', Object.keys(paymentData).length, 'items');
       }, (error) => {
         console.error('Payment tracking subscription error:', error);
         if (!error.message?.includes('CORS')) {
@@ -709,7 +708,7 @@ export function UnifiedDataProvider({ children }) {
         }
       });
       
-      // 🔥 FIXED: Catalog Products Subscription with date handling
+      // FIXED: Catalog Products Subscription with date handling
       const catalogQuery = query(
         collection(db, 'catalogProducts'),
         where('isActive', '==', true),
@@ -725,7 +724,7 @@ export function UnifiedDataProvider({ children }) {
           payload: { products: catalogData, append: false }
         });
         
-        console.log('🛍️ Catalog products updated:', catalogData.length, 'items');
+        console.log('Catalog products updated:', catalogData.length, 'items');
       }, (error) => {
         console.error('Catalog products subscription error:', error);
         if (!error.message?.includes('CORS')) {
@@ -747,7 +746,7 @@ export function UnifiedDataProvider({ children }) {
           payload: { entityType: 'purchaseOrders', data: poData }
         });
         
-        console.log('📋 Purchase orders updated:', poData.length, 'items');
+        console.log('Purchase orders updated:', poData.length, 'items');
       }, (error) => {
         console.error('Purchase orders subscription error:', error);
         if (!error.message?.includes('CORS')) {
@@ -772,7 +771,7 @@ export function UnifiedDataProvider({ children }) {
         }
       });
       
-      toast.success('🔥 Real-time sync activated!', { duration: 2000 });
+      toast.success('Real-time sync activated!', { duration: 2000 });
       
     } catch (error) {
       console.error('Failed to setup real-time subscriptions:', error);
@@ -807,7 +806,7 @@ export function UnifiedDataProvider({ children }) {
   const switchDataSource = useCallback(async (newSource) => {
     if (newSource === state.dataSource) return;
     
-    console.log(`🔄 Switching data source: ${state.dataSource} → ${newSource}`);
+    console.log(`Switching data source: ${state.dataSource} → ${newSource}`);
     
     dispatch({
       type: ACTION_TYPES.SET_DATA_SOURCE,
@@ -823,7 +822,7 @@ export function UnifiedDataProvider({ children }) {
     }
   }, [state.dataSource]);
 
-  // 🔥 ENHANCED: CRUD operations with CORS handling
+  // ENHANCED: CRUD operations with CORS handling
   const createEntity = useCallback(async (entityType, data) => {
     const id = data.id || `${entityType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const entity = {
@@ -970,7 +969,7 @@ export function UnifiedDataProvider({ children }) {
   
   // Enhanced tracking operations with Firestore support
   const updateDeliveryStatus = useCallback(async (poId, updates) => {
-    console.log('📦 Updating delivery status:', { poId, updates });
+    console.log('Updating delivery status:', { poId, updates });
     
     // Optimistic update
     dispatch({
@@ -1030,7 +1029,7 @@ export function UnifiedDataProvider({ children }) {
   }, [state.dataSource, state.deliveryTracking, user]);
   
   const updatePaymentStatus = useCallback(async (supplierId, updates) => {
-    console.log('💰 Updating payment status:', { supplierId, updates });
+    console.log('Updating payment status:', { supplierId, updates });
     
     // Optimistic update
     dispatch({
@@ -1089,7 +1088,7 @@ export function UnifiedDataProvider({ children }) {
     }
   }, [state.dataSource, state.paymentTracking, user]);
 
-  // 🔥 FIXED: Smart Catalog Functions with error handling
+  // FIXED: Smart Catalog Functions with error handling
   const searchCatalogProducts = useCallback(async (searchParams) => {
     dispatch({ type: ACTION_TYPES.SET_LOADING, payload: { key: 'searchResults', value: true } });
     
@@ -1223,7 +1222,7 @@ export function UnifiedDataProvider({ children }) {
     });
     
     try {
-      console.log('🚀 Starting Firestore migration...');
+      console.log('Starting Firestore migration...');
       toast.loading('Migrating to Firestore...', { id: 'migration' });
       
       const batch = writeBatch(db);
@@ -1276,7 +1275,7 @@ export function UnifiedDataProvider({ children }) {
       // Switch to Firestore
       await switchDataSource('firestore');
       
-      toast.success(`✅ Migrated ${migrationCount} items to Firestore!`, { id: 'migration' });
+      toast.success(`Migrated ${migrationCount} items to Firestore!`, { id: 'migration' });
       
       return { success: true, migrated: migrationCount };
     } catch (error) {
@@ -1422,7 +1421,7 @@ export function usePaymentTracking() {
   };
 }
 
-// 🔥 NEW: Smart Catalog Hooks
+// NEW: Smart Catalog Hooks
 export function useSmartCatalog() {
   const { 
     state, 
