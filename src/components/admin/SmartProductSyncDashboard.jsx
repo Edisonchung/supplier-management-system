@@ -5,7 +5,7 @@ import {
   TrendingUp, DollarSign, Users, Zap, ArrowRight, X,
   Edit, Save, Plus, Minus
 } from 'lucide-react';
-import { productSyncService } from '../services/sync/ProductSyncService';
+import { productSyncService } from '../services/sync/ProductSyncService.js';
 
 const SmartProductSyncDashboard = () => {
   // State management
