@@ -20,8 +20,10 @@ import EcommerceSetup from './components/setup/EcommerceSetup';
 import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
 import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
 
+
 // 🚀 Phase 2B Analytics Service with Real Data
 import { higgsFlowAnalytics, useHiggsFlowAnalytics } from './services/analyticsService';
+
 
 // 🚀 Using existing Enhanced E-commerce services from your codebase
 // EnhancedEcommerceAPIService and EnhancedEcommerceFirebaseService handle catalog functionality
@@ -38,7 +40,8 @@ import {
   LazyClientInvoices,
   LazyQuickImport,
   LazySmartNotifications,
-  LazyWrapper 
+  LazyWrapper,
+  LazySmartProductSyncDashboard
 } from './components/LazyComponents';
 
 // Lazy load additional components
@@ -979,6 +982,18 @@ function AppContent() {
                   <ProtectedRoute permission="canManageUsers">
                     <LazyWrapper componentName="Category Management (Real Data)">
                       <LazyCategoryManagementDashboard showNotification={showNotification} realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+
+             {/* Smart Product Sync Dashboard with Lazy Loading */}
+              <Route 
+                path="/admin/product-sync" 
+                element={
+                  <ProtectedRoute permission="canManageUsers">
+                    <LazyWrapper componentName="Smart Product Sync Dashboard">
+                      <LazySmartProductSyncDashboard />
                     </LazyWrapper>
                   </ProtectedRoute>
                 } 
