@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './hooks/useDarkMode';
-import { UnifiedDataProvider } from './context/UnifiedDataContext';
+import { UnifiedDataProvider, useUnifiedData } from './context/UnifiedDataContext';
 import LoginForm from './components/auth/LoginForm';
 import Layout from './components/common/Layout';
 import PublicPIView from './components/procurement/PublicPIView';
@@ -20,13 +20,8 @@ import EcommerceSetup from './components/setup/EcommerceSetup';
 import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
 import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
 
-
-// 🚀 Phase 2B Analytics Service with Real Data
+// Phase 2B Analytics Service with Real Data
 import { higgsFlowAnalytics, useHiggsFlowAnalytics } from './services/analyticsService';
-
-
-// 🚀 Using existing Enhanced E-commerce services from your codebase
-// EnhancedEcommerceAPIService and EnhancedEcommerceFirebaseService handle catalog functionality
 
 import './App.css';
 
@@ -68,17 +63,17 @@ const LazyQuoteRequest = lazy(() => import('./components/ecommerce/QuoteRequest'
 const LazyFactoryLogin = lazy(() => import('./components/ecommerce/FactoryLogin'));
 const LazyFactoryDashboard = lazy(() => import('./components/ecommerce/FactoryDashboard'));
 
-// 🚀 Phase 2B Advanced Analytics Components with Real Data
+// Phase 2B Advanced Analytics Components with Real Data
 const LazySmartPublicCatalog = lazy(() => import('./components/SmartPublicCatalog'));
 const LazyAnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
 
-// 🚀 HiggsFlow Analytics Phase 2B Dashboard with Real Data Integration
+// HiggsFlow Analytics Phase 2B Dashboard with Real Data Integration
 const LazyHiggsFlowAnalyticsDashboard = lazy(() => import('./components/analytics/HiggsFlowAnalyticsDashboard'));
 
-// 🚀 Professional Landing Page Component
+// Professional Landing Page Component
 const LazyHiggsFlowLandingPage = lazy(() => import('./components/HiggsFlowLandingPage'));
 
-// 🚀 Real Data Migration Dashboard (using existing FirestoreMigrationPanel)
+// Real Data Migration Dashboard (using existing FirestoreMigrationPanel)
 const LazyFirestoreMigrationPanel = lazy(() => import('./components/migration/FirestoreMigrationPanel'));
 
 // Error Boundary Component
@@ -95,7 +90,7 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, errorInfo) {
     console.error('Error caught by boundary:', error, errorInfo);
     
-    // 🚀 Track errors in analytics
+    // Track errors in analytics
     if (window.higgsFlowAnalytics) {
       window.higgsFlowAnalytics.trackError({
         error: error.message,
@@ -131,7 +126,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// 🚀 Enhanced Public Route Component with Real Data Analytics
+// Enhanced Public Route Component with Real Data Analytics
 const PublicRoute = ({ children }) => {
   const analytics = useHiggsFlowAnalytics();
 
@@ -151,9 +146,9 @@ const PublicRoute = ({ children }) => {
         };
 
         await analytics.trackSession(sessionData);
-        console.log('📊 Public route real data analytics tracked');
+        console.log('Public route real data analytics tracked');
       } catch (error) {
-        console.error('⚠️ Error tracking public route:', error);
+        console.error('Error tracking public route:', error);
       }
     };
 
@@ -182,15 +177,13 @@ const FactoryRoute = ({ children }) => {
             timestamp: new Date().toISOString(),
             dataSource: 'real',
             userType: 'factory',
-            // Enhanced factory tracking uses existing Enhanced E-commerce services
-            // Your EnhancedEcommerceAPIService already handles factory profiles
             lastActivity: new Date().toISOString()
           };
 
           await analytics.trackSession(sessionData);
-          console.log('🏭 Factory user real data analytics tracked');
+          console.log('Factory user real data analytics tracked');
         } catch (error) {
-          console.error('⚠️ Error tracking factory session:', error);
+          console.error('Error tracking factory session:', error);
         }
       };
 
@@ -220,7 +213,7 @@ const FactoryRoute = ({ children }) => {
   return children;
 };
 
-// 🚀 Enhanced Protected Route Component with Real Data Analytics
+// Enhanced Protected Route Component with Real Data Analytics
 const ProtectedRoute = ({ children, permission }) => {
   const { user, loading } = useAuth();
   const permissions = usePermissions();
@@ -241,21 +234,20 @@ const ProtectedRoute = ({ children, permission }) => {
             timestamp: new Date().toISOString(),
             dataSource: 'real',
             userType: 'admin',
-            // 🚀 Enhanced admin tracking
             permissionLevel: Object.keys(permissions).filter(p => permissions[p]).length,
             lastActivity: new Date().toISOString()
           };
 
           await analytics.trackSession(sessionData);
-          console.log('👨‍💼 Admin user real data analytics tracked');
+          console.log('Admin user real data analytics tracked');
         } catch (error) {
-          console.error('⚠️ Error tracking admin session:', error);
+          console.error('Error tracking admin session:', error);
         }
       };
 
       trackAdminAccess();
     }
-  }, [user, permission, analytics]);
+  }, [user, permission, analytics, permissions]);
   
   if (loading) {
     return (
@@ -293,7 +285,7 @@ const PlaceholderComponent = ({ title, description, icon: Icon }) => (
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{title}</h2>
       <p className="text-gray-600 dark:text-gray-400 mb-4">{description}</p>
       <div className="mt-6 text-sm text-gray-500 dark:text-gray-500">
-        <p>🚀 Feature in development</p>
+        <p>Feature in development</p>
         <p>Expected completion: Q1 2025</p>
       </div>
     </div>
@@ -326,22 +318,25 @@ const getClientIP = async () => {
   }
 };
 
+// Safe UnifiedData Hook - Prevents build errors
+const useUnifiedDataSafe = () => {
+  try {
+    return useUnifiedData();
+  } catch (error) {
+    console.warn('UnifiedDataContext not available, using fallback values:', error);
+    return {
+      dataSource: 'localStorage',
+      isRealTimeActive: false,
+      migrationStatus: { inProgress: false }
+    };
+  }
+};
+
 function AppContent() {
   const { user, loading } = useAuth();
   
   // Add fallback for useUnifiedData in case context is not available
-  let dataSource, isRealTimeActive, migrationStatus;
-  try {
-    const unifiedData = useUnifiedData();
-    dataSource = unifiedData.dataSource;
-    isRealTimeActive = unifiedData.isRealTimeActive;
-    migrationStatus = unifiedData.migrationStatus;
-  } catch (error) {
-    console.warn('UnifiedDataContext not available, using fallback values:', error);
-    dataSource = 'localStorage';
-    isRealTimeActive = false;
-    migrationStatus = { inProgress: false };
-  }
+  const { dataSource, isRealTimeActive, migrationStatus } = useUnifiedDataSafe();
   
   const [notification, setNotification] = useState(null);
   const [showFirestoreTest, setShowFirestoreTest] = useState(true);
@@ -354,15 +349,12 @@ function AppContent() {
     setNotification({ message, type });
   };
 
-  // 🚀 Initialize Real Data Services and Analytics
+  // Initialize Real Data Services and Analytics
   useEffect(() => {
     const initializeRealDataServices = async () => {
       if (!analyticsInitialized) {
         try {
-          console.log('🚀 Initializing HiggsFlow Phase 2B Real Data Services...');
-          
-          // Initialize SmartCatalogAPIService (when available)
-          // await SmartCatalogAPIService.initialize();
+          console.log('Initializing HiggsFlow Phase 2B Real Data Services...');
           
           // Basic analytics initialization with real data
           const sessionData = {
@@ -386,9 +378,9 @@ function AppContent() {
           await higgsFlowAnalytics.trackUserSession(sessionData);
           setAnalyticsInitialized(true);
           
-          console.log(`✅ Analytics initialized - Data Source: ${dataSource}`);
+          console.log(`Analytics initialized - Data Source: ${dataSource}`);
         } catch (error) {
-          console.error('⚠️ Error initializing analytics:', error);
+          console.error('Error initializing analytics:', error);
         }
       }
     };
@@ -408,7 +400,7 @@ function AppContent() {
           </p>
           {realDataEnabled && (
             <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-              ✅ Real Data Services Active
+              Real Data Services Active
             </p>
           )}
         </div>
@@ -471,7 +463,7 @@ function AppContent() {
           <Routes>
             {/* ========== PUBLIC E-COMMERCE ROUTES WITH REAL DATA SMART ANALYTICS ========== */}
             
-            {/* 🚀 Smart Catalog with Real Data AI Analytics - DEFAULT PUBLIC ROUTE */}
+            {/* Smart Catalog with Real Data AI Analytics - DEFAULT PUBLIC ROUTE */}
             <Route 
               path="/catalog" 
               element={
@@ -495,7 +487,7 @@ function AppContent() {
               } 
             />
             
-            {/* 🚀 Real Data Migration Dashboard - ADMIN ONLY */}
+            {/* Real Data Migration Dashboard - ADMIN ONLY */}
             <Route 
               path="/catalog/migration" 
               element={
@@ -557,7 +549,7 @@ function AppContent() {
               } 
             />
             
-            {/* 🚀 NEW: Factory Registration - ALTERNATIVE PUBLIC ROUTE */}
+            {/* NEW: Factory Registration - ALTERNATIVE PUBLIC ROUTE */}
             <Route 
               path="/factory-registration" 
               element={
@@ -643,7 +635,7 @@ function AppContent() {
                 } 
               />
               
-              {/* 🚀 HiggsFlow Analytics Phase 2B Dashboard - PRIMARY ANALYTICS ROUTE with Real Data */}
+              {/* HiggsFlow Analytics Phase 2B Dashboard - PRIMARY ANALYTICS ROUTE with Real Data */}
               <Route 
                 path="/analytics" 
                 element={
@@ -655,7 +647,7 @@ function AppContent() {
                 } 
               />
               
-              {/* 🚀 Business Intelligence Route - SECONDARY ANALYTICS ACCESS */}
+              {/* Business Intelligence Route - SECONDARY ANALYTICS ACCESS */}
               <Route 
                 path="/business-intelligence" 
                 element={
@@ -667,7 +659,7 @@ function AppContent() {
                 } 
               />
               
-              {/* 🚀 Advanced Analytics Route - TERTIARY ANALYTICS ACCESS */}
+              {/* Advanced Analytics Route - TERTIARY ANALYTICS ACCESS */}
               <Route 
                 path="/advanced-analytics" 
                 element={
@@ -679,7 +671,7 @@ function AppContent() {
                 } 
               />
               
-              {/* 🚀 Real-time Insights Route */}
+              {/* Real-time Insights Route */}
               <Route 
                 path="/insights" 
                 element={
@@ -705,7 +697,7 @@ function AppContent() {
 
               {/* ========== PHASE 2B E-COMMERCE PLATFORM ROUTES WITH REAL DATA ========== */}
               
-              {/* 🚀 Factory Dashboard - Protected Route with Real Data */}
+              {/* Factory Dashboard - Protected Route with Real Data */}
               <Route 
                 path="/factory-dashboard" 
                 element={
@@ -717,7 +709,7 @@ function AppContent() {
                 } 
               />
 
-              {/* 🚀 Quote Requests Management with Real Data */}
+              {/* Quote Requests Management with Real Data */}
               <Route 
                 path="/quote-requests" 
                 element={
@@ -729,7 +721,7 @@ function AppContent() {
                 } 
               />
 
-              {/* 🚀 Shopping Cart Management with Real Data */}
+              {/* Shopping Cart Management with Real Data */}
               <Route 
                 path="/shopping-cart" 
                 element={
@@ -1073,7 +1065,7 @@ function AppContent() {
 
             {/* ========== ROOT ROUTE WITH PROFESSIONAL LANDING PAGE AND REAL DATA ========== */}
             
-            {/* 🚀 Professional Landing Page for www.higgsflow.com with Real Data Analytics */}
+            {/* Professional Landing Page for www.higgsflow.com with Real Data Analytics */}
             <Route 
               path="/" 
               element={
@@ -1112,7 +1104,7 @@ function AppContent() {
             {/* Redirect old admin routes */}
             <Route path="/dashboard" element={<Navigate to="/admin" replace />} />
             
-            {/* 🚀 Analytics route redirects - FIXED: No duplicate /insights */}
+            {/* Analytics route redirects */}
             <Route path="/reports" element={<Navigate to="/analytics" replace />} />
             <Route path="/bi" element={<Navigate to="/analytics" replace />} />
             <Route path="/business-analytics" element={<Navigate to="/analytics" replace />} />
@@ -1144,15 +1136,15 @@ function AppContent() {
             />
           )}
           
-          {/* 🚀 Real Data Status Indicator */}
+          {/* Real Data Status Indicator */}
           {analyticsInitialized && import.meta.env.DEV && (
             <div className="fixed bottom-20 right-4 z-50 space-y-2">
               <div className="bg-green-500 text-white text-xs px-3 py-1 rounded-full shadow-lg">
-                📊 Phase 2B Analytics Active
+                Phase 2B Analytics Active
               </div>
               {realDataEnabled && (
                 <div className="bg-blue-500 text-white text-xs px-3 py-1 rounded-full shadow-lg">
-                  🔥 Real Data Integration Active
+                  Real Data Integration Active
                 </div>
               )}
             </div>
@@ -1170,7 +1162,7 @@ function AppContent() {
                 {showFirestoreTest ? 'Hide' : 'Show'} Firestore Test
               </button>
               
-              {/* 🚀 Real Data Analytics Debug Panel */}
+              {/* Real Data Analytics Debug Panel */}
               <button
                 onClick={() => console.log('HiggsFlow Real Data Analytics Status:', { 
                   analytics: higgsFlowAnalytics, 
@@ -1180,25 +1172,25 @@ function AppContent() {
                 className="fixed bottom-4 left-32 bg-blue-600 text-white text-xs px-3 py-1 rounded-full hover:bg-blue-700 z-50 shadow-lg transition-colors"
                 title="Check Real Data Analytics Status"
               >
-                📊 Real Data Debug
+                Real Data Debug
               </button>
               
-              {/* 🚀 Quick Analytics Access */}
+              {/* Quick Analytics Access */}
               <button
                 onClick={() => window.location.href = '/analytics'}
                 className="fixed bottom-4 left-52 bg-purple-600 text-white text-xs px-3 py-1 rounded-full hover:bg-purple-700 z-50 shadow-lg transition-colors"
                 title="Open Real Data Analytics Dashboard"
               >
-                🚀 Phase 2B Real Data
+                Phase 2B Real Data
               </button>
               
-              {/* 🚀 Smart Catalog Test Button */}
+              {/* Smart Catalog Test Button */}
               <button
                 onClick={() => window.location.href = '/catalog'}
                 className="fixed bottom-4 left-72 bg-green-600 text-white text-xs px-3 py-1 rounded-full hover:bg-green-700 z-50 shadow-lg transition-colors"
                 title="Test Smart Catalog with Real Data"
               >
-                🔥 Smart Catalog
+                Smart Catalog
               </button>
             </>
           )}
