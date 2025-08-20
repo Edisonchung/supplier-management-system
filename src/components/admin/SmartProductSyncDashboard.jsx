@@ -615,5 +615,4 @@ const SmartProductSyncDashboard = () => {
 };
 
 export default SmartProductSyncDashboard;
-// Create and export singleton instance for dashboard
-export const productSyncService = new ProductSyncService();
+
