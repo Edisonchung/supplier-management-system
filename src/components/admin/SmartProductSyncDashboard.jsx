@@ -5,7 +5,7 @@ import {
   TrendingUp, DollarSign, Users, Zap, ArrowRight, X,
   Edit, Save, Plus, Minus
 } from 'lucide-react';
-import { productSyncService } from '../services/sync/ProductSyncService.js';
+import { productSyncService } from '../services/sync/ProductSyncService';
 
 const SmartProductSyncDashboard = () => {
   // State management
@@ -615,3 +615,5 @@ const SmartProductSyncDashboard = () => {
 };
 
 export default SmartProductSyncDashboard;
+// Create and export singleton instance for dashboard
+export const productSyncService = new ProductSyncService();
