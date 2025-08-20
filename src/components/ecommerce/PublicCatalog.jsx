@@ -35,15 +35,8 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../config/firebase.js';
 import EnhancedEcommerceFirebaseService from '../../services/ecommerce/EnhancedEcommerceFirebaseService.js';
 
-// FIXED: Safe UnifiedDataContext import with fallback
-let useUnifiedData;
-try {
-  const UnifiedDataModule = require('../../context/UnifiedDataContext');
-  useUnifiedData = UnifiedDataModule.useUnifiedData;
-} catch (error) {
-  console.warn('UnifiedDataContext not available, using fallback mode:', error);
-  useUnifiedData = null;
-}
+// Fixed Direct Import from Updated Context
+import { useUnifiedData } from '../../context/UnifiedDataContext';
 
 // Initialize enhanced service
 const ecommerceService = EnhancedEcommerceFirebaseService;
@@ -56,56 +49,70 @@ const generateSessionId = () => {
   return `session_${timestamp}_${random}`;
 };
 
-// FIXED: Safe context hook with fallback
+// Safe context hook with proper error boundary
 const useUnifiedDataSafe = () => {
-  if (useUnifiedData) {
-    try {
-      return useUnifiedData();
-    } catch (error) {
-      console.warn('UnifiedDataContext error, using fallback:', error);
-    }
-  }
-  
-  // Fallback implementation
-  const [sessionId] = useState(() => {
-    try {
-      let stored = sessionStorage.getItem('higgsflow_session_id');
-      if (!stored) {
+  try {
+    const contextData = useUnifiedData();
+    return {
+      sessionId: contextData.sessionId || generateSessionId(),
+      isFirestoreMode: contextData.dataSource === 'firestore',
+      dataSource: contextData.dataSource || 'localStorage',
+      ...contextData
+    };
+  } catch (error) {
+    console.warn('UnifiedDataContext not available, using fallback values:', error);
+    
+    // Generate fallback session ID
+    const fallbackSessionId = useMemo(() => {
+      try {
+        let stored = sessionStorage.getItem('higgsflow_session_id');
+        if (!stored) {
+          try {
+            stored = localStorage.getItem('higgsflow_session_id');
+          } catch (localError) {
+            console.warn('LocalStorage not available:', localError);
+          }
+        }
+        
+        if (stored) return stored;
+        
+        const newId = generateSessionId();
+        
         try {
-          stored = localStorage.getItem('higgsflow_session_id');
+          sessionStorage.setItem('higgsflow_session_id', newId);
+        } catch (sessionError) {
+          console.warn('SessionStorage not available:', sessionError);
+        }
+        
+        try {
+          localStorage.setItem('higgsflow_session_id', newId);
         } catch (localError) {
           console.warn('LocalStorage not available:', localError);
         }
+        
+        return newId;
+      } catch (error) {
+        console.warn('Storage not available, using memory session:', error);
+        return generateSessionId();
       }
-      
-      if (stored) return stored;
-      
-      const newId = generateSessionId();
-      
-      try {
-        sessionStorage.setItem('higgsflow_session_id', newId);
-      } catch (sessionError) {
-        console.warn('SessionStorage not available:', sessionError);
-      }
-      
-      try {
-        localStorage.setItem('higgsflow_session_id', newId);
-      } catch (localError) {
-        console.warn('LocalStorage not available:', localError);
-      }
-      
-      return newId;
-    } catch (error) {
-      console.warn('Storage not available, using memory session:', error);
-      return generateSessionId();
-    }
-  });
+    }, []);
 
-  return {
-    sessionId,
-    isFirestoreMode: false,
-    dataSource: 'localStorage'
-  };
+    return {
+      sessionId: fallbackSessionId,
+      isFirestoreMode: false,
+      dataSource: 'localStorage',
+      state: {
+        catalogProducts: [],
+        searchResults: [],
+        userInteractions: [],
+        personalization: { recommendedProducts: [], searchHistory: [], viewHistory: [] }
+      },
+      searchCatalogProducts: async () => ({ success: false, products: [] }),
+      trackUserInteraction: async () => ({ success: true }),
+      updatePersonalization: async () => ({ success: true }),
+      isRealTimeActive: false
+    };
+  }
 };
 
 const HiggsFlowPublicCatalog = () => {
