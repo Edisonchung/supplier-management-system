@@ -4,7 +4,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Building2, 
-  Package, 
+  Package,
+  Sync,
   FileText, 
   ShoppingCart, 
   Receipt,
@@ -639,6 +640,13 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           badgeColor: 'bg-green-500',
           realDataIndicator: true
         },
+        {
+      name: 'Product Sync',
+      href: '/admin/product-sync',
+      icon: Package, // You'll need to import Package from 'lucide-react'
+      description: 'Manage product sync between internal inventory and public catalog',
+      permission: 'canManageUsers'
+    },
         {
           name: 'Category Management',
           href: '/admin/categories',
