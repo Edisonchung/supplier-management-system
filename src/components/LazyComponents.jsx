@@ -1,4 +1,4 @@
-// src/components/LazyComponents.jsx - UPDATED with HiggsFlow Analytics Phase 2B
+// src/components/LazyComponents.jsx - UPDATED with Smart Product Sync Dashboard
 
 import { lazy } from 'react';
 import React, { Suspense } from 'react';
@@ -37,7 +37,7 @@ export const LazyClientInvoices = lazy(() => import('./invoices/ClientInvoices')
 export const LazyQuickImport = lazy(() => import('./import/QuickImport'));
 export const LazySmartNotifications = lazy(() => import('./notifications/SmartNotifications'));
 
-// ========== 🚀 NEW: PHASE 2B ANALYTICS COMPONENTS ========== 
+// ========== NEW: PHASE 2B ANALYTICS COMPONENTS ========== 
 
 // HiggsFlow Analytics Phase 2B Dashboard - PRIMARY ANALYTICS COMPONENT
 export const LazyHiggsFlowAnalyticsDashboard = lazy(() => 
@@ -59,7 +59,7 @@ export const LazyHiggsFlowAnalyticsDashboard = lazy(() =>
               Advanced Business Intelligence Dashboard
             </p>
             <div className="text-sm text-blue-600 dark:text-blue-400 font-medium">
-              📊 Component will be available after installation
+              Component will be available after installation
             </div>
             <div className="mt-4 text-xs text-gray-500 dark:text-gray-500">
               Expected features: Real-time Analytics • Business Intelligence • Performance Metrics
@@ -120,6 +120,38 @@ export const LazyMigrationPage = lazy(() => import('./migration/MigrationPage'))
 export const LazyCompanyStructureManager = lazy(() => import('./admin/CompanyStructureManager'));
 export const LazyCategoryManagementDashboard = lazy(() => import('./admin/CategoryManagementDashboard'));
 
+// NEW: Smart Product Sync Dashboard
+export const LazySmartProductSyncDashboard = lazy(() => 
+  import('./admin/SmartProductSyncDashboard').catch(() => {
+    console.warn('SmartProductSyncDashboard not found, using placeholder');
+    return {
+      default: () => (
+        <div className="flex items-center justify-center h-64 bg-gradient-to-br from-green-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 rounded-lg shadow-md">
+          <div className="text-center p-8">
+            <div className="mx-auto h-16 w-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mb-4">
+              <svg className="h-8 w-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Smart Product Sync Dashboard
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Manage product sync between internal inventory and public catalog
+            </p>
+            <div className="text-sm text-green-600 dark:text-green-400 font-medium">
+              Component will be available after installation
+            </div>
+            <div className="mt-4 text-xs text-gray-500 dark:text-gray-500">
+              Expected features: Product Sync Control • Pricing Management • Bulk Operations
+            </div>
+          </div>
+        </div>
+      )
+    };
+  })
+);
+
 // MCP & AI Components
 export const LazyMCPTools = lazy(() => import('./mcp/MCPTools'));
 export const LazyDualSystemDashboard = lazy(() => import('./mcp/DualSystemDashboard'));
@@ -167,6 +199,7 @@ export const componentRegistry = {
   // Admin
   'Company Structure Manager': LazyCompanyStructureManager,
   'Category Management': LazyCategoryManagementDashboard,
+  'Smart Product Sync Dashboard': LazySmartProductSyncDashboard,
   
   // MCP & AI
   'MCP Tools': LazyMCPTools,
