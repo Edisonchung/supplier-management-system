@@ -1,4 +1,4 @@
-// src/services/pricingService.js - Enhanced with Cost-Based Markup System
+// src/services/pricingService.js - Enhanced with Cost-Based Markup System (Updated)
 import { db } from '../config/firebase';
 import { 
   collection, 
@@ -77,13 +77,18 @@ export class PricingService {
         };
       }
 
-      // 4. Last resort: base product price
+      // 4. Last resort: base product price with default markup
       const product = await this.getProduct(productId);
+      const fallbackPrice = this.calculateFallbackPrice(product);
       return {
-        price: product?.price || 0,
-        type: 'base',
-        source: 'products',
-        details: product,
+        price: fallbackPrice,
+        type: 'fallback',
+        source: 'default_markup',
+        details: { 
+          originalCost: product?.price || 0,
+          defaultMarkup: 20,
+          fallbackPrice 
+        },
         priority: 4
       };
 
@@ -185,7 +190,7 @@ export class PricingService {
         return rule.supplierId === product.supplierId;
 
       case 'value_based':
-        const cost = product.supplierCost || product.cost || 0;
+        const cost = this.getProductCost(product);
         return cost >= (rule.minValue || 0) && 
                (rule.maxValue ? cost <= rule.maxValue : true);
       
@@ -195,13 +200,35 @@ export class PricingService {
   }
 
   /**
-   * Calculate base pricing using markup rules
+   * Get product cost - handles different cost field names
+   */
+  static getProductCost(product) {
+    return product.supplierCost || product.cost || product.price || 0;
+  }
+
+  /**
+   * Calculate fallback price when markup calculation fails
+   */
+  static calculateFallbackPrice(product) {
+    const cost = this.getProductCost(product);
+    if (cost <= 0) {
+      return 0; // Return 0 if no valid cost data
+    }
+    // Apply default 20% markup for fallback
+    return Math.round(cost * 1.20 * 100) / 100;
+  }
+
+  /**
+   * Calculate base pricing using markup rules - FIXED for cost structure
    */
   static calculateBasePricing(product, markupRules, overrides = {}) {
-    const supplierCost = overrides.supplierCost || product.supplierCost || product.cost || 0;
+    // Use product.price as the supplier cost since that's your internal cost structure
+    const supplierCost = overrides.supplierCost || this.getProductCost(product);
     
     if (supplierCost <= 0) {
-      throw new Error('Invalid supplier cost - must be greater than 0');
+      console.warn(`Product ${product.id} has no valid cost data (price: ${product.price}, supplierCost: ${product.supplierCost})`);
+      // Return fallback pricing instead of throwing error
+      return this.generateFallbackPricing(product);
     }
 
     // Apply markup rules in priority order
@@ -231,6 +258,18 @@ export class PricingService {
       }
     }
 
+    // Use default markup if no rules applied
+    if (appliedRules.length === 0) {
+      currentMarkup = 20; // Default 20% markup
+      appliedRules.push({
+        ruleId: 'default',
+        ruleName: 'Default Markup',
+        type: 'default',
+        markupPercentage: 20,
+        reason: 'No specific markup rules found'
+      });
+    }
+
     // Calculate prices
     const markupAmount = supplierCost * (currentMarkup / 100);
     const publicPrice = supplierCost + markupAmount;
@@ -241,7 +280,7 @@ export class PricingService {
     return {
       supplierCost,
       totalMarkupPercentage: currentMarkup,
-      markupAmount,
+      markupAmount: Math.round(markupAmount * 100) / 100,
       publicPrice: Math.round(publicPrice * 100) / 100,
       tierPrices,
       appliedRules,
@@ -252,6 +291,36 @@ export class PricingService {
         step4_publicPrice: publicPrice,
         step5_roundedPublicPrice: Math.round(publicPrice * 100) / 100
       }
+    };
+  }
+
+  /**
+   * Generate fallback pricing when cost data is invalid
+   */
+  static generateFallbackPricing(product) {
+    const fallbackPrice = 100; // Minimum fallback price
+    
+    return {
+      supplierCost: 0,
+      totalMarkupPercentage: 0,
+      markupAmount: 0,
+      publicPrice: fallbackPrice,
+      tierPrices: this.calculateTierPrices(fallbackPrice, product),
+      appliedRules: [{
+        ruleId: 'fallback',
+        ruleName: 'Fallback Pricing',
+        type: 'fallback',
+        markupPercentage: 0,
+        reason: 'No valid cost data available'
+      }],
+      calculationBreakdown: {
+        step1_supplierCost: 0,
+        step2_markupPercentage: 0,
+        step3_markupAmount: 0,
+        step4_publicPrice: fallbackPrice,
+        step5_roundedPublicPrice: fallbackPrice
+      },
+      warning: 'Fallback pricing used due to invalid cost data'
     };
   }
 
@@ -299,7 +368,7 @@ export class PricingService {
   }
 
   /**
-   * Get all markup rules
+   * Get all markup rules - ENHANCED with error handling
    */
   static async getMarkupRules() {
     try {
@@ -318,7 +387,8 @@ export class PricingService {
       return { success: true, data: rules };
     } catch (error) {
       console.error('Error fetching markup rules:', error);
-      return { success: false, error: error.message };
+      // Return empty array instead of failing - allows fallback pricing
+      return { success: false, error: error.message, data: [] };
     }
   }
 
@@ -461,6 +531,18 @@ export class PricingService {
    */
   static async getProduct(productId) {
     try {
+      // Try direct document access first (more efficient)
+      const productRef = doc(db, 'products', productId);
+      const productSnap = await getDoc(productRef);
+      
+      if (productSnap.exists()) {
+        return {
+          id: productId,
+          ...productSnap.data()
+        };
+      }
+
+      // Fallback to query method for compatibility
       const q = query(
         collection(db, 'products'),
         where('id', '==', productId)
@@ -471,8 +553,7 @@ export class PricingService {
         return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
       }
       
-      // Fallback to direct document access
-      return await this.getProductById(productId);
+      return null;
     } catch (error) {
       console.error('Error getting product:', error);
       return null;
@@ -515,12 +596,21 @@ export class PricingService {
           continue;
         }
 
+        // Get product for cost context
+        const product = await this.getProductById(priceRecord.productId);
+        const productCost = this.getProductCost(product);
+
         // Add to price history with enhanced tracking
         const historyRef = doc(collection(db, 'price_history'));
         batch.set(historyRef, {
           ...priceRecord,
           clientId,
-          createdAt: new Date(),
+          sellingPrice: priceRecord.price,
+          productCost: productCost,
+          margin: productCost > 0 ? priceRecord.price - productCost : 0,
+          marginPercentage: productCost > 0 ? 
+            (((priceRecord.price - productCost) / productCost) * 100).toFixed(2) : 0,
+          createdAt: Timestamp.now(),
           source: 'import',
           isActive: true,
           recordType: 'historical_import'
@@ -541,20 +631,28 @@ export class PricingService {
             basedOnHistoryId: historyRef.id,
             lastSoldPrice: priceRecord.price,
             lastSoldDate: priceRecord.soldDate || new Date(),
+            
+            // Cost context
+            productCost: productCost,
+            margin: productCost > 0 ? priceRecord.price - productCost : 0,
+            marginPercentage: productCost > 0 ? 
+              (((priceRecord.price - productCost) / productCost) * 100).toFixed(2) : 0,
+            
             priceSource: 'historical',
             autoApproved: true,
             agreementRef: priceRecord.contractRef || 'HISTORICAL',
             validFrom: new Date(),
-            notes: `Auto-imported from historical sale on ${priceRecord.soldDate || 'unknown date'}`,
+            notes: `Auto-imported from historical sale. Cost: $${productCost}, Selling: $${priceRecord.price}`,
             isActive: true,
             priority: 2,
-            createdAt: new Date(),
+            createdAt: Timestamp.now(),
             createdBy: 'system_import'
           });
 
           importedPrices.push({
             productId: priceRecord.productId,
             price: priceRecord.price,
+            margin: productCost > 0 ? priceRecord.price - productCost : 0,
             historyId: historyRef.id
           });
         }
@@ -646,7 +744,8 @@ export class PricingService {
 
       productsSnap.docs.forEach(doc => {
         const product = doc.data();
-        if (product.supplierCost > 0 || product.cost > 0) {
+        const cost = this.getProductCost(product);
+        if (cost > 0) {
           productsWithCost++;
         }
         if (product.pricing?.totalMarkupPercentage) {
@@ -685,7 +784,7 @@ export class PricingService {
         const docRef = doc(db, 'client_specific_pricing', existingPricing.id);
         await updateDoc(docRef, {
           ...pricingData,
-          lastModified: new Date(),
+          lastModified: Timestamp.now(),
           modifiedBy: 'admin_user' // Replace with actual user ID
         });
         return { success: true, action: 'updated', id: existingPricing.id };
@@ -697,7 +796,7 @@ export class PricingService {
           ...pricingData,
           isActive: true,
           priority: 1,
-          createdAt: new Date(),
+          createdAt: Timestamp.now(),
           createdBy: 'admin_user' // Replace with actual user ID
         });
         return { success: true, action: 'created', id: docRef.id };
@@ -819,19 +918,30 @@ export class PricingService {
   }
 
   /**
-   * Record price history
+   * Record price history - ENHANCED with cost context
    */
   static async recordPriceHistory(productId, clientId, priceData, context = {}) {
     try {
+      // Get product for cost context
+      const product = await this.getProductById(productId);
+      const productCost = this.getProductCost(product);
+
       const historyRef = doc(collection(db, 'price_history'));
       const historyRecord = {
         id: historyRef.id,
         productId,
         clientId,
-        supplierCost: priceData.supplierCost,
+        supplierCost: productCost,
+        sellingPrice: priceData.finalPrice || priceData.price,
         finalPrice: priceData.finalPrice || priceData.price,
         markupPercentage: priceData.totalMarkupPercentage,
         pricingType: priceData.pricingType || priceData.type,
+        
+        // Enhanced cost context
+        productCost: productCost,
+        margin: productCost > 0 ? (priceData.finalPrice || priceData.price) - productCost : 0,
+        marginPercentage: productCost > 0 ? 
+          ((((priceData.finalPrice || priceData.price) - productCost) / productCost) * 100).toFixed(2) : 0,
         
         // Context information
         orderId: context.orderId,
