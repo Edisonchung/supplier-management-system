@@ -6,7 +6,7 @@ import {
   Package, Eye, EyeOff, CheckCircle, AlertCircle, Clock,
   Filter, Search, RefreshCw, Upload, Download, Settings,
   TrendingUp, DollarSign, Users, Zap, ArrowRight, X,
-  Edit, Save, Plus, Minus, Crown, History, UserPlus, Target, BarChart
+  Edit, Save, Plus, Minus, Crown, History, UserPlus, Target, BarChart, info
 } from 'lucide-react';
 import { 
   collection, 
