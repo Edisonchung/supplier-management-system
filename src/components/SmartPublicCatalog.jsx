@@ -125,6 +125,9 @@ class RealAnalyticsService {
     } catch (error) {
       console.error('❌ Real-time subscription error:', error);
       this.getLocalStorageMetrics(callback);
+      
+      // Return a dummy function to prevent errors
+      return () => {};
     }
   }
 
@@ -467,19 +470,48 @@ const SmartPublicCatalog = () => {
 
   // ✅ FIXED: Real-time subscription with correct collection
   useEffect(() => {
-    const unsubscribe = setupRealTimeProductUpdates((updatedProducts) => {
-      console.log('🔄 Real-time products update received:', updatedProducts.length);
-      setProducts(updatedProducts);
-      setFilteredProducts(updatedProducts);
-    });
+    let unsubscribeFunction = null;
     
-    return () => unsubscribe && unsubscribe();
+    const setupSubscription = async () => {
+      try {
+        unsubscribeFunction = setupRealTimeProductUpdates((updatedProducts) => {
+          console.log('🔄 Real-time products update received:', updatedProducts.length);
+          setProducts(updatedProducts);
+          setFilteredProducts(updatedProducts);
+        });
+      } catch (error) {
+        console.error('❌ Error setting up real-time subscription:', error);
+      }
+    };
+    
+    setupSubscription();
+    
+    return () => {
+      if (unsubscribeFunction && typeof unsubscribeFunction === 'function') {
+        unsubscribeFunction();
+      }
+    };
   }, []);
 
   // Subscribe to real-time analytics
   useEffect(() => {
-    const unsubscribe = analyticsService.subscribeToRealTimeMetrics(setRealTimeMetrics);
-    return () => unsubscribe && unsubscribe();
+    let unsubscribeAnalytics = null;
+    
+    const setupAnalytics = async () => {
+      try {
+        unsubscribeAnalytics = await analyticsService.subscribeToRealTimeMetrics(setRealTimeMetrics);
+      } catch (error) {
+        console.error('❌ Error setting up analytics:', error);
+      }
+    };
+    
+    setupAnalytics();
+    
+    return () => {
+      if (unsubscribeAnalytics && typeof unsubscribeAnalytics === 'function') {
+        unsubscribeAnalytics();
+      }
+    };
   }, [analyticsService]);
 
   // Factory identification on email detection
@@ -748,21 +780,21 @@ const SmartPublicCatalog = () => {
                 
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-lg font-bold text-blue-600">
-                    RM {product.price?.toLocaleString() || '0'}
+                    RM {typeof product.price === 'number' ? product.price.toLocaleString() : '0'}
                   </span>
                   <span className="text-sm text-gray-500">
-                    Stock: {product.stock}
+                    Stock: {product.stock || 0}
                   </span>
                 </div>
                 
                 <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
                   <div className="flex items-center">
                     <Truck className="w-4 h-4 mr-1" />
-                    {product.deliveryTime}
+                    {product.deliveryTime || '3-5 days'}
                   </div>
                   <div className="flex items-center">
                     <MapPin className="w-4 h-4 mr-1" />
-                    {product.location}
+                    {product.location || 'KL'}
                   </div>
                 </div>
                 
@@ -773,13 +805,13 @@ const SmartPublicCatalog = () => {
                       <Star
                         key={i}
                         className={`w-4 h-4 ${
-                          i < Math.floor(product.rating) ? 'fill-current' : ''
+                          i < Math.floor(product.rating || 4) ? 'fill-current' : ''
                         }`}
                       />
                     ))}
                   </div>
                   <span className="text-sm text-gray-500 ml-2">
-                    ({product.reviewCount} reviews)
+                    ({product.reviewCount || 0} reviews)
                   </span>
                 </div>
                 
