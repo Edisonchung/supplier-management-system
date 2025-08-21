@@ -1,26 +1,33 @@
 // src/components/admin/EnhancedPricingManager.jsx
 import React, { useState, useEffect } from 'react';
 import { db } from '../../config/firebase';
-import { collection, doc, updateDoc, addDoc, query, where, getDocs, orderBy, writeBatch } from 'firebase/firestore';
-import { User, Building, Crown, AlertTriangle, Check, X, DollarSign, Percent, History, Upload, Download, Filter } from 'lucide-react';
+import { collection, doc, updateDoc, addDoc, query, where, getDocs, orderBy, writeBatch, deleteDoc } from 'firebase/firestore';
+import { User, Building, Crown, AlertTriangle, Check, X, DollarSign, Percent, History, Upload, Download, Filter, Calculator, TrendingUp, Tag, Settings, Plus, Edit2, Trash2 } from 'lucide-react';
+import { PricingService } from '../../services/pricingService';
 
 const EnhancedPricingManager = () => {
-  const [viewMode, setViewMode] = useState('tier'); // 'tier' or 'client'
+  const [viewMode, setViewMode] = useState('markup-rules'); // 'markup-rules', 'tier', 'client'
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientSpecificPricing, setClientSpecificPricing] = useState({});
   const [products, setProducts] = useState([]);
   const [tierPricing, setTierPricing] = useState({});
+  const [markupRules, setMarkupRules] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [selectedTier, setSelectedTier] = useState('tier_0');
   const [bulkUpdateMode, setBulkUpdateMode] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [editingRule, setEditingRule] = useState(null);
+  const [pricingStats, setPricingStats] = useState(null);
 
   const tiers = [
-    { id: 'tier_0', name: 'Public', color: 'bg-gray-100', icon: User },
-    { id: 'tier_1', name: 'End User', color: 'bg-blue-100', icon: DollarSign },
-    { id: 'tier_2', name: 'System Integrator', color: 'bg-green-100', icon: Building },
-    { id: 'tier_3', name: 'Trader', color: 'bg-purple-100', icon: Crown }
+    { id: 'tier_0', name: 'Public', color: 'bg-gray-100', icon: User, discount: 0 },
+    { id: 'tier_1', name: 'End User', color: 'bg-blue-100', icon: DollarSign, discount: 5 },
+    { id: 'tier_2', name: 'System Integrator', color: 'bg-green-100', icon: Building, discount: 15 },
+    { id: 'tier_3', name: 'Trader', color: 'bg-purple-100', icon: Crown, discount: 25 },
+    { id: 'tier_4', name: 'VIP Distributor', color: 'bg-yellow-100', icon: Crown, discount: 35 }
   ];
 
   useEffect(() => {
@@ -34,7 +41,10 @@ const EnhancedPricingManager = () => {
         loadClients(),
         loadProducts(),
         loadTierPricing(),
-        loadClientSpecificPricing()
+        loadClientSpecificPricing(),
+        loadMarkupRules(),
+        loadBrands(),
+        loadPricingStats()
       ]);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -113,6 +123,132 @@ const EnhancedPricingManager = () => {
     }
   };
 
+  const loadMarkupRules = async () => {
+    try {
+      const result = await PricingService.getMarkupRules();
+      if (result.success) {
+        setMarkupRules(result.data);
+      }
+    } catch (error) {
+      console.error('Error loading markup rules:', error);
+    }
+  };
+
+  const loadBrands = async () => {
+    try {
+      const brandsQuery = query(collection(db, 'brands'), orderBy('name'));
+      const snapshot = await getDocs(brandsQuery);
+      const brandsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setBrands(brandsData);
+    } catch (error) {
+      console.error('Error loading brands:', error);
+    }
+  };
+
+  const loadPricingStats = async () => {
+    try {
+      const stats = await PricingService.getPricingStats();
+      setPricingStats(stats);
+    } catch (error) {
+      console.error('Error loading pricing stats:', error);
+    }
+  };
+
+  const handleSaveMarkupRule = async (ruleData) => {
+    try {
+      setLoading(true);
+      
+      if (editingRule) {
+        // Update existing rule
+        const ruleRef = doc(db, 'pricing_markup_rules', editingRule.id);
+        await updateDoc(ruleRef, {
+          ...ruleData,
+          lastModified: new Date()
+        });
+      } else {
+        // Create new rule
+        await PricingService.createMarkupRule(ruleData);
+      }
+      
+      setShowRuleModal(false);
+      setEditingRule(null);
+      await loadMarkupRules();
+      
+      // Optionally recalculate pricing for affected products
+      if (confirm('Would you like to recalculate pricing for all products with the updated rules?')) {
+        await handleRecalculateAllPricing();
+      }
+    } catch (error) {
+      console.error('Error saving markup rule:', error);
+      alert('Error saving markup rule: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMarkupRule = async (ruleId) => {
+    if (!confirm('Are you sure you want to delete this markup rule?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const ruleRef = doc(db, 'pricing_markup_rules', ruleId);
+      await deleteDoc(ruleRef);
+      await loadMarkupRules();
+    } catch (error) {
+      console.error('Error deleting markup rule:', error);
+      alert('Error deleting markup rule: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRecalculateAllPricing = async () => {
+    try {
+      setLoading(true);
+      const result = await PricingService.recalculateAllProductPricing();
+      
+      if (result.success) {
+        alert(`Pricing recalculation completed:\n- Successful: ${result.data.successful}\n- Failed: ${result.data.failed}`);
+        await loadPricingStats();
+      } else {
+        alert('Recalculation failed: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error recalculating pricing:', error);
+      alert('Error recalculating pricing: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateExamplePricing = (rule, supplierCost = 100) => {
+    const markupAmount = supplierCost * (rule.markupPercentage / 100);
+    const publicPrice = supplierCost + markupAmount;
+    
+    return {
+      supplierCost,
+      markupAmount,
+      publicPrice,
+      markupPercentage: rule.markupPercentage
+    };
+  };
+
+  const getRuleTypeIcon = (type) => {
+    switch (type) {
+      case 'brand': return <Crown className="w-4 h-4 text-yellow-500" />;
+      case 'series': return <Tag className="w-4 h-4 text-blue-500" />;
+      case 'brand_series': return <Crown className="w-4 h-4 text-purple-500" />;
+      case 'category': return <User className="w-4 h-4 text-green-500" />;
+      case 'global': return <Settings className="w-4 h-4 text-gray-500" />;
+      default: return <Tag className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
   const updateTierPricing = async (productId, tierId, pricingUpdate) => {
     try {
       const key = `${productId}_${tierId}`;
@@ -178,444 +314,180 @@ const EnhancedPricingManager = () => {
     }
   };
 
-  const applyBulkUpdate = async (discountValue, discountType, category) => {
-    const batch = writeBatch(db);
-    let updatedCount = 0;
-
-    try {
-      for (const product of products) {
-        if (category && product.category !== category) continue;
-        if (selectedProducts.length > 0 && !selectedProducts.includes(product.id)) continue;
-
-        const basePrice = product.price || 0;
-        const finalPrice = calculateFinalPrice(basePrice, discountType, discountValue);
-
-        const key = `${product.id}_${selectedTier}`;
-        const existingPricing = tierPricing[key];
-
-        if (existingPricing) {
-          const docRef = doc(db, 'product_pricing', existingPricing.id);
-          batch.update(docRef, {
-            basePrice,
-            discountType,
-            discountValue,
-            finalPrice,
-            lastModified: new Date(),
-            modifiedBy: 'current_user_id'
-          });
-        } else {
-          const docRef = doc(collection(db, 'product_pricing'));
-          batch.set(docRef, {
-            productId: product.id,
-            tierId: selectedTier,
-            basePrice,
-            discountType,
-            discountValue,
-            finalPrice,
-            isActive: true,
-            createdAt: new Date(),
-            modifiedBy: 'current_user_id'
-          });
-        }
-        updatedCount++;
-      }
-
-      await batch.commit();
-      alert(`Successfully updated ${updatedCount} products!`);
-      await loadTierPricing();
-    } catch (error) {
-      console.error('Error applying bulk update:', error);
-      alert('Error applying bulk update. Please try again.');
-    }
-  };
-
-  // Tier-based Pricing Card Component
-  const TierPricingCard = ({ product, tier }) => {
-    const key = `${product.id}_${tier.id}`;
-    const pricing = tierPricing[key];
-    const [localPricing, setLocalPricing] = useState({
-      basePrice: product.price || 0,
-      discountType: 'percentage',
-      discountValue: 0,
-      ...pricing
-    });
-
-    const finalPrice = calculateFinalPrice(
-      localPricing.basePrice,
-      localPricing.discountType,
-      localPricing.discountValue
-    );
-
-    const handleSave = () => {
-      updateTierPricing(product.id, tier.id, {
-        ...localPricing,
-        finalPrice
-      });
-    };
-
+  // Markup Rules Card Component
+  const MarkupRuleCard = ({ rule }) => {
+    const example = calculateExamplePricing(rule);
     return (
       <div className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-medium text-gray-900 truncate">{product.name}</h3>
-            <p className="text-xs text-gray-500">{product.code || product.id}</p>
+          <div className="flex items-center gap-2">
+            {getRuleTypeIcon(rule.type)}
+            <div>
+              <h3 className="font-medium text-gray-900">{rule.name}</h3>
+              <p className="text-xs text-gray-500">{rule.description}</p>
+            </div>
           </div>
-          <span className={`px-2 py-1 rounded text-xs font-medium ${tier.color} text-gray-700`}>
-            {tier.name}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+              rule.priority >= 8 ? 'bg-red-100 text-red-800' :
+              rule.priority >= 5 ? 'bg-yellow-100 text-yellow-800' :
+              'bg-green-100 text-green-800'
+            }`}>
+              Priority {rule.priority}
+            </span>
+            <button
+              onClick={() => {
+                setEditingRule(rule);
+                setShowRuleModal(true);
+              }}
+              className="text-blue-600 hover:text-blue-900"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleDeleteMarkupRule(rule.id)}
+              className="text-red-600 hover:text-red-900"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Base Price</label>
-            <input
-              type="number"
-              value={localPricing.basePrice}
-              onChange={(e) => setLocalPricing(prev => ({
-                ...prev,
-                basePrice: parseFloat(e.target.value) || 0
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-              step="0.01"
-            />
+        <div className="space-y-2">
+          <div className="text-sm text-gray-700">
+            <strong>Scope:</strong> {rule.type === 'brand' && `Brand: ${rule.brandName}`}
+            {rule.type === 'series' && `Series: ${rule.seriesName}`}
+            {rule.type === 'brand_series' && `${rule.brandName} ${rule.seriesName}`}
+            {rule.type === 'category' && `Category: ${rule.categoryId}`}
+            {rule.type === 'global' && 'All products'}
+            {rule.type === 'value_based' && `$${rule.minValue}+ items`}
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Discount Type</label>
-            <select
-              value={localPricing.discountType}
-              onChange={(e) => setLocalPricing(prev => ({
-                ...prev,
-                discountType: e.target.value
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            >
-              <option value="percentage">Percentage (%)</option>
-              <option value="fixed">Fixed Amount ($)</option>
-            </select>
+          
+          <div className="text-lg font-bold text-green-600">
+            +{rule.markupPercentage}% markup
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {localPricing.discountType === 'percentage' ? 'Discount %' : 'Discount Amount'}
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                value={localPricing.discountValue}
-                onChange={(e) => setLocalPricing(prev => ({
-                  ...prev,
-                  discountValue: parseFloat(e.target.value) || 0
-                }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm pr-8"
-                step="0.01"
-              />
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                {localPricing.discountType === 'percentage' ? (
-                  <Percent className="h-4 w-4 text-gray-400" />
-                ) : (
-                  <DollarSign className="h-4 w-4 text-gray-400" />
-                )}
-              </div>
+          
+          <div className="bg-gray-50 p-2 rounded text-xs">
+            <div className="grid grid-cols-3 gap-2">
+              <div>Cost: ${example.supplierCost}</div>
+              <div>+${example.markupAmount}</div>
+              <div className="font-bold">= ${example.publicPrice}</div>
             </div>
           </div>
-
-          <div className="bg-gray-50 p-3 rounded-md">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-700">Final Price:</span>
-              <span className="text-lg font-bold text-green-600">
-                ${finalPrice.toFixed(2)}
-              </span>
-            </div>
-            {localPricing.discountValue > 0 && (
-              <div className="text-xs text-gray-500 mt-1">
-                {localPricing.discountType === 'percentage' 
-                  ? `${localPricing.discountValue}% discount`
-                  : `$${localPricing.discountValue} discount`
-                }
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={handleSave}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-          >
-            Save Pricing
-          </button>
         </div>
       </div>
     );
   };
 
-  // Client-Specific Pricing Card Component
-  const ClientSpecificPricingCard = ({ client, product }) => {
-    const existingPricing = clientSpecificPricing[client.id]?.[product.id];
-    const [pricingForm, setPricingForm] = useState({
-      pricingType: 'fixed',
-      fixedPrice: product.price || 0,
-      basePrice: product.price || 0,
-      markupType: 'percentage',
-      markupValue: 0,
-      agreementRef: '',
-      validFrom: new Date().toISOString().split('T')[0],
-      validUntil: '',
-      minQuantity: 1,
-      notes: '',
-      ...existingPricing
-    });
+  // Enhanced Product Pricing Card with Markup Display
+  const EnhancedProductPricingCard = ({ product }) => {
+    const [calculatedPricing, setCalculatedPricing] = useState(null);
+    const [loading, setLoading] = useState(false);
 
-    const calculateFinalPrice = () => {
-      if (pricingForm.pricingType === 'fixed') {
-        return pricingForm.fixedPrice;
-      } else {
-        const base = pricingForm.basePrice;
-        if (pricingForm.markupType === 'percentage') {
-          return base * (1 + pricingForm.markupValue / 100);
-        } else {
-          return base + pricingForm.markupValue;
+    useEffect(() => {
+      calculateProductPricing();
+    }, [product.id]);
+
+    const calculateProductPricing = async () => {
+      setLoading(true);
+      try {
+        const result = await PricingService.calculatePricingForProduct(product.id);
+        if (result.success) {
+          setCalculatedPricing(result.data);
         }
+      } catch (error) {
+        console.error('Error calculating pricing:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    const finalPrice = calculateFinalPrice();
-    const hasExistingPricing = !!existingPricing;
+    if (loading) {
+      return <div className="bg-white border rounded-lg p-4 animate-pulse h-48"></div>;
+    }
+
+    if (!calculatedPricing) {
+      return (
+        <div className="bg-white border rounded-lg p-4">
+          <h3 className="font-medium text-gray-900 mb-2">{product.name}</h3>
+          <p className="text-red-600 text-sm">No cost data available</p>
+        </div>
+      );
+    }
 
     return (
-      <div className={`bg-white border-2 rounded-lg p-5 transition-all ${
-        hasExistingPricing ? 'border-green-200 bg-green-50' : 'border-gray-200'
-      }`}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-semibold text-gray-900">{product.name}</h3>
-            <p className="text-sm text-gray-500">Code: {product.code || product.id}</p>
-          </div>
-          {hasExistingPricing && (
-            <div className="flex items-center gap-2 text-green-600">
-              <Crown className="h-4 w-4" />
-              <span className="text-xs font-medium">Special Price</span>
-            </div>
-          )}
+      <div className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
+        <div className="mb-3">
+          <h3 className="font-medium text-gray-900 truncate">{product.name}</h3>
+          <p className="text-xs text-gray-500">{product.brand} • {product.category}</p>
         </div>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Pricing Type</label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setPricingForm(prev => ({ ...prev, pricingType: 'fixed' }))}
-              className={`p-2 rounded-md text-sm font-medium transition-colors ${
-                pricingForm.pricingType === 'fixed'
-                  ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
-                  : 'bg-gray-100 text-gray-700 border-2 border-gray-200'
-              }`}
-            >
-              Fixed Price
-            </button>
-            <button
-              onClick={() => setPricingForm(prev => ({ ...prev, pricingType: 'markup' }))}
-              className={`p-2 rounded-md text-sm font-medium transition-colors ${
-                pricingForm.pricingType === 'markup'
-                  ? 'bg-blue-100 text-blue-700 border-2 border-blue-300'
-                  : 'bg-gray-100 text-gray-700 border-2 border-gray-200'
-              }`}
-            >
-              Markup/Discount
-            </button>
-          </div>
-        </div>
-
-        {pricingForm.pricingType === 'fixed' ? (
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Fixed Price for {client.name}
-            </label>
-            <input
-              type="number"
-              value={pricingForm.fixedPrice}
-              onChange={(e) => setPricingForm(prev => ({
-                ...prev,
-                fixedPrice: parseFloat(e.target.value) || 0
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              step="0.01"
-              placeholder="Enter exact price"
-            />
-          </div>
-        ) : (
-          <div className="space-y-3 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Base Price</label>
-              <input
-                type="number"
-                value={pricingForm.basePrice}
-                onChange={(e) => setPricingForm(prev => ({
-                  ...prev,
-                  basePrice: parseFloat(e.target.value) || 0
-                }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                step="0.01"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select
-                  value={pricingForm.markupType}
-                  onChange={(e) => setPricingForm(prev => ({
-                    ...prev,
-                    markupType: e.target.value
-                  }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="percentage">Percentage</option>
-                  <option value="fixed">Fixed Amount</option>
-                </select>
+        <div className="space-y-3">
+          {/* Cost Breakdown */}
+          <div className="bg-orange-50 p-3 rounded">
+            <div className="text-xs font-medium text-orange-700 mb-1">Pricing Breakdown</div>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span>Supplier Cost:</span>
+                <span className="font-medium">${calculatedPricing.supplierCost}</span>
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
-                <input
-                  type="number"
-                  value={pricingForm.markupValue}
-                  onChange={(e) => setPricingForm(prev => ({
-                    ...prev,
-                    markupValue: parseFloat(e.target.value) || 0
-                  }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  step="0.01"
-                  placeholder={pricingForm.markupType === 'percentage' ? '% (neg for discount)' : '$ (neg for discount)'}
-                />
+              <div className="flex justify-between text-green-600">
+                <span>Markup ({calculatedPricing.totalMarkupPercentage}%):</span>
+                <span className="font-medium">+${calculatedPricing.markupAmount}</span>
+              </div>
+              <div className="flex justify-between border-t border-orange-200 pt-1 font-bold">
+                <span>Public Price:</span>
+                <span>${calculatedPricing.publicPrice}</span>
               </div>
             </div>
           </div>
-        )}
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Agreement Ref</label>
-            <input
-              type="text"
-              value={pricingForm.agreementRef}
-              onChange={(e) => setPricingForm(prev => ({
-                ...prev,
-                agreementRef: e.target.value
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-              placeholder="Contract/PO number"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Min Quantity</label>
-            <input
-              type="number"
-              value={pricingForm.minQuantity}
-              onChange={(e) => setPricingForm(prev => ({
-                ...prev,
-                minQuantity: parseInt(e.target.value) || 1
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Valid From</label>
-            <input
-              type="date"
-              value={pricingForm.validFrom}
-              onChange={(e) => setPricingForm(prev => ({
-                ...prev,
-                validFrom: e.target.value
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until (Optional)</label>
-            <input
-              type="date"
-              value={pricingForm.validUntil}
-              onChange={(e) => setPricingForm(prev => ({
-                ...prev,
-                validUntil: e.target.value
-              }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-          <textarea
-            value={pricingForm.notes}
-            onChange={(e) => setPricingForm(prev => ({
-              ...prev,
-              notes: e.target.value
-            }))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            rows="2"
-            placeholder="Special terms, volume discounts, etc."
-          />
-        </div>
-
-        <div className={`p-3 rounded-md mb-4 ${
-          finalPrice < (product.price || 0) ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'
-        }`}>
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-700">
-              Final Price for {client.name}:
-            </span>
-            <div className="text-right">
-              <div className="text-lg font-bold text-gray-900">
-                ${finalPrice.toFixed(2)}
-              </div>
-              {finalPrice !== (product.price || 0) && (
-                <div className={`text-xs ${
-                  finalPrice < (product.price || 0) ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {finalPrice < (product.price || 0) ? 'Discount' : 'Markup'}: 
-                  ${Math.abs(finalPrice - (product.price || 0)).toFixed(2)}
+          {/* Applied Rules */}
+          {calculatedPricing.appliedRules.length > 0 && (
+            <div className="bg-blue-50 p-2 rounded">
+              <div className="text-xs font-medium text-blue-700 mb-1">Applied Rules:</div>
+              {calculatedPricing.appliedRules.map((rule, index) => (
+                <div key={index} className="text-xs text-blue-600">
+                  {rule.ruleName} (+{rule.markupPercentage}%)
                 </div>
-              )}
+              ))}
             </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => saveClientSpecificPricing(client.id, product.id, {
-              ...pricingForm,
-              finalPrice
-            })}
-            className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
-          >
-            <Check className="h-4 w-4" />
-            Save Special Price
-          </button>
-          
-          {hasExistingPricing && (
-            <button
-              onClick={() => {
-                saveClientSpecificPricing(client.id, product.id, {
-                  ...existingPricing,
-                  isActive: false
-                });
-              }}
-              className="px-4 py-2 border border-red-300 text-red-600 rounded-md hover:bg-red-50 transition-colors text-sm"
-            >
-              <X className="h-4 w-4" />
-            </button>
           )}
+
+          {/* Tier Prices */}
+          <div className="space-y-1">
+            <div className="text-xs font-medium text-gray-700">Tier Prices:</div>
+            {Object.values(calculatedPricing.tierPrices).slice(0, 3).map(tier => (
+              <div key={tier.tierId} className="flex justify-between text-xs">
+                <span className="text-gray-600">{tier.tierName}:</span>
+                <span className="font-medium">${tier.finalPrice}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Update Cost Button */}
+          <button
+            onClick={() => {
+              const newCost = prompt('Enter new supplier cost:', calculatedPricing.supplierCost);
+              if (newCost && !isNaN(newCost)) {
+                updateDoc(doc(db, 'products', product.id), {
+                  supplierCost: parseFloat(newCost),
+                  costLastUpdated: new Date()
+                }).then(() => {
+                  calculateProductPricing();
+                });
+              }
+            }}
+            className="w-full bg-gray-600 text-white py-1 px-2 rounded text-xs hover:bg-gray-700"
+          >
+            Update Cost
+          </button>
         </div>
       </div>
     );
   };
 
-  if (loading) {
+  if (loading && markupRules.length === 0) {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center h-64">
@@ -630,12 +502,73 @@ const EnhancedPricingManager = () => {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Enhanced Pricing Management</h1>
-        <p className="text-gray-600">Manage tier-based and client-specific pricing with historical context</p>
+        <p className="text-gray-600">Manage cost-based markup rules, tier pricing, and client-specific rates</p>
       </div>
+
+      {/* Statistics */}
+      {pricingStats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-lg border">
+            <div className="flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-blue-600" />
+              <span className="text-sm font-medium text-gray-600">Active Rules</span>
+            </div>
+            <div className="text-2xl font-bold text-blue-600">{pricingStats.activeMarkupRules}</div>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg border">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-green-600" />
+              <span className="text-sm font-medium text-gray-600">With Cost Data</span>
+            </div>
+            <div className="text-2xl font-bold text-green-600">{pricingStats.productsWithCostData}</div>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg border">
+            <div className="flex items-center gap-2">
+              <Crown className="w-5 h-5 text-purple-600" />
+              <span className="text-sm font-medium text-gray-600">Special Pricing</span>
+            </div>
+            <div className="text-2xl font-bold text-purple-600">{pricingStats.clientsWithSpecialPricing}</div>
+          </div>
+          
+          <div className="bg-white p-4 rounded-lg border">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-orange-600" />
+              <span className="text-sm font-medium text-gray-600">Avg Markup</span>
+            </div>
+            <div className="text-2xl font-bold text-orange-600">
+              {pricingStats.averageMarkup.toFixed(1)}%
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* View Mode Toggle */}
       <div className="mb-6">
         <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode('markup-rules')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
+              viewMode === 'markup-rules'
+                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <Calculator className="h-4 w-4" />
+            Markup Rules
+          </button>
+          <button
+            onClick={() => setViewMode('product-pricing')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
+              viewMode === 'product-pricing'
+                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <Tag className="h-4 w-4" />
+            Product Pricing
+          </button>
           <button
             onClick={() => setViewMode('tier')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
@@ -661,7 +594,65 @@ const EnhancedPricingManager = () => {
         </div>
       </div>
 
-      {/* Tier-Based Pricing View */}
+      {/* Markup Rules View */}
+      {viewMode === 'markup-rules' && (
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-medium text-gray-900">Markup Rules Management</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={handleRecalculateAllPricing}
+                disabled={loading}
+                className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Calculator className="w-4 h-4" />
+                Recalculate All Pricing
+              </button>
+              <button
+                onClick={() => {
+                  setEditingRule(null);
+                  setShowRuleModal(true);
+                }}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Markup Rule
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {markupRules.map(rule => (
+              <MarkupRuleCard key={rule.id} rule={rule} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Product Pricing View */}
+      {viewMode === 'product-pricing' && (
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-medium text-gray-900">Product Pricing Overview</h2>
+            <button
+              onClick={handleRecalculateAllPricing}
+              disabled={loading}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              <Calculator className="w-4 h-4" />
+              Recalculate All
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {products.map(product => (
+              <EnhancedProductPricingCard key={product.id} product={product} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Existing Tier-Based and Client-Specific Views */}
       {viewMode === 'tier' && (
         <div>
           {/* Tier Selector */}
@@ -678,54 +669,37 @@ const EnhancedPricingManager = () => {
                   }`}
                 >
                   <tier.icon className="h-4 w-4" />
-                  {tier.name}
+                  {tier.name} ({tier.discount}% off)
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Bulk Operations */}
-          <div className="mb-6 bg-white border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Bulk Operations</h2>
-              <button
-                onClick={() => setBulkUpdateMode(!bulkUpdateMode)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  bulkUpdateMode
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {bulkUpdateMode ? 'Exit Bulk Mode' : 'Enter Bulk Mode'}
-              </button>
+          {/* Note about markup-based pricing */}
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-blue-700">
+              <Info className="h-4 w-4" />
+              <span className="font-medium">Enhanced Pricing Active</span>
             </div>
-
-            {bulkUpdateMode && (
-              <BulkUpdateForm 
-                onApply={applyBulkUpdate}
-                products={products}
-                selectedTier={selectedTier}
-              />
-            )}
+            <p className="text-sm text-blue-600 mt-1">
+              Tier pricing is now automatically calculated from markup rules. 
+              Manual overrides will take precedence over calculated prices.
+            </p>
           </div>
 
-          {/* Products Grid */}
+          {/* Products Grid with calculated pricing display */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {products.map(product => {
               const selectedTierObj = tiers.find(t => t.id === selectedTier);
               return (
-                <TierPricingCard
-                  key={`${product.id}_${selectedTier}`}
-                  product={product}
-                  tier={selectedTierObj}
-                />
+                <EnhancedProductPricingCard key={product.id} product={product} />
               );
             })}
           </div>
         </div>
       )}
 
-      {/* Client-Specific Pricing View */}
+      {/* Client-Specific Pricing View - preserve existing functionality */}
       {viewMode === 'client' && (
         <div>
           {/* Client Selector */}
@@ -750,7 +724,7 @@ const EnhancedPricingManager = () => {
             </select>
           </div>
 
-          {/* Client-Specific Pricing Grid */}
+          {/* Enhanced client pricing with calculated base prices */}
           {selectedClient && (
             <div>
               <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -765,104 +739,233 @@ const EnhancedPricingManager = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {products.map(product => (
-                  <ClientSpecificPricingCard
-                    key={`${selectedClient.id}_${product.id}`}
-                    client={selectedClient}
-                    product={product}
-                  />
+                  <EnhancedProductPricingCard key={product.id} product={product} />
                 ))}
               </div>
             </div>
           )}
         </div>
       )}
+
+      {/* Markup Rule Modal */}
+      {showRuleModal && (
+        <MarkupRuleModal
+          rule={editingRule}
+          brands={brands}
+          onSave={handleSaveMarkupRule}
+          onClose={() => {
+            setShowRuleModal(false);
+            setEditingRule(null);
+          }}
+          loading={loading}
+        />
+      )}
     </div>
   );
 };
 
-// Bulk Update Form Component
-const BulkUpdateForm = ({ onApply, products, selectedTier }) => {
-  const [bulkForm, setBulkForm] = useState({
-    discountValue: 0,
-    discountType: 'percentage',
-    category: '',
-    selectedProductIds: []
+// Modal for creating/editing markup rules
+const MarkupRuleModal = ({ rule, brands, onSave, onClose, loading }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    type: 'global',
+    markupPercentage: 100,
+    priority: 5,
+    combinable: false,
+    brandName: '',
+    seriesName: '',
+    categoryId: '',
+    minValue: '',
+    maxValue: '',
+    isActive: true,
+    ...rule
   });
 
-  const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
-
-  const handleApply = () => {
-    if (bulkForm.discountValue === 0) {
-      alert('Please enter a discount value');
-      return;
-    }
-
-    onApply(bulkForm.discountValue, bulkForm.discountType, bulkForm.category);
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(formData);
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Discount Value</label>
-        <input
-          type="number"
-          value={bulkForm.discountValue}
-          onChange={(e) => setBulkForm(prev => ({
-            ...prev,
-            discountValue: parseFloat(e.target.value) || 0
-          }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="Enter value"
-          step="0.01"
-        />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-900">
+            {rule ? 'Edit Markup Rule' : 'Create Markup Rule'}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rule Name</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rule Type</label>
+              <select
+                value={formData.type}
+                onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="global">Global (All Products)</option>
+                <option value="brand">Brand-specific</option>
+                <option value="series">Series-specific</option>
+                <option value="brand_series">Brand + Series</option>
+                <option value="category">Category-specific</option>
+                <option value="value_based">Value-based</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
+          </div>
+
+          {/* Type-specific fields */}
+          {formData.type === 'brand' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Brand Name</label>
+              <select
+                value={formData.brandName}
+                onChange={(e) => setFormData(prev => ({ ...prev, brandName: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                required
+              >
+                <option value="">Select Brand</option>
+                {brands.map(brand => (
+                  <option key={brand.id} value={brand.name}>{brand.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {formData.type === 'brand_series' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Brand Name</label>
+                <select
+                  value={formData.brandName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, brandName: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  required
+                >
+                  <option value="">Select Brand</option>
+                  {brands.map(brand => (
+                    <option key={brand.id} value={brand.name}>{brand.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Series Name</label>
+                <input
+                  type="text"
+                  value={formData.seriesName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, seriesName: e.target.value }))}
+                  placeholder="e.g., 6ES, 6XV"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  required
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Markup Percentage (%)</label>
+              <input
+                type="number"
+                value={formData.markupPercentage}
+                onChange={(e) => setFormData(prev => ({ ...prev, markupPercentage: parseFloat(e.target.value) }))}
+                min="0"
+                max="1000"
+                step="1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Priority (1-10)</label>
+              <input
+                type="number"
+                value={formData.priority}
+                onChange={(e) => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) }))}
+                min="1"
+                max="10"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Behavior</label>
+              <select
+                value={formData.combinable}
+                onChange={(e) => setFormData(prev => ({ ...prev, combinable: e.target.value === 'true' }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="false">Exclusive</option>
+                <option value="true">Combinable</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Preview calculation */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Preview (Cost: $100)</h3>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <div className="text-gray-600">Supplier Cost</div>
+                <div className="font-bold">$100.00</div>
+              </div>
+              <div>
+                <div className="text-gray-600">Markup</div>
+                <div className="font-bold text-green-600">+${(100 * (formData.markupPercentage / 100)).toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-gray-600">Public Price</div>
+                <div className="font-bold text-blue-600">${(100 + (100 * (formData.markupPercentage / 100))).toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? 'Saving...' : (rule ? 'Update Rule' : 'Create Rule')}
+            </button>
+          </div>
+        </form>
       </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-        <select
-          value={bulkForm.discountType}
-          onChange={(e) => setBulkForm(prev => ({
-            ...prev,
-            discountType: e.target.value
-          }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-        >
-          <option value="percentage">Percentage</option>
-          <option value="fixed">Fixed Amount</option>
-        </select>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Category (Optional)</label>
-        <select
-          value={bulkForm.category}
-          onChange={(e) => setBulkForm(prev => ({
-            ...prev,
-            category: e.target.value
-          }))}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-        >
-          <option value="">All Categories</option>
-          {categories.map(category => (
-            <option key={category} value={category}>{category}</option>
-          ))}
-        </select>
-      </div>
-
-      <button
-        onClick={handleApply}
-        className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center justify-center gap-2"
-      >
-        <Check className="h-4 w-4" />
-        Apply to {selectedTier}
-      </button>
-
-      <button
-        onClick={() => setBulkForm({ discountValue: 0, discountType: 'percentage', category: '', selectedProductIds: [] })}
-        className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700"
-      >
-        Reset
-      </button>
     </div>
   );
 };
