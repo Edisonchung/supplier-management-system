@@ -1,11 +1,29 @@
-// src/services/pricingService.js
+// src/services/pricingService.js - Enhanced with Cost-Based Markup System
 import { db } from '../config/firebase';
-import { collection, query, where, getDocs, orderBy, limit, writeBatch, doc } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  orderBy, 
+  limit, 
+  writeBatch, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  addDoc,
+  Timestamp 
+} from 'firebase/firestore';
 
 export class PricingService {
+  // ================================================================
+  // EXISTING METHODS - PRESERVED WITH ENHANCEMENTS
+  // ================================================================
+
   /**
-   * Main pricing resolution method - determines the best price for a client
-   * Priority: Client-specific > Tier-based > Public > Base product price
+   * Main pricing resolution method - Enhanced with markup-based calculations
+   * Priority: Client-specific > Tier-based > Calculated Markup > Base product price
    */
   static async resolvePriceForClient(productId, clientId) {
     try {
@@ -22,32 +40,39 @@ export class PricingService {
           };
         }
 
-        // 2. Check for tier-based pricing
+        // 2. Check for tier-based pricing with markup calculation
         const client = await this.getClient(clientId);
         if (client) {
-          const tierPricing = await this.getTierPricing(productId, client.defaultTierId);
-          if (tierPricing) {
+          const calculatedPricing = await this.calculatePricingForProduct(productId);
+          if (calculatedPricing.success) {
+            const tierPrice = calculatedPricing.data.tierPrices[client.defaultTierId] || 
+                            calculatedPricing.data.tierPrices['tier_1'];
+            
             return {
-              price: tierPricing.finalPrice,
+              price: tierPrice.finalPrice,
               type: 'tier-based',
-              source: 'product_pricing',
+              source: 'calculated_markup',
               tier: client.defaultTierId,
-              details: tierPricing,
+              details: {
+                ...calculatedPricing.data,
+                selectedTier: tierPrice
+              },
               priority: 2
             };
           }
         }
       }
 
-      // 3. Fallback to public pricing (tier_0)
-      const publicPricing = await this.getTierPricing(productId, 'tier_0');
-      if (publicPricing) {
+      // 3. Calculate public pricing using markup rules
+      const calculatedPricing = await this.calculatePricingForProduct(productId);
+      if (calculatedPricing.success) {
+        const publicPrice = calculatedPricing.data.tierPrices['tier_0'];
         return {
-          price: publicPricing.finalPrice,
+          price: publicPrice.finalPrice,
           type: 'public',
-          source: 'product_pricing',
+          source: 'calculated_markup',
           tier: 'tier_0',
-          details: publicPricing,
+          details: calculatedPricing.data,
           priority: 3
         };
       }
@@ -74,8 +99,279 @@ export class PricingService {
     }
   }
 
+  // ================================================================
+  // NEW MARKUP-BASED PRICING METHODS
+  // ================================================================
+
   /**
-   * Get client-specific pricing with validity checks
+   * Calculate pricing for a product using markup rules
+   */
+  static async calculatePricingForProduct(productId, overrides = {}) {
+    try {
+      // 1. Get product data
+      const product = await this.getProductById(productId);
+      if (!product) {
+        throw new Error('Product not found');
+      }
+
+      // 2. Get applicable markup rules
+      const markupRules = await this.getApplicableMarkupRules(product);
+      
+      // 3. Calculate base pricing structure
+      const basePricing = this.calculateBasePricing(product, markupRules, overrides);
+      
+      // 4. Add metadata
+      basePricing.calculatedAt = new Date().toISOString();
+      basePricing.productId = productId;
+      
+      return { success: true, data: basePricing };
+    } catch (error) {
+      console.error('Error calculating pricing:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get markup rules applicable to a product
+   */
+  static async getApplicableMarkupRules(product) {
+    try {
+      const rulesResult = await this.getMarkupRules();
+      if (!rulesResult.success) {
+        return [];
+      }
+
+      // Filter rules that apply to this product
+      const applicableRules = rulesResult.data.filter(rule => {
+        return this.doesRuleApply(rule, product);
+      });
+
+      // Sort by priority (higher priority first)
+      return applicableRules.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    } catch (error) {
+      console.error('Error getting applicable rules:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if a markup rule applies to a product
+   */
+  static doesRuleApply(rule, product) {
+    switch (rule.type) {
+      case 'global':
+        return true;
+      
+      case 'category':
+        return rule.categoryId === product.category;
+      
+      case 'brand':
+        return rule.brandName?.toLowerCase() === product.brand?.toLowerCase();
+      
+      case 'series':
+        return rule.seriesName?.toLowerCase() === product.series?.toLowerCase() ||
+               product.name?.toLowerCase().includes(rule.seriesName?.toLowerCase());
+      
+      case 'brand_category':
+        return rule.brandName?.toLowerCase() === product.brand?.toLowerCase() &&
+               rule.categoryId === product.category;
+      
+      case 'brand_series':
+        return rule.brandName?.toLowerCase() === product.brand?.toLowerCase() &&
+               (rule.seriesName?.toLowerCase() === product.series?.toLowerCase() ||
+                product.name?.toLowerCase().includes(rule.seriesName?.toLowerCase()));
+      
+      case 'supplier':
+        return rule.supplierId === product.supplierId;
+
+      case 'value_based':
+        const cost = product.supplierCost || product.cost || 0;
+        return cost >= (rule.minValue || 0) && 
+               (rule.maxValue ? cost <= rule.maxValue : true);
+      
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Calculate base pricing using markup rules
+   */
+  static calculateBasePricing(product, markupRules, overrides = {}) {
+    const supplierCost = overrides.supplierCost || product.supplierCost || product.cost || 0;
+    
+    if (supplierCost <= 0) {
+      throw new Error('Invalid supplier cost - must be greater than 0');
+    }
+
+    // Apply markup rules in priority order
+    let currentMarkup = 0;
+    const appliedRules = [];
+
+    for (const rule of markupRules) {
+      if (rule.combinable || appliedRules.length === 0) {
+        currentMarkup += rule.markupPercentage;
+        appliedRules.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: rule.type,
+          markupPercentage: rule.markupPercentage,
+          reason: rule.description || `${rule.type} markup`
+        });
+      } else if (!rule.combinable && rule.priority > (appliedRules[0]?.priority || 0)) {
+        // Replace with higher priority non-combinable rule
+        currentMarkup = rule.markupPercentage;
+        appliedRules.splice(0, appliedRules.length, {
+          ruleId: rule.id,
+          ruleName: rule.name,
+          type: rule.type,
+          markupPercentage: rule.markupPercentage,
+          reason: rule.description || `${rule.type} markup`
+        });
+      }
+    }
+
+    // Calculate prices
+    const markupAmount = supplierCost * (currentMarkup / 100);
+    const publicPrice = supplierCost + markupAmount;
+    
+    // Calculate tier-based prices
+    const tierPrices = this.calculateTierPrices(publicPrice, product);
+
+    return {
+      supplierCost,
+      totalMarkupPercentage: currentMarkup,
+      markupAmount,
+      publicPrice: Math.round(publicPrice * 100) / 100,
+      tierPrices,
+      appliedRules,
+      calculationBreakdown: {
+        step1_supplierCost: supplierCost,
+        step2_markupPercentage: currentMarkup,
+        step3_markupAmount: markupAmount,
+        step4_publicPrice: publicPrice,
+        step5_roundedPublicPrice: Math.round(publicPrice * 100) / 100
+      }
+    };
+  }
+
+  /**
+   * Calculate tier-based prices from public price
+   */
+  static calculateTierPrices(publicPrice, product) {
+    // Default tier discount percentages from public price
+    const tierDiscounts = {
+      'tier_0': 0,     // Public - no discount
+      'tier_1': 5,     // End User - 5% discount
+      'tier_2': 15,    // System Integrator - 15% discount  
+      'tier_3': 25,    // Trader - 25% discount
+      'tier_4': 35     // VIP/Distributor - 35% discount
+    };
+
+    const tierPrices = {};
+    
+    Object.entries(tierDiscounts).forEach(([tierId, discountPercentage]) => {
+      const discountAmount = publicPrice * (discountPercentage / 100);
+      tierPrices[tierId] = {
+        tierId,
+        tierName: this.getTierName(tierId),
+        discountPercentage,
+        discountAmount: Math.round(discountAmount * 100) / 100,
+        finalPrice: Math.round((publicPrice - discountAmount) * 100) / 100
+      };
+    });
+
+    return tierPrices;
+  }
+
+  /**
+   * Get tier name display
+   */
+  static getTierName(tierId) {
+    const tierNames = {
+      'tier_0': 'Public',
+      'tier_1': 'End User',
+      'tier_2': 'System Integrator',
+      'tier_3': 'Trader',
+      'tier_4': 'VIP Distributor'
+    };
+    return tierNames[tierId] || 'Unknown Tier';
+  }
+
+  /**
+   * Get all markup rules
+   */
+  static async getMarkupRules() {
+    try {
+      const rulesQuery = query(
+        collection(db, 'pricing_markup_rules'),
+        where('isActive', '==', true),
+        orderBy('priority', 'desc')
+      );
+      
+      const snapshot = await getDocs(rulesQuery);
+      const rules = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      return { success: true, data: rules };
+    } catch (error) {
+      console.error('Error fetching markup rules:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Create markup rule
+   */
+  static async createMarkupRule(ruleData) {
+    try {
+      const ruleRef = doc(collection(db, 'pricing_markup_rules'));
+      const rule = {
+        ...ruleData,
+        id: ruleRef.id,
+        isActive: true,
+        createdAt: Timestamp.now(),
+        lastModified: Timestamp.now()
+      };
+      
+      await setDoc(ruleRef, rule);
+      return { success: true, data: rule };
+    } catch (error) {
+      console.error('Error creating markup rule:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ================================================================
+  // ENHANCED EXISTING METHODS
+  // ================================================================
+
+  /**
+   * Get product by ID - Enhanced to use doc() for better performance
+   */
+  static async getProductById(productId) {
+    try {
+      const productRef = doc(db, 'products', productId);
+      const productSnap = await getDoc(productRef);
+      
+      if (!productSnap.exists()) {
+        return null;
+      }
+
+      return {
+        id: productId,
+        ...productSnap.data()
+      };
+    } catch (error) {
+      console.error('Error fetching product:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get client-specific pricing with validity checks - PRESERVED
    */
   static async getClientSpecificPricing(productId, clientId) {
     try {
@@ -109,7 +405,7 @@ export class PricingService {
   }
 
   /**
-   * Get tier-based pricing for a product
+   * Get tier-based pricing for a product - PRESERVED but enhanced
    */
   static async getTierPricing(productId, tierId) {
     try {
@@ -124,6 +420,13 @@ export class PricingService {
       if (!snapshot.empty) {
         return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
       }
+      
+      // Fallback: calculate using markup rules
+      const calculatedPricing = await this.calculatePricingForProduct(productId);
+      if (calculatedPricing.success) {
+        return calculatedPricing.data.tierPrices[tierId];
+      }
+      
       return null;
     } catch (error) {
       console.error('Error getting tier pricing:', error);
@@ -132,20 +435,21 @@ export class PricingService {
   }
 
   /**
-   * Get client information
+   * Get client information - PRESERVED
    */
   static async getClient(clientId) {
     try {
-      const q = query(
-        collection(db, 'clients'),
-        where('id', '==', clientId)
-      );
+      const clientRef = doc(db, 'clients', clientId);
+      const clientSnap = await getDoc(clientRef);
       
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+      if (!clientSnap.exists()) {
+        return null;
       }
-      return null;
+
+      return {
+        id: clientId,
+        ...clientSnap.data()
+      };
     } catch (error) {
       console.error('Error getting client:', error);
       return null;
@@ -153,7 +457,7 @@ export class PricingService {
   }
 
   /**
-   * Get product information
+   * Get product information - PRESERVED (using legacy method for compatibility)
    */
   static async getProduct(productId) {
     try {
@@ -166,7 +470,9 @@ export class PricingService {
       if (!snapshot.empty) {
         return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
       }
-      return null;
+      
+      // Fallback to direct document access
+      return await this.getProductById(productId);
     } catch (error) {
       console.error('Error getting product:', error);
       return null;
@@ -174,7 +480,7 @@ export class PricingService {
   }
 
   /**
-   * Get client's price history for a product
+   * Get client's price history for a product - PRESERVED
    */
   static async getClientPriceHistory(productId, clientId, limitCount = 5) {
     try {
@@ -196,7 +502,7 @@ export class PricingService {
   }
 
   /**
-   * Import historical prices and create pricing rules
+   * Import historical prices and create pricing rules - ENHANCED
    */
   static async importHistoricalPrices(clientId, priceData) {
     const batch = writeBatch(db);
@@ -209,14 +515,15 @@ export class PricingService {
           continue;
         }
 
-        // Add to price history
+        // Add to price history with enhanced tracking
         const historyRef = doc(collection(db, 'price_history'));
         batch.set(historyRef, {
           ...priceRecord,
           clientId,
           createdAt: new Date(),
           source: 'import',
-          isActive: true
+          isActive: true,
+          recordType: 'historical_import'
         });
 
         // Check if client-specific pricing already exists
@@ -228,7 +535,7 @@ export class PricingService {
           batch.set(pricingRef, {
             clientId,
             productId: priceRecord.productId,
-            pricingType: 'fixed',
+            pricingType: 'historical',
             fixedPrice: priceRecord.price,
             finalPrice: priceRecord.price,
             basedOnHistoryId: historyRef.id,
@@ -237,8 +544,8 @@ export class PricingService {
             priceSource: 'historical',
             autoApproved: true,
             agreementRef: priceRecord.contractRef || 'HISTORICAL',
-            validFrom: new Date().toISOString().split('T')[0],
-            notes: `Auto-imported from historical sale`,
+            validFrom: new Date(),
+            notes: `Auto-imported from historical sale on ${priceRecord.soldDate || 'unknown date'}`,
             isActive: true,
             priority: 2,
             createdAt: new Date(),
@@ -269,7 +576,7 @@ export class PricingService {
   }
 
   /**
-   * Calculate pricing for multiple products (bulk operation)
+   * Calculate pricing for multiple products - ENHANCED
    */
   static async resolvePricesForProducts(productIds, clientId) {
     try {
@@ -298,7 +605,7 @@ export class PricingService {
   }
 
   /**
-   * Get pricing statistics for analytics
+   * Get pricing statistics for analytics - ENHANCED
    */
   static async getPricingStats() {
     try {
@@ -306,7 +613,9 @@ export class PricingService {
         totalClients: 0,
         clientsWithSpecialPricing: 0,
         totalPriceHistory: 0,
-        averageDiscount: 0
+        activeMarkupRules: 0,
+        productsWithCostData: 0,
+        averageMarkup: 0
       };
 
       // Get total clients
@@ -324,6 +633,31 @@ export class PricingService {
       const historySnap = await getDocs(historyQuery);
       stats.totalPriceHistory = historySnap.size;
 
+      // Get active markup rules
+      const rulesResult = await this.getMarkupRules();
+      stats.activeMarkupRules = rulesResult.success ? rulesResult.data.length : 0;
+
+      // Get products with cost data
+      const productsQuery = query(collection(db, 'products'));
+      const productsSnap = await getDocs(productsQuery);
+      let productsWithCost = 0;
+      let totalMarkup = 0;
+      let markupCount = 0;
+
+      productsSnap.docs.forEach(doc => {
+        const product = doc.data();
+        if (product.supplierCost > 0 || product.cost > 0) {
+          productsWithCost++;
+        }
+        if (product.pricing?.totalMarkupPercentage) {
+          totalMarkup += product.pricing.totalMarkupPercentage;
+          markupCount++;
+        }
+      });
+
+      stats.productsWithCostData = productsWithCost;
+      stats.averageMarkup = markupCount > 0 ? totalMarkup / markupCount : 0;
+
       return stats;
     } catch (error) {
       console.error('Error getting pricing stats:', error);
@@ -331,13 +665,15 @@ export class PricingService {
         totalClients: 0,
         clientsWithSpecialPricing: 0,
         totalPriceHistory: 0,
-        averageDiscount: 0
+        activeMarkupRules: 0,
+        productsWithCostData: 0,
+        averageMarkup: 0
       };
     }
   }
 
   /**
-   * Create or update client-specific pricing
+   * Create or update client-specific pricing - PRESERVED
    */
   static async setClientSpecificPricing(clientId, productId, pricingData) {
     try {
@@ -373,13 +709,14 @@ export class PricingService {
   }
 
   /**
-   * Get all pricing for a client (for client dashboard)
+   * Get all pricing for a client - ENHANCED
    */
   static async getClientAllPricing(clientId) {
     try {
       const results = {
         clientSpecific: [],
         tierBased: [],
+        calculatedPricing: {},
         client: null
       };
 
@@ -418,8 +755,101 @@ export class PricingService {
       return {
         clientSpecific: [],
         tierBased: [],
+        calculatedPricing: {},
         client: null
       };
+    }
+  }
+
+  // ================================================================
+  // NEW BULK OPERATIONS
+  // ================================================================
+
+  /**
+   * Recalculate pricing for all products
+   */
+  static async recalculateAllProductPricing() {
+    try {
+      console.log('Starting bulk price recalculation...');
+      
+      const productsQuery = collection(db, 'products');
+      const snapshot = await getDocs(productsQuery);
+      
+      const results = {
+        total: snapshot.size,
+        successful: 0,
+        failed: 0,
+        errors: []
+      };
+
+      for (const productDoc of snapshot.docs) {
+        try {
+          const productId = productDoc.id;
+          const pricingResult = await this.calculatePricingForProduct(productId);
+          
+          if (pricingResult.success) {
+            // Update product with new pricing
+            await updateDoc(productDoc.ref, {
+              pricing: pricingResult.data,
+              pricingLastUpdated: Timestamp.now()
+            });
+            results.successful++;
+          } else {
+            results.failed++;
+            results.errors.push({
+              productId,
+              error: pricingResult.error
+            });
+          }
+        } catch (error) {
+          results.failed++;
+          results.errors.push({
+            productId: productDoc.id,
+            error: error.message
+          });
+        }
+      }
+
+      console.log('Bulk recalculation completed:', results);
+      return { success: true, data: results };
+    } catch (error) {
+      console.error('Error in bulk recalculation:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Record price history
+   */
+  static async recordPriceHistory(productId, clientId, priceData, context = {}) {
+    try {
+      const historyRef = doc(collection(db, 'price_history'));
+      const historyRecord = {
+        id: historyRef.id,
+        productId,
+        clientId,
+        supplierCost: priceData.supplierCost,
+        finalPrice: priceData.finalPrice || priceData.price,
+        markupPercentage: priceData.totalMarkupPercentage,
+        pricingType: priceData.pricingType || priceData.type,
+        
+        // Context information
+        orderId: context.orderId,
+        quotationId: context.quotationId,
+        salesRep: context.salesRep,
+        
+        // Metadata
+        recordType: context.recordType || 'quote', // 'quote', 'order', 'sale'
+        createdAt: Timestamp.now(),
+        source: 'pricing_service',
+        isActive: true
+      };
+
+      await setDoc(historyRef, historyRecord);
+      return { success: true, data: historyRecord };
+    } catch (error) {
+      console.error('Error recording price history:', error);
+      return { success: false, error: error.message };
     }
   }
 }
