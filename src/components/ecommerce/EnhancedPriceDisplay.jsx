@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../config/firebase';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
-import { History, TrendingDown, Calendar, FileText, Crown, Tag, Users, DollarSign, Info, CheckCircle } from 'lucide-react';
+import { History, TrendingDown, Calendar, FileText, Crown, Tag, Users, DollarSign, Info, CheckCircle, Calculator, TrendingUp } from 'lucide-react';
 import { PricingService } from '../../services/pricingService';
 
 const EnhancedPriceDisplay = ({ 
@@ -11,6 +11,7 @@ const EnhancedPriceDisplay = ({
   showHistory = true, 
   showPriceType = true,
   showSavings = true,
+  showMarkupInfo = false,
   compact = false 
 }) => {
   const [pricing, setPricing] = useState(null);
@@ -28,7 +29,7 @@ const EnhancedPriceDisplay = ({
       setLoading(true);
       setError(null);
 
-      // Load current pricing
+      // Load current pricing using enhanced service
       const currentPrice = await PricingService.resolvePriceForClient(productId, clientId);
       setPricing(currentPrice);
 
@@ -63,7 +64,8 @@ const EnhancedPriceDisplay = ({
       case 'client-specific':
         return pricing?.details?.priceSource === 'historical' ? 'Your Historical Price' : 'Special Price';
       case 'tier-based':
-        return `${pricing.tier?.toUpperCase()} Price`;
+        const tierName = pricing?.details?.selectedTier?.tierName || pricing.tier?.toUpperCase();
+        return `${tierName} Price`;
       case 'public':
         return 'Public Price';
       default:
@@ -87,17 +89,57 @@ const EnhancedPriceDisplay = ({
   const calculateSavings = () => {
     if (!pricing?.details) return null;
 
-    // Calculate savings compared to public price or original price
-    const currentPrice = pricing.price;
-    const referencePrice = pricing.details.originalPrice || pricing.details.basePrice;
+    let referencePrice = null;
+    let currentPrice = pricing.price;
+
+    // For markup-based pricing, compare against public price
+    if (pricing.details.publicPrice && pricing.type !== 'public') {
+      referencePrice = pricing.details.publicPrice;
+    }
+    // Fallback to original calculation
+    else if (pricing.details.originalPrice || pricing.details.basePrice) {
+      referencePrice = pricing.details.originalPrice || pricing.details.basePrice;
+    }
     
     if (referencePrice && referencePrice > currentPrice) {
       const savings = referencePrice - currentPrice;
       const savingsPercentage = ((savings / referencePrice) * 100).toFixed(1);
-      return { amount: savings, percentage: savingsPercentage };
+      return { amount: savings, percentage: savingsPercentage, referencePrice };
     }
     
     return null;
+  };
+
+  const getMarkupInfo = () => {
+    if (!pricing?.details || pricing.type === 'client-specific') return null;
+
+    const details = pricing.details;
+    if (details.supplierCost && details.totalMarkupPercentage) {
+      return {
+        supplierCost: details.supplierCost,
+        markupPercentage: details.totalMarkupPercentage,
+        markupAmount: details.markupAmount,
+        appliedRules: details.appliedRules || []
+      };
+    }
+
+    return null;
+  };
+
+  const formatCurrency = (amount) => {
+    return `$${amount?.toFixed(2) || '0.00'}`;
+  };
+
+  const formatDate = (dateValue) => {
+    if (!dateValue) return 'Unknown date';
+    
+    // Handle Firestore timestamp
+    if (dateValue.seconds) {
+      return new Date(dateValue.seconds * 1000).toLocaleDateString();
+    }
+    
+    // Handle regular date
+    return new Date(dateValue).toLocaleDateString();
   };
 
   if (loading) {
@@ -115,15 +157,21 @@ const EnhancedPriceDisplay = ({
   }
 
   const savings = calculateSavings();
+  const markupInfo = getMarkupInfo();
 
   if (compact) {
     return (
       <div className="flex items-center gap-2">
         <div className="text-lg font-bold text-gray-900">
-          ${pricing?.price?.toFixed(2) || '0.00'}
+          {formatCurrency(pricing?.price)}
         </div>
         {showPriceType && pricing?.type === 'client-specific' && (
           <Crown className="h-4 w-4 text-yellow-500" title="Special Price" />
+        )}
+        {markupInfo && (
+          <span className="text-xs text-green-600 font-medium">
+            +{markupInfo.markupPercentage}%
+          </span>
         )}
       </div>
     );
@@ -135,14 +183,22 @@ const EnhancedPriceDisplay = ({
       <div className="flex items-center justify-between">
         <div>
           <div className="text-2xl font-bold text-gray-900">
-            ${pricing?.price?.toFixed(2) || '0.00'}
+            {formatCurrency(pricing?.price)}
           </div>
           
           {/* Savings Display */}
           {showSavings && savings && (
             <div className="flex items-center gap-1 text-sm text-green-600">
               <TrendingDown className="h-4 w-4" />
-              <span>You save ${savings.amount.toFixed(2)} ({savings.percentage}%)</span>
+              <span>You save {formatCurrency(savings.amount)} ({savings.percentage}%)</span>
+            </div>
+          )}
+
+          {/* Markup Information */}
+          {showMarkupInfo && markupInfo && (
+            <div className="flex items-center gap-1 text-xs text-gray-600 mt-1">
+              <TrendingUp className="h-3 w-3" />
+              <span>Cost: {formatCurrency(markupInfo.supplierCost)} + {markupInfo.markupPercentage}% markup</span>
             </div>
           )}
         </div>
@@ -156,6 +212,32 @@ const EnhancedPriceDisplay = ({
         )}
       </div>
 
+      {/* Markup Rules Information */}
+      {showMarkupInfo && markupInfo && markupInfo.appliedRules.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-orange-700 mb-2">
+            <Calculator className="h-4 w-4" />
+            <span className="text-sm font-medium">Pricing Calculation</span>
+          </div>
+          <div className="space-y-1 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Supplier Cost:</span>
+              <span className="font-medium">{formatCurrency(markupInfo.supplierCost)}</span>
+            </div>
+            {markupInfo.appliedRules.map((rule, index) => (
+              <div key={index} className="flex justify-between text-orange-600">
+                <span>{rule.ruleName}:</span>
+                <span>+{rule.markupPercentage}%</span>
+              </div>
+            ))}
+            <div className="flex justify-between border-t border-orange-200 pt-1 font-medium">
+              <span>Total Markup:</span>
+              <span>+{formatCurrency(markupInfo.markupAmount)} ({markupInfo.markupPercentage}%)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Historical Price Context */}
       {pricing?.type === 'client-specific' && pricing?.details?.priceSource === 'historical' && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -167,12 +249,34 @@ const EnhancedPriceDisplay = ({
           </div>
           {pricing?.details?.lastSoldDate && (
             <div className="text-xs text-blue-600 mt-1">
-              Last purchased on {new Date(pricing.details.lastSoldDate.seconds * 1000).toLocaleDateString()}
+              Last purchased on {formatDate(pricing.details.lastSoldDate)}
               {pricing?.details?.agreementRef && pricing.details.agreementRef !== 'HISTORICAL' && (
                 <span> • Agreement: {pricing.details.agreementRef}</span>
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tier-based Pricing Context */}
+      {pricing?.type === 'tier-based' && pricing?.details?.selectedTier && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-blue-700">
+            <Tag className="h-4 w-4" />
+            <span className="text-sm font-medium">
+              {pricing.details.selectedTier.tierName} Pricing
+            </span>
+          </div>
+          <div className="text-xs text-blue-600 mt-1">
+            {pricing.details.selectedTier.discountPercentage > 0 ? (
+              <span>
+                {pricing.details.selectedTier.discountPercentage}% discount from public price 
+                ({formatCurrency(pricing.details.publicPrice)})
+              </span>
+            ) : (
+              <span>Standard public pricing</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -199,11 +303,11 @@ const EnhancedPriceDisplay = ({
               <div key={index} className="flex items-center justify-between text-sm bg-white rounded p-2">
                 <div className="flex items-center gap-2 text-gray-600">
                   <Calendar className="h-3 w-3" />
-                  <span>{new Date(record.soldDate.seconds * 1000).toLocaleDateString()}</span>
+                  <span>{formatDate(record.soldDate)}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-gray-700">Qty: {record.quantity}</span>
-                  <span className="font-medium">${record.price.toFixed(2)}</span>
+                  <span className="font-medium">{formatCurrency(record.price || record.finalPrice)}</span>
                   {record.orderId && (
                     <span className="text-xs text-gray-500 flex items-center gap-1">
                       <FileText className="h-3 w-3" />
@@ -256,10 +360,16 @@ const EnhancedPriceDisplay = ({
               <span>This is a special price negotiated for your account</span>
             )}
             {pricing?.type === 'tier-based' && (
-              <span>This price is based on your customer tier: {pricing.tier}</span>
+              <span>
+                This price is based on your customer tier: {pricing?.details?.selectedTier?.tierName || pricing.tier}
+                {markupInfo && ` (${markupInfo.markupPercentage}% markup applied)`}
+              </span>
             )}
             {pricing?.type === 'public' && (
-              <span>This is our standard public pricing</span>
+              <span>
+                This is our standard public pricing
+                {markupInfo && ` (${markupInfo.markupPercentage}% markup on cost)`}
+              </span>
             )}
           </div>
         </div>
@@ -269,7 +379,7 @@ const EnhancedPriceDisplay = ({
 };
 
 // Compact version for product grids - perfect for ecommerce product listings
-export const CompactPriceDisplay = ({ productId, clientId }) => {
+export const CompactPriceDisplay = ({ productId, clientId, showMarkup = false }) => {
   return (
     <EnhancedPriceDisplay 
       productId={productId} 
@@ -278,12 +388,13 @@ export const CompactPriceDisplay = ({ productId, clientId }) => {
       showHistory={false}
       showPriceType={false}
       showSavings={false}
+      showMarkupInfo={showMarkup}
     />
   );
 };
 
 // Full version for product details pages
-export const DetailedPriceDisplay = ({ productId, clientId }) => {
+export const DetailedPriceDisplay = ({ productId, clientId, showMarkup = false }) => {
   return (
     <EnhancedPriceDisplay 
       productId={productId} 
@@ -291,6 +402,21 @@ export const DetailedPriceDisplay = ({ productId, clientId }) => {
       showHistory={true}
       showPriceType={true}
       showSavings={true}
+      showMarkupInfo={showMarkup}
+    />
+  );
+};
+
+// Admin version with markup information visible
+export const AdminPriceDisplay = ({ productId, clientId }) => {
+  return (
+    <EnhancedPriceDisplay 
+      productId={productId} 
+      clientId={clientId} 
+      showHistory={true}
+      showPriceType={true}
+      showSavings={true}
+      showMarkupInfo={true}
     />
   );
 };
@@ -325,6 +451,10 @@ export const PriceComparisonDisplay = ({ productId, clientId, showPublicPrice = 
     }
   };
 
+  const formatCurrency = (amount) => {
+    return `$${amount?.toFixed(2) || '0.00'}`;
+  };
+
   if (loading) {
     return <div className="animate-pulse h-16 bg-gray-200 rounded"></div>;
   }
@@ -341,12 +471,18 @@ export const PriceComparisonDisplay = ({ productId, clientId, showPublicPrice = 
           <div>
             <div className="text-sm text-blue-700 font-medium">Your Price</div>
             <div className="text-2xl font-bold text-blue-900">
-              ${clientPricing?.price?.toFixed(2) || '0.00'}
+              {formatCurrency(clientPricing?.price)}
             </div>
             {clientPricing?.type === 'client-specific' && (
               <div className="flex items-center gap-1 text-sm text-blue-600">
                 <Crown className="h-3 w-3" />
                 <span>Special Pricing</span>
+              </div>
+            )}
+            {clientPricing?.type === 'tier-based' && clientPricing?.details?.selectedTier && (
+              <div className="flex items-center gap-1 text-sm text-blue-600">
+                <Tag className="h-3 w-3" />
+                <span>{clientPricing.details.selectedTier.tierName} Tier</span>
               </div>
             )}
           </div>
@@ -365,13 +501,13 @@ export const PriceComparisonDisplay = ({ productId, clientId, showPublicPrice = 
             <div>
               <div className="text-sm text-gray-600">Public Price</div>
               <div className="text-lg text-gray-700 line-through">
-                ${publicPricing.price.toFixed(2)}
+                {formatCurrency(publicPricing.price)}
               </div>
             </div>
             <div className="text-right">
               <div className="text-sm text-green-600 font-medium">You Save</div>
               <div className="text-lg font-bold text-green-600">
-                ${savings.toFixed(2)}
+                {formatCurrency(savings)}
               </div>
             </div>
           </div>
