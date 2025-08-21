@@ -7,7 +7,7 @@ import {
   Search, Filter, Star, MapPin, TrendingUp, Eye, ShoppingCart, Clock, 
   Zap, Target, Brain, Factory, Globe, Activity, BarChart3, Users, 
   AlertCircle, ThumbsUp, Award, Shield, Truck, Phone, Mail, Calendar,
-  ChevronDown, ChevronUp, Heart, Share2, Download, Settings
+  ChevronDown, ChevronUp, Heart, Share2, Download, Settings, X
 } from 'lucide-react';
 import { 
   collection, 
