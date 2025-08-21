@@ -431,6 +431,23 @@ const SmartPublicCatalog = () => {
     location: 'all'
   });
 
+  // Quote request state
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [quoteForm, setQuoteForm] = useState({
+    quantity: 1,
+    urgency: 'normal',
+    message: '',
+    companyName: '',
+    contactName: '',
+    email: '',
+    phone: ''
+  });
+
+  // Favorites/Wishlist state
+  const [favorites, setFavorites] = useState(new Set());
+  const [showFavoritesPanel, setShowFavoritesPanel] = useState(false);
+
   // Real analytics state
   const [analyticsService] = useState(() => new RealAnalyticsService());
   const [realTimeMetrics, setRealTimeMetrics] = useState({
@@ -516,7 +533,23 @@ const SmartPublicCatalog = () => {
     };
   }, [analyticsService]);
 
-  // Factory identification on email detection
+  // Load favorites from localStorage on component mount
+  useEffect(() => {
+    const storedFavorites = localStorage.getItem('higgsflow_favorites');
+    if (storedFavorites) {
+      try {
+        const favoritesArray = JSON.parse(storedFavorites);
+        setFavorites(new Set(favoritesArray));
+      } catch (error) {
+        console.error('Error loading favorites:', error);
+      }
+    }
+  }, []);
+
+  // Save favorites to localStorage when favorites change
+  useEffect(() => {
+    localStorage.setItem('higgsflow_favorites', JSON.stringify(Array.from(favorites)));
+  }, [favorites]);
   useEffect(() => {
     const detectFactory = async () => {
       const email = localStorage.getItem('factory_email') || 
@@ -620,13 +653,137 @@ const SmartPublicCatalog = () => {
     });
   };
 
+  // Handle quote request functionality
   const handleQuoteRequest = async (product) => {
     await analyticsService.trackProductInteraction({
-      eventType: 'quote_request',
+      eventType: 'quote_request_initiated',
       productId: product.id,
       productName: product.name,
       factoryId: factoryProfile?.profile?.id || null
     });
+
+    // Pre-fill form if factory is identified
+    if (factoryProfile?.identified) {
+      setQuoteForm(prev => ({
+        ...prev,
+        companyName: factoryProfile.profile.companyName || '',
+        contactName: factoryProfile.profile.contactName || '',
+        email: factoryProfile.profile.email || '',
+        phone: factoryProfile.profile.phone || ''
+      }));
+    }
+
+    setSelectedProduct(product);
+    setShowQuoteModal(true);
+  };
+
+  // Handle favorite toggle
+  const handleFavoriteToggle = async (product, event) => {
+    event.stopPropagation();
+    
+    const isFavorited = favorites.has(product.id);
+    const newFavorites = new Set(favorites);
+    
+    if (isFavorited) {
+      newFavorites.delete(product.id);
+      
+      // Track unfavorite
+      await analyticsService.trackProductInteraction({
+        eventType: 'product_unfavorited',
+        productId: product.id,
+        productName: product.name,
+        factoryId: factoryProfile?.profile?.id || null
+      });
+    } else {
+      newFavorites.add(product.id);
+      
+      // Track favorite
+      await analyticsService.trackProductInteraction({
+        eventType: 'product_favorited',
+        productId: product.id,
+        productName: product.name,
+        factoryId: factoryProfile?.profile?.id || null
+      });
+    }
+    
+    setFavorites(newFavorites);
+  };
+
+  // Get favorite products for panel display
+  const getFavoriteProducts = () => {
+    return products.filter(product => favorites.has(product.id));
+  };
+  const submitQuoteRequest = async () => {
+    if (!selectedProduct || !quoteForm.email || !quoteForm.companyName) {
+      alert('Please fill in required fields: Company Name and Email');
+      return;
+    }
+
+    try {
+      const quoteData = {
+        // Product details
+        productId: selectedProduct.id,
+        productName: selectedProduct.name,
+        productCode: selectedProduct.code,
+        productPrice: selectedProduct.price,
+        productCategory: selectedProduct.category,
+        
+        // Quote details
+        requestedQuantity: quoteForm.quantity,
+        urgency: quoteForm.urgency,
+        message: quoteForm.message,
+        
+        // Customer details
+        companyName: quoteForm.companyName,
+        contactName: quoteForm.contactName,
+        email: quoteForm.email,
+        phone: quoteForm.phone,
+        
+        // Metadata
+        requestDate: serverTimestamp(),
+        status: 'pending',
+        source: 'public_catalog',
+        sessionId: analyticsService.sessionId,
+        factoryId: factoryProfile?.profile?.id || null,
+        estimatedValue: selectedProduct.price * quoteForm.quantity,
+        
+        // Tracking
+        ipAddress: 'browser',
+        userAgent: navigator.userAgent
+      };
+
+      // Save to Firestore
+      await addDoc(collection(db, 'quote_requests'), quoteData);
+      
+      // Track successful quote submission
+      await analyticsService.trackProductInteraction({
+        eventType: 'quote_request_submitted',
+        productId: selectedProduct.id,
+        productName: selectedProduct.name,
+        quantity: quoteForm.quantity,
+        estimatedValue: selectedProduct.price * quoteForm.quantity,
+        factoryId: factoryProfile?.profile?.id || null
+      });
+
+      alert('Quote request submitted successfully! We will contact you within 24 hours.');
+      
+      // Reset form and close modal
+      setQuoteForm({
+        quantity: 1,
+        urgency: 'normal',
+        message: '',
+        companyName: '',
+        contactName: '',
+        email: '',
+        phone: ''
+      });
+      setShowQuoteModal(false);
+      setSelectedProduct(null);
+
+    } catch (error) {
+      console.error('Error submitting quote request:', error);
+      alert('Failed to submit quote request. Please try again.');
+    }
   };
 
   // Get unique categories for filter
@@ -669,6 +826,17 @@ const SmartPublicCatalog = () => {
                 <Activity className="inline w-4 h-4 mr-1" />
                 {realTimeMetrics.recentInteractions} interactions today
               </div>
+              
+              {/* Favorites Counter */}
+              {favorites.size > 0 && (
+                <button
+                  onClick={() => setShowFavoritesPanel(true)}
+                  className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm hover:bg-red-200 transition-colors"
+                >
+                  <Heart className="inline w-4 h-4 mr-1" />
+                  {favorites.size} favorites
+                </button>
+              )}
               
               {factoryProfile?.identified && (
                 <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
@@ -829,10 +997,18 @@ const SmartPublicCatalog = () => {
                     Request Quote
                   </button>
                   <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={(e) => handleFavoriteToggle(product, e)}
+                    className={`p-2 border rounded-lg transition-colors ${
+                      favorites.has(product.id) 
+                        ? 'border-red-300 bg-red-50 hover:bg-red-100' 
+                        : 'border-gray-300 hover:bg-gray-50'
+                    }`}
                   >
-                    <Heart className="w-4 h-4 text-gray-400" />
+                    <Heart className={`w-4 h-4 ${
+                      favorites.has(product.id) 
+                        ? 'text-red-500 fill-current' 
+                        : 'text-gray-400'
+                    }`} />
                   </button>
                 </div>
               </div>
@@ -851,6 +1027,295 @@ const SmartPublicCatalog = () => {
           </div>
         )}
       </div>
+
+      {/* Quote Request Modal */}
+      {showQuoteModal && selectedProduct && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-screen overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Request Quote</h2>
+                <button
+                  onClick={() => setShowQuoteModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Product Summary */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <div className="flex items-center space-x-4">
+                  <img
+                    src={selectedProduct.image}
+                    alt={selectedProduct.name}
+                    className="w-20 h-20 object-cover rounded-lg"
+                    onError={(e) => {
+                      e.target.src = '/api/placeholder/80/80';
+                    }}
+                  />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900">{selectedProduct.name}</h3>
+                    <p className="text-sm text-gray-500">SKU: {selectedProduct.code}</p>
+                    <p className="text-lg font-bold text-blue-600">RM {selectedProduct.price?.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quote Form */}
+              <form className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Quantity <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={quoteForm.quantity}
+                      onChange={(e) => setQuoteForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Urgency
+                    </label>
+                    <select
+                      value={quoteForm.urgency}
+                      onChange={(e) => setQuoteForm(prev => ({ ...prev, urgency: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="normal">Normal (5-7 days)</option>
+                      <option value="urgent">Urgent (1-2 days)</option>
+                      <option value="asap">ASAP (Same day)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Company Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={quoteForm.companyName}
+                      onChange={(e) => setQuoteForm(prev => ({ ...prev, companyName: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Your company name"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Contact Name
+                    </label>
+                    <input
+                      type="text"
+                      value={quoteForm.contactName}
+                      onChange={(e) => setQuoteForm(prev => ({ ...prev, contactName: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Your name"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={quoteForm.email}
+                      onChange={(e) => setQuoteForm(prev => ({ ...prev, email: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="your.email@company.com"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={quoteForm.phone}
+                      onChange={(e) => setQuoteForm(prev => ({ ...prev, phone: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="+60123456789"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Additional Requirements
+                  </label>
+                  <textarea
+                    value={quoteForm.message}
+                    onChange={(e) => setQuoteForm(prev => ({ ...prev, message: e.target.value }))}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Any specific requirements, delivery preferences, or additional notes..."
+                  />
+                </div>
+
+                {/* Estimated Total */}
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Estimated Total</span>
+                    <span className="text-xl font-bold text-blue-600">
+                      RM {(selectedProduct.price * quoteForm.quantity).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Final pricing may vary based on quantity, delivery, and specifications
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuoteModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitQuoteRequest}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Submit Quote Request
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Favorites Panel Modal */}
+      {showFavoritesPanel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-screen overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Your Favorites ({favorites.size})
+                </h2>
+                <button
+                  onClick={() => setShowFavoritesPanel(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {favorites.size === 0 ? (
+                <div className="text-center py-12">
+                  <Heart className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No favorites yet</h3>
+                  <p className="text-gray-500">
+                    Click the heart icon on products to save them to your favorites.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {getFavoriteProducts().map((product) => (
+                    <div key={product.id} className="bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                      <div className="relative">
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-32 object-cover rounded-t-lg"
+                          onError={(e) => {
+                            e.target.src = '/api/placeholder/300/200';
+                          }}
+                        />
+                        <button
+                          onClick={(e) => handleFavoriteToggle(product, e)}
+                          className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow-md hover:bg-gray-50"
+                        >
+                          <Heart className="w-4 h-4 text-red-500 fill-current" />
+                        </button>
+                      </div>
+                      
+                      <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-1 text-sm line-clamp-2">
+                          {typeof product.name === 'string' ? product.name : 'Product Name'}
+                        </h3>
+                        <p className="text-xs text-gray-500 mb-2">
+                          SKU: {typeof product.code === 'string' ? product.code : 'N/A'}
+                        </p>
+                        
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-lg font-bold text-blue-600">
+                            RM {typeof product.price === 'number' ? product.price.toLocaleString() : '0'}
+                          </span>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            product.availability === 'In Stock' ? 'bg-green-100 text-green-800' :
+                            product.availability === 'Low Stock' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {typeof product.availability === 'string' ? product.availability : 'Unknown'}
+                          </span>
+                        </div>
+                        
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setShowFavoritesPanel(false);
+                              setShowQuoteModal(true);
+                            }}
+                            className="flex-1 bg-blue-600 text-white py-1.5 px-3 rounded text-sm hover:bg-blue-700 transition-colors"
+                          >
+                            Request Quote
+                          </button>
+                          <button
+                            onClick={() => handleProductClick(product)}
+                            className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors"
+                          >
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {favorites.size > 0 && (
+                <div className="mt-6 pt-6 border-t flex justify-between items-center">
+                  <p className="text-sm text-gray-500">
+                    {favorites.size} product{favorites.size !== 1 ? 's' : ''} saved to favorites
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (confirm('Clear all favorites? This action cannot be undone.')) {
+                        setFavorites(new Set());
+                        analyticsService.trackProductInteraction({
+                          eventType: 'favorites_cleared',
+                          favoriteCount: favorites.size,
+                          factoryId: factoryProfile?.profile?.id || null
+                        });
+                      }
+                    }}
+                    className="text-red-600 hover:text-red-700 text-sm"
+                  >
+                    Clear All Favorites
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer with Real Analytics */}
       <footer className="bg-white border-t mt-12">
