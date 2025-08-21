@@ -1,6 +1,6 @@
 // src/components/admin/EnhancedPricingManager.jsx
 import React, { useState, useEffect } from 'react';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 import { collection, doc, updateDoc, addDoc, query, where, getDocs, orderBy, writeBatch } from 'firebase/firestore';
 import { User, Building, Crown, AlertTriangle, Check, X, DollarSign, Percent, History, Upload, Download, Filter } from 'lucide-react';
 
