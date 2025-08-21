@@ -203,7 +203,7 @@ const HistoricalPriceImporter = () => {
           
           const actualProductId = product?.id || priceRecord.productId;
 
-          // Add to price history
+          // Add to price history with cost context
           const historyRef = doc(collection(db, 'price_history'));
           const historyData = {
             ...priceRecord,
@@ -213,6 +213,14 @@ const HistoricalPriceImporter = () => {
             source: importMode,
             isActive: true,
             soldDate: priceRecord.soldDate ? new Date(priceRecord.soldDate) : new Date(),
+            
+            // Add cost context for margin analysis
+            productCost: product?.price || 0, // Internal cost from product.price
+            sellingPrice: priceRecord.price,   // What was actually sold for
+            margin: product?.price ? priceRecord.price - product.price : 0,
+            marginPercentage: product?.price ? 
+              (((priceRecord.price - product.price) / product.price) * 100).toFixed(2) : 0,
+            
             // Calculate discount if original price is provided
             ...(priceRecord.originalPrice && priceRecord.originalPrice > priceRecord.price && {
               discount: priceRecord.originalPrice - priceRecord.price,
@@ -238,18 +246,25 @@ const HistoricalPriceImporter = () => {
               clientId,
               productId: actualProductId,
               pricingType: 'fixed',
-              fixedPrice: priceRecord.price,
+              fixedPrice: priceRecord.price,     // Selling price from history
               finalPrice: priceRecord.price,
               basedOnHistoryId: historyRef.id,
               lastSoldPrice: priceRecord.price,
               lastSoldDate: priceRecord.soldDate ? new Date(priceRecord.soldDate) : new Date(),
+              
+              // Cost context for margin analysis
+              productCost: product?.price || 0,  // Internal cost
+              margin: product?.price ? priceRecord.price - product.price : 0,
+              marginPercentage: product?.price ? 
+                (((priceRecord.price - product.price) / product.price) * 100).toFixed(2) : 0,
+              
               priceSource: 'historical',
               autoApproved: true,
               agreementRef: priceRecord.contractRef || 'HISTORICAL',
               validFrom: new Date().toISOString().split('T')[0],
               validUntil: null, // No expiry for historical prices
               minQuantity: priceRecord.quantity || 1,
-              notes: `Auto-imported from historical sale${priceRecord.soldDate ? ` on ${new Date(priceRecord.soldDate).toLocaleDateString()}` : ''}`,
+              notes: `Auto-imported from historical sale${priceRecord.soldDate ? ` on ${new Date(priceRecord.soldDate).toLocaleDateString()}` : ''}. Cost: ${product?.price || 0}, Selling: ${priceRecord.price}`,
               isActive: true,
               priority: 2, // Higher than tier pricing, lower than manual overrides
               createdAt: serverTimestamp(),
@@ -904,6 +919,11 @@ PROD002,89.99,10,2024-01-20,ORDER-2024-002,,95.00,Regular sale,Jane Doe,,`;
                               </span>
                             </div>
                           )}
+                          {record.margin && record.margin > 0 && (
+                            <div className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                              Margin: ${record.margin.toFixed(2)} ({record.marginPercentage}%)
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4">{record.quantity}</td>
@@ -1004,6 +1024,11 @@ PROD002,89.99,10,2024-01-20,ORDER-2024-002,,95.00,Regular sale,Jane Doe,,`;
                           <span className="font-medium">${record.finalPrice.toFixed(2)}</span>
                           {record.pricingType === 'fixed' && (
                             <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">Fixed</span>
+                          )}
+                          {record.margin && record.margin > 0 && (
+                            <div className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                              +${record.margin.toFixed(2)} ({record.marginPercentage}%)
+                            </div>
                           )}
                         </div>
                       </td>
