@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../config/firebase';
 import { collection, doc, updateDoc, addDoc, query, where, getDocs, orderBy, writeBatch, deleteDoc } from 'firebase/firestore';
-import { User, Building, Crown, AlertTriangle, Check, X, DollarSign, Percent, History, Upload, Download, Filter, Calculator, TrendingUp, Tag, Settings, Plus, Edit2, Trash2 } from 'lucide-react';
+import { User, Building, Crown, AlertTriangle, Check, X, DollarSign, Percent, History, Upload, Download, Filter, Calculator, TrendingUp, Tag, Settings, Plus, Edit2, Trash2, Info } from 'lucide-react';
 import { PricingService } from '../../services/pricingService';
 
 const EnhancedPricingManager = () => {
