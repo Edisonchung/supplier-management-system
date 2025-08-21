@@ -231,23 +231,25 @@ const loadRealProducts = async () => {
         supplier: data.supplier || { name: 'HiggsFlow Direct', location: 'Kuala Lumpur' },
         image: data.images?.primary || data.image || '/api/placeholder/300/300',
         
-        // Enhanced Phase 2B fields
+        // Enhanced Phase 2B fields with safe object handling
         availability: data.availability || calculateAvailability(data.stock || 0),
         deliveryTime: data.deliveryTime || calculateDeliveryTime(data.stock || 0),
         urgency: (data.stock || 0) < 5 ? 'urgent' : 'normal',
-        location: data.supplier?.location || data.location || 'Kuala Lumpur',
+        location: typeof data.supplier === 'object' ? 
+          data.supplier?.location || data.location || 'Kuala Lumpur' : 
+          data.location || 'Kuala Lumpur',
         featured: data.featured || (data.stock || 0) > 100,
         searchPriority: calculateSearchPriority(data),
-        tags: data.tags || generateTags(data),
-        specifications: data.specifications || {},
-        certifications: data.certifications || [],
-        warranty: data.warranty || '1 year standard warranty',
-        minOrderQty: data.minOrderQty || 1,
-        leadTime: data.leadTime || calculateDeliveryTime(data.stock || 0),
-        discount: data.discount || 0,
-        rating: data.rating || (Math.random() * 2 + 3), // 3-5 rating
-        reviewCount: data.reviewCount || Math.floor(Math.random() * 50),
-        viewCount: data.viewCount || 0,
+        tags: Array.isArray(data.tags) ? data.tags : generateTags(data),
+        specifications: typeof data.specifications === 'object' ? data.specifications : {},
+        certifications: Array.isArray(data.certifications) ? data.certifications : [],
+        warranty: typeof data.warranty === 'string' ? data.warranty : '1 year standard warranty',
+        minOrderQty: typeof data.minOrderQty === 'number' ? data.minOrderQty : 1,
+        leadTime: typeof data.leadTime === 'string' ? data.leadTime : calculateDeliveryTime(data.stock || 0),
+        discount: typeof data.discount === 'number' ? data.discount : 0,
+        rating: typeof data.rating === 'number' ? data.rating : (Math.random() * 2 + 3),
+        reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : Math.floor(Math.random() * 50),
+        viewCount: typeof data.viewCount === 'number' ? data.viewCount : 0,
         lastViewed: data.lastViewed
       };
     })
@@ -765,17 +767,17 @@ const SmartPublicCatalog = () => {
                     product.availability === 'Low Stock' ? 'bg-yellow-100 text-yellow-800' :
                     'bg-red-100 text-red-800'
                   }`}>
-                    {product.availability}
+                    {typeof product.availability === 'string' ? product.availability : 'Unknown'}
                   </span>
                 </div>
               </div>
               
               <div className="p-4">
                 <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">
-                  {product.name}
+                  {typeof product.name === 'string' ? product.name : 'Product Name'}
                 </h3>
                 <p className="text-sm text-gray-500 mb-2">
-                  SKU: {product.code}
+                  SKU: {typeof product.code === 'string' ? product.code : 'N/A'}
                 </p>
                 
                 <div className="flex items-center justify-between mb-3">
@@ -783,18 +785,18 @@ const SmartPublicCatalog = () => {
                     RM {typeof product.price === 'number' ? product.price.toLocaleString() : '0'}
                   </span>
                   <span className="text-sm text-gray-500">
-                    Stock: {product.stock || 0}
+                    Stock: {typeof product.stock === 'number' ? product.stock : 0}
                   </span>
                 </div>
                 
                 <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
                   <div className="flex items-center">
                     <Truck className="w-4 h-4 mr-1" />
-                    {product.deliveryTime || '3-5 days'}
+                    {typeof product.deliveryTime === 'string' ? product.deliveryTime : '3-5 days'}
                   </div>
                   <div className="flex items-center">
                     <MapPin className="w-4 h-4 mr-1" />
-                    {product.location || 'KL'}
+                    {typeof product.location === 'string' ? product.location : 'KL'}
                   </div>
                 </div>
                 
@@ -805,13 +807,13 @@ const SmartPublicCatalog = () => {
                       <Star
                         key={i}
                         className={`w-4 h-4 ${
-                          i < Math.floor(product.rating || 4) ? 'fill-current' : ''
+                          i < Math.floor(typeof product.rating === 'number' ? product.rating : 4) ? 'fill-current' : ''
                         }`}
                       />
                     ))}
                   </div>
                   <span className="text-sm text-gray-500 ml-2">
-                    ({product.reviewCount || 0} reviews)
+                    ({typeof product.reviewCount === 'number' ? product.reviewCount : 0} reviews)
                   </span>
                 </div>
                 
