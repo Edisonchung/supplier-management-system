@@ -1,6 +1,6 @@
 // src/components/ecommerce/EnhancedPriceDisplay.jsx
 import React, { useState, useEffect } from 'react';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { History, TrendingDown, Calendar, FileText, Crown, Tag, Users, DollarSign, Info, CheckCircle } from 'lucide-react';
 import { PricingService } from '../../services/pricingService';
