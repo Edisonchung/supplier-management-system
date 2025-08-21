@@ -1,6 +1,6 @@
 // src/components/admin/HistoricalPriceImporter.jsx
 import React, { useState, useEffect } from 'react';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 import { collection, doc, addDoc, updateDoc, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { Upload, History, CheckCircle, AlertCircle, Download, FileText, Calendar, DollarSign, Package, User } from 'lucide-react';
 
