@@ -1,5 +1,6 @@
 // src/components/SmartPublicCatalog.jsx
 // HiggsFlow Phase 2B - Smart Public Catalog with REAL Firestore Data Integration
+// FIXED: Now queries products_public collection correctly
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
@@ -61,9 +62,9 @@ class RealAnalyticsService {
 
       await addDoc(collection(this.db, 'analytics_interactions'), interactionData);
       
-      // Update product interaction count
+      // Update product interaction count in public catalog
       if (data.productId) {
-        const productRef = doc(this.db, 'products', data.productId);
+        const productRef = doc(this.db, 'products_public', data.productId);
         await updateDoc(productRef, {
           viewCount: increment(1),
           lastViewed: serverTimestamp()
@@ -199,17 +200,17 @@ class RealAnalyticsService {
   }
 }
 
-// ========== REAL DATA LOADING FUNCTIONS ==========
+// ========== FIXED: REAL DATA LOADING FUNCTIONS ==========
 const loadRealProducts = async () => {
   try {
-    console.log('📦 Loading real products from Firestore...');
+    console.log('📦 Loading products from products_public collection (FIXED)...');
     
-    // Query products with proper conditions
+    // ✅ CRITICAL FIX: Query products_public instead of products
     const productsQuery = query(
-      collection(db, 'products_public'),
-      where('stock', '>', 0), // Only in-stock items
-      orderBy('stock', 'desc'),
-      limit(50) // Load first 50 products
+      collection(db, 'products_public'),  // <-- FIXED: Was 'products'
+      where('visibility', '==', 'public'),
+      orderBy('updatedAt', 'desc'),
+      limit(50)
     );
     
     const snapshot = await getDocs(productsQuery);
@@ -217,19 +218,20 @@ const loadRealProducts = async () => {
       const data = doc.data();
       return {
         id: doc.id,
+        internalProductId: data.internalProductId, // Link to internal product
         ...data,
-        // Ensure Phase 2B required fields
-        name: data.name || data.productName || 'Unknown Product',
+        // Map products_public fields to expected format
+        name: data.displayName || data.name || 'Unknown Product',
         code: data.sku || data.code || data.partNumber || doc.id,
         category: data.category || 'General',
-        price: data.price || data.unitPrice || 0,
-        stock: data.stock || data.currentStock || 0,
+        price: data.pricing?.listPrice || data.price || 0,
+        stock: data.stock || 0,
         supplier: data.supplier || { name: 'HiggsFlow Direct', location: 'Kuala Lumpur' },
-        image: data.image || data.imageUrl || '/api/placeholder/300/300',
+        image: data.images?.primary || data.image || '/api/placeholder/300/300',
         
         // Enhanced Phase 2B fields
-        availability: calculateAvailability(data.stock || 0),
-        deliveryTime: calculateDeliveryTime(data.stock || 0),
+        availability: data.availability || calculateAvailability(data.stock || 0),
+        deliveryTime: data.deliveryTime || calculateDeliveryTime(data.stock || 0),
         urgency: (data.stock || 0) < 5 ? 'urgent' : 'normal',
         location: data.supplier?.location || data.location || 'Kuala Lumpur',
         featured: data.featured || (data.stock || 0) > 100,
@@ -248,12 +250,13 @@ const loadRealProducts = async () => {
       };
     });
     
-    console.log('✅ Loaded real products:', realProducts.length);
+    console.log(`✅ Loaded ${realProducts.length} products from products_public`);
+    console.log('📊 Products loaded:', realProducts.map(p => p.name));
     return realProducts;
     
   } catch (error) {
-    console.error('❌ Error loading real products:', error);
-    console.log('🔄 Falling back to localStorage...');
+    console.error('❌ Error loading products from products_public:', error);
+    console.log('📄 Falling back to localStorage...');
     
     // Fallback to localStorage
     const localProducts = JSON.parse(localStorage.getItem('products') || '[]');
@@ -267,6 +270,33 @@ const loadRealProducts = async () => {
       tags: generateTags(product)
     }));
   }
+};
+
+// ========== REAL-TIME SUBSCRIPTION (FIXED) ==========
+const setupRealTimeProductUpdates = (onProductsUpdate) => {
+  console.log('🔄 Setting up real-time updates from products_public...');
+  
+  const productsQuery = query(
+    collection(db, 'products_public'),  // <-- FIXED: Was 'products'
+    where('visibility', '==', 'public'),
+    orderBy('updatedAt', 'desc'),
+    limit(50)
+  );
+  
+  return onSnapshot(productsQuery, (snapshot) => {
+    const products = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      // Map fields correctly
+      name: doc.data().displayName || doc.data().name,
+      price: doc.data().pricing?.listPrice || doc.data().price
+    }));
+    
+    console.log(`🔄 Real-time update: ${products.length} products from products_public`);
+    onProductsUpdate(products);
+  }, (error) => {
+    console.error('❌ Real-time subscription error:', error);
+  });
 };
 
 // Helper functions for product enhancement
@@ -429,6 +459,17 @@ const SmartPublicCatalog = () => {
     loadProducts();
   }, [analyticsService]);
 
+  // ✅ FIXED: Real-time subscription with correct collection
+  useEffect(() => {
+    const unsubscribe = setupRealTimeProductUpdates((updatedProducts) => {
+      console.log('🔄 Real-time products update received:', updatedProducts.length);
+      setProducts(updatedProducts);
+      setFilteredProducts(updatedProducts);
+    });
+    
+    return () => unsubscribe && unsubscribe();
+  }, []);
+
   // Subscribe to real-time analytics
   useEffect(() => {
     const unsubscribe = analyticsService.subscribeToRealTimeMetrics(setRealTimeMetrics);
@@ -560,6 +601,7 @@ const SmartPublicCatalog = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading smart catalog...</p>
+          <p className="mt-2 text-sm text-gray-500">Reading from products_public collection</p>
         </div>
       </div>
     );
@@ -775,7 +817,7 @@ const SmartPublicCatalog = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between text-sm text-gray-500">
             <div>
-              Powered by HiggsFlow Smart Catalog • Real-time data from Firestore
+              Powered by HiggsFlow Smart Catalog • Real-time data from products_public
             </div>
             <div className="flex items-center space-x-4">
               <span>Conversion Rate: {realTimeMetrics.conversionRate}%</span>
