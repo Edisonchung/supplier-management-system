@@ -206,7 +206,7 @@ const loadRealProducts = async () => {
     
     // Query products with proper conditions
     const productsQuery = query(
-      collection(db, 'products'),
+      collection(db, 'products_public'),
       where('stock', '>', 0), // Only in-stock items
       orderBy('stock', 'desc'),
       limit(50) // Load first 50 products
