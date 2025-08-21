@@ -125,6 +125,11 @@ const SmartProductSyncDashboard = () => {
       return { eligible: false, reason: 'Invalid stock level' };
     }
     
+    // Stock level 0 products are eligible but marked differently
+    if (product.stock === 0) {
+      return { eligible: true, reason: 'Eligible but out of stock' };
+    }
+    
     if (product.status === 'discontinued') {
       return { eligible: false, reason: 'Product discontinued' };
     }
@@ -164,7 +169,8 @@ const SmartProductSyncDashboard = () => {
         },
         specifications: internalProduct.specifications || {},
         supplier: internalProduct.supplier || 'Unknown',
-        visibility: 'public',
+        visibility: internalProduct.stock === 0 ? 'out_of_stock' : 'public',
+        availability: internalProduct.stock === 0 ? 'out_of_stock' : 'in_stock',
         featured: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -223,7 +229,71 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // Handle bulk sync
+  // Unsync product from public catalog
+  const unsyncProduct = async (internalProductId, productName) => {
+    try {
+      console.log('Removing product from public catalog:', productName);
+      
+      // Find and delete from products_public
+      const publicQuery = query(
+        collection(db, 'products_public'),
+        where('internalProductId', '==', internalProductId)
+      );
+      const publicSnapshot = await getDocs(publicQuery);
+      
+      if (!publicSnapshot.empty) {
+        const publicDoc = publicSnapshot.docs[0];
+        await deleteDoc(doc(db, 'products_public', publicDoc.id));
+        
+        // Log the unsync operation
+        await addDoc(collection(db, 'product_sync_log'), {
+          internalProductId,
+          ecommerceProductId: publicDoc.id,
+          syncType: 'delete',
+          syncDirection: 'ecommerce_removal',
+          syncStatus: 'success',
+          syncedAt: serverTimestamp(),
+          metadata: {
+            triggeredBy: 'admin_unsync',
+            productName: productName,
+            reason: 'Manual removal from public catalog',
+            adminUser: 'current_user'
+          }
+        });
+        
+        return { success: true };
+      } else {
+        throw new Error('Product not found in public catalog');
+      }
+      
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Handle unsync
+  const handleUnsync = async (product) => {
+    if (!confirm(`Remove "${product.name}" from public catalog? Customers will no longer see this product.`)) {
+      return;
+    }
+    
+    setSyncing(true);
+    try {
+      const result = await unsyncProduct(product.id, product.name);
+      
+      if (result.success) {
+        alert(`Successfully removed "${product.name}" from public catalog!`);
+        await loadRealData(); // Refresh data
+      } else {
+        alert(`Failed to remove: ${result.error}`);
+      }
+      
+    } catch (error) {
+      alert(`Unsync failed: ${error.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
   const handleBulkSync = async () => {
     if (selectedProducts.size === 0) {
       alert('Please select products to sync');
@@ -436,23 +506,61 @@ const SmartProductSyncDashboard = () => {
           {/* Action Buttons */}
           <div className="flex gap-3">
             {selectedProducts.size > 0 && (
-              <button
-                onClick={handleBulkSync}
-                disabled={syncing}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-              >
-                {syncing ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    Sync Selected ({selectedProducts.size})
-                  </>
+              <>
+                {/* Sync Button - only show if there are unsynced products selected */}
+                {Array.from(selectedProducts).some(id => {
+                  const product = internalProducts.find(p => p.id === id);
+                  return product && product.syncStatus === 'not_synced' && product.eligible;
+                }) && (
+                  <button
+                    onClick={handleBulkSync}
+                    disabled={syncing}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                  >
+                    {syncing ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Sync Selected ({Array.from(selectedProducts).filter(id => {
+                          const product = internalProducts.find(p => p.id === id);
+                          return product && product.syncStatus === 'not_synced' && product.eligible;
+                        }).length})
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
+
+                {/* Unsync Button - only show if there are synced products selected */}
+                {Array.from(selectedProducts).some(id => {
+                  const product = internalProducts.find(p => p.id === id);
+                  return product && product.syncStatus === 'synced';
+                }) && (
+                  <button
+                    onClick={handleBulkUnsync}
+                    disabled={syncing}
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                  >
+                    {syncing ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Removing...
+                      </>
+                    ) : (
+                      <>
+                        <X className="w-4 h-4" />
+                        Remove Selected ({Array.from(selectedProducts).filter(id => {
+                          const product = internalProducts.find(p => p.id === id);
+                          return product && product.syncStatus === 'synced';
+                        }).length})
+                      </>
+                    )}
+                  </button>
+                )}
+              </>
             )}
             
             <button
@@ -520,6 +628,11 @@ const SmartProductSyncDashboard = () => {
                     <span className="text-sm text-gray-600 capitalize">
                       {product.syncStatus.replace('_', ' ')}
                     </span>
+                    {product.syncStatus === 'synced' && product.stock === 0 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                        Out of Stock
+                      </span>
+                    )}
                   </div>
                   
                   {product.syncStatus === 'not_synced' && product.eligible && (
@@ -529,6 +642,16 @@ const SmartProductSyncDashboard = () => {
                       className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white px-3 py-1 rounded text-sm"
                     >
                       Sync Now
+                    </button>
+                  )}
+                  
+                  {product.syncStatus === 'synced' && (
+                    <button
+                      onClick={() => handleUnsync(product)}
+                      disabled={syncing}
+                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white px-3 py-1 rounded text-sm"
+                    >
+                      Remove
                     </button>
                   )}
                 </div>
