@@ -1,6 +1,6 @@
 // src/components/admin/ClientOnboardingWizard.jsx
 import React, { useState, useEffect } from 'react';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 import { collection, doc, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { UserPlus, Upload, CheckCircle, AlertCircle, Building, Mail, Phone, MapPin, Calendar, FileText, Crown, History } from 'lucide-react';
 import { PricingService } from '../../services/pricingService';
