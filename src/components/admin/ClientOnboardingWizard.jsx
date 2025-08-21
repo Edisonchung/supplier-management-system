@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../config/firebase';
 import { collection, doc, addDoc, query, where, getDocs } from 'firebase/firestore';
-import { UserPlus, Upload, CheckCircle, AlertCircle, Building, Mail, Phone, MapPin, Calendar, FileText, Crown, History } from 'lucide-react';
+import { UserPlus, Upload, CheckCircle, AlertCircle, Building, Mail, Phone, MapPin, Calendar, FileText, Crown, History, Calculator, TrendingUp, Info } from 'lucide-react';
 import { PricingService } from '../../services/pricingService';
 
 const ClientOnboardingWizard = ({ onComplete }) => {
@@ -32,30 +32,56 @@ const ClientOnboardingWizard = ({ onComplete }) => {
     creditLimit: 0,
     paymentTerms: 'Net 30',
     
-    // Pricing & History
+    // Enhanced Pricing Settings
     importPriceHistory: true,
     hasExistingPricing: false,
-    specialPricingNotes: ''
+    specialPricingNotes: '',
+    autoCalculatePricing: true,
+    preferredMarkupStrategy: 'standard' // 'standard', 'premium', 'volume'
   });
 
   // Price history data
   const [priceHistoryFile, setPriceHistoryFile] = useState(null);
   const [parsedPriceData, setParsedPriceData] = useState([]);
   const [importStats, setImportStats] = useState(null);
+  const [pricingPreview, setPricingPreview] = useState(null);
 
   const steps = [
     { id: 1, name: 'Basic Info', icon: Building },
     { id: 2, name: 'Business Details', icon: FileText },
     { id: 3, name: 'Account Setup', icon: UserPlus },
-    { id: 4, name: 'Price History', icon: History },
-    { id: 5, name: 'Review & Complete', icon: CheckCircle }
+    { id: 4, name: 'Pricing Strategy', icon: Calculator },
+    { id: 5, name: 'Price History', icon: History },
+    { id: 6, name: 'Review & Complete', icon: CheckCircle }
   ];
 
   const tiers = [
-    { id: 'tier_0', name: 'Public', description: 'Standard public pricing' },
-    { id: 'tier_1', name: 'End User', description: 'Direct customer pricing' },
-    { id: 'tier_2', name: 'System Integrator', description: 'Partner pricing' },
-    { id: 'tier_3', name: 'Trader', description: 'Distributor pricing' }
+    { id: 'tier_0', name: 'Public', description: 'Standard public pricing', discount: 0 },
+    { id: 'tier_1', name: 'End User', description: 'Direct customer pricing', discount: 5 },
+    { id: 'tier_2', name: 'System Integrator', description: 'Partner pricing', discount: 15 },
+    { id: 'tier_3', name: 'Trader', description: 'Distributor pricing', discount: 25 },
+    { id: 'tier_4', name: 'VIP Distributor', description: 'Premium partner pricing', discount: 35 }
+  ];
+
+  const markupStrategies = [
+    { 
+      id: 'standard', 
+      name: 'Standard Markup', 
+      description: 'Uses default markup rules based on product categories and brands',
+      impact: 'Competitive pricing with standard profit margins'
+    },
+    { 
+      id: 'premium', 
+      name: 'Premium Strategy', 
+      description: 'Higher markup for premium positioning',
+      impact: 'Higher margins, positioned as premium supplier'
+    },
+    { 
+      id: 'volume', 
+      name: 'Volume Strategy', 
+      description: 'Lower markup for volume customers',
+      impact: 'Competitive pricing to encourage larger orders'
+    }
   ];
 
   const industries = [
@@ -67,6 +93,45 @@ const ClientOnboardingWizard = ({ onComplete }) => {
     '1-10 employees', '11-50 employees', '51-200 employees', 
     '201-1000 employees', '1000+ employees'
   ];
+
+  useEffect(() => {
+    if (currentStep === 4) {
+      generatePricingPreview();
+    }
+  }, [clientData.defaultTierId, clientData.preferredMarkupStrategy]);
+
+  const generatePricingPreview = async () => {
+    try {
+      // Get a sample of products to show pricing preview
+      const productsQuery = query(collection(db, 'products'));
+      const snapshot = await getDocs(productsQuery);
+      const sampleProducts = snapshot.docs.slice(0, 3).map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      const preview = [];
+      for (const product of sampleProducts) {
+        try {
+          const pricingResult = await PricingService.calculatePricingForProduct(product.id);
+          if (pricingResult.success) {
+            const tierPrice = pricingResult.data.tierPrices[clientData.defaultTierId];
+            preview.push({
+              product,
+              pricing: pricingResult.data,
+              clientPrice: tierPrice
+            });
+          }
+        } catch (error) {
+          console.error('Error calculating pricing preview:', error);
+        }
+      }
+      
+      setPricingPreview(preview);
+    } catch (error) {
+      console.error('Error generating pricing preview:', error);
+    }
+  };
 
   const validateStep = (step) => {
     const errors = {};
@@ -148,7 +213,13 @@ const ClientOnboardingWizard = ({ onComplete }) => {
             case 'price':
             case 'last_price':
             case 'sold_price':
+            case 'final_price':
               record.price = parseFloat(value) || 0;
+              break;
+            case 'cost':
+            case 'supplier_cost':
+            case 'base_cost':
+              record.supplierCost = parseFloat(value) || 0;
               break;
             case 'quantity':
             case 'qty':
@@ -171,7 +242,12 @@ const ClientOnboardingWizard = ({ onComplete }) => {
               break;
             case 'original_price':
             case 'list_price':
+            case 'public_price':
               record.originalPrice = parseFloat(value) || 0;
+              break;
+            case 'markup_percentage':
+            case 'markup':
+              record.markupPercentage = parseFloat(value) || 0;
               break;
             case 'notes':
             case 'remarks':
@@ -182,6 +258,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
         
         if (record.productId && record.price > 0) {
           record.priceType = 'sold';
+          record.recordType = 'historical_import';
           data.push(record);
         }
       }
@@ -204,13 +281,18 @@ const ClientOnboardingWizard = ({ onComplete }) => {
 
     setProcessing(true);
     try {
-      // 1. Create client record
+      // 1. Create client record with enhanced pricing settings
       const clientRef = await addDoc(collection(db, 'clients'), {
         ...clientData,
         isActive: true,
         createdAt: new Date(),
         onboardingDate: new Date(),
-        onboardingCompletedBy: 'current_user_id' // Replace with actual user ID
+        onboardingCompletedBy: 'current_user_id', // Replace with actual user ID
+        pricingSettings: {
+          autoCalculatePricing: clientData.autoCalculatePricing,
+          preferredMarkupStrategy: clientData.preferredMarkupStrategy,
+          useHistoricalPricing: clientData.importPriceHistory && parsedPriceData.length > 0
+        }
       });
 
       const clientId = clientRef.id;
@@ -222,21 +304,34 @@ const ClientOnboardingWizard = ({ onComplete }) => {
         setImportStats(importResult);
       }
 
-      // 3. Create onboarding completion record
+      // 3. Create onboarding completion record with enhanced data
       await addDoc(collection(db, 'client_onboarding'), {
         clientId,
         onboardingDate: new Date(),
         historicalPricesImported: !!importResult?.success,
         pricesImportedCount: importResult?.importedCount || 0,
+        pricingStrategy: clientData.preferredMarkupStrategy,
+        autoCalculatedPricing: clientData.autoCalculatePricing,
         status: 'completed',
         completedBy: 'current_user_id', // Replace with actual user ID
         clientData: {
           name: clientData.name,
           email: clientData.email,
           defaultTier: clientData.defaultTierId,
-          accountManager: clientData.accountManager
+          accountManager: clientData.accountManager,
+          industry: clientData.industry,
+          companySize: clientData.companySize
         }
       });
+
+      // 4. If auto-calculate is enabled, trigger pricing calculation for products
+      if (clientData.autoCalculatePricing) {
+        try {
+          await PricingService.recalculateAllProductPricing();
+        } catch (error) {
+          console.error('Error triggering pricing recalculation:', error);
+        }
+      }
 
       setOnboardingComplete(true);
       
@@ -257,7 +352,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
     }
   };
 
-  // Step Components
+  // Step Components (keeping existing BasicInfoStep, BusinessDetailsStep, AccountSetupStep)
   const BasicInfoStep = () => (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
@@ -440,7 +535,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
           >
             {tiers.map(tier => (
               <option key={tier.id} value={tier.id}>
-                {tier.name} - {tier.description}
+                {tier.name} - {tier.description} ({tier.discount}% off public)
               </option>
             ))}
           </select>
@@ -515,6 +610,123 @@ const ClientOnboardingWizard = ({ onComplete }) => {
     </div>
   );
 
+  // NEW: Enhanced Pricing Strategy Step
+  const PricingStrategyStep = () => (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold mb-4">Pricing Strategy</h2>
+      
+      {/* Auto-Calculate Pricing Toggle */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <Calculator className="h-5 w-5 text-blue-600 mt-0.5" />
+          <div className="flex-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={clientData.autoCalculatePricing}
+                onChange={(e) => handleInputChange('autoCalculatePricing', e.target.checked)}
+                className="rounded"
+              />
+              <span className="font-medium text-blue-900">Enable automatic markup-based pricing</span>
+            </label>
+            <p className="text-sm text-blue-700 mt-1">
+              Uses cost-based markup rules to calculate optimal pricing based on product brands, series, and categories.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Markup Strategy Selection */}
+      {clientData.autoCalculatePricing && (
+        <div>
+          <h3 className="font-medium text-gray-900 mb-3">Markup Strategy</h3>
+          <div className="space-y-3">
+            {markupStrategies.map(strategy => (
+              <label key={strategy.id} className="flex items-start gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input
+                  type="radio"
+                  name="markupStrategy"
+                  value={strategy.id}
+                  checked={clientData.preferredMarkupStrategy === strategy.id}
+                  onChange={(e) => handleInputChange('preferredMarkupStrategy', e.target.value)}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{strategy.name}</div>
+                  <div className="text-sm text-gray-600">{strategy.description}</div>
+                  <div className="text-xs text-blue-600 mt-1">{strategy.impact}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pricing Preview */}
+      {pricingPreview && pricingPreview.length > 0 && (
+        <div>
+          <h3 className="font-medium text-gray-900 mb-3">Pricing Preview</h3>
+          <div className="bg-white border rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Product</th>
+                    <th className="px-4 py-3 text-left">Supplier Cost</th>
+                    <th className="px-4 py-3 text-left">Markup</th>
+                    <th className="px-4 py-3 text-left">Public Price</th>
+                    <th className="px-4 py-3 text-left">Your Price</th>
+                    <th className="px-4 py-3 text-left">Savings</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {pricingPreview.map((item, index) => (
+                    <tr key={index}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{item.product.name}</div>
+                        <div className="text-xs text-gray-500">{item.product.brand}</div>
+                      </td>
+                      <td className="px-4 py-3">${item.pricing.supplierCost?.toFixed(2) || 'N/A'}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-green-600">+{item.pricing.totalMarkupPercentage}%</span>
+                      </td>
+                      <td className="px-4 py-3">${item.pricing.publicPrice?.toFixed(2)}</td>
+                      <td className="px-4 py-3 font-medium">${item.clientPrice?.finalPrice?.toFixed(2)}</td>
+                      <td className="px-4 py-3">
+                        {item.clientPrice?.discountPercentage > 0 && (
+                          <span className="text-green-600">-{item.clientPrice.discountPercentage}%</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Sample pricing based on current markup rules and selected tier
+          </p>
+        </div>
+      )}
+
+      {/* Manual Pricing Note */}
+      {!clientData.autoCalculatePricing && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Info className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <div>
+              <h3 className="font-medium text-yellow-900">Manual Pricing Mode</h3>
+              <p className="text-sm text-yellow-700 mt-1">
+                Pricing will need to be set manually for each product. Historical prices (if imported) 
+                will be used where available, otherwise tier-based pricing will apply.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const PriceHistoryStep = () => (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold mb-4">Price History Import</h2>
@@ -523,10 +735,10 @@ const ClientOnboardingWizard = ({ onComplete }) => {
         <div className="flex items-start gap-3">
           <History className="h-5 w-5 text-blue-600 mt-0.5" />
           <div>
-            <h3 className="font-medium text-blue-900">Why import price history?</h3>
+            <h3 className="font-medium text-blue-900">Enhanced Price History Import</h3>
             <p className="text-sm text-blue-700 mt-1">
-              Importing historical pricing data ensures your client sees familiar prices from previous orders,
-              creating a seamless transition to the e-commerce platform.
+              Import historical pricing data to ensure seamless transition. Supports both final prices 
+              and supplier costs for more accurate markup calculations.
             </p>
           </div>
         </div>
@@ -543,7 +755,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
           <span className="text-sm font-medium">Import historical pricing data for this client</span>
         </label>
         <p className="text-xs text-gray-500 mt-1">
-          Historical prices will be automatically applied as special pricing for this client
+          Historical prices will be automatically applied as client-specific pricing
         </p>
       </div>
 
@@ -553,7 +765,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
             <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
             <p className="text-gray-600 mb-2">Upload CSV with client's price history</p>
             <p className="text-sm text-gray-500 mb-4">
-              Columns: product_id, price, quantity, sale_date, order_id, contract_ref, original_price, notes
+              Enhanced columns: product_id, price, supplier_cost, quantity, sale_date, order_id, contract_ref, markup_percentage, notes
             </p>
             <input
               type="file"
@@ -563,7 +775,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
             />
           </div>
 
-          {/* CSV Preview */}
+          {/* Enhanced CSV Preview */}
           {parsedPriceData.length > 0 && (
             <div className="bg-white border rounded-lg p-4">
               <h4 className="font-medium mb-3">Preview ({parsedPriceData.length} records)</h4>
@@ -572,10 +784,11 @@ const ClientOnboardingWizard = ({ onComplete }) => {
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
                       <th className="px-3 py-2 text-left">Product ID</th>
-                      <th className="px-3 py-2 text-left">Price</th>
+                      <th className="px-3 py-2 text-left">Final Price</th>
+                      <th className="px-3 py-2 text-left">Supplier Cost</th>
+                      <th className="px-3 py-2 text-left">Markup %</th>
                       <th className="px-3 py-2 text-left">Qty</th>
                       <th className="px-3 py-2 text-left">Date</th>
-                      <th className="px-3 py-2 text-left">Order ID</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -583,11 +796,16 @@ const ClientOnboardingWizard = ({ onComplete }) => {
                       <tr key={index}>
                         <td className="px-3 py-2">{record.productId}</td>
                         <td className="px-3 py-2">${record.price?.toFixed(2)}</td>
+                        <td className="px-3 py-2">
+                          {record.supplierCost ? `$${record.supplierCost.toFixed(2)}` : '-'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {record.markupPercentage ? `${record.markupPercentage}%` : '-'}
+                        </td>
                         <td className="px-3 py-2">{record.quantity}</td>
                         <td className="px-3 py-2">
                           {record.soldDate ? new Date(record.soldDate).toLocaleDateString() : '-'}
                         </td>
-                        <td className="px-3 py-2">{record.orderId || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -598,6 +816,30 @@ const ClientOnboardingWizard = ({ onComplete }) => {
                   Showing first 5 records of {parsedPriceData.length} total
                 </p>
               )}
+              
+              {/* Data Quality Indicators */}
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="grid grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <span className="font-medium">With Costs:</span>
+                    <span className="ml-1">
+                      {parsedPriceData.filter(r => r.supplierCost > 0).length} records
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-medium">With Markup:</span>
+                    <span className="ml-1">
+                      {parsedPriceData.filter(r => r.markupPercentage > 0).length} records
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-medium">With Dates:</span>
+                    <span className="ml-1">
+                      {parsedPriceData.filter(r => r.soldDate).length} records
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -656,6 +898,22 @@ const ClientOnboardingWizard = ({ onComplete }) => {
         </div>
       </div>
 
+      {/* Pricing Strategy Summary */}
+      <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
+        <h3 className="font-semibold text-orange-900 mb-2">Pricing Strategy</h3>
+        <div className="text-sm text-orange-700">
+          {clientData.autoCalculatePricing ? (
+            <div>
+              <div>✅ Automatic markup-based pricing enabled</div>
+              <div>📊 Strategy: {markupStrategies.find(s => s.id === clientData.preferredMarkupStrategy)?.name}</div>
+              <div>🎯 Tier: {tiers.find(t => t.id === clientData.defaultTierId)?.name} ({tiers.find(t => t.id === clientData.defaultTierId)?.discount}% discount)</div>
+            </div>
+          ) : (
+            <div>⚠️ Manual pricing mode - prices will need to be set individually</div>
+          )}
+        </div>
+      </div>
+
       {/* Price History Summary */}
       {clientData.importPriceHistory && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
@@ -663,11 +921,12 @@ const ClientOnboardingWizard = ({ onComplete }) => {
           {parsedPriceData.length > 0 ? (
             <div className="text-sm text-blue-700">
               <div>✅ {parsedPriceData.length} historical price records ready for import</div>
-              <div className="mt-1">📄 File: {priceHistoryFile?.name}</div>
+              <div>📄 File: {priceHistoryFile?.name}</div>
+              <div>💰 Records with cost data: {parsedPriceData.filter(r => r.supplierCost > 0).length}</div>
             </div>
           ) : (
             <div className="text-sm text-blue-700">
-              ⚠️ No price history file uploaded - client will use tier-based pricing
+              ⚠️ No price history file uploaded - client will use calculated pricing
             </div>
           )}
         </div>
@@ -678,6 +937,9 @@ const ClientOnboardingWizard = ({ onComplete }) => {
         <h3 className="font-semibold text-green-900 mb-2">What happens after completion:</h3>
         <ul className="text-sm text-green-700 space-y-1">
           <li>✅ Client account will be created with specified settings</li>
+          {clientData.autoCalculatePricing && (
+            <li>✅ Pricing will be automatically calculated using markup rules</li>
+          )}
           {clientData.importPriceHistory && parsedPriceData.length > 0 && (
             <li>✅ Historical prices will be imported and applied automatically</li>
           )}
@@ -688,6 +950,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
     </div>
   );
 
+  // Rest of the component remains the same (completion state, navigation, etc.)
   if (onboardingComplete) {
     return (
       <div className="max-w-2xl mx-auto p-6">
@@ -700,7 +963,7 @@ const ClientOnboardingWizard = ({ onComplete }) => {
             {clientData.name} has been successfully onboarded to the HiggsFlow platform.
           </p>
 
-          {/* Completion Stats */}
+          {/* Enhanced Completion Stats */}
           {importStats && (
             <div className="bg-white border rounded-lg p-6 mb-6">
               <h3 className="font-semibold mb-4">Import Results</h3>
@@ -736,8 +999,8 @@ const ClientOnboardingWizard = ({ onComplete }) => {
                 Notify {clientData.accountManager} about the new client
               </li>
               <li className="flex items-center gap-2">
-                <Crown className="h-4 w-4" />
-                Review and adjust pricing if needed
+                <Calculator className="h-4 w-4" />
+                {clientData.autoCalculatePricing ? 'Review calculated pricing' : 'Set up manual pricing'}
               </li>
               <li className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
@@ -756,11 +1019,13 @@ const ClientOnboardingWizard = ({ onComplete }) => {
                   companyRegistration: '', taxId: '', industry: '', companySize: '',
                   defaultTierId: 'tier_1', accountManager: '', creditLimit: 0,
                   paymentTerms: 'Net 30', importPriceHistory: true,
-                  hasExistingPricing: false, specialPricingNotes: ''
+                  hasExistingPricing: false, specialPricingNotes: '',
+                  autoCalculatePricing: true, preferredMarkupStrategy: 'standard'
                 });
                 setPriceHistoryFile(null);
                 setParsedPriceData([]);
                 setImportStats(null);
+                setPricingPreview(null);
               }}
               className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
             >
@@ -782,8 +1047,8 @@ const ClientOnboardingWizard = ({ onComplete }) => {
     <div className="max-w-4xl mx-auto p-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Client Onboarding</h1>
-        <p className="text-gray-600">Set up a new client with pricing history and account preferences</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Enhanced Client Onboarding</h1>
+        <p className="text-gray-600">Set up a new client with automated pricing, markup strategies, and pricing history</p>
       </div>
 
       {/* Progress Steps */}
@@ -824,8 +1089,9 @@ const ClientOnboardingWizard = ({ onComplete }) => {
         {currentStep === 1 && <BasicInfoStep />}
         {currentStep === 2 && <BusinessDetailsStep />}
         {currentStep === 3 && <AccountSetupStep />}
-        {currentStep === 4 && <PriceHistoryStep />}
-        {currentStep === 5 && <ReviewStep />}
+        {currentStep === 4 && <PricingStrategyStep />}
+        {currentStep === 5 && <PriceHistoryStep />}
+        {currentStep === 6 && <ReviewStep />}
       </div>
 
       {/* Navigation */}
