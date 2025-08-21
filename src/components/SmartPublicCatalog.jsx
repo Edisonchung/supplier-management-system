@@ -206,10 +206,9 @@ const loadRealProducts = async () => {
     console.log('📦 Loading products from products_public collection (FIXED)...');
     
     // ✅ CRITICAL FIX: Query products_public instead of products
+    // Simplified query to avoid index requirement
     const productsQuery = query(
       collection(db, 'products_public'),  // <-- FIXED: Was 'products'
-      where('visibility', '==', 'public'),
-      orderBy('updatedAt', 'desc'),
       limit(50)
     );
     
@@ -248,6 +247,14 @@ const loadRealProducts = async () => {
         viewCount: data.viewCount || 0,
         lastViewed: data.lastViewed
       };
+    })
+    // Filter out non-public products in JavaScript instead of database query
+    .filter(product => !product.visibility || product.visibility === 'public')
+    // Sort by most recent first
+    .sort((a, b) => {
+      const aTime = a.updatedAt?.toDate?.() || new Date(a.updatedAt || 0);
+      const bTime = b.updatedAt?.toDate?.() || new Date(b.updatedAt || 0);
+      return bTime - aTime;
     });
     
     console.log(`✅ Loaded ${realProducts.length} products from products_public`);
@@ -276,10 +283,9 @@ const loadRealProducts = async () => {
 const setupRealTimeProductUpdates = (onProductsUpdate) => {
   console.log('🔄 Setting up real-time updates from products_public...');
   
+  // Simplified query to avoid index requirement
   const productsQuery = query(
     collection(db, 'products_public'),  // <-- FIXED: Was 'products'
-    where('visibility', '==', 'public'),
-    orderBy('updatedAt', 'desc'),
     limit(50)
   );
   
