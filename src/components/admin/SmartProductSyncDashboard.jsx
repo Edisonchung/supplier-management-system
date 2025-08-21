@@ -1,5 +1,5 @@
 // Complete Enhanced SmartProductSyncDashboard.jsx
-// This preserves ALL your existing 600+ lines while adding pricing features
+// Updated with enhanced pricing integration and error handling
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
@@ -21,10 +21,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
-// Import new pricing components
+// Import enhanced pricing components
 import EnhancedPricingManager from './EnhancedPricingManager';
 import HistoricalPriceImporter from './HistoricalPriceImporter';
 import ClientOnboardingWizard from './ClientOnboardingWizard';
+
+// Import the enhanced pricing service
+import { PricingService } from '../../services/pricingService';
 
 const SmartProductSyncDashboard = () => {
   // ENHANCED STATE MANAGEMENT - Adding pricing while keeping all existing state
@@ -47,12 +50,14 @@ const SmartProductSyncDashboard = () => {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
 
-  // NEW: Pricing stats (addition only, no interference)
+  // ENHANCED: Pricing stats with better error handling
   const [pricingStats, setPricingStats] = useState({
     totalClients: 0,
     clientsWithSpecialPricing: 0,
     totalPriceHistory: 0,
-    recentOnboardings: 0
+    recentOnboardings: 0,
+    activeMarkupRules: 0,
+    averageMarkup: 0
   });
 
   // Enhanced tabs - keeping sync as default
@@ -64,50 +69,73 @@ const SmartProductSyncDashboard = () => {
     { id: 'analytics', name: 'Analytics', icon: BarChart }
   ];
 
-  // NEW: Load pricing statistics (non-interfering addition)
+  // ENHANCED: Load pricing statistics with better error handling
   const loadPricingStats = useCallback(async () => {
     try {
-      // Only load if pricing collections exist to avoid errors
-      const clientsQuery = query(collection(db, 'clients'), where('isActive', '==', true));
-      const clientsSnap = await getDocs(clientsQuery);
-      const totalClients = clientsSnap.size;
-
-      const specialPricingQuery = query(collection(db, 'client_specific_pricing'), where('isActive', '==', true));
-      const specialPricingSnap = await getDocs(specialPricingQuery);
-      const clientsWithSpecialPricing = new Set(specialPricingSnap.docs.map(doc => doc.data().clientId)).size;
-
-      const historyQuery = query(collection(db, 'price_history'), where('isActive', '==', true));
-      const historySnap = await getDocs(historyQuery);
-      const totalPriceHistory = historySnap.size;
-
+      // Use the enhanced pricing service for comprehensive stats
+      const stats = await PricingService.getPricingStats();
+      
+      // Get recent onboarding data
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const recentOnboardingQuery = query(
-        collection(db, 'client_onboarding'),
-        where('onboardingDate', '>=', thirtyDaysAgo)
-      );
-      const recentOnboardingSnap = await getDocs(recentOnboardingQuery);
-      const recentOnboardings = recentOnboardingSnap.size;
+      
+      try {
+        const recentOnboardingQuery = query(
+          collection(db, 'client_onboarding'),
+          where('onboardingDate', '>=', thirtyDaysAgo)
+        );
+        const recentOnboardingSnap = await getDocs(recentOnboardingQuery);
+        stats.recentOnboardings = recentOnboardingSnap.size;
+      } catch (onboardingError) {
+        console.log('Recent onboarding data not available:', onboardingError.message);
+        stats.recentOnboardings = 0;
+      }
 
-      setPricingStats({
-        totalClients,
-        clientsWithSpecialPricing,
-        totalPriceHistory,
-        recentOnboardings
-      });
+      setPricingStats(stats);
     } catch (error) {
-      // Silently handle errors if pricing collections don't exist yet
+      // Graceful fallback if pricing collections don't exist yet
       console.log('Pricing stats not available yet:', error.message);
       setPricingStats({
         totalClients: 0,
         clientsWithSpecialPricing: 0,
         totalPriceHistory: 0,
-        recentOnboardings: 0
+        recentOnboardings: 0,
+        activeMarkupRules: 0,
+        averageMarkup: 0
       });
     }
   }, []);
 
-  // YOUR ORIGINAL loadRealData FUNCTION - COMPLETELY PRESERVED
+  // ENHANCED: checkEligibility with pricing context
+  const checkEligibility = (product) => {
+    // Basic eligibility rules
+    if (!product.name || product.name.trim() === '') {
+      return { eligible: false, reason: 'Missing product name' };
+    }
+    
+    // Enhanced price validation - use cost context
+    const cost = product.supplierCost || product.cost || product.price || 0;
+    if (cost <= 0) {
+      return { eligible: false, reason: 'Invalid cost data' };
+    }
+    
+    if (product.stock === undefined || product.stock < 0) {
+      return { eligible: false, reason: 'Invalid stock level' };
+    }
+    
+    // Stock level 0 products are eligible but marked differently
+    if (product.stock === 0) {
+      return { eligible: true, reason: 'Eligible but out of stock' };
+    }
+    
+    if (product.status === 'discontinued') {
+      return { eligible: false, reason: 'Product discontinued' };
+    }
+    
+    return { eligible: true, reason: 'Eligible for sync' };
+  };
+
+  // ENHANCED: loadRealData with pricing context
   const loadRealData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -142,30 +170,43 @@ const SmartProductSyncDashboard = () => {
         }
       });
       
-      // Enhance internal products with sync status
+      // Enhance internal products with sync status and pricing context
       const enhancedProducts = internalProductsList.map(product => {
         const isPublic = syncedProductsMap.has(product.id);
         const eligible = checkEligibility(product);
+        
+        // Add pricing context
+        const cost = product.supplierCost || product.cost || product.price || 0;
+        const hasValidCost = cost > 0;
         
         return {
           ...product,
           syncStatus: isPublic ? 'synced' : 'not_synced',
           eligible: eligible.eligible,
           eligibilityReason: eligible.reason,
-          publicProduct: syncedProductsMap.get(product.id) || null
+          publicProduct: syncedProductsMap.get(product.id) || null,
+          
+          // Enhanced pricing context
+          internalCost: cost,
+          hasValidCost,
+          pricingReady: hasValidCost && eligible.eligible
         };
       });
       
       setInternalProducts(enhancedProducts);
       setPublicProducts(publicProductsList);
       
-      // Calculate stats
+      // Calculate enhanced stats
       const stats = {
         totalInternal: internalProductsList.length,
         totalPublic: publicProductsList.length,
         eligible: enhancedProducts.filter(p => p.eligible).length,
         syncRate: internalProductsList.length > 0 ? 
-          Math.round((publicProductsList.length / internalProductsList.length) * 100) : 0
+          Math.round((publicProductsList.length / internalProductsList.length) * 100) : 0,
+        
+        // Enhanced pricing stats
+        withValidCost: enhancedProducts.filter(p => p.hasValidCost).length,
+        pricingReady: enhancedProducts.filter(p => p.pricingReady).length
       };
       setSyncStats(stats);
       
@@ -179,34 +220,7 @@ const SmartProductSyncDashboard = () => {
     }
   }, []);
 
-  // YOUR ORIGINAL checkEligibility FUNCTION - COMPLETELY PRESERVED
-  const checkEligibility = (product) => {
-    // Basic eligibility rules
-    if (!product.name || product.name.trim() === '') {
-      return { eligible: false, reason: 'Missing product name' };
-    }
-    
-    if (!product.price || product.price <= 0) {
-      return { eligible: false, reason: 'Invalid price' };
-    }
-    
-    if (product.stock === undefined || product.stock < 0) {
-      return { eligible: false, reason: 'Invalid stock level' };
-    }
-    
-    // Stock level 0 products are eligible but marked differently
-    if (product.stock === 0) {
-      return { eligible: true, reason: 'Eligible but out of stock' };
-    }
-    
-    if (product.status === 'discontinued') {
-      return { eligible: false, reason: 'Product discontinued' };
-    }
-    
-    return { eligible: true, reason: 'Eligible for sync' };
-  };
-
-  // YOUR ORIGINAL syncProductToPublic FUNCTION - COMPLETELY PRESERVED
+  // ENHANCED: syncProductToPublic with pricing context
   const syncProductToPublic = async (internalProduct) => {
     try {
       // Check if already exists
@@ -220,14 +234,30 @@ const SmartProductSyncDashboard = () => {
         throw new Error('Product already synced');
       }
       
-      // Create public product
+      // Calculate pricing for public display
+      let displayPrice = internalProduct.price;
+      try {
+        const pricingResult = await PricingService.calculatePricingForProduct(internalProduct.id);
+        if (pricingResult.success && pricingResult.data.publicPrice) {
+          displayPrice = pricingResult.data.publicPrice;
+        }
+      } catch (pricingError) {
+        console.warn('Could not calculate pricing, using base price:', pricingError.message);
+        // Fallback to cost + 20% markup
+        const cost = internalProduct.supplierCost || internalProduct.cost || internalProduct.price || 0;
+        displayPrice = cost > 0 ? Math.round(cost * 1.2 * 100) / 100 : internalProduct.price;
+      }
+      
+      // Create public product with enhanced pricing
       const publicProduct = {
         internalProductId: internalProduct.id,
         displayName: internalProduct.name,
         description: internalProduct.description || 'Industrial product',
         pricing: {
-          listPrice: internalProduct.price,
-          currency: 'MYR'
+          listPrice: displayPrice,
+          currency: 'MYR',
+          internalCost: internalProduct.supplierCost || internalProduct.cost || internalProduct.price || 0,
+          hasCalculatedPricing: true
         },
         category: internalProduct.category || 'Industrial',
         subcategory: internalProduct.subcategory || 'General',
@@ -252,7 +282,7 @@ const SmartProductSyncDashboard = () => {
       // Add to public collection
       const docRef = await addDoc(collection(db, 'products_public'), publicProduct);
       
-      // Log the sync operation
+      // Enhanced sync logging
       const syncLog = {
         internalProductId: internalProduct.id,
         ecommerceProductId: docRef.id,
@@ -263,7 +293,10 @@ const SmartProductSyncDashboard = () => {
         metadata: {
           triggeredBy: 'admin_dashboard',
           productName: internalProduct.name,
-          adminUser: 'current_user'
+          adminUser: 'current_user',
+          pricingApplied: displayPrice !== internalProduct.price,
+          originalPrice: internalProduct.price,
+          displayPrice: displayPrice
         }
       };
       
@@ -276,7 +309,7 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // YOUR ORIGINAL handleSingleSync FUNCTION - COMPLETELY PRESERVED
+  // YOUR ORIGINAL FUNCTIONS - PRESERVED EXACTLY
   const handleSingleSync = async (product) => {
     setSyncing(true);
     try {
@@ -287,6 +320,7 @@ const SmartProductSyncDashboard = () => {
       if (result.success) {
         alert(`✅ Successfully synced "${product.name}" to public catalog!`);
         await loadRealData(); // Refresh data
+        await loadPricingStats(); // Refresh pricing stats
       } else {
         alert(`❌ Failed to sync: ${result.error}`);
       }
@@ -298,7 +332,6 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // YOUR ORIGINAL unsyncProduct FUNCTION - COMPLETELY PRESERVED
   const unsyncProduct = async (internalProductId, productName) => {
     try {
       console.log('Removing product from public catalog:', productName);
@@ -340,7 +373,6 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // YOUR ORIGINAL handleUnsync FUNCTION - COMPLETELY PRESERVED
   const handleUnsync = async (product) => {
     if (!confirm(`Remove "${product.name}" from public catalog? Customers will no longer see this product.`)) {
       return;
@@ -353,6 +385,7 @@ const SmartProductSyncDashboard = () => {
       if (result.success) {
         alert(`Successfully removed "${product.name}" from public catalog!`);
         await loadRealData(); // Refresh data
+        await loadPricingStats(); // Refresh pricing stats
       } else {
         alert(`Failed to remove: ${result.error}`);
       }
@@ -364,7 +397,6 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // YOUR ORIGINAL handleBulkSync FUNCTION - COMPLETELY PRESERVED
   const handleBulkSync = async () => {
     if (selectedProducts.size === 0) {
       alert('Please select products to sync');
@@ -396,6 +428,7 @@ const SmartProductSyncDashboard = () => {
       
       setSelectedProducts(new Set());
       await loadRealData(); // Refresh data
+      await loadPricingStats(); // Refresh pricing stats
       
     } catch (error) {
       alert(`Bulk sync failed: ${error.message}`);
@@ -404,7 +437,6 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // ENHANCED: handleBulkUnsync (this was missing from your original - adding it)
   const handleBulkUnsync = async () => {
     const syncedSelected = Array.from(selectedProducts).filter(id => {
       const product = internalProducts.find(p => p.id === id);
@@ -439,6 +471,7 @@ const SmartProductSyncDashboard = () => {
       alert(`Removal complete! ✅ ${results.success} success, ❌ ${results.failed} failed`);
       setSelectedProducts(new Set());
       await loadRealData();
+      await loadPricingStats();
 
     } catch (error) {
       alert(`Bulk unsync failed: ${error.message}`);
@@ -447,7 +480,6 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // YOUR ORIGINAL handleProductToggle FUNCTION - COMPLETELY PRESERVED
   const handleProductToggle = (productId) => {
     const newSelected = new Set(selectedProducts);
     if (newSelected.has(productId)) {
@@ -458,7 +490,6 @@ const SmartProductSyncDashboard = () => {
     setSelectedProducts(newSelected);
   };
 
-  // YOUR ORIGINAL handleSelectAll FUNCTION - COMPLETELY PRESERVED
   const handleSelectAll = () => {
     if (selectedProducts.size === filteredProducts.length && filteredProducts.length > 0) {
       setSelectedProducts(new Set());
@@ -467,7 +498,7 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // YOUR ORIGINAL filteredProducts MEMO - COMPLETELY PRESERVED
+  // ENHANCED: filteredProducts with pricing context
   const filteredProducts = useMemo(() => {
     return internalProducts.filter(product => {
       const matchesSearch = product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -481,19 +512,22 @@ const SmartProductSyncDashboard = () => {
           return matchesSearch && product.syncStatus === 'synced';
         case 'not_synced':
           return matchesSearch && product.syncStatus === 'not_synced';
+        case 'pricing_ready':
+          return matchesSearch && product.pricingReady;
+        case 'no_cost':
+          return matchesSearch && !product.hasValidCost;
         default:
           return matchesSearch;
       }
     });
   }, [internalProducts, filter, searchTerm]);
 
-  // ENHANCED: Load both existing data and pricing stats
+  // Enhanced useEffect with both data loading
   useEffect(() => {
     loadRealData();
-    loadPricingStats(); // Non-interfering addition
+    loadPricingStats();
   }, [loadRealData, loadPricingStats]);
 
-  // YOUR ORIGINAL getStatusIcon FUNCTION - COMPLETELY PRESERVED
   const getStatusIcon = (status) => {
     switch (status) {
       case 'synced':
@@ -505,24 +539,31 @@ const SmartProductSyncDashboard = () => {
     }
   };
 
-  // YOUR ORIGINAL getEligibilityBadge FUNCTION - COMPLETELY PRESERVED
+  // ENHANCED: getEligibilityBadge with pricing context
   const getEligibilityBadge = (product) => {
     if (product.eligible) {
-      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Eligible</span>;
+      if (product.pricingReady) {
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Ready</span>;
+      } else {
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Eligible</span>;
+      }
     } else {
       return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={product.eligibilityReason}>Not Eligible</span>;
     }
   };
 
-  // NEW: Enhanced Overview Cards (combining sync + pricing metrics)
+  // ENHANCED: Overview Cards with pricing metrics
   const EnhancedOverviewCards = () => (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       {/* Your original sync metrics */}
       <div className="bg-white p-6 rounded-lg shadow-sm border">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-500">Total Internal</p>
             <p className="text-2xl font-bold text-gray-900">{syncStats.totalInternal}</p>
+            <p className="text-xs text-gray-500">
+              {syncStats.withValidCost || 0} with valid cost
+            </p>
           </div>
           <Package className="w-8 h-8 text-blue-500" />
         </div>
@@ -533,17 +574,23 @@ const SmartProductSyncDashboard = () => {
           <div>
             <p className="text-sm font-medium text-gray-500">In Public Catalog</p>
             <p className="text-2xl font-bold text-green-600">{syncStats.totalPublic}</p>
+            <p className="text-xs text-gray-500">
+              {syncStats.syncRate}% sync rate
+            </p>
           </div>
           <Eye className="w-8 h-8 text-green-500" />
         </div>
       </div>
 
-      {/* New pricing metrics */}
+      {/* Enhanced pricing metrics */}
       <div className="bg-white p-6 rounded-lg shadow-sm border">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-gray-500">Active Clients</p>
             <p className="text-2xl font-bold text-purple-600">{pricingStats.totalClients}</p>
+            <p className="text-xs text-gray-500">
+              {pricingStats.clientsWithSpecialPricing} with special pricing
+            </p>
           </div>
           <Users className="w-8 h-8 text-purple-500" />
         </div>
@@ -552,8 +599,11 @@ const SmartProductSyncDashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow-sm border">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-500">Special Pricing</p>
-            <p className="text-2xl font-bold text-yellow-600">{pricingStats.clientsWithSpecialPricing}</p>
+            <p className="text-sm font-medium text-gray-500">Markup Rules</p>
+            <p className="text-2xl font-bold text-yellow-600">{pricingStats.activeMarkupRules}</p>
+            <p className="text-xs text-gray-500">
+              {pricingStats.averageMarkup ? `${pricingStats.averageMarkup.toFixed(1)}% avg` : 'No data'}
+            </p>
           </div>
           <Crown className="w-8 h-8 text-yellow-500" />
         </div>
@@ -561,10 +611,10 @@ const SmartProductSyncDashboard = () => {
     </div>
   );
 
-  // YOUR COMPLETE ORIGINAL PRODUCT SYNC PANEL - PRESERVED AS SEPARATE COMPONENT
+  // ENHANCED: ProductSyncPanel with pricing context
   const ProductSyncPanel = () => (
     <div className="space-y-6">
-      {/* Controls */}
+      {/* Enhanced Controls */}
       <div className="bg-white p-6 rounded-lg shadow-sm border">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           {/* Search and Filter */}
@@ -587,12 +637,14 @@ const SmartProductSyncDashboard = () => {
             >
               <option value="all">All Products</option>
               <option value="eligible">Eligible Only</option>
+              <option value="pricing_ready">Pricing Ready</option>
               <option value="synced">Synced</option>
               <option value="not_synced">Not Synced</option>
+              <option value="no_cost">Missing Cost Data</option>
             </select>
           </div>
 
-          {/* Action Buttons */}
+          {/* Enhanced Action Buttons */}
           <div className="flex gap-3">
             {selectedProducts.size > 0 && (
               <>
@@ -653,7 +705,10 @@ const SmartProductSyncDashboard = () => {
             )}
             
             <button
-              onClick={loadRealData}
+              onClick={() => {
+                loadRealData();
+                loadPricingStats();
+              }}
               disabled={loading}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2"
             >
@@ -664,7 +719,7 @@ const SmartProductSyncDashboard = () => {
         </div>
       </div>
 
-      {/* Product List - YOUR COMPLETE ORIGINAL IMPLEMENTATION */}
+      {/* ENHANCED: Product List with pricing context */}
       <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -701,11 +756,22 @@ const SmartProductSyncDashboard = () => {
                         {product.name}
                       </h4>
                       {getEligibilityBadge(product)}
+                      {!product.hasValidCost && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                          No Cost Data
+                        </span>
+                      )}
                     </div>
                     
                     <div className="text-xs text-gray-500 space-y-1">
                       <div>SKU: {product.sku || product.partNumber || 'N/A'}</div>
-                      <div>Price: RM {product.price || '0'} | Stock: {product.stock || '0'}</div>
+                      <div className="flex items-center gap-4">
+                        <span>Price: RM {product.price || '0'}</span>
+                        {product.hasValidCost && (
+                          <span className="text-green-600">Cost: RM {product.internalCost.toFixed(2)}</span>
+                        )}
+                        <span>Stock: {product.stock || '0'}</span>
+                      </div>
                       <div>Category: {product.category || 'Uncategorized'}</div>
                     </div>
                   </div>
@@ -759,7 +825,7 @@ const SmartProductSyncDashboard = () => {
     </div>
   );
 
-  // NEW: Enhanced Analytics Panel
+  // ENHANCED: Analytics Panel with comprehensive metrics
   const EnhancedAnalyticsPanel = () => (
     <div className="space-y-6">
       {/* Sync Analytics */}
@@ -770,6 +836,7 @@ const SmartProductSyncDashboard = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Sync Coverage</p>
               <p className="text-2xl font-semibold text-gray-900">{syncStats.syncRate}%</p>
+              <p className="text-xs text-gray-500">{syncStats.totalPublic} of {syncStats.totalInternal}</p>
             </div>
           </div>
         </div>
@@ -778,8 +845,9 @@ const SmartProductSyncDashboard = () => {
           <div className="flex items-center">
             <Target className="h-8 w-8 text-green-600" />
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Eligible Products</p>
-              <p className="text-2xl font-semibold text-gray-900">{syncStats.eligible}</p>
+              <p className="text-sm font-medium text-gray-500">Pricing Ready</p>
+              <p className="text-2xl font-semibold text-gray-900">{syncStats.pricingReady || 0}</p>
+              <p className="text-xs text-gray-500">Products with valid cost & eligibility</p>
             </div>
           </div>
         </div>
@@ -790,15 +858,16 @@ const SmartProductSyncDashboard = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Price Records</p>
               <p className="text-2xl font-semibold text-gray-900">{pricingStats.totalPriceHistory}</p>
+              <p className="text-xs text-gray-500">Historical pricing data points</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Pricing Analytics */}
+      {/* Enhanced Pricing Analytics */}
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h3 className="text-lg font-semibold mb-4">Pricing Analytics</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="flex items-center">
             <UserPlus className="h-6 w-6 text-blue-600 mr-3" />
             <div>
@@ -811,6 +880,45 @@ const SmartProductSyncDashboard = () => {
             <div>
               <p className="text-sm text-gray-500">Special Pricing</p>
               <p className="text-xl font-semibold">{pricingStats.clientsWithSpecialPricing}</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <Settings className="h-6 w-6 text-green-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Markup Rules</p>
+              <p className="text-xl font-semibold">{pricingStats.activeMarkupRules}</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <TrendingUp className="h-6 w-6 text-purple-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-500">Avg Markup</p>
+              <p className="text-xl font-semibold">
+                {pricingStats.averageMarkup ? `${pricingStats.averageMarkup.toFixed(1)}%` : 'N/A'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <h4 className="text-md font-medium mb-3">Recent Activity</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium">Recent Onboardings</p>
+                <p className="text-xs text-gray-500">Last 30 days</p>
+              </div>
+              <span className="text-lg font-semibold text-blue-600">{pricingStats.recentOnboardings}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium">Products Missing Cost</p>
+                <p className="text-xs text-gray-500">Need cost data</p>
+              </div>
+              <span className="text-lg font-semibold text-orange-600">
+                {syncStats.totalInternal - (syncStats.withValidCost || 0)}
+              </span>
             </div>
           </div>
         </div>
@@ -845,7 +953,10 @@ const SmartProductSyncDashboard = () => {
             <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-600">Error: {error}</p>
               <button 
-                onClick={loadRealData}
+                onClick={() => {
+                  loadRealData();
+                  loadPricingStats();
+                }}
                 className="mt-2 px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
               >
                 Retry
@@ -888,7 +999,7 @@ const SmartProductSyncDashboard = () => {
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Enhanced Quick Actions */}
         <div className="bg-white rounded-lg shadow-sm border p-6">
           <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
