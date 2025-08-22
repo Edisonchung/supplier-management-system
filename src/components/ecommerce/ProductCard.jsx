@@ -104,27 +104,35 @@ const EcommerceProductCard = ({
   }
 
   function parseStockValue(stockData) {
-    // Handle different stock data structures
+    // Handle different stock data structures comprehensively
     if (typeof stockData === 'number') {
-      return stockData;
+      return stockData >= 0 ? stockData : 0;
     }
     
     if (typeof stockData === 'string') {
       const parsed = parseInt(stockData, 10);
-      return isNaN(parsed) ? 0 : parsed;
+      return isNaN(parsed) ? 0 : Math.max(0, parsed);
     }
     
     if (typeof stockData === 'object' && stockData !== null) {
-      // Handle complex stock objects from Firestore
+      // Handle complex stock objects from Firestore - check all possible field names
       const possibleStockValues = [
         stockData.availableStock,
         stockData.stockLevel,
         stockData.currentStock,
         stockData.quantity,
         stockData.available,
-        stockData.stock
+        stockData.stock,
+        stockData.inStock,
+        stockData.physicalStock,
+        stockData.onHand,
+        stockData.inventory,
+        stockData.count,
+        stockData.units,
+        stockData.qty
       ];
       
+      // Try to find a valid numeric value
       for (const value of possibleStockValues) {
         if (typeof value === 'number' && value >= 0) {
           return value;
@@ -135,9 +143,28 @@ const EcommerceProductCard = ({
             return parsed;
           }
         }
+        // Handle boolean inStock field
+        if (typeof value === 'boolean' && stockData.hasOwnProperty('inStock')) {
+          return value ? 1 : 0; // Convert boolean to numeric
+        }
+      }
+      
+      // If object has complex structure, try to extract meaningful number
+      if (stockData.total || stockData.sum) {
+        const total = parseFloat(stockData.total || stockData.sum);
+        if (!isNaN(total) && total >= 0) return total;
+      }
+      
+      // Last resort: count object properties that might indicate stock
+      const numericProps = Object.values(stockData).filter(val => 
+        typeof val === 'number' && val >= 0 && val < 10000
+      );
+      if (numericProps.length > 0) {
+        return Math.max(...numericProps);
       }
       
       // If no valid stock value found in object, return 0
+      console.warn('Complex stock object detected, defaulting to 0:', stockData);
       return 0;
     }
     
@@ -452,13 +479,17 @@ const EcommerceProductCard = ({
           </button>
         </div>
 
-        {/* Debug Info (development only) */}
+        {/* Debug Info (development only) with Enhanced Safety */}
         {process.env.NODE_ENV === 'development' && productData.syncStatus && (
           <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-500">
-            <div>Sync: {productData.syncStatus}</div>
-            <div>Source: {productData.dataSource}</div>
+            <div>Sync: {String(productData.syncStatus)}</div>
+            <div>Source: {String(productData.dataSource)}</div>
             {productData.lastSyncedAt && (
               <div>Last sync: {new Date(productData.lastSyncedAt?.seconds * 1000).toLocaleString()}</div>
+            )}
+            <div>Raw stock type: {typeof product.stock}</div>
+            {typeof product.stock === 'object' && (
+              <div>Stock keys: {Object.keys(product.stock || {}).join(', ')}</div>
             )}
           </div>
         )}
