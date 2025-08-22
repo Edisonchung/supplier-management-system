@@ -1,7 +1,6 @@
 // src/components/SmartPublicCatalog.jsx
 // HiggsFlow Phase 2B - Smart Public Catalog with Enhanced E-commerce Integration
-// FIXED: CORS errors, React serialization issues, and resource loading problems
-// PRESERVES: All original functionality with enhanced error handling
+// Complete integration with EcommerceProductCard and EcommerceDataService
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
@@ -26,26 +25,25 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
-// ========== ENHANCED IMPORTS WITH FALLBACK ==========
-// Import EcommerceProductCard with fallback to internal component
+// Enhanced imports with fallback handling
 let EcommerceProductCard;
 let EcommerceDataService;
 
 try {
   EcommerceProductCard = require('./ecommerce/ProductCard').default;
 } catch (error) {
-  console.log('🔄 EcommerceProductCard not available, using internal component');
+  console.log('EcommerceProductCard not available, using fallback component');
   EcommerceProductCard = null;
 }
 
 try {
-  EcommerceDataService = require('../services/ecommerce/EcommerceDataService').default;
+  EcommerceDataService = require('../services/ecommerceDataService').default;
 } catch (error) {
-  console.log('🔄 EcommerceDataService not available, using direct Firestore');
+  console.log('EcommerceDataService not available, using direct Firestore');
   EcommerceDataService = null;
 }
 
-// ========== ENHANCED ANALYTICS SERVICE WITH CORS PROTECTION ==========
+// Enhanced Analytics Service
 class SafeAnalyticsService {
   constructor() {
     this.db = db;
@@ -55,7 +53,6 @@ class SafeAnalyticsService {
     this.batchQueue = [];
     this.mounted = true;
     
-    // Setup connection monitoring
     window.addEventListener('online', () => {
       this.isOnline = true;
       this.processBatchQueue();
@@ -65,14 +62,13 @@ class SafeAnalyticsService {
       this.isOnline = false;
     });
     
-    // Process queue periodically
     this.queueInterval = setInterval(() => {
       if (this.mounted) {
         this.processBatchQueue();
       }
     }, 30000);
     
-    console.log('📊 Real Analytics Service initialized:', this.sessionId);
+    console.log('Analytics Service initialized:', this.sessionId);
   }
 
   generateSessionId() {
@@ -88,7 +84,6 @@ class SafeAnalyticsService {
     return newId;
   }
 
-  // Safe event data sanitization to prevent React error #31
   sanitizeEventData(data) {
     if (!data || typeof data !== 'object') return data;
     
@@ -98,7 +93,6 @@ class SafeAnalyticsService {
       if (value === null || value === undefined) {
         sanitized[key] = null;
       } else if (typeof value === 'object') {
-        // Convert complex objects to strings to avoid React serialization issues
         try {
           sanitized[key] = JSON.stringify(value);
         } catch (err) {
@@ -116,32 +110,28 @@ class SafeAnalyticsService {
 
   async trackProductInteraction(data) {
     try {
-      // Sanitize data to prevent serialization errors
       const sanitizedData = this.sanitizeEventData(data);
       
       const interactionData = {
         ...sanitizedData,
         sessionId: this.sessionId,
         userId: this.userId,
-        timestamp: new Date().toISOString(), // Use ISO string instead of serverTimestamp for batching
+        timestamp: new Date().toISOString(),
         source: 'smart_catalog',
-        userAgent: navigator.userAgent.substring(0, 100), // Limit length
+        userAgent: navigator.userAgent.substring(0, 100),
         url: window.location.href,
-        referrer: (document.referrer || 'direct').substring(0, 100) // Limit length
+        referrer: (document.referrer || 'direct').substring(0, 100)
       };
 
-      // Add to batch queue instead of immediate write
       this.batchQueue.push(interactionData);
       
-      // Process immediately if online and queue is getting large
       if (this.isOnline && this.batchQueue.length >= 5) {
         await this.processBatchQueue();
       }
       
-      console.log(`📊 Tracked interaction: – "${data.eventType}"`);
+      console.log(`Tracked interaction: "${data.eventType}"`);
     } catch (error) {
-      console.warn('⚠️ Analytics tracking error:', error);
-      // Fallback to localStorage
+      console.warn('Analytics tracking error:', error);
       this.trackToLocalStorage(data);
     }
   }
@@ -153,10 +143,8 @@ class SafeAnalyticsService {
     this.batchQueue = [];
 
     try {
-      // Use Promise.all with individual error handling to prevent one failure from stopping all
       const promises = batchToProcess.map(async (event) => {
         try {
-          // Convert ISO timestamp to serverTimestamp for Firestore
           const firestoreEvent = {
             ...event,
             timestamp: serverTimestamp(),
@@ -167,18 +155,16 @@ class SafeAnalyticsService {
           return await addDoc(analyticsCollection, firestoreEvent);
         } catch (error) {
           console.warn('Failed to save individual event:', error);
-          // Add failed event back to localStorage
           this.trackToLocalStorage(event);
           return null;
         }
       });
 
       await Promise.allSettled(promises);
-      console.log(`📊 Processed ${batchToProcess.length} analytics events`);
+      console.log(`Processed ${batchToProcess.length} analytics events`);
       
     } catch (error) {
       console.warn('Batch processing error:', error);
-      // Re-add failed events to queue
       this.batchQueue.unshift(...batchToProcess);
     }
   }
@@ -192,14 +178,13 @@ class SafeAnalyticsService {
         timestamp: new Date().toISOString()
       });
       
-      // Keep only last 500 events to prevent storage overflow
       if (stored.length > 500) {
         stored.splice(0, stored.length - 500);
       }
       
       localStorage.setItem('higgsflow_analytics', JSON.stringify(stored));
     } catch (error) {
-      console.warn('⚠️ localStorage analytics error:', error);
+      console.warn('localStorage analytics error:', error);
     }
   }
 
@@ -214,7 +199,7 @@ class SafeAnalyticsService {
           collection(this.db, 'analytics_interactions'),
           where('timestamp', '>=', twentyFourHoursAgo),
           orderBy('timestamp', 'desc'),
-          limit(100) // Reduced limit to prevent large data transfer
+          limit(100)
         ),
         (snapshot) => {
           if (!this.mounted) return;
@@ -223,18 +208,16 @@ class SafeAnalyticsService {
           callback(metrics);
         },
         (error) => {
-          console.warn('⚠️ Real-time metrics error:', error);
-          // Fallback to localStorage metrics
+          console.warn('Real-time metrics error:', error);
           this.getLocalStorageMetrics(callback);
         }
       );
       
       return unsubscribe;
     } catch (error) {
-      console.warn('⚠️ Real-time subscription error:', error);
+      console.warn('Real-time subscription error:', error);
       this.getLocalStorageMetrics(callback);
       
-      // Return a dummy function to prevent errors
       return () => {};
     }
   }
@@ -256,7 +239,7 @@ class SafeAnalyticsService {
       
       callback(metrics);
     } catch (error) {
-      console.warn('⚠️ localStorage metrics error:', error);
+      console.warn('localStorage metrics error:', error);
       callback({
         activeSessions: 1,
         recentInteractions: 0,
@@ -271,7 +254,6 @@ class SafeAnalyticsService {
       const docData = doc.data();
       return {
         ...docData,
-        // Safely handle any Firestore timestamps
         timestamp: docData.timestamp?.toDate?.() || new Date(docData.originalTimestamp || docData.timestamp)
       };
     });
@@ -314,8 +296,7 @@ class SafeAnalyticsService {
   }
 
   calculateAverageTimeOnPage(data) {
-    // Simplified calculation
-    return Math.floor(Math.random() * 180) + 30; // 30-210 seconds
+    return Math.floor(Math.random() * 180) + 30;
   }
 
   cleanup() {
@@ -323,31 +304,30 @@ class SafeAnalyticsService {
     if (this.queueInterval) {
       clearInterval(this.queueInterval);
     }
-    // Process any remaining events
     if (this.batchQueue.length > 0) {
       this.processBatchQueue();
     }
   }
 }
 
-// ========== ENHANCED DATA LOADING WITH ERROR HANDLING ==========
+// Enhanced data loading function
 const loadRealProducts = async () => {
   try {
-    console.log('📦 Loading products from products_public collection...');
+    console.log('Loading products using EcommerceDataService...');
     
-    // Try to use EcommerceDataService if available
     if (EcommerceDataService) {
       try {
         const result = await EcommerceDataService.getPublicProducts({
           category: 'all',
           searchTerm: '',
           sortBy: 'relevance',
-          limit: 50
+          pageSize: 50
         });
-        console.log(`✅ Loaded ${result.products.length} products via EcommerceDataService`);
+        
+        console.log(`Loaded ${result.products.length} products via EcommerceDataService`);
+        
         return result.products.map(product => ({
           ...product,
-          // Ensure all required fields exist with safe defaults
           id: product.id || Math.random().toString(36),
           name: product.name || 'Unknown Product',
           code: product.code || product.sku || 'N/A',
@@ -362,11 +342,11 @@ const loadRealProducts = async () => {
           urgency: (product.stock || 0) < 5 ? 'urgent' : 'normal'
         }));
       } catch (serviceError) {
-        console.log('🔄 EcommerceDataService failed, using direct Firestore...');
+        console.log('EcommerceDataService failed, using direct Firestore...');
       }
     }
     
-    // Direct Firestore query with enhanced error handling
+    // Fallback to direct Firestore query
     const productsQuery = query(
       collection(db, 'products_public'),
       limit(50)
@@ -376,35 +356,22 @@ const loadRealProducts = async () => {
     const realProducts = snapshot.docs.map(doc => {
       const data = doc.data();
       
-      // Safe data extraction to prevent serialization issues
       return {
         id: doc.id,
         internalProductId: data.internalProductId || doc.id,
-        
-        // Basic product info with safe defaults
         name: data.displayName || data.name || 'Unknown Product',
         code: data.sku || data.code || data.partNumber || doc.id,
         category: data.category || 'General',
-        
-        // Pricing with safe number handling
         price: typeof data.price === 'number' ? data.price : 
                (typeof data.pricing?.listPrice === 'number' ? data.pricing.listPrice : 0),
-        
-        // Stock with safe number handling
         stock: typeof data.stock === 'number' ? data.stock : 0,
-        
-        // Supplier info with safe object handling
         supplier: {
           name: (typeof data.supplier === 'object' ? data.supplier?.name : null) || 'HiggsFlow Direct',
           location: (typeof data.supplier === 'object' ? data.supplier?.location : null) || 
                    data.location || 'Kuala Lumpur'
         },
-        
-        // Images with fallback
         image: (typeof data.images === 'object' ? data.images?.primary : null) || 
                data.image || '/api/placeholder/300/300',
-        
-        // Enhanced fields with safe calculations
         availability: calculateAvailability(data.stock || 0),
         deliveryTime: calculateDeliveryTime(data.stock || 0),
         urgency: (data.stock || 0) < 5 ? 'urgent' : 'normal',
@@ -412,13 +379,9 @@ const loadRealProducts = async () => {
                  data.location || 'Kuala Lumpur',
         featured: Boolean(data.featured) || (data.stock || 0) > 100,
         searchPriority: calculateSearchPriority(data),
-        
-        // Safe array/object handling
         tags: Array.isArray(data.tags) ? data.tags : generateTags(data),
         specifications: typeof data.specifications === 'object' ? data.specifications : {},
         certifications: Array.isArray(data.certifications) ? data.certifications : [],
-        
-        // Safe string/number defaults
         warranty: typeof data.warranty === 'string' ? data.warranty : '1 year standard warranty',
         minOrderQty: typeof data.minOrderQty === 'number' ? data.minOrderQty : 1,
         leadTime: typeof data.leadTime === 'string' ? data.leadTime : calculateDeliveryTime(data.stock || 0),
@@ -426,14 +389,11 @@ const loadRealProducts = async () => {
         rating: typeof data.rating === 'number' ? data.rating : (Math.random() * 2 + 3),
         reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : Math.floor(Math.random() * 50),
         viewCount: typeof data.viewCount === 'number' ? data.viewCount : 0,
-        
-        // Safe timestamp handling
         lastViewed: data.lastViewed?.toDate?.() || null,
         updatedAt: data.updatedAt?.toDate?.() || new Date(),
         createdAt: data.createdAt?.toDate?.() || new Date()
       };
     })
-    // Filter and sort with safe operations
     .filter(product => !product.visibility || product.visibility === 'public')
     .sort((a, b) => {
       const aTime = a.updatedAt || new Date(0);
@@ -441,15 +401,13 @@ const loadRealProducts = async () => {
       return bTime - aTime;
     });
     
-    console.log(`✅ Loaded ${realProducts.length} products from products_public`);
-    console.log('📊 Products loaded:', realProducts.slice(0, 5).map(p => p.name));
+    console.log(`Loaded ${realProducts.length} products from products_public fallback`);
     return realProducts;
     
   } catch (error) {
-    console.error('⚠️ Error loading products from products_public:', error);
-    console.log('🔄 Falling back to localStorage...');
+    console.error('Error loading products:', error);
     
-    // Enhanced localStorage fallback
+    // Final fallback to localStorage
     try {
       const localProducts = JSON.parse(localStorage.getItem('products') || '[]');
       return localProducts.map(product => ({
@@ -467,15 +425,15 @@ const loadRealProducts = async () => {
         tags: Array.isArray(product.tags) ? product.tags : generateTags(product)
       }));
     } catch (localError) {
-      console.error('⚠️ localStorage fallback failed:', localError);
+      console.error('localStorage fallback failed:', localError);
       return [];
     }
   }
 };
 
-// ========== REAL-TIME SUBSCRIPTION WITH ENHANCED ERROR HANDLING ==========
+// Real-time subscription setup
 const setupRealTimeProductUpdates = (onProductsUpdate) => {
-  console.log('📄 Setting up real-time updates from products_public...');
+  console.log('Setting up real-time updates...');
   
   try {
     const productsQuery = query(
@@ -491,7 +449,6 @@ const setupRealTimeProductUpdates = (onProductsUpdate) => {
           return {
             id: doc.id,
             ...data,
-            // Safe field mapping
             name: data.displayName || data.name || 'Unknown Product',
             code: data.sku || data.code || doc.id,
             price: typeof data.price === 'number' ? data.price : 
@@ -504,22 +461,20 @@ const setupRealTimeProductUpdates = (onProductsUpdate) => {
           };
         });
         
-        console.log(`📄 Real-time update: ${products.length} products from products_public`);
-        console.log(`📄 Real-time products update received: – ${products.length}`);
+        console.log(`Real-time update: ${products.length} products`);
         onProductsUpdate(products);
       }, 
       (error) => {
-        console.error('⚠️ Real-time subscription error:', error);
-        // Don't throw - let the app continue with existing data
+        console.error('Real-time subscription error:', error);
       }
     );
   } catch (error) {
-    console.error('⚠️ Failed to setup real-time subscription:', error);
-    return () => {}; // Return dummy unsubscribe function
+    console.error('Failed to setup real-time subscription:', error);
+    return () => {};
   }
 };
 
-// Helper functions for product enhancement
+// Helper functions
 const calculateAvailability = (stock) => {
   if (typeof stock !== 'number') stock = 0;
   if (stock > 10) return 'In Stock';
@@ -557,16 +512,15 @@ const generateTags = (product) => {
   return tags;
 };
 
-// ========== FACTORY IDENTIFICATION WITH ENHANCED ERROR HANDLING ==========
+// Factory identification
 const identifyFactoryProfile = async (email, ipAddress) => {
   try {
-    console.log('🔍 Identifying factory profile...');
+    console.log('Identifying factory profile...');
     
     if (!email) {
       return { identified: false, profile: null };
     }
     
-    // Check existing factory registrations with error handling
     const factoryQuery = query(
       collection(db, 'factory_registrations'),
       where('email', '==', email)
@@ -576,7 +530,7 @@ const identifyFactoryProfile = async (email, ipAddress) => {
     
     if (!snapshot.empty) {
       const factory = snapshot.docs[0].data();
-      console.log('✅ Found existing factory profile:', factory.companyName);
+      console.log('Found existing factory profile:', factory.companyName);
       
       return {
         identified: true,
@@ -589,7 +543,6 @@ const identifyFactoryProfile = async (email, ipAddress) => {
       };
     }
     
-    // AI-powered domain analysis for new visitors
     const domainAnalysis = analyzeEmailDomain(email);
     
     return {
@@ -604,7 +557,7 @@ const identifyFactoryProfile = async (email, ipAddress) => {
     };
     
   } catch (error) {
-    console.error('⚠️ Factory identification error:', error);
+    console.error('Factory identification error:', error);
     return { identified: false, error: error.message };
   }
 };
@@ -612,7 +565,6 @@ const identifyFactoryProfile = async (email, ipAddress) => {
 const analyzeEmailDomain = (email) => {
   const domain = email.split('@')[1]?.toLowerCase() || '';
   
-  // Common business patterns
   if (domain.includes('manufacturing') || domain.includes('factory')) {
     return { companyType: 'Manufacturing', industry: 'Industrial' };
   }
@@ -626,9 +578,8 @@ const analyzeEmailDomain = (email) => {
   return { companyType: 'General Business', industry: 'General' };
 };
 
-// ========== ENHANCED FALLBACK PRODUCT CARD COMPONENT ==========
+// Fallback Product Card Component
 const FallbackProductCard = ({ product, viewMode = 'grid', onAddToCart, onRequestQuote, onAddToFavorites, onCompare, isInFavorites, isInComparison, onClick }) => {
-  // Safe product data extraction
   const safeProduct = useMemo(() => {
     if (!product) return {};
     
@@ -763,7 +714,6 @@ const FallbackProductCard = ({ product, viewMode = 'grid', onAddToCart, onReques
           }}
         />
         
-        {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-wrap gap-1">
           {safeProduct.featured && (
             <span className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs">
@@ -777,7 +727,6 @@ const FallbackProductCard = ({ product, viewMode = 'grid', onAddToCart, onReques
           )}
         </div>
         
-        {/* Availability Badge */}
         <div className="absolute top-2 right-2">
           <span className={`px-2 py-1 rounded-full text-xs ${
             safeProduct.availability === 'In Stock' ? 'bg-green-100 text-green-800' :
@@ -788,7 +737,6 @@ const FallbackProductCard = ({ product, viewMode = 'grid', onAddToCart, onReques
           </span>
         </div>
 
-        {/* Action Buttons Overlay */}
         <div className="absolute bottom-2 right-2 flex space-x-1">
           <button
             onClick={handleFavorite}
@@ -843,7 +791,6 @@ const FallbackProductCard = ({ product, viewMode = 'grid', onAddToCart, onReques
           </div>
         </div>
         
-        {/* Rating */}
         <div className="flex items-center mb-3">
           <div className="flex text-yellow-400">
             {[...Array(5)].map((_, i) => (
@@ -860,7 +807,6 @@ const FallbackProductCard = ({ product, viewMode = 'grid', onAddToCart, onReques
           </span>
         </div>
         
-        {/* Action Buttons */}
         <div className="flex space-x-2">
           <button
             onClick={handleRequestQuote}
@@ -882,14 +828,13 @@ const FallbackProductCard = ({ product, viewMode = 'grid', onAddToCart, onReques
   );
 };
 
-// ========== MAIN COMPONENT WITH ENHANCED ERROR HANDLING ==========
+// Main component
 const SmartPublicCatalog = () => {
-  // Component mounted tracking for cleanup
   const mountedRef = useRef(true);
   const unsubscribeRef = useRef(null);
   const analyticsServiceRef = useRef(null);
 
-  // Enhanced state management with real data
+  // State management
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
@@ -904,11 +849,8 @@ const SmartPublicCatalog = () => {
     location: 'all'
   });
 
-  // Shopping cart state
   const [guestCart, setGuestCart] = useState([]);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
-
-  // Quote request state
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [quoteForm, setQuoteForm] = useState({
@@ -921,18 +863,12 @@ const SmartPublicCatalog = () => {
     phone: ''
   });
 
-  // Favorites/Wishlist state
   const [favorites, setFavorites] = useState(new Set());
   const [showFavoritesPanel, setShowFavoritesPanel] = useState(false);
-
-  // Comparison state
   const [comparisonList, setComparisonList] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
-
-  // View mode state
   const [viewMode, setViewMode] = useState('grid');
 
-  // Real analytics state
   const [realTimeMetrics, setRealTimeMetrics] = useState({
     activeSessions: 0,
     recentInteractions: 0,
@@ -940,7 +876,7 @@ const SmartPublicCatalog = () => {
     topProducts: []
   });
 
-  // Initialize analytics service with cleanup
+  // Initialize analytics service
   useEffect(() => {
     if (!analyticsServiceRef.current) {
       analyticsServiceRef.current = new SafeAnalyticsService();
@@ -954,7 +890,7 @@ const SmartPublicCatalog = () => {
     };
   }, []);
 
-  // Load real products on component mount
+  // Load products on mount
   useEffect(() => {
     let isMounted = true;
     
@@ -972,11 +908,9 @@ const SmartPublicCatalog = () => {
         setProducts(realProducts);
         setFilteredProducts(realProducts);
         
-        // Generate AI recommendations based on real data
         const aiRecommendations = generateAIRecommendations(realProducts);
         setRecommendations(aiRecommendations);
         
-        // Track page load
         if (analyticsServiceRef.current) {
           await analyticsServiceRef.current.trackProductInteraction({
             eventType: 'catalog_page_load',
@@ -1004,7 +938,7 @@ const SmartPublicCatalog = () => {
     };
   }, []);
 
-  // Real-time subscription with enhanced cleanup
+  // Real-time subscription
   useEffect(() => {
     if (!mountedRef.current) return;
     
@@ -1013,12 +947,12 @@ const SmartPublicCatalog = () => {
         unsubscribeRef.current = setupRealTimeProductUpdates((updatedProducts) => {
           if (!mountedRef.current) return;
           
-          console.log('📄 Real-time products update received: –', updatedProducts.length);
+          console.log('Real-time products update received:', updatedProducts.length);
           setProducts(updatedProducts);
           setFilteredProducts(updatedProducts);
         });
       } catch (error) {
-        console.error('⚠️ Error setting up real-time subscription:', error);
+        console.error('Error setting up real-time subscription:', error);
       }
     };
     
@@ -1031,7 +965,7 @@ const SmartPublicCatalog = () => {
     };
   }, []);
 
-  // Subscribe to real-time analytics with cleanup
+  // Subscribe to analytics
   useEffect(() => {
     let unsubscribeAnalytics = null;
     
@@ -1045,7 +979,7 @@ const SmartPublicCatalog = () => {
           }
         });
       } catch (error) {
-        console.error('⚠️ Error setting up analytics:', error);
+        console.error('Error setting up analytics:', error);
       }
     };
     
@@ -1058,7 +992,7 @@ const SmartPublicCatalog = () => {
     };
   }, []);
 
-  // Load cart from localStorage with error handling
+  // Load cart from localStorage
   useEffect(() => {
     try {
       const storedCart = localStorage.getItem('higgsflow_guest_cart');
@@ -1071,7 +1005,7 @@ const SmartPublicCatalog = () => {
     }
   }, []);
 
-  // Save cart to localStorage with error handling
+  // Save cart to localStorage
   useEffect(() => {
     try {
       localStorage.setItem('higgsflow_guest_cart', JSON.stringify(guestCart));
@@ -1080,7 +1014,7 @@ const SmartPublicCatalog = () => {
     }
   }, [guestCart]);
 
-  // Load favorites from localStorage on component mount
+  // Load favorites
   useEffect(() => {
     try {
       const storedFavorites = localStorage.getItem('higgsflow_favorites');
@@ -1093,7 +1027,7 @@ const SmartPublicCatalog = () => {
     }
   }, []);
 
-  // Save favorites to localStorage when favorites change
+  // Save favorites
   useEffect(() => {
     try {
       localStorage.setItem('higgsflow_favorites', JSON.stringify(Array.from(favorites)));
@@ -1102,7 +1036,7 @@ const SmartPublicCatalog = () => {
     }
   }, [favorites]);
 
-  // Factory detection with error handling
+  // Factory detection
   useEffect(() => {
     const detectFactory = async () => {
       try {
@@ -1130,7 +1064,7 @@ const SmartPublicCatalog = () => {
     detectFactory();
   }, []);
 
-  // Enhanced cleanup on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       mountedRef.current = false;
@@ -1140,11 +1074,10 @@ const SmartPublicCatalog = () => {
     };
   }, []);
 
-  // Real product filtering with enhanced analytics
+  // Product filtering
   useEffect(() => {
     let filtered = [...products];
 
-    // Apply filters with safe string operations
     if (searchQuery && typeof searchQuery === 'string') {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(product =>
@@ -1153,7 +1086,6 @@ const SmartPublicCatalog = () => {
         (product.category || '').toLowerCase().includes(query)
       );
       
-      // Track search with analytics service
       if (analyticsServiceRef.current) {
         analyticsServiceRef.current.trackProductInteraction({
           eventType: 'search_performed',
@@ -1183,7 +1115,6 @@ const SmartPublicCatalog = () => {
       });
     }
 
-    // Safe sorting
     filtered.sort((a, b) => {
       if (a.featured !== b.featured) return b.featured - a.featured;
       if (a.searchPriority !== b.searchPriority) {
@@ -1198,7 +1129,7 @@ const SmartPublicCatalog = () => {
     setFilteredProducts(filtered);
   }, [products, searchQuery, activeFilters]);
 
-  // AI Recommendations based on real data
+  // AI Recommendations
   const generateAIRecommendations = useCallback((productList) => {
     if (!Array.isArray(productList)) return { featured: [], highStock: [], trending: [], forYou: [] };
     
@@ -1218,7 +1149,7 @@ const SmartPublicCatalog = () => {
     };
   }, [factoryProfile]);
 
-  // Enhanced event handlers with proper error handling
+  // Event handlers
   const handleAddToCart = useCallback(async (product, quantity = 1) => {
     if (!product || !product.id) return;
     
@@ -1239,7 +1170,6 @@ const SmartPublicCatalog = () => {
         }]);
       }
 
-      // Track add to cart
       if (analyticsServiceRef.current) {
         await analyticsServiceRef.current.trackProductInteraction({
           eventType: 'add_to_cart',
@@ -1256,7 +1186,6 @@ const SmartPublicCatalog = () => {
     }
   }, [guestCart, factoryProfile]);
 
-  // Handle quote request with enhanced error handling
   const handleQuoteRequest = useCallback(async (product) => {
     if (!product || !product.id) return;
     
@@ -1270,7 +1199,6 @@ const SmartPublicCatalog = () => {
         });
       }
 
-      // Pre-fill form if factory is identified
       if (factoryProfile?.identified) {
         setQuoteForm(prev => ({
           ...prev,
@@ -1288,7 +1216,6 @@ const SmartPublicCatalog = () => {
     }
   }, [factoryProfile]);
 
-  // Handle favorite toggle with enhanced error handling
   const handleFavoriteToggle = useCallback(async (product, event) => {
     if (event) event.stopPropagation();
     if (!product || !product.id) return;
@@ -1300,7 +1227,6 @@ const SmartPublicCatalog = () => {
       if (isFavorited) {
         newFavorites.delete(product.id);
         
-        // Track unfavorite
         if (analyticsServiceRef.current) {
           await analyticsServiceRef.current.trackProductInteraction({
             eventType: 'product_unfavorited',
@@ -1312,7 +1238,6 @@ const SmartPublicCatalog = () => {
       } else {
         newFavorites.add(product.id);
         
-        // Track favorite
         if (analyticsServiceRef.current) {
           await analyticsServiceRef.current.trackProductInteraction({
             eventType: 'product_favorited',
@@ -1329,7 +1254,6 @@ const SmartPublicCatalog = () => {
     }
   }, [favorites, factoryProfile]);
 
-  // Handle product comparison with enhanced error handling
   const handleProductComparison = useCallback(async (product, event) => {
     if (event) event.stopPropagation();
     if (!product || !product.id) return;
@@ -1340,7 +1264,6 @@ const SmartPublicCatalog = () => {
       } else if (comparisonList.length < 4) {
         setComparisonList(prev => [...prev, product.id]);
         
-        // Track comparison addition
         if (analyticsServiceRef.current) {
           await analyticsServiceRef.current.trackProductInteraction({
             eventType: 'product_added_to_comparison',
@@ -1357,7 +1280,6 @@ const SmartPublicCatalog = () => {
     }
   }, [comparisonList, factoryProfile]);
 
-  // Product click handler with enhanced error handling
   const handleProductClick = useCallback(async (product) => {
     if (!product || !product.id) return;
     
@@ -1377,12 +1299,10 @@ const SmartPublicCatalog = () => {
     }
   }, [factoryProfile]);
 
-  // Get favorite products for panel display
   const getFavoriteProducts = useCallback(() => {
     return products.filter(product => favorites.has(product.id));
   }, [products, favorites]);
 
-  // Enhanced quote submission with proper error handling
   const submitQuoteRequest = async () => {
     if (!selectedProduct || !quoteForm.email || !quoteForm.companyName) {
       alert('Please fill in required fields: Company Name and Email');
@@ -1391,41 +1311,30 @@ const SmartPublicCatalog = () => {
 
     try {
       const quoteData = {
-        // Product details with safe data extraction
         productId: selectedProduct.id,
         productName: selectedProduct.name || 'Unknown Product',
         productCode: selectedProduct.code || 'N/A',
         productPrice: typeof selectedProduct.price === 'number' ? selectedProduct.price : 0,
         productCategory: selectedProduct.category || 'General',
-        
-        // Quote details
         requestedQuantity: parseInt(quoteForm.quantity) || 1,
         urgency: quoteForm.urgency || 'normal',
         message: quoteForm.message || '',
-        
-        // Customer details
         companyName: quoteForm.companyName,
         contactName: quoteForm.contactName,
         email: quoteForm.email,
         phone: quoteForm.phone,
-        
-        // Metadata
         requestDate: serverTimestamp(),
         status: 'pending',
         source: 'public_catalog',
         sessionId: analyticsServiceRef.current?.sessionId || 'unknown',
         factoryId: factoryProfile?.profile?.id || null,
         estimatedValue: (typeof selectedProduct.price === 'number' ? selectedProduct.price : 0) * (parseInt(quoteForm.quantity) || 1),
-        
-        // Tracking
         ipAddress: 'browser',
-        userAgent: navigator.userAgent.substring(0, 100) // Limit length
+        userAgent: navigator.userAgent.substring(0, 100)
       };
 
-      // Save to Firestore
       await addDoc(collection(db, 'quote_requests'), quoteData);
       
-      // Track successful quote submission
       if (analyticsServiceRef.current) {
         await analyticsServiceRef.current.trackProductInteraction({
           eventType: 'quote_request_submitted',
@@ -1439,7 +1348,6 @@ const SmartPublicCatalog = () => {
 
       alert('Quote request submitted successfully! We will contact you within 24 hours.');
       
-      // Reset form and close modal
       setQuoteForm({
         quantity: 1,
         urgency: 'normal',
@@ -1458,13 +1366,11 @@ const SmartPublicCatalog = () => {
     }
   };
 
-  // Get unique categories for filter with safe array operations
   const categories = useMemo(() => {
     const cats = [...new Set(products.map(p => p.category).filter(Boolean))];
     return cats.sort();
   }, [products]);
 
-  // Choose the appropriate ProductCard component
   const ProductCardComponent = EcommerceProductCard || FallbackProductCard;
 
   if (loading) {
@@ -1473,7 +1379,7 @@ const SmartPublicCatalog = () => {
         <div className="text-center">
           <Loader2 className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
           <p className="mt-4 text-gray-600">Loading smart catalog...</p>
-          <p className="mt-2 text-sm text-gray-500">Reading from products_public collection</p>
+          <p className="mt-2 text-sm text-gray-500">Enhanced e-commerce integration</p>
         </div>
       </div>
     );
@@ -1499,7 +1405,7 @@ const SmartPublicCatalog = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header with Real-time Metrics */}
+      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -1513,9 +1419,7 @@ const SmartPublicCatalog = () => {
               </div>
             </div>
             
-            {/* Real-time Analytics Badge */}
             <div className="flex items-center space-x-4">
-              {/* Shopping Cart Badge */}
               {guestCart.length > 0 && (
                 <button
                   onClick={() => setShowCartDrawer(true)}
@@ -1529,7 +1433,6 @@ const SmartPublicCatalog = () => {
                 </button>
               )}
 
-              {/* Comparison Badge */}
               {comparisonList.length > 0 && (
                 <button
                   onClick={() => setShowComparison(true)}
@@ -1544,7 +1447,6 @@ const SmartPublicCatalog = () => {
                 {realTimeMetrics.recentInteractions} interactions today
               </div>
               
-              {/* Favorites Counter */}
               {favorites.size > 0 && (
                 <button
                   onClick={() => setShowFavoritesPanel(true)}
@@ -1570,7 +1472,6 @@ const SmartPublicCatalog = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Search */}
             <div className="md:col-span-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -1584,7 +1485,6 @@ const SmartPublicCatalog = () => {
               </div>
             </div>
             
-            {/* Category Filter */}
             <div>
               <select
                 value={activeFilters.category}
@@ -1598,7 +1498,6 @@ const SmartPublicCatalog = () => {
               </select>
             </div>
             
-            {/* Availability Filter */}
             <div>
               <select
                 value={activeFilters.availability}
@@ -1611,7 +1510,6 @@ const SmartPublicCatalog = () => {
               </select>
             </div>
 
-            {/* View Mode Toggle */}
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setViewMode('grid')}
@@ -1638,7 +1536,7 @@ const SmartPublicCatalog = () => {
           </div>
         </div>
 
-        {/* Enhanced Product Grid with Dynamic Component Selection */}
+        {/* Product Grid */}
         <div className={
           viewMode === 'grid' 
             ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
@@ -1709,7 +1607,7 @@ const SmartPublicCatalog = () => {
               </div>
 
               {/* Quote Form */}
-              <form className="space-y-4">
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1839,7 +1737,7 @@ const SmartPublicCatalog = () => {
                     Submit Quote Request
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         </div>
@@ -2213,12 +2111,12 @@ const SmartPublicCatalog = () => {
         </div>
       )}
 
-      {/* Footer with Real Analytics */}
+      {/* Footer */}
       <footer className="bg-white border-t mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between text-sm text-gray-500">
             <div>
-              Powered by HiggsFlow Smart Catalog - Enhanced e-commerce integration ready
+              Powered by HiggsFlow Smart Catalog - Enhanced e-commerce integration
             </div>
             <div className="flex items-center space-x-4">
               <span>Conversion Rate: {realTimeMetrics.conversionRate}%</span>
