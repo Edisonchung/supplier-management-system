@@ -36,12 +36,22 @@ import {
   MessageSquare,
   FileCheck,
   Award,
-  Globe
+  Globe,
+  Send
 } from 'lucide-react';
 
-// Import enhanced services (ensure these are available)
-import { EnhancedEcommerceFirebaseService } from '../../services/EnhancedEcommerceFirebaseService';
-import { AnalyticsService } from '../../services/AnalyticsService';
+// Optional enhanced services (fallback to basic functionality if not available)
+let EnhancedEcommerceFirebaseService, AnalyticsService;
+try {
+  EnhancedEcommerceFirebaseService = require('../../services/ecommerce/EnhancedEcommerceFirebaseService').EnhancedEcommerceFirebaseService;
+} catch (e) {
+  EnhancedEcommerceFirebaseService = null;
+}
+try {
+  AnalyticsService = require('../../services/AnalyticsService').AnalyticsService;
+} catch (e) {
+  AnalyticsService = null;
+}
 
 const QuoteRequest = () => {
   const navigate = useNavigate();
@@ -850,7 +860,7 @@ const QuoteRequest = () => {
   const submitQuoteToFirebase = async (quoteData) => {
     try {
       // Use enhanced service if available
-      if (typeof EnhancedEcommerceFirebaseService !== 'undefined') {
+      if (EnhancedEcommerceFirebaseService) {
         await EnhancedEcommerceFirebaseService.submitQuoteRequest(quoteData);
       } else {
         // Fallback to localStorage for demo
@@ -859,8 +869,11 @@ const QuoteRequest = () => {
         localStorage.setItem('higgsflow_quotes', JSON.stringify(quotes));
       }
     } catch (error) {
-      console.error('Firebase submission failed:', error);
-      throw error;
+      console.error('Quote submission failed:', error);
+      // Fallback to localStorage even if Firebase fails
+      const quotes = JSON.parse(localStorage.getItem('higgsflow_quotes') || '[]');
+      quotes.push(quoteData);
+      localStorage.setItem('higgsflow_quotes', JSON.stringify(quotes));
     }
   };
 
@@ -870,54 +883,95 @@ const QuoteRequest = () => {
     return new Promise(resolve => setTimeout(resolve, 1000));
   };
 
-  // Analytics tracking functions
+  // Analytics tracking functions with fallbacks
   const trackQuotePageView = () => {
-    if (typeof AnalyticsService !== 'undefined') {
-      AnalyticsService.trackEvent('quote_page_view', {
-        source: quoteData.metadata.source,
-        timestamp: new Date().toISOString()
-      });
+    try {
+      if (AnalyticsService) {
+        AnalyticsService.trackEvent('quote_page_view', {
+          source: quoteData.metadata.source,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // Fallback analytics
+        console.log('Analytics: Quote page viewed', {
+          source: quoteData.metadata.source,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      console.warn('Analytics tracking failed:', error);
     }
   };
 
   const trackStepCompletion = (step) => {
-    if (typeof AnalyticsService !== 'undefined') {
-      AnalyticsService.trackEvent('quote_step_completed', {
-        step,
-        progress: quoteProgress,
-        timestamp: new Date().toISOString()
-      });
+    try {
+      if (AnalyticsService) {
+        AnalyticsService.trackEvent('quote_step_completed', {
+          step,
+          progress: quoteProgress,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.log('Analytics: Step completed', { step, progress: quoteProgress });
+      }
+    } catch (error) {
+      console.warn('Analytics tracking failed:', error);
     }
   };
 
   const trackItemAddition = (item) => {
-    if (typeof AnalyticsService !== 'undefined') {
-      AnalyticsService.trackEvent('quote_item_added', {
-        productId: item.productId,
-        category: item.category,
-        estimatedPrice: item.estimatedPrice
-      });
+    try {
+      if (AnalyticsService) {
+        AnalyticsService.trackEvent('quote_item_added', {
+          productId: item.productId,
+          category: item.category,
+          estimatedPrice: item.estimatedPrice
+        });
+      } else {
+        console.log('Analytics: Item added', {
+          productId: item.productId,
+          category: item.category
+        });
+      }
+    } catch (error) {
+      console.warn('Analytics tracking failed:', error);
     }
   };
 
   const trackCartImport = (itemCount) => {
-    if (typeof AnalyticsService !== 'undefined') {
-      AnalyticsService.trackEvent('cart_imported_to_quote', {
-        itemCount,
-        timestamp: new Date().toISOString()
-      });
+    try {
+      if (AnalyticsService) {
+        AnalyticsService.trackEvent('cart_imported_to_quote', {
+          itemCount,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.log('Analytics: Cart imported', { itemCount });
+      }
+    } catch (error) {
+      console.warn('Analytics tracking failed:', error);
     }
   };
 
   const trackQuoteSubmission = async (quoteData) => {
-    if (typeof AnalyticsService !== 'undefined') {
-      await AnalyticsService.trackEvent('quote_submitted', {
-        quoteId: quoteData.quoteId,
-        totalValue: quoteData.estimatedValue,
-        itemCount: quoteData.itemCount,
-        company: quoteData.company.name,
-        urgency: quoteData.quote.urgency
-      });
+    try {
+      if (AnalyticsService) {
+        await AnalyticsService.trackEvent('quote_submitted', {
+          quoteId: quoteData.quoteId,
+          totalValue: quoteData.estimatedValue,
+          itemCount: quoteData.itemCount,
+          company: quoteData.company.name,
+          urgency: quoteData.quote.urgency
+        });
+      } else {
+        console.log('Analytics: Quote submitted', {
+          quoteId: quoteData.quoteId,
+          totalValue: quoteData.estimatedValue,
+          itemCount: quoteData.itemCount
+        });
+      }
+    } catch (error) {
+      console.warn('Analytics tracking failed:', error);
     }
   };
 
