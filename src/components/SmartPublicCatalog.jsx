@@ -28,7 +28,7 @@ import { db } from '../config/firebase';
 
 // ========== ENHANCED IMPORTS ==========
 import EcommerceProductCard from './ecommerce/ProductCard';
-// import EcommerceDataService from '../services/ecommerceDataService'; // Uncomment when ready
+import EcommerceDataService from '../services/ecommerceDataService';
 
 // ========== REAL ANALYTICS SERVICE ==========
 class RealAnalyticsService {
