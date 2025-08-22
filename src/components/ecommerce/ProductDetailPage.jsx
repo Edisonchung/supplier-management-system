@@ -1,4 +1,4 @@
-// Product Detail Page Component for Phase 2A
+// Updated Product Detail Page Component - Integrated with EcommerceDataService
 // File: src/components/ecommerce/ProductDetailPage.jsx
 
 import React, { useState, useEffect } from 'react';
@@ -27,13 +27,14 @@ import {
   ExternalLink,
   TrendingUp,
   Award,
-  Zap
+  Zap,
+  Package,
+  Tag
 } from 'lucide-react';
-import { EnhancedEcommerceAPIService } from '../../services/ecommerce/EnhancedEcommerceAPIService.js';
-import { db } from '../../config/firebase.js';
 
-// Initialize API service
-const ecommerceAPI = new EnhancedEcommerceAPIService(db);
+// Updated imports to use new services
+import EcommerceDataService from '../../services/ecommerceDataService';
+import { db } from '../../config/firebase';
 
 const ProductDetailPage = () => {
   const { productId } = useParams();
@@ -57,7 +58,7 @@ const ProductDetailPage = () => {
     return stored || 'guest_' + Date.now();
   });
 
-  // Load product data
+  // Load product data using new EcommerceDataService
   useEffect(() => {
     if (productId) {
       loadProductData();
@@ -69,30 +70,32 @@ const ProductDetailPage = () => {
       setLoading(true);
       setError(null);
 
-      // Load product details
-      const productData = await ecommerceAPI.getProduct(productId);
+      // Load product details using EcommerceDataService
+      const productData = await EcommerceDataService.getProductById(productId);
       setProduct(productData);
       
       // Set initial quantity to minimum order quantity
-      setSelectedQuantity(productData.inventory?.minimumOrderQty || 1);
+      setSelectedQuantity(productData.minOrderQty || 1);
 
-      // Load related products
-      const relatedData = await ecommerceAPI.getPublicProducts({
-        category: productData.category,
-        pageSize: 4
-      });
-      
-      // Filter out current product from related products
-      const filtered = relatedData.products.filter(p => p.id !== productId);
-      setRelatedProducts(filtered.slice(0, 4));
+      // Load related products from same category
+      if (productData.category) {
+        const relatedData = await EcommerceDataService.getPublicProducts({
+          category: productData.category,
+          pageSize: 4
+        });
+        
+        // Filter out current product from related products
+        const filtered = relatedData.products.filter(p => p.id !== productId);
+        setRelatedProducts(filtered.slice(0, 4));
+      }
 
-      // Track product view
-      ecommerceAPI.trackProductView(productId, {
-        userType: 'guest',
-        sessionId,
-        isNewViewer: true,
-        source: 'product_page'
-      });
+      // Track product view (if analytics service is available)
+      try {
+        // You can integrate analytics tracking here if needed
+        console.log('Product viewed:', productData.name);
+      } catch (analyticsError) {
+        console.warn('Analytics tracking failed:', analyticsError);
+      }
 
     } catch (err) {
       console.error('Error loading product:', err);
@@ -104,8 +107,35 @@ const ProductDetailPage = () => {
 
   const addToCart = async () => {
     try {
-      await ecommerceAPI.addToGuestCart(sessionId, productId, selectedQuantity);
-      showNotification(`${product.displayName} added to cart`, 'success');
+      // Get existing cart from localStorage
+      const existingCart = JSON.parse(localStorage.getItem('guest_cart') || '[]');
+      
+      // Check if product already exists in cart
+      const existingItemIndex = existingCart.findIndex(item => item.id === product.id);
+      
+      if (existingItemIndex >= 0) {
+        // Update quantity
+        existingCart[existingItemIndex].quantity += selectedQuantity;
+      } else {
+        // Add new item
+        existingCart.push({
+          id: product.id,
+          name: product.name || product.displayName,
+          price: product.price || product.customerPrice || product.displayPrice,
+          quantity: selectedQuantity,
+          image: product.imageUrl || product.image,
+          supplier: product.supplier,
+          category: product.category
+        });
+      }
+      
+      // Save updated cart
+      localStorage.setItem('guest_cart', JSON.stringify(existingCart));
+      
+      // Update cart count in header (trigger custom event)
+      window.dispatchEvent(new CustomEvent('cartUpdated'));
+      
+      showNotification(`${product.name || product.displayName} added to cart`, 'success');
     } catch (error) {
       console.error('Error adding to cart:', error);
       showNotification('Failed to add item to cart', 'error');
@@ -129,21 +159,21 @@ const ProductDetailPage = () => {
   };
 
   const calculateBestPrice = (quantity = selectedQuantity) => {
-    if (!product?.pricing?.bulkPricing?.length) {
-      return product?.pricing?.discountPrice || 0;
-    }
-
-    let bestPrice = product.pricing.discountPrice || 0;
-    let appliedDiscount = 0;
+    // Use the price from your ProductSyncService transformation
+    let basePrice = product.price || product.customerPrice || product.displayPrice || 0;
+    let discount = 0;
     
-    for (const tier of product.pricing.bulkPricing) {
-      if (quantity >= tier.minQty) {
-        bestPrice = tier.price;
-        appliedDiscount = tier.discount;
+    // Check for bulk pricing if available
+    if (product.bulkPricing && Array.isArray(product.bulkPricing)) {
+      for (const tier of product.bulkPricing) {
+        if (quantity >= tier.minQty) {
+          basePrice = tier.price;
+          discount = tier.discount || 0;
+        }
       }
     }
 
-    return { price: bestPrice, discount: appliedDiscount };
+    return { price: basePrice, discount };
   };
 
   const calculateTotal = () => {
@@ -152,9 +182,9 @@ const ProductDetailPage = () => {
   };
 
   const getSavings = () => {
-    const listPrice = product?.pricing?.listPrice || 0;
+    const originalPrice = product.originalPrice || product.price || 0;
     const { price } = calculateBestPrice();
-    return (listPrice - price) * selectedQuantity;
+    return Math.max(0, (originalPrice - price) * selectedQuantity);
   };
 
   const showNotification = (message, type = 'info') => {
@@ -168,15 +198,17 @@ const ProductDetailPage = () => {
     document.body.appendChild(notification);
     
     setTimeout(() => {
-      document.body.removeChild(notification);
+      if (document.body.contains(notification)) {
+        document.body.removeChild(notification);
+      }
     }, 3000);
   };
 
   const shareProduct = async () => {
     try {
       await navigator.share({
-        title: product.displayName,
-        text: product.shortDescription,
+        title: product.name || product.displayName,
+        text: product.description || product.customerDescription,
         url: window.location.href
       });
     } catch (error) {
@@ -186,11 +218,54 @@ const ProductDetailPage = () => {
     }
   };
 
-  const images = product ? [
-    product.images?.primary,
-    ...(product.images?.gallery || []),
-    product.images?.technical
-  ].filter(Boolean) : [];
+  // Get product images from the synced data structure
+  const getProductImages = () => {
+    if (!product) return [];
+    
+    const images = [];
+    
+    // Check different possible image fields from your sync service
+    if (product.imageUrl) images.push(product.imageUrl);
+    if (product.image) images.push(product.image);
+    if (product.images) {
+      if (typeof product.images === 'string') {
+        images.push(product.images);
+      } else if (Array.isArray(product.images)) {
+        images.push(...product.images);
+      } else if (typeof product.images === 'object') {
+        if (product.images.primary) images.push(product.images.primary);
+        if (product.images.gallery) images.push(...product.images.gallery);
+        if (product.images.technical) images.push(product.images.technical);
+      }
+    }
+    
+    // Remove duplicates and empty values
+    return [...new Set(images.filter(Boolean))];
+  };
+
+  const images = getProductImages();
+
+  // Get stock status based on your ProductSyncService data structure
+  const getStockStatus = () => {
+    if (!product) return { status: 'Unknown', color: 'gray', inStock: false };
+    
+    // Check availability from your sync service
+    if (product.availability === 'in_stock' || product.stock > 0) {
+      return { 
+        status: product.stock > 10 ? 'In Stock' : 'Limited Stock', 
+        color: 'green', 
+        inStock: true 
+      };
+    }
+    
+    if (product.availability === 'out_of_stock' || product.stock === 0) {
+      return { status: 'Made to Order', color: 'orange', inStock: false };
+    }
+    
+    return { status: 'Contact for Availability', color: 'gray', inStock: false };
+  };
+
+  const stockStatus = getStockStatus();
 
   if (loading) {
     return (
@@ -276,7 +351,7 @@ const ProductDetailPage = () => {
               {product.category}
             </button>
             <span>/</span>
-            <span className="text-gray-900">{product.displayName}</span>
+            <span className="text-gray-900">{product.name || product.displayName}</span>
           </div>
         </nav>
 
@@ -287,7 +362,7 @@ const ProductDetailPage = () => {
             <div className="mb-4">
               <img
                 src={images[selectedImage] || '/api/placeholder/600/600'}
-                alt={product.displayName}
+                alt={product.name || product.displayName}
                 className="w-full h-96 object-cover rounded-lg shadow-md bg-gray-100"
               />
             </div>
@@ -320,22 +395,22 @@ const ProductDetailPage = () => {
                   Featured Product
                 </span>
               )}
-              {product.trending && (
+              {product.badge && (
                 <span className="flex items-center gap-1 bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full">
                   <TrendingUp className="w-4 h-4" />
-                  Trending
+                  {product.badge}
                 </span>
               )}
-              {product.supplier?.verificationStatus === 'Verified' && (
+              {product.certifications && product.certifications.length > 0 && (
                 <span className="flex items-center gap-1 bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full">
                   <Shield className="w-4 h-4" />
-                  Verified Supplier
+                  Certified
                 </span>
               )}
-              {product.inventory?.stockStatus === 'In Stock' && (
+              {stockStatus.inStock && (
                 <span className="flex items-center gap-1 bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full">
                   <CheckCircle className="w-4 h-4" />
-                  In Stock
+                  {stockStatus.status}
                 </span>
               )}
             </div>
@@ -344,19 +419,21 @@ const ProductDetailPage = () => {
           {/* Product Information */}
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-4">
-              {product.displayName}
+              {product.name || product.displayName}
             </h1>
             
             <div className="flex items-center gap-4 mb-4">
               <span className="text-lg text-gray-600">{product.category}</span>
               <div className="flex items-center gap-1">
                 <Star className="w-5 h-5 text-yellow-400 fill-current" />
-                <span className="font-medium">{product.supplier?.rating || 4.5}</span>
-                <span className="text-gray-500">({Math.floor(Math.random() * 50) + 10} reviews)</span>
+                <span className="font-medium">{product.rating || product.customerRating || 4.5}</span>
+                <span className="text-gray-500">({product.reviewCount || Math.floor(Math.random() * 50) + 10} reviews)</span>
               </div>
             </div>
 
-            <p className="text-gray-700 mb-6 leading-relaxed">{product.fullDescription}</p>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              {product.description || product.customerDescription || product.fullDescription || 'Professional industrial component suitable for various applications.'}
+            </p>
 
             {/* Supplier Info */}
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -366,13 +443,13 @@ const ProductDetailPage = () => {
                     <Building2 className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{product.supplier?.name}</h3>
+                    <h3 className="font-semibold text-gray-900">{product.supplier || 'HiggsFlow Partner'}</h3>
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <MapPin className="w-4 h-4" />
-                      <span>{product.supplier?.location}</span>
+                      <span>{product.location || product.supplierLocation || 'Malaysia'}</span>
                       <span>•</span>
                       <Clock className="w-4 h-4" />
-                      <span>Response: {product.supplier?.responseTime}</span>
+                      <span>Response: 24h</span>
                     </div>
                   </div>
                 </div>
@@ -392,9 +469,9 @@ const ProductDetailPage = () => {
                 <span className="text-3xl font-bold text-blue-600">
                   RM {calculateBestPrice().price.toLocaleString()}
                 </span>
-                {product.pricing?.discountPercentage > 0 && (
+                {product.originalPrice && product.originalPrice > calculateBestPrice().price && (
                   <span className="text-xl text-gray-500 line-through">
-                    RM {product.pricing.listPrice.toLocaleString()}
+                    RM {product.originalPrice.toLocaleString()}
                   </span>
                 )}
                 {calculateBestPrice().discount > 0 && (
@@ -404,11 +481,11 @@ const ProductDetailPage = () => {
                 )}
               </div>
               
-              {product.pricing?.bulkPricing?.length > 0 && (
+              {product.bulkPricing && product.bulkPricing.length > 0 && (
                 <div className="text-sm text-purple-600 mb-4">
                   <p className="font-medium mb-2">Volume Discounts Available:</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {product.pricing.bulkPricing.map((tier, index) => (
+                    {product.bulkPricing.map((tier, index) => (
                       <div 
                         key={index} 
                         className={`p-2 rounded border ${
@@ -434,11 +511,11 @@ const ProductDetailPage = () => {
               <div className="flex items-center gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Quantity (Min: {product.inventory?.minimumOrderQty || 1})
+                    Quantity (Min: {product.minOrderQty || 1})
                   </label>
                   <div className="flex items-center border border-gray-300 rounded-lg">
                     <button
-                      onClick={() => setSelectedQuantity(Math.max(product.inventory?.minimumOrderQty || 1, selectedQuantity - 1))}
+                      onClick={() => setSelectedQuantity(Math.max(product.minOrderQty || 1, selectedQuantity - 1))}
                       className="p-2 hover:bg-gray-100 rounded-l-lg"
                     >
                       <Minus className="w-4 h-4" />
@@ -446,9 +523,9 @@ const ProductDetailPage = () => {
                     <input
                       type="number"
                       value={selectedQuantity}
-                      onChange={(e) => setSelectedQuantity(Math.max(product.inventory?.minimumOrderQty || 1, parseInt(e.target.value) || 1))}
+                      onChange={(e) => setSelectedQuantity(Math.max(product.minOrderQty || 1, parseInt(e.target.value) || 1))}
                       className="w-24 px-3 py-2 text-center border-0 focus:ring-0"
-                      min={product.inventory?.minimumOrderQty || 1}
+                      min={product.minOrderQty || 1}
                     />
                     <button
                       onClick={() => setSelectedQuantity(selectedQuantity + 1)}
@@ -474,25 +551,22 @@ const ProductDetailPage = () => {
 
               {/* Stock Status */}
               <div className="flex items-center gap-2 mb-4">
-                <div className={`w-3 h-3 rounded-full ${
-                  product.inventory?.stockStatus === 'In Stock' ? 'bg-green-500' : 
-                  product.inventory?.stockStatus === 'Limited Stock' ? 'bg-orange-500' : 'bg-red-500'
-                }`}></div>
-                <span className="text-sm font-medium text-gray-700">{product.inventory?.stockStatus}</span>
+                <div className={`w-3 h-3 rounded-full bg-${stockStatus.color}-500`}></div>
+                <span className="text-sm font-medium text-gray-700">{stockStatus.status}</span>
                 <span className="text-sm text-gray-500">•</span>
                 <Truck className="w-4 h-4 text-gray-500" />
-                <span className="text-sm text-gray-500">Ships in {product.inventory?.leadTime}</span>
+                <span className="text-sm text-gray-500">Ships in {product.leadTime || '3-5 days'}</span>
               </div>
 
               {/* Action Buttons */}
               <div className="flex gap-3 mb-4">
                 <button
                   onClick={addToCart}
-                  disabled={product.inventory?.stockStatus === 'Out of Stock'}
+                  disabled={!stockStatus.inStock}
                   className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <ShoppingCart className="w-5 h-5" />
-                  Add to Cart
+                  {stockStatus.inStock ? 'Add to Cart' : 'Request Quote'}
                 </button>
                 
                 <button
@@ -568,13 +642,15 @@ const ProductDetailPage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Product Description</h3>
-                  <p className="text-gray-700 leading-relaxed mb-4">{product.fullDescription}</p>
+                  <p className="text-gray-700 leading-relaxed mb-4">
+                    {product.description || product.customerDescription || product.fullDescription || 'Professional industrial component designed for reliable performance in demanding applications.'}
+                  </p>
                   
-                  {product.features?.length > 0 && (
+                  {product.keySpecs && product.keySpecs.length > 0 && (
                     <div>
                       <h4 className="font-medium mb-3">Key Features:</h4>
                       <ul className="space-y-2">
-                        {product.features.map((feature, index) => (
+                        {product.keySpecs.map((feature, index) => (
                           <li key={index} className="flex items-start gap-2">
                             <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                             <span className="text-gray-700">{feature}</span>
@@ -594,19 +670,19 @@ const ProductDetailPage = () => {
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-gray-600">Brand:</dt>
-                      <dd className="font-medium">{product.supplier?.name}</dd>
+                      <dd className="font-medium">{product.brand || product.supplier}</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-gray-600">Minimum Order:</dt>
-                      <dd className="font-medium">{product.inventory?.minimumOrderQty || 1} units</dd>
+                      <dd className="font-medium">{product.minOrderQty || 1} units</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-gray-600">Lead Time:</dt>
-                      <dd className="font-medium">{product.inventory?.leadTime}</dd>
+                      <dd className="font-medium">{product.leadTime || '3-5 days'}</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-gray-600">Origin:</dt>
-                      <dd className="font-medium">{product.supplier?.location}</dd>
+                      <dd className="font-medium">{product.location || product.supplierLocation || 'Malaysia'}</dd>
                     </div>
                   </dl>
                 </div>
@@ -616,7 +692,7 @@ const ProductDetailPage = () => {
             {activeTab === 'specifications' && (
               <div>
                 <h3 className="text-lg font-semibold mb-4">Technical Specifications</h3>
-                {Object.keys(product.specifications || {}).length > 0 ? (
+                {product.specifications && Object.keys(product.specifications).length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                     {Object.entries(product.specifications).map(([key, value]) => (
                       <div key={key} className="border-b border-gray-100 pb-3">
@@ -643,7 +719,7 @@ const ProductDetailPage = () => {
             {activeTab === 'applications' && (
               <div>
                 <h3 className="text-lg font-semibold mb-4">Applications & Use Cases</h3>
-                {product.applications?.length > 0 ? (
+                {product.applications && product.applications.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {product.applications.map((application, index) => (
                       <div key={index} className="bg-gray-50 p-4 rounded-lg">
@@ -735,16 +811,16 @@ const ProductDetailPage = () => {
                   onClick={() => navigate(`/product/${relatedProduct.id}`)}
                 >
                   <img 
-                    src={relatedProduct.images?.primary || '/api/placeholder/300/200'}
-                    alt={relatedProduct.displayName}
+                    src={relatedProduct.imageUrl || relatedProduct.image || '/api/placeholder/300/200'}
+                    alt={relatedProduct.name || relatedProduct.displayName}
                     className="w-full h-40 object-cover"
                   />
                   <div className="p-4">
                     <h3 className="font-semibold text-gray-900 text-sm mb-2 line-clamp-2">
-                      {relatedProduct.displayName}
+                      {relatedProduct.name || relatedProduct.displayName}
                     </h3>
                     <p className="text-blue-600 font-bold">
-                      RM {(relatedProduct.pricing?.discountPrice || 0).toLocaleString()}
+                      RM {(relatedProduct.price || relatedProduct.customerPrice || relatedProduct.displayPrice || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -761,8 +837,8 @@ const ProductDetailPage = () => {
             <h3 className="text-lg font-semibold mb-4">Contact Supplier</h3>
             <div className="space-y-4">
               <div>
-                <strong>{product.supplier?.name}</strong>
-                <p className="text-gray-600">{product.supplier?.location}</p>
+                <strong>{product.supplier || 'HiggsFlow Partner'}</strong>
+                <p className="text-gray-600">{product.location || product.supplierLocation || 'Malaysia'}</p>
               </div>
               
               <div className="flex gap-3">
