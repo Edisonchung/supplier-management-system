@@ -1,5 +1,5 @@
 // src/components/ecommerce/ProductCard.jsx
-// E-commerce Product Card that works with your SmartProductSyncDashboard data
+// Optimized E-commerce Product Card for HiggsFlow SmartPublicCatalog Integration
 
 import React, { useState } from 'react';
 import { 
@@ -17,7 +17,8 @@ import {
   Package,
   DollarSign,
   Info,
-  ExternalLink
+  ExternalLink,
+  Eye
 } from 'lucide-react';
 
 const EcommerceProductCard = ({ 
@@ -26,113 +27,155 @@ const EcommerceProductCard = ({
   onRequestQuote, 
   onAddToFavorites, 
   onCompare,
+  onClick, // Added missing onClick handler
   onQuickView,
   isInFavorites = false,
   isInComparison = false,
   viewMode = 'grid' // 'grid' or 'list'
 }) => {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const [showTooltip, setShowTooltip] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
-  // Parse product data from your SmartProductSyncDashboard format
+  // Safely parse product data with fallbacks matching your Firestore structure
   const productData = {
-    // Core product info (from your sync dashboard)
-    id: product.id,
-    name: product.name,
-    sku: product.sku,
-    brand: product.brand,
-    category: product.category,
+    // Core product info (matching your products_public collection)
+    id: product.id || '',
+    name: product.name || product.displayName || 'Unknown Product',
+    sku: product.sku || product.code || product.partNumber || '',
+    brand: product.brand || product.manufacturer || '',
+    category: product.category || 'General',
     
-    // Pricing (handled by your dashboard's pricing logic)
-    price: product.displayPrice || product.customerPrice || product.price,
-    originalPrice: product.originalPrice || product.price,
+    // Pricing (matching your pricing structure)
+    price: product.price || product.pricing?.listPrice || 0,
+    originalPrice: product.originalPrice || product.pricing?.originalPrice || null,
     currency: product.currency || 'RM',
     
-    // E-commerce specific fields (from products_public collection)
+    // E-commerce specific fields
     visibility: product.visibility || 'public',
-    availability: product.availability || 'in_stock',
+    availability: product.availability || getAvailabilityFromStock(product.stock),
     featured: product.featured || false,
     
-    // Supplier info (transformed for customer view)
-    supplier: product.supplier || 'HiggsFlow Partner',
-    supplierLocation: product.supplierLocation || product.location || 'Malaysia',
+    // Supplier info (matching your supplier structure)
+    supplier: product.supplier?.name || product.supplier || 'HiggsFlow Partner',
+    supplierLocation: product.supplier?.location || product.location || 'Malaysia',
     
-    // Stock and delivery (transformed from internal data)
-    stockStatus: getStockStatus(product),
-    deliveryTime: getDeliveryTime(product),
-    quickDelivery: product.stock > 10,
+    // Stock and delivery
+    stock: product.stock || 0,
+    stockStatus: getStockStatus(product.stock),
+    deliveryTime: product.deliveryTime || getDeliveryTime(product.stock),
+    quickDelivery: (product.stock || 0) > 10,
     
-    // Customer-facing specifications
-    specifications: product.specifications || {},
+    // Specifications (safely handle object)
+    specifications: (typeof product.specifications === 'object' && product.specifications) ? 
+      product.specifications : {},
     keySpecs: extractKeySpecs(product),
-    applications: product.applications || [],
-    certifications: product.certifications || [],
+    applications: Array.isArray(product.applications) ? product.applications : [],
+    certifications: Array.isArray(product.certifications) ? product.certifications : [],
     
     // Social proof and ratings
-    rating: product.customerRating || product.rating || 4.5,
+    rating: product.rating || Math.random() * 2 + 3, // 3-5 range
     reviewCount: product.reviewCount || Math.floor(Math.random() * 50) + 5,
     
-    // E-commerce metadata
-    imageUrl: product.imageUrl || product.image || '/api/placeholder/300/200',
-    tags: product.tags || [],
-    industries: product.industries || [],
+    // Media
+    imageUrl: product.image || product.images?.primary || product.imageUrl || '/api/placeholder/300/200',
     
-    // Sync status for internal tracking (hidden from customers)
+    // Tags and categories
+    tags: Array.isArray(product.tags) ? product.tags : [],
+    industries: Array.isArray(product.industries) ? product.industries : [product.category].filter(Boolean),
+    
+    // Tracking fields (for debugging)
     syncStatus: product.syncStatus,
     lastSyncedAt: product.lastSyncedAt,
     internalProductId: product.internalProductId,
-    dataSource: product.dataSource
+    dataSource: product.dataSource,
+    viewCount: product.viewCount || 0
   };
 
-  // Helper functions to transform internal data for customer view
-  function getStockStatus(product) {
-    if (product.availability === 'out_of_stock' || product.stock === 0) {
-      return { status: 'out_of_stock', text: 'Made to Order', color: 'orange' };
-    }
-    if (product.stock && product.stock < 5) {
-      return { status: 'low_stock', text: 'Limited Stock', color: 'yellow' };
-    }
-    return { status: 'in_stock', text: 'In Stock', color: 'green' };
+  // Helper functions with proper fallbacks
+  function getAvailabilityFromStock(stock) {
+    const stockNum = Number(stock) || 0;
+    if (stockNum === 0) return 'out_of_stock';
+    if (stockNum < 5) return 'low_stock';
+    return 'in_stock';
   }
 
-  function getDeliveryTime(product) {
-    if (product.stock > 10) return '1-2 days';
-    if (product.stock > 0) return '3-5 days';
+  function getStockStatus(stock) {
+    const stockNum = Number(stock) || 0;
+    if (stockNum === 0) {
+      return { status: 'out_of_stock', text: 'Made to Order', colorClass: 'text-orange-600', bgClass: 'bg-orange-500' };
+    }
+    if (stockNum < 5) {
+      return { status: 'low_stock', text: 'Limited Stock', colorClass: 'text-yellow-600', bgClass: 'bg-yellow-500' };
+    }
+    return { status: 'in_stock', text: 'In Stock', colorClass: 'text-green-600', bgClass: 'bg-green-500' };
+  }
+
+  function getDeliveryTime(stock) {
+    const stockNum = Number(stock) || 0;
+    if (stockNum > 10) return '1-2 days';
+    if (stockNum > 0) return '3-5 days';
     return '2-3 weeks';
   }
 
   function extractKeySpecs(product) {
-    // Extract 2-3 most important specs for the card display
-    const specs = product.specifications || {};
+    const specs = (typeof product.specifications === 'object' && product.specifications) ? 
+      product.specifications : {};
     const keySpecs = [];
     
-    if (specs.model) keySpecs.push(specs.model);
+    // Extract most relevant specs for display
+    if (specs.model || specs.type) keySpecs.push(specs.model || specs.type);
     if (specs.voltage) keySpecs.push(`${specs.voltage}V`);
     if (specs.power) keySpecs.push(`${specs.power}W`);
     if (specs.material) keySpecs.push(specs.material);
+    if (specs.dimensions) keySpecs.push(specs.dimensions);
     
     return keySpecs.slice(0, 3);
   }
 
-  // Calculate savings percentage
+  // Calculate discount percentage safely
   const savings = productData.originalPrice && productData.originalPrice > productData.price ? 
     Math.round(((productData.originalPrice - productData.price) / productData.originalPrice) * 100) : 0;
 
-  // Industry badge color
-  const getIndustryColor = (industry) => {
-    const colors = {
-      'Manufacturing': 'bg-blue-100 text-blue-800',
-      'Electronics': 'bg-purple-100 text-purple-800',
-      'Automotive': 'bg-green-100 text-green-800',
-      'Food Processing': 'bg-yellow-100 text-yellow-800',
-      'Chemicals': 'bg-red-100 text-red-800'
-    };
-    return colors[industry] || 'bg-gray-100 text-gray-800';
+  // Handle all click events
+  const handleCardClick = (e) => {
+    // Don't trigger if clicking on buttons
+    if (e.target.closest('button')) return;
+    onClick?.(productData);
+  };
+
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
+    onAddToCart?.(productData);
+  };
+
+  const handleRequestQuote = (e) => {
+    e.stopPropagation();
+    onRequestQuote?.(productData);
+  };
+
+  const handleAddToFavorites = (e) => {
+    e.stopPropagation();
+    onAddToFavorites?.(productData, e);
+  };
+
+  const handleCompare = (e) => {
+    e.stopPropagation();
+    onCompare?.(productData, e);
+  };
+
+  const handleQuickView = (e) => {
+    e.stopPropagation();
+    onQuickView?.(productData);
   };
 
   // Grid view component
   const GridCard = () => (
-    <div className="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden relative">
+    <div 
+      className="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden relative cursor-pointer"
+      onClick={handleCardClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {/* Image Section */}
       <div className="relative">
         <div className="w-full h-48 bg-gray-100 overflow-hidden">
@@ -148,7 +191,10 @@ const EcommerceProductCard = ({
               isImageLoaded ? 'block' : 'hidden'
             }`}
             onLoad={() => setIsImageLoaded(true)}
-            onError={() => setIsImageLoaded(true)}
+            onError={(e) => {
+              e.target.src = '/api/placeholder/300/200';
+              setIsImageLoaded(true);
+            }}
           />
         </div>
         
@@ -183,24 +229,52 @@ const EcommerceProductCard = ({
           </div>
         )}
         
-        {/* Favorite Button */}
-        <button
-          onClick={() => onAddToFavorites?.(productData)}
-          className="absolute bottom-3 right-3 p-2 bg-white bg-opacity-90 rounded-full shadow-sm hover:bg-opacity-100 transition-all"
-        >
-          <Heart className={`w-4 h-4 ${isInFavorites ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
-        </button>
+        {/* Action Buttons Overlay - appears on hover */}
+        <div className={`absolute inset-x-3 bottom-3 transition-all duration-300 ${
+          isHovered ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-2'
+        }`}>
+          <div className="flex space-x-2">
+            <button
+              onClick={handleAddToFavorites}
+              className={`p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all ${
+                isInFavorites ? 'bg-red-50' : ''
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${isInFavorites ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
+            </button>
+            
+            {onCompare && (
+              <button
+                onClick={handleCompare}
+                className={`p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all ${
+                  isInComparison ? 'bg-blue-50' : ''
+                }`}
+              >
+                <BarChart3 className={`w-4 h-4 ${isInComparison ? 'text-blue-600' : 'text-gray-600'}`} />
+              </button>
+            )}
+            
+            {onQuickView && (
+              <button
+                onClick={handleQuickView}
+                className="p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all"
+              >
+                <Eye className="w-4 h-4 text-gray-600" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Content Section */}
       <div className="p-4">
-        {/* Product Name & Brand */}
+        {/* Product Name & SKU */}
         <div className="mb-2">
-          <h3 className="font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors cursor-pointer">
+          <h3 className="font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors">
             {productData.name}
           </h3>
-          {productData.brand && (
-            <p className="text-sm text-gray-600 mt-1">{productData.brand}</p>
+          {productData.sku && (
+            <p className="text-xs text-gray-500 mt-1">SKU: {productData.sku}</p>
           )}
         </div>
 
@@ -215,24 +289,24 @@ const EcommerceProductCard = ({
             ))}
           </div>
           <span className="text-sm text-gray-600 ml-2">
-            {productData.rating.toFixed(1)} ({productData.reviewCount} reviews)
+            {typeof productData.rating === 'number' ? productData.rating.toFixed(1) : '4.0'} ({productData.reviewCount})
           </span>
         </div>
 
-        {/* Industrial Information */}
+        {/* Supplier Information */}
         <div className="space-y-1.5 mb-3 text-sm text-gray-600">
           <div className="flex items-center">
-            <Factory className="w-4 h-4 mr-2 text-gray-400" />
-            <span className="font-medium">{productData.supplier}</span>
+            <Factory className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+            <span className="font-medium truncate">{productData.supplier}</span>
           </div>
           <div className="flex items-center">
-            <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-            <span>{productData.supplierLocation}</span>
+            <MapPin className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+            <span className="truncate">{productData.supplierLocation}</span>
           </div>
-          {productData.industries.length > 0 && (
+          {productData.viewCount > 0 && (
             <div className="flex items-center">
-              <Award className="w-4 h-4 mr-2 text-gray-400" />
-              <span>For {productData.industries[0]}</span>
+              <Eye className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+              <span>{productData.viewCount} views</span>
             </div>
           )}
         </div>
@@ -242,7 +316,7 @@ const EcommerceProductCard = ({
           <div className="mb-3">
             <div className="flex flex-wrap gap-1">
               {productData.keySpecs.map((spec, index) => (
-                <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs truncate">
                   {spec}
                 </span>
               ))}
@@ -254,7 +328,7 @@ const EcommerceProductCard = ({
         <div className="flex items-baseline space-x-2 mb-3">
           <span className="text-xl font-bold text-gray-900">
             {productData.currency} {typeof productData.price === 'number' ? 
-              productData.price.toLocaleString() : productData.price}
+              productData.price.toLocaleString() : '0'}
           </span>
           {productData.originalPrice && productData.originalPrice > productData.price && (
             <span className="text-sm text-gray-500 line-through">
@@ -266,8 +340,8 @@ const EcommerceProductCard = ({
 
         {/* Stock Status */}
         <div className="flex items-center mb-4">
-          <div className={`w-2 h-2 rounded-full mr-2 bg-${productData.stockStatus.color}-500`}></div>
-          <span className={`text-sm font-medium text-${productData.stockStatus.color}-600`}>
+          <div className={`w-2 h-2 rounded-full mr-2 ${productData.stockStatus.bgClass}`}></div>
+          <span className={`text-sm font-medium ${productData.stockStatus.colorClass}`}>
             {productData.stockStatus.text}
           </span>
           <span className="text-sm text-gray-500 ml-2">
@@ -278,8 +352,7 @@ const EcommerceProductCard = ({
         {/* Action Buttons */}
         <div className="flex gap-2">
           <button
-            onClick={() => productData.stockStatus.status === 'in_stock' ? 
-              onAddToCart?.(productData) : onRequestQuote?.(productData)}
+            onClick={productData.stockStatus.status === 'in_stock' ? handleAddToCart : handleRequestQuote}
             className={`flex-1 py-2.5 px-4 rounded-lg font-medium transition-all duration-200 flex items-center justify-center ${
               productData.stockStatus.status === 'in_stock'
                 ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md'
@@ -294,32 +367,13 @@ const EcommerceProductCard = ({
             ) : (
               <>
                 <MessageSquare className="w-4 h-4 mr-2" />
-                Request Quote
+                Get Quote
               </>
             )}
           </button>
-          
-          <button
-            onClick={() => onCompare?.(productData)}
-            className={`px-3 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ${
-              isInComparison ? 'bg-blue-50 border-blue-300' : ''
-            }`}
-            title="Compare"
-          >
-            <BarChart3 className="w-4 h-4" />
-          </button>
         </div>
 
-        {/* Quick View */}
-        <button
-          onClick={() => onQuickView?.(productData)}
-          className="w-full mt-2 py-2 text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center"
-        >
-          <Info className="w-4 h-4 mr-1" />
-          Quick View Details
-        </button>
-
-        {/* Debug Info (only in development) */}
+        {/* Debug Info (development only) */}
         {process.env.NODE_ENV === 'development' && productData.syncStatus && (
           <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-500">
             <div>Sync: {productData.syncStatus}</div>
@@ -333,32 +387,52 @@ const EcommerceProductCard = ({
     </div>
   );
 
-  // List view component (simplified for space)
+  // List view component
   const ListCard = () => (
-    <div className="group bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-200 transition-all duration-300 overflow-hidden">
+    <div 
+      className="group bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer"
+      onClick={handleCardClick}
+    >
       <div className="flex">
         {/* Image */}
-        <div className="flex-shrink-0 w-32 h-32 bg-gray-100 relative">
+        <div className="flex-shrink-0 w-32 h-32 bg-gray-100 relative overflow-hidden">
           <img 
             src={productData.imageUrl} 
             alt={productData.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => {
+              e.target.src = '/api/placeholder/128/128';
+            }}
           />
-          {productData.featured && (
-            <span className="absolute top-2 left-2 px-2 py-1 bg-yellow-600 text-white text-xs font-medium rounded flex items-center">
-              <Star className="w-3 h-3 mr-1 fill-current" />
-              Featured
-            </span>
-          )}
+          
+          {/* Badges */}
+          <div className="absolute top-2 left-2 flex flex-col gap-1">
+            {productData.featured && (
+              <span className="px-2 py-1 bg-yellow-600 text-white text-xs font-medium rounded flex items-center">
+                <Star className="w-3 h-3 mr-1 fill-current" />
+                Featured
+              </span>
+            )}
+            
+            {savings > 0 && (
+              <span className="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">
+                -{savings}%
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Content */}
         <div className="flex-1 p-4">
           <div className="flex justify-between">
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 mb-2">
+            <div className="flex-1 pr-4">
+              <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 mb-2 line-clamp-2">
                 {productData.name}
               </h3>
+              
+              {productData.sku && (
+                <p className="text-xs text-gray-500 mb-2">SKU: {productData.sku}</p>
+              )}
               
               <div className="flex items-center mb-2">
                 <div className="flex text-yellow-400 mr-2">
@@ -367,23 +441,34 @@ const EcommerceProductCard = ({
                   ))}
                 </div>
                 <span className="text-sm text-gray-600">
-                  {productData.rating.toFixed(1)} ({productData.reviewCount})
+                  {typeof productData.rating === 'number' ? productData.rating.toFixed(1) : '4.0'} ({productData.reviewCount})
                 </span>
               </div>
               
               <div className="flex items-center space-x-4 text-sm text-gray-600 mb-2">
                 <span className="flex items-center">
-                  <Factory className="w-4 h-4 mr-1" />
-                  {productData.supplier}
+                  <Factory className="w-4 h-4 mr-1 flex-shrink-0" />
+                  <span className="truncate">{productData.supplier}</span>
                 </span>
                 <span className="flex items-center">
-                  <MapPin className="w-4 h-4 mr-1" />
-                  {productData.supplierLocation}
+                  <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
+                  <span className="truncate">{productData.supplierLocation}</span>
+                </span>
+              </div>
+              
+              {/* Stock Status */}
+              <div className="flex items-center mb-2">
+                <div className={`w-2 h-2 rounded-full mr-2 ${productData.stockStatus.bgClass}`}></div>
+                <span className={`text-sm font-medium ${productData.stockStatus.colorClass}`}>
+                  {productData.stockStatus.text}
+                </span>
+                <span className="text-sm text-gray-500 ml-2">
+                  • {productData.deliveryTime}
                 </span>
               </div>
               
               {productData.keySpecs.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
+                <div className="flex flex-wrap gap-1">
                   {productData.keySpecs.slice(0, 3).map((spec, index) => (
                     <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
                       {spec}
@@ -394,11 +479,11 @@ const EcommerceProductCard = ({
             </div>
 
             {/* Price and Actions */}
-            <div className="flex flex-col items-end justify-between ml-4">
-              <div className="text-right mb-2">
+            <div className="flex flex-col items-end justify-between">
+              <div className="text-right mb-3">
                 <div className="text-xl font-bold text-gray-900">
                   {productData.currency} {typeof productData.price === 'number' ? 
-                    productData.price.toLocaleString() : productData.price}
+                    productData.price.toLocaleString() : '0'}
                 </div>
                 {productData.originalPrice && productData.originalPrice > productData.price && (
                   <div className="text-sm text-gray-500 line-through">
@@ -408,27 +493,30 @@ const EcommerceProductCard = ({
                 )}
               </div>
               
-              <div className="flex space-x-2">
+              <div className="flex flex-wrap gap-2 justify-end">
                 <button
-                  onClick={() => onAddToFavorites?.(productData)}
-                  className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  onClick={handleAddToFavorites}
+                  className={`p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ${
+                    isInFavorites ? 'bg-red-50 border-red-300' : ''
+                  }`}
                 >
                   <Heart className={`w-4 h-4 ${isInFavorites ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
                 </button>
                 
-                <button
-                  onClick={() => onCompare?.(productData)}
-                  className={`p-2 border border-gray-300 rounded-lg hover:bg-gray-50 ${
-                    isInComparison ? 'bg-blue-50 border-blue-300' : ''
-                  }`}
-                >
-                  <BarChart3 className="w-4 h-4" />
-                </button>
+                {onCompare && (
+                  <button
+                    onClick={handleCompare}
+                    className={`p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ${
+                      isInComparison ? 'bg-blue-50 border-blue-300' : ''
+                    }`}
+                  >
+                    <BarChart3 className={`w-4 h-4 ${isInComparison ? 'text-blue-600' : 'text-gray-600'}`} />
+                  </button>
+                )}
                 
                 <button
-                  onClick={() => productData.stockStatus.status === 'in_stock' ? 
-                    onAddToCart?.(productData) : onRequestQuote?.(productData)}
-                  className={`px-4 py-2 rounded-lg font-medium text-sm ${
+                  onClick={productData.stockStatus.status === 'in_stock' ? handleAddToCart : handleRequestQuote}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
                     productData.stockStatus.status === 'in_stock'
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'bg-orange-600 text-white hover:bg-orange-700'
