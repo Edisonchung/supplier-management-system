@@ -40,30 +40,30 @@ const EcommerceProductCard = ({
   const productData = {
     // Core product info (matching your products_public collection)
     id: product.id || '',
-    name: product.name || product.displayName || 'Unknown Product',
-    sku: product.sku || product.code || product.partNumber || '',
-    brand: product.brand || product.manufacturer || '',
-    category: product.category || 'General',
+    name: String(product.name || product.displayName || 'Unknown Product'),
+    sku: String(product.sku || product.code || product.partNumber || ''),
+    brand: String(product.brand || product.manufacturer || ''),
+    category: String(product.category || 'General'),
     
     // Pricing (matching your pricing structure)
-    price: product.price || product.pricing?.listPrice || 0,
-    originalPrice: product.originalPrice || product.pricing?.originalPrice || null,
-    currency: product.currency || 'RM',
+    price: parsePrice(product.price || product.pricing?.listPrice || 0),
+    originalPrice: parsePrice(product.originalPrice || product.pricing?.originalPrice || null),
+    currency: String(product.currency || 'RM'),
     
     // E-commerce specific fields
-    visibility: product.visibility || 'public',
-    availability: product.availability || getAvailabilityFromStock(product.stock),
-    featured: product.featured || false,
+    visibility: String(product.visibility || 'public'),
+    availability: String(product.availability || getAvailabilityFromStock(product.stock)),
+    featured: Boolean(product.featured),
     
     // Supplier info (matching your supplier structure)
-    supplier: product.supplier?.name || product.supplier || 'HiggsFlow Partner',
-    supplierLocation: product.supplier?.location || product.location || 'Malaysia',
+    supplier: String(product.supplier?.name || product.supplier || 'HiggsFlow Partner'),
+    supplierLocation: String(product.supplier?.location || product.location || 'Malaysia'),
     
     // Stock and delivery
-    stock: product.stock || 0,
+    stock: Number(product.stock) || 0,
     stockStatus: getStockStatus(product.stock),
-    deliveryTime: product.deliveryTime || getDeliveryTime(product.stock),
-    quickDelivery: (product.stock || 0) > 10,
+    deliveryTime: String(product.deliveryTime || getDeliveryTime(product.stock)),
+    quickDelivery: (Number(product.stock) || 0) > 10,
     
     // Specifications (safely handle object)
     specifications: (typeof product.specifications === 'object' && product.specifications) ? 
@@ -73,48 +73,34 @@ const EcommerceProductCard = ({
     certifications: Array.isArray(product.certifications) ? product.certifications : [],
     
     // Social proof and ratings
-    rating: product.rating || Math.random() * 2 + 3, // 3-5 range
-    reviewCount: product.reviewCount || Math.floor(Math.random() * 50) + 5,
+    rating: Number(product.rating) || Math.random() * 2 + 3, // 3-5 range
+    reviewCount: Number(product.reviewCount) || Math.floor(Math.random() * 50) + 5,
     
     // Media
-    imageUrl: product.image || product.images?.primary || product.imageUrl || '/api/placeholder/300/200',
+    imageUrl: String(product.image || product.images?.primary || product.imageUrl || '/api/placeholder/300/200'),
     
-    // Tags and categories
-    tags: Array.isArray(product.tags) ? product.tags : [],
-    industries: Array.isArray(product.industries) ? product.industries : [product.category].filter(Boolean),
+    // Tags and categories (ensure they're arrays of strings)
+    tags: Array.isArray(product.tags) ? product.tags.map(tag => String(tag)) : [],
+    industries: Array.isArray(product.industries) ? 
+      product.industries.map(ind => String(ind)) : 
+      [String(product.category)].filter(Boolean),
     
     // Tracking fields (for debugging)
-    syncStatus: product.syncStatus,
+    syncStatus: String(product.syncStatus || ''),
     lastSyncedAt: product.lastSyncedAt,
-    internalProductId: product.internalProductId,
-    dataSource: product.dataSource,
-    viewCount: product.viewCount || 0
+    internalProductId: String(product.internalProductId || ''),
+    dataSource: String(product.dataSource || ''),
+    viewCount: Number(product.viewCount) || 0
   };
 
   // Helper functions with proper fallbacks
-  function getAvailabilityFromStock(stock) {
-    const stockNum = Number(stock) || 0;
-    if (stockNum === 0) return 'out_of_stock';
-    if (stockNum < 5) return 'low_stock';
-    return 'in_stock';
-  }
-
-  function getStockStatus(stock) {
-    const stockNum = Number(stock) || 0;
-    if (stockNum === 0) {
-      return { status: 'out_of_stock', text: 'Made to Order', colorClass: 'text-orange-600', bgClass: 'bg-orange-500' };
+  function parsePrice(price) {
+    if (typeof price === 'number') return price;
+    if (typeof price === 'string') {
+      const parsed = parseFloat(price.replace(/[^\d.-]/g, ''));
+      return isNaN(parsed) ? 0 : parsed;
     }
-    if (stockNum < 5) {
-      return { status: 'low_stock', text: 'Limited Stock', colorClass: 'text-yellow-600', bgClass: 'bg-yellow-500' };
-    }
-    return { status: 'in_stock', text: 'In Stock', colorClass: 'text-green-600', bgClass: 'bg-green-500' };
-  }
-
-  function getDeliveryTime(stock) {
-    const stockNum = Number(stock) || 0;
-    if (stockNum > 10) return '1-2 days';
-    if (stockNum > 0) return '3-5 days';
-    return '2-3 weeks';
+    return 0;
   }
 
   function extractKeySpecs(product) {
@@ -122,14 +108,30 @@ const EcommerceProductCard = ({
       product.specifications : {};
     const keySpecs = [];
     
-    // Extract most relevant specs for display
-    if (specs.model || specs.type) keySpecs.push(specs.model || specs.type);
-    if (specs.voltage) keySpecs.push(`${specs.voltage}V`);
-    if (specs.power) keySpecs.push(`${specs.power}W`);
-    if (specs.material) keySpecs.push(specs.material);
-    if (specs.dimensions) keySpecs.push(specs.dimensions);
+    // Safely extract specs and convert objects to strings
+    if (specs.model || specs.type) {
+      const value = specs.model || specs.type;
+      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
+    if (specs.voltage) {
+      const value = specs.voltage;
+      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : `${value}V`);
+    }
+    if (specs.power) {
+      const value = specs.power;
+      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : `${value}W`);
+    }
+    if (specs.material) {
+      const value = specs.material;
+      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
+    if (specs.dimensions) {
+      const value = specs.dimensions;
+      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
     
-    return keySpecs.slice(0, 3);
+    // Filter out any invalid entries and limit to 3
+    return keySpecs.filter(spec => spec && spec !== 'undefined' && spec !== 'null').slice(0, 3);
   }
 
   // Calculate discount percentage safely
@@ -315,11 +317,17 @@ const EcommerceProductCard = ({
         {productData.keySpecs.length > 0 && (
           <div className="mb-3">
             <div className="flex flex-wrap gap-1">
-              {productData.keySpecs.map((spec, index) => (
-                <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs truncate">
-                  {spec}
-                </span>
-              ))}
+              {productData.keySpecs.map((spec, index) => {
+                // Ensure spec is a string and not too long
+                const specString = typeof spec === 'string' ? spec : String(spec);
+                const truncatedSpec = specString.length > 20 ? specString.substring(0, 20) + '...' : specString;
+                
+                return (
+                  <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs truncate">
+                    {truncatedSpec}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
@@ -469,11 +477,17 @@ const EcommerceProductCard = ({
               
               {productData.keySpecs.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {productData.keySpecs.slice(0, 3).map((spec, index) => (
-                    <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
-                      {spec}
-                    </span>
-                  ))}
+                  {productData.keySpecs.slice(0, 3).map((spec, index) => {
+                    // Ensure spec is a string and not too long
+                    const specString = typeof spec === 'string' ? spec : String(spec);
+                    const truncatedSpec = specString.length > 15 ? specString.substring(0, 15) + '...' : specString;
+                    
+                    return (
+                      <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                        {truncatedSpec}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
             </div>
