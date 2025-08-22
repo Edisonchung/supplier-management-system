@@ -25,23 +25,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
-// Enhanced imports with fallback handling
-let EcommerceProductCard;
-let EcommerceDataService;
-
-try {
-  EcommerceProductCard = require('./ecommerce/ProductCard').default;
-} catch (error) {
-  console.log('EcommerceProductCard not available, using fallback component');
-  EcommerceProductCard = null;
-}
-
-try {
-  EcommerceDataService = require('../services/ecommerceDataService').default;
-} catch (error) {
-  console.log('EcommerceDataService not available, using direct Firestore');
-  EcommerceDataService = null;
-}
+// Enhanced imports with proper ES6 syntax
+import EcommerceProductCard from './ecommerce/ProductCard';
+import EcommerceDataService from '../services/ecommerceDataService';
 
 // Enhanced Analytics Service
 class SafeAnalyticsService {
@@ -315,94 +301,93 @@ const loadRealProducts = async () => {
   try {
     console.log('Loading products using EcommerceDataService...');
     
-    if (EcommerceDataService) {
-      try {
-        const result = await EcommerceDataService.getPublicProducts({
-          category: 'all',
-          searchTerm: '',
-          sortBy: 'relevance',
-          pageSize: 50
-        });
-        
-        console.log(`Loaded ${result.products.length} products via EcommerceDataService`);
-        
-        return result.products.map(product => ({
-          ...product,
-          id: product.id || Math.random().toString(36),
-          name: product.name || 'Unknown Product',
-          code: product.code || product.sku || 'N/A',
-          price: typeof product.price === 'number' ? product.price : 0,
-          stock: typeof product.stock === 'number' ? product.stock : 0,
-          category: product.category || 'General',
-          image: product.image || '/api/placeholder/300/300',
-          availability: calculateAvailability(product.stock || 0),
-          deliveryTime: calculateDeliveryTime(product.stock || 0),
-          location: product.location || 'Kuala Lumpur',
-          featured: Boolean(product.featured),
-          urgency: (product.stock || 0) < 5 ? 'urgent' : 'normal'
-        }));
-      } catch (serviceError) {
-        console.log('EcommerceDataService failed, using direct Firestore...');
-      }
-    }
-    
-    // Fallback to direct Firestore query
-    const productsQuery = query(
-      collection(db, 'products_public'),
-      limit(50)
-    );
-    
-    const snapshot = await getDocs(productsQuery);
-    const realProducts = snapshot.docs.map(doc => {
-      const data = doc.data();
+    // Use EcommerceDataService as primary data source
+    try {
+      const result = await EcommerceDataService.getPublicProducts({
+        category: 'all',
+        searchTerm: '',
+        sortBy: 'relevance',
+        pageSize: 50
+      });
       
-      return {
-        id: doc.id,
-        internalProductId: data.internalProductId || doc.id,
-        name: data.displayName || data.name || 'Unknown Product',
-        code: data.sku || data.code || data.partNumber || doc.id,
-        category: data.category || 'General',
-        price: typeof data.price === 'number' ? data.price : 
-               (typeof data.pricing?.listPrice === 'number' ? data.pricing.listPrice : 0),
-        stock: typeof data.stock === 'number' ? data.stock : 0,
-        supplier: {
-          name: (typeof data.supplier === 'object' ? data.supplier?.name : null) || 'HiggsFlow Direct',
+      console.log(`Loaded ${result.products.length} products via EcommerceDataService`);
+      
+      return result.products.map(product => ({
+        ...product,
+        id: product.id || Math.random().toString(36),
+        name: product.name || 'Unknown Product',
+        code: product.code || product.sku || 'N/A',
+        price: typeof product.price === 'number' ? product.price : 0,
+        stock: typeof product.stock === 'number' ? product.stock : 0,
+        category: product.category || 'General',
+        image: product.image || '/api/placeholder/300/300',
+        availability: calculateAvailability(product.stock || 0),
+        deliveryTime: calculateDeliveryTime(product.stock || 0),
+        location: product.location || 'Kuala Lumpur',
+        featured: Boolean(product.featured),
+        urgency: (product.stock || 0) < 5 ? 'urgent' : 'normal'
+      }));
+    } catch (serviceError) {
+      console.log('EcommerceDataService failed, using direct Firestore fallback...');
+      
+      // Fallback to direct Firestore query
+      const productsQuery = query(
+        collection(db, 'products_public'),
+        limit(50)
+      );
+      
+      const snapshot = await getDocs(productsQuery);
+      const realProducts = snapshot.docs.map(doc => {
+        const data = doc.data();
+        
+        return {
+          id: doc.id,
+          internalProductId: data.internalProductId || doc.id,
+          name: data.displayName || data.name || 'Unknown Product',
+          code: data.sku || data.code || data.partNumber || doc.id,
+          category: data.category || 'General',
+          price: typeof data.price === 'number' ? data.price : 
+                 (typeof data.pricing?.listPrice === 'number' ? data.pricing.listPrice : 0),
+          stock: typeof data.stock === 'number' ? data.stock : 0,
+          supplier: {
+            name: (typeof data.supplier === 'object' ? data.supplier?.name : null) || 'HiggsFlow Direct',
+            location: (typeof data.supplier === 'object' ? data.supplier?.location : null) || 
+                     data.location || 'Kuala Lumpur'
+          },
+          image: (typeof data.images === 'object' ? data.images?.primary : null) || 
+                 data.image || '/api/placeholder/300/300',
+          availability: calculateAvailability(data.stock || 0),
+          deliveryTime: calculateDeliveryTime(data.stock || 0),
+          urgency: (data.stock || 0) < 5 ? 'urgent' : 'normal',
           location: (typeof data.supplier === 'object' ? data.supplier?.location : null) || 
-                   data.location || 'Kuala Lumpur'
-        },
-        image: (typeof data.images === 'object' ? data.images?.primary : null) || 
-               data.image || '/api/placeholder/300/300',
-        availability: calculateAvailability(data.stock || 0),
-        deliveryTime: calculateDeliveryTime(data.stock || 0),
-        urgency: (data.stock || 0) < 5 ? 'urgent' : 'normal',
-        location: (typeof data.supplier === 'object' ? data.supplier?.location : null) || 
-                 data.location || 'Kuala Lumpur',
-        featured: Boolean(data.featured) || (data.stock || 0) > 100,
-        searchPriority: calculateSearchPriority(data),
-        tags: Array.isArray(data.tags) ? data.tags : generateTags(data),
-        specifications: typeof data.specifications === 'object' ? data.specifications : {},
-        certifications: Array.isArray(data.certifications) ? data.certifications : [],
-        warranty: typeof data.warranty === 'string' ? data.warranty : '1 year standard warranty',
-        minOrderQty: typeof data.minOrderQty === 'number' ? data.minOrderQty : 1,
-        leadTime: typeof data.leadTime === 'string' ? data.leadTime : calculateDeliveryTime(data.stock || 0),
-        discount: typeof data.discount === 'number' ? data.discount : 0,
-        rating: typeof data.rating === 'number' ? data.rating : (Math.random() * 2 + 3),
-        reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : Math.floor(Math.random() * 50),
-        viewCount: typeof data.viewCount === 'number' ? data.viewCount : 0,
-        lastViewed: data.lastViewed?.toDate?.() || null,
-        updatedAt: data.updatedAt?.toDate?.() || new Date(),
-        createdAt: data.createdAt?.toDate?.() || new Date()
-      };
-    })
-    .filter(product => !product.visibility || product.visibility === 'public')
-    .sort((a, b) => {
-      const aTime = a.updatedAt || new Date(0);
-      const bTime = b.updatedAt || new Date(0);
-      return bTime - aTime;
-    });
-    
-    console.log(`Loaded ${realProducts.length} products from products_public fallback`);
-    return realProducts;
+                   data.location || 'Kuala Lumpur',
+          featured: Boolean(data.featured) || (data.stock || 0) > 100,
+          searchPriority: calculateSearchPriority(data),
+          tags: Array.isArray(data.tags) ? data.tags : generateTags(data),
+          specifications: typeof data.specifications === 'object' ? data.specifications : {},
+          certifications: Array.isArray(data.certifications) ? data.certifications : [],
+          warranty: typeof data.warranty === 'string' ? data.warranty : '1 year standard warranty',
+          minOrderQty: typeof data.minOrderQty === 'number' ? data.minOrderQty : 1,
+          leadTime: typeof data.leadTime === 'string' ? data.leadTime : calculateDeliveryTime(data.stock || 0),
+          discount: typeof data.discount === 'number' ? data.discount : 0,
+          rating: typeof data.rating === 'number' ? data.rating : (Math.random() * 2 + 3),
+          reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : Math.floor(Math.random() * 50),
+          viewCount: typeof data.viewCount === 'number' ? data.viewCount : 0,
+          lastViewed: data.lastViewed?.toDate?.() || null,
+          updatedAt: data.updatedAt?.toDate?.() || new Date(),
+          createdAt: data.createdAt?.toDate?.() || new Date()
+        };
+      })
+      .filter(product => !product.visibility || product.visibility === 'public')
+      .sort((a, b) => {
+        const aTime = a.updatedAt || new Date(0);
+        const bTime = b.updatedAt || new Date(0);
+        return bTime - aTime;
+      });
+      
+      console.log(`Loaded ${realProducts.length} products from direct Firestore fallback`);
+      return realProducts;
+    }
     
   } catch (error) {
     console.error('Error loading products:', error);
@@ -1371,7 +1356,7 @@ const SmartPublicCatalog = () => {
     return cats.sort();
   }, [products]);
 
-  const ProductCardComponent = EcommerceProductCard || FallbackProductCard;
+  const ProductCardComponent = EcommerceProductCard;
 
   if (loading) {
     return (
