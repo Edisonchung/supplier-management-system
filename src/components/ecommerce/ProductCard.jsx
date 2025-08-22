@@ -103,6 +103,31 @@ const EcommerceProductCard = ({
     return 0;
   }
 
+  function getAvailabilityFromStock(stock) {
+    const stockNum = Number(stock) || 0;
+    if (stockNum === 0) return 'out_of_stock';
+    if (stockNum < 5) return 'low_stock';
+    return 'in_stock';
+  }
+
+  function getStockStatus(stock) {
+    const stockNum = Number(stock) || 0;
+    if (stockNum === 0) {
+      return { status: 'out_of_stock', text: 'Made to Order', colorClass: 'text-orange-600', bgClass: 'bg-orange-500' };
+    }
+    if (stockNum < 5) {
+      return { status: 'low_stock', text: 'Limited Stock', colorClass: 'text-yellow-600', bgClass: 'bg-yellow-500' };
+    }
+    return { status: 'in_stock', text: 'In Stock', colorClass: 'text-green-600', bgClass: 'bg-green-500' };
+  }
+
+  function getDeliveryTime(stock) {
+    const stockNum = Number(stock) || 0;
+    if (stockNum > 10) return '1-2 days';
+    if (stockNum > 0) return '3-5 days';
+    return '2-3 weeks';
+  }
+
   function extractKeySpecs(product) {
     const specs = (typeof product.specifications === 'object' && product.specifications) ? 
       product.specifications : {};
