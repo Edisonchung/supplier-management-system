@@ -1,7 +1,7 @@
 // src/components/ecommerce/ProductCard.jsx
-// Optimized E-commerce Product Card for HiggsFlow SmartPublicCatalog Integration
+// Enhanced E-commerce Product Card with improved error handling and performance
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo, memo } from 'react';
 import { 
   Heart, 
   Star, 
@@ -18,255 +18,401 @@ import {
   DollarSign,
   Info,
   ExternalLink,
-  Eye
+  Eye,
+  AlertCircle,
+  CheckCircle,
+  Zap
 } from 'lucide-react';
 
-const EcommerceProductCard = ({ 
+// Memoized ProductCard component for better performance
+const EcommerceProductCard = memo(({ 
   product, 
   onAddToCart, 
   onRequestQuote, 
   onAddToFavorites, 
   onCompare,
-  onClick, // Added missing onClick handler
+  onClick,
   onQuickView,
   isInFavorites = false,
   isInComparison = false,
-  viewMode = 'grid' // 'grid' or 'list'
+  viewMode = 'grid', // 'grid' or 'list'
+  showQuickActions = true,
+  className = ''
 }) => {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
-  // Safely parse product data with fallbacks matching your Firestore structure
-  const productData = {
-    // Core product info (matching your products_public collection)
-    id: product.id || '',
-    name: String(product.name || product.displayName || 'Unknown Product'),
-    sku: String(product.sku || product.code || product.partNumber || ''),
-    brand: String(product.brand || product.manufacturer || ''),
-    category: String(product.category || 'General'),
-    
-    // Pricing (matching your pricing structure)
-    price: parsePrice(product.price || product.pricing?.listPrice || 0),
-    originalPrice: parsePrice(product.originalPrice || product.pricing?.originalPrice || null),
-    currency: String(product.currency || 'RM'),
-    
-    // E-commerce specific fields
-    visibility: String(product.visibility || 'public'),
-    availability: String(product.availability || getAvailabilityFromStock(product.stock)),
-    featured: Boolean(product.featured),
-    
-    // Supplier info (matching your supplier structure)
-    supplier: String(product.supplier?.name || product.supplier || 'HiggsFlow Partner'),
-    supplierLocation: String(product.supplier?.location || product.location || 'Malaysia'),
-    
-    // Enhanced stock handling to prevent object rendering
-    stock: parseStockValue(product.stock),
-    stockStatus: getStockStatus(parseStockValue(product.stock)),
-    deliveryTime: String(product.deliveryTime || getDeliveryTime(parseStockValue(product.stock))),
-    quickDelivery: parseStockValue(product.stock) > 10,
-    
-    // Specifications (safely handle object)
-    specifications: (typeof product.specifications === 'object' && product.specifications) ? 
-      product.specifications : {},
-    keySpecs: extractKeySpecs(product),
-    applications: Array.isArray(product.applications) ? product.applications : [],
-    certifications: Array.isArray(product.certifications) ? product.certifications : [],
-    
-    // Social proof and ratings
-    rating: Number(product.rating) || Math.random() * 2 + 3, // 3-5 range
-    reviewCount: Number(product.reviewCount) || Math.floor(Math.random() * 50) + 5,
-    
-    // Media
-    imageUrl: String(product.image || product.images?.primary || product.imageUrl || '/api/placeholder/300/200'),
-    
-    // Tags and categories (ensure they're arrays of strings)
-    tags: Array.isArray(product.tags) ? product.tags.map(tag => String(tag)) : [],
-    industries: Array.isArray(product.industries) ? 
-      product.industries.map(ind => String(ind)) : 
-      [String(product.category)].filter(Boolean),
-    
-    // Tracking fields (for debugging)
-    syncStatus: String(product.syncStatus || ''),
-    lastSyncedAt: product.lastSyncedAt,
-    internalProductId: String(product.internalProductId || ''),
-    dataSource: String(product.dataSource || ''),
-    viewCount: Number(product.viewCount) || 0
-  };
-
-  // Helper functions with proper fallbacks
-  function parsePrice(price) {
-    if (typeof price === 'number') return price;
-    if (typeof price === 'string') {
-      const parsed = parseFloat(price.replace(/[^\d.-]/g, ''));
-      return isNaN(parsed) ? 0 : parsed;
+  // Memoized product data processing for performance
+  const productData = useMemo(() => {
+    if (!product || typeof product !== 'object') {
+      console.warn('Invalid product data received:', product);
+      return getDefaultProductData();
     }
-    return 0;
+
+    try {
+      return processProductData(product);
+    } catch (error) {
+      console.error('Error processing product data:', error, product);
+      return getDefaultProductData();
+    }
+  }, [product]);
+
+  // Helper function for default product data
+  function getDefaultProductData() {
+    return {
+      id: 'unknown',
+      name: 'Product Unavailable',
+      sku: 'N/A',
+      brand: 'Unknown',
+      category: 'General',
+      price: 0,
+      originalPrice: null,
+      currency: 'RM',
+      visibility: 'public',
+      availability: 'out_of_stock',
+      featured: false,
+      supplier: 'HiggsFlow Partner',
+      supplierLocation: 'Malaysia',
+      stock: 0,
+      stockStatus: { status: 'out_of_stock', text: 'Unavailable', colorClass: 'text-gray-600', bgClass: 'bg-gray-500' },
+      deliveryTime: 'Contact for availability',
+      quickDelivery: false,
+      specifications: {},
+      keySpecs: [],
+      applications: [],
+      certifications: [],
+      rating: 0,
+      reviewCount: 0,
+      imageUrl: '/api/placeholder/300/200',
+      tags: [],
+      industries: [],
+      syncStatus: 'error',
+      lastSyncedAt: null,
+      internalProductId: '',
+      dataSource: '',
+      viewCount: 0,
+      isValid: false
+    };
   }
 
-  function parseStockValue(stockData) {
-    // Handle different stock data structures comprehensively
-    if (typeof stockData === 'number') {
-      return stockData >= 0 ? stockData : 0;
-    }
-    
-    if (typeof stockData === 'string') {
-      const parsed = parseInt(stockData, 10);
-      return isNaN(parsed) ? 0 : Math.max(0, parsed);
-    }
-    
-    if (typeof stockData === 'object' && stockData !== null) {
-      // Handle complex stock objects from Firestore - check all possible field names
-      const possibleStockValues = [
-        stockData.availableStock,
-        stockData.stockLevel,
-        stockData.currentStock,
-        stockData.quantity,
-        stockData.available,
-        stockData.stock,
-        stockData.inStock,
-        stockData.physicalStock,
-        stockData.onHand,
-        stockData.inventory,
-        stockData.count,
-        stockData.units,
-        stockData.qty
-      ];
-      
-      // Try to find a valid numeric value
-      for (const value of possibleStockValues) {
-        if (typeof value === 'number' && value >= 0) {
-          return value;
-        }
-        if (typeof value === 'string') {
-          const parsed = parseInt(value, 10);
-          if (!isNaN(parsed) && parsed >= 0) {
-            return parsed;
+  // Enhanced product data processing with comprehensive error handling
+  function processProductData(product) {
+    const safeGet = (obj, path, defaultValue = '') => {
+      try {
+        const keys = path.split('.');
+        let current = obj;
+        for (const key of keys) {
+          if (current && typeof current === 'object' && key in current) {
+            current = current[key];
+          } else {
+            return defaultValue;
           }
         }
-        // Handle boolean inStock field
-        if (typeof value === 'boolean' && stockData.hasOwnProperty('inStock')) {
-          return value ? 1 : 0; // Convert boolean to numeric
-        }
+        return current !== null && current !== undefined ? current : defaultValue;
+      } catch {
+        return defaultValue;
       }
-      
-      // If object has complex structure, try to extract meaningful number
-      if (stockData.total || stockData.sum) {
-        const total = parseFloat(stockData.total || stockData.sum);
-        if (!isNaN(total) && total >= 0) return total;
+    };
+
+    const parsePrice = (price) => {
+      if (typeof price === 'number' && !isNaN(price)) return Math.max(0, price);
+      if (typeof price === 'string') {
+        const parsed = parseFloat(price.replace(/[^\d.-]/g, ''));
+        return isNaN(parsed) ? 0 : Math.max(0, parsed);
       }
-      
-      // Last resort: count object properties that might indicate stock
-      const numericProps = Object.values(stockData).filter(val => 
-        typeof val === 'number' && val >= 0 && val < 10000
-      );
-      if (numericProps.length > 0) {
-        return Math.max(...numericProps);
-      }
-      
-      // If no valid stock value found in object, return 0
-      console.warn('Complex stock object detected, defaulting to 0:', stockData);
       return 0;
-    }
-    
-    return 0;
-  }
+    };
 
-  function getAvailabilityFromStock(stock) {
-    const stockNum = Number(stock) || 0;
-    if (stockNum === 0) return 'out_of_stock';
-    if (stockNum < 5) return 'low_stock';
-    return 'in_stock';
-  }
+    const parseStockValue = (stockData) => {
+      if (typeof stockData === 'number' && !isNaN(stockData)) {
+        return Math.max(0, Math.floor(stockData));
+      }
+      
+      if (typeof stockData === 'string') {
+        const parsed = parseInt(stockData, 10);
+        return isNaN(parsed) ? 0 : Math.max(0, parsed);
+      }
+      
+      if (typeof stockData === 'object' && stockData !== null) {
+        const possibleStockValues = [
+          stockData.availableStock,
+          stockData.stockLevel,
+          stockData.currentStock,
+          stockData.quantity,
+          stockData.available,
+          stockData.stock,
+          stockData.inStock,
+          stockData.physicalStock,
+          stockData.onHand,
+          stockData.inventory,
+          stockData.count,
+          stockData.units,
+          stockData.qty
+        ];
+        
+        for (const value of possibleStockValues) {
+          if (typeof value === 'number' && !isNaN(value) && value >= 0) {
+            return Math.floor(value);
+          }
+          if (typeof value === 'string') {
+            const parsed = parseInt(value, 10);
+            if (!isNaN(parsed) && parsed >= 0) {
+              return parsed;
+            }
+          }
+          if (typeof value === 'boolean' && stockData.hasOwnProperty('inStock')) {
+            return value ? 1 : 0;
+          }
+        }
+        
+        if (stockData.total || stockData.sum) {
+          const total = parseFloat(stockData.total || stockData.sum);
+          if (!isNaN(total) && total >= 0) return Math.floor(total);
+        }
+        
+        const numericProps = Object.values(stockData).filter(val => 
+          typeof val === 'number' && !isNaN(val) && val >= 0 && val < 10000
+        );
+        if (numericProps.length > 0) {
+          return Math.floor(Math.max(...numericProps));
+        }
+        
+        return 0;
+      }
+      
+      return 0;
+    };
 
-  function getStockStatus(stock) {
-    const stockNum = Number(stock) || 0;
-    if (stockNum === 0) {
-      return { status: 'out_of_stock', text: 'Made to Order', colorClass: 'text-orange-600', bgClass: 'bg-orange-500' };
-    }
-    if (stockNum < 5) {
-      return { status: 'low_stock', text: 'Limited Stock', colorClass: 'text-yellow-600', bgClass: 'bg-yellow-500' };
-    }
-    return { status: 'in_stock', text: 'In Stock', colorClass: 'text-green-600', bgClass: 'bg-green-500' };
-  }
+    const getStockStatus = (stock) => {
+      const stockNum = Number(stock) || 0;
+      if (stockNum === 0) {
+        return { 
+          status: 'out_of_stock', 
+          text: 'Made to Order', 
+          colorClass: 'text-orange-600', 
+          bgClass: 'bg-orange-500' 
+        };
+      }
+      if (stockNum < 5) {
+        return { 
+          status: 'low_stock', 
+          text: 'Limited Stock', 
+          colorClass: 'text-yellow-600', 
+          bgClass: 'bg-yellow-500' 
+        };
+      }
+      return { 
+        status: 'in_stock', 
+        text: 'In Stock', 
+        colorClass: 'text-green-600', 
+        bgClass: 'bg-green-500' 
+      };
+    };
 
-  function getDeliveryTime(stock) {
-    const stockNum = Number(stock) || 0;
-    if (stockNum > 10) return '1-2 days';
-    if (stockNum > 0) return '3-5 days';
-    return '2-3 weeks';
-  }
+    const getDeliveryTime = (stock) => {
+      const stockNum = Number(stock) || 0;
+      if (stockNum > 10) return '1-2 days';
+      if (stockNum > 0) return '3-5 days';
+      return '2-3 weeks';
+    };
 
-  function extractKeySpecs(product) {
-    const specs = (typeof product.specifications === 'object' && product.specifications) ? 
-      product.specifications : {};
-    const keySpecs = [];
-    
-    // Safely extract specs and convert objects to strings
-    if (specs.model || specs.type) {
-      const value = specs.model || specs.type;
-      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : String(value));
+    const extractKeySpecs = (product) => {
+      const specs = (typeof product.specifications === 'object' && product.specifications) ? 
+        product.specifications : {};
+      const keySpecs = [];
+      
+      const specMap = {
+        model: specs.model || specs.type,
+        voltage: specs.voltage,
+        power: specs.power,
+        material: specs.material,
+        dimensions: specs.dimensions
+      };
+
+      Object.entries(specMap).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          try {
+            let specValue;
+            if (typeof value === 'object') {
+              specValue = JSON.stringify(value);
+            } else {
+              specValue = String(value);
+              if (key === 'voltage' && !specValue.includes('V')) specValue += 'V';
+              if (key === 'power' && !specValue.includes('W')) specValue += 'W';
+            }
+            
+            if (specValue && specValue !== 'undefined' && specValue !== 'null' && specValue.length > 0) {
+              keySpecs.push(specValue.length > 20 ? specValue.substring(0, 20) + '...' : specValue);
+            }
+          } catch (e) {
+            console.warn('Error processing spec:', key, value, e);
+          }
+        }
+      });
+      
+      return keySpecs.slice(0, 3);
+    };
+
+    // Process the data safely
+    const stockValue = parseStockValue(safeGet(product, 'stock'));
+    const priceValue = parsePrice(safeGet(product, 'price') || safeGet(product, 'pricing.listPrice'));
+    const originalPriceValue = parsePrice(safeGet(product, 'originalPrice') || safeGet(product, 'pricing.originalPrice'));
+
+    return {
+      id: String(safeGet(product, 'id', 'unknown')),
+      name: String(safeGet(product, 'name') || safeGet(product, 'displayName', 'Unknown Product')),
+      sku: String(safeGet(product, 'sku') || safeGet(product, 'code') || safeGet(product, 'partNumber', '')),
+      brand: String(safeGet(product, 'brand') || safeGet(product, 'manufacturer', '')),
+      category: String(safeGet(product, 'category', 'General')),
+      
+      price: priceValue,
+      originalPrice: originalPriceValue > priceValue ? originalPriceValue : null,
+      currency: String(safeGet(product, 'currency', 'RM')),
+      
+      visibility: String(safeGet(product, 'visibility', 'public')),
+      availability: String(safeGet(product, 'availability') || getAvailabilityFromStock(stockValue)),
+      featured: Boolean(safeGet(product, 'featured')),
+      
+      supplier: String(safeGet(product, 'supplier.name') || safeGet(product, 'supplier', 'HiggsFlow Partner')),
+      supplierLocation: String(safeGet(product, 'supplier.location') || safeGet(product, 'location', 'Malaysia')),
+      
+      stock: stockValue,
+      stockStatus: getStockStatus(stockValue),
+      deliveryTime: String(safeGet(product, 'deliveryTime') || getDeliveryTime(stockValue)),
+      quickDelivery: stockValue > 10,
+      
+      specifications: typeof safeGet(product, 'specifications') === 'object' ? 
+        safeGet(product, 'specifications', {}) : {},
+      keySpecs: extractKeySpecs(product),
+      applications: Array.isArray(safeGet(product, 'applications')) ? 
+        safeGet(product, 'applications', []) : [],
+      certifications: Array.isArray(safeGet(product, 'certifications')) ? 
+        safeGet(product, 'certifications', []) : [],
+      
+      rating: Math.max(0, Math.min(5, Number(safeGet(product, 'rating')) || (Math.random() * 2 + 3))),
+      reviewCount: Math.max(0, Number(safeGet(product, 'reviewCount')) || Math.floor(Math.random() * 50) + 5),
+      
+      imageUrl: String(safeGet(product, 'image') || safeGet(product, 'images.primary') || 
+                safeGet(product, 'imageUrl', '/api/placeholder/300/200')),
+      
+      tags: Array.isArray(safeGet(product, 'tags')) ? 
+        safeGet(product, 'tags', []).map(tag => String(tag)).filter(Boolean) : [],
+      industries: Array.isArray(safeGet(product, 'industries')) ? 
+        safeGet(product, 'industries', []).map(ind => String(ind)).filter(Boolean) : 
+        [String(safeGet(product, 'category'))].filter(Boolean),
+      
+      syncStatus: String(safeGet(product, 'syncStatus', '')),
+      lastSyncedAt: safeGet(product, 'lastSyncedAt'),
+      internalProductId: String(safeGet(product, 'internalProductId', '')),
+      dataSource: String(safeGet(product, 'dataSource', '')),
+      viewCount: Math.max(0, Number(safeGet(product, 'viewCount', 0))),
+      
+      isValid: true
+    };
+
+    function getAvailabilityFromStock(stock) {
+      const stockNum = Number(stock) || 0;
+      if (stockNum === 0) return 'out_of_stock';
+      if (stockNum < 5) return 'low_stock';
+      return 'in_stock';
     }
-    if (specs.voltage) {
-      const value = specs.voltage;
-      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : `${value}V`);
-    }
-    if (specs.power) {
-      const value = specs.power;
-      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : `${value}W`);
-    }
-    if (specs.material) {
-      const value = specs.material;
-      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : String(value));
-    }
-    if (specs.dimensions) {
-      const value = specs.dimensions;
-      keySpecs.push(typeof value === 'object' ? JSON.stringify(value) : String(value));
-    }
-    
-    // Filter out any invalid entries and limit to 3
-    return keySpecs.filter(spec => spec && spec !== 'undefined' && spec !== 'null').slice(0, 3);
   }
 
   // Calculate discount percentage safely
-  const savings = productData.originalPrice && productData.originalPrice > productData.price ? 
-    Math.round(((productData.originalPrice - productData.price) / productData.originalPrice) * 100) : 0;
+  const savings = useMemo(() => {
+    if (productData.originalPrice && productData.originalPrice > productData.price && productData.price > 0) {
+      return Math.round(((productData.originalPrice - productData.price) / productData.originalPrice) * 100);
+    }
+    return 0;
+  }, [productData.originalPrice, productData.price]);
 
-  // Handle all click events
-  const handleCardClick = (e) => {
-    // Don't trigger if clicking on buttons
-    if (e.target.closest('button')) return;
-    onClick?.(productData);
-  };
+  // Enhanced event handlers with error boundaries
+  const handleCardClick = useCallback((e) => {
+    try {
+      if (e.target.closest('button')) return;
+      onClick?.(productData);
+    } catch (error) {
+      console.error('Error in handleCardClick:', error);
+    }
+  }, [onClick, productData]);
 
-  const handleAddToCart = (e) => {
-    e.stopPropagation();
-    onAddToCart?.(productData);
-  };
+  const handleAddToCart = useCallback((e) => {
+    try {
+      e.stopPropagation();
+      onAddToCart?.(productData);
+    } catch (error) {
+      console.error('Error in handleAddToCart:', error);
+    }
+  }, [onAddToCart, productData]);
 
-  const handleRequestQuote = (e) => {
-    e.stopPropagation();
-    onRequestQuote?.(productData);
-  };
+  const handleRequestQuote = useCallback((e) => {
+    try {
+      e.stopPropagation();
+      onRequestQuote?.(productData);
+    } catch (error) {
+      console.error('Error in handleRequestQuote:', error);
+    }
+  }, [onRequestQuote, productData]);
 
-  const handleAddToFavorites = (e) => {
-    e.stopPropagation();
-    onAddToFavorites?.(productData, e);
-  };
+  const handleAddToFavorites = useCallback((e) => {
+    try {
+      e.stopPropagation();
+      onAddToFavorites?.(productData, e);
+    } catch (error) {
+      console.error('Error in handleAddToFavorites:', error);
+    }
+  }, [onAddToFavorites, productData]);
 
-  const handleCompare = (e) => {
-    e.stopPropagation();
-    onCompare?.(productData, e);
-  };
+  const handleCompare = useCallback((e) => {
+    try {
+      e.stopPropagation();
+      onCompare?.(productData, e);
+    } catch (error) {
+      console.error('Error in handleCompare:', error);
+    }
+  }, [onCompare, productData]);
 
-  const handleQuickView = (e) => {
-    e.stopPropagation();
-    onQuickView?.(productData);
-  };
+  const handleQuickView = useCallback((e) => {
+    try {
+      e.stopPropagation();
+      onQuickView?.(productData);
+    } catch (error) {
+      console.error('Error in handleQuickView:', error);
+    }
+  }, [onQuickView, productData]);
+
+  // Enhanced image loading handlers
+  const handleImageLoad = useCallback(() => {
+    setIsImageLoaded(true);
+    setImageError(false);
+  }, []);
+
+  const handleImageError = useCallback((e) => {
+    console.warn('Image load failed for product:', productData.id, productData.imageUrl);
+    setImageError(true);
+    setIsImageLoaded(true);
+    if (e.target) {
+      e.target.src = '/api/placeholder/300/200';
+    }
+  }, [productData.id, productData.imageUrl]);
+
+  // Return early for invalid products
+  if (!productData.isValid) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="flex items-center">
+          <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+          <span className="text-red-700 text-sm">Product data unavailable</span>
+        </div>
+      </div>
+    );
+  }
 
   // Grid view component
   const GridCard = () => (
     <div 
-      className="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden relative cursor-pointer"
+      className={`group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden relative cursor-pointer ${className}`}
       onClick={handleCardClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -285,12 +431,18 @@ const EcommerceProductCard = ({
             className={`w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300 ${
               isImageLoaded ? 'block' : 'hidden'
             }`}
-            onLoad={() => setIsImageLoaded(true)}
-            onError={(e) => {
-              e.target.src = '/api/placeholder/300/200';
-              setIsImageLoaded(true);
-            }}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            loading="lazy"
           />
+          {imageError && isImageLoaded && (
+            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+              <div className="text-center">
+                <Package className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <span className="text-xs text-gray-500">Image unavailable</span>
+              </div>
+            </div>
+          )}
         </div>
         
         {/* Badges */}
@@ -324,41 +476,46 @@ const EcommerceProductCard = ({
           </div>
         )}
         
-        {/* Action Buttons Overlay - appears on hover */}
-        <div className={`absolute inset-x-3 bottom-3 transition-all duration-300 ${
-          isHovered ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-2'
-        }`}>
-          <div className="flex space-x-2">
-            <button
-              onClick={handleAddToFavorites}
-              className={`p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all ${
-                isInFavorites ? 'bg-red-50' : ''
-              }`}
-            >
-              <Heart className={`w-4 h-4 ${isInFavorites ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
-            </button>
-            
-            {onCompare && (
+        {/* Action Buttons Overlay */}
+        {showQuickActions && (
+          <div className={`absolute inset-x-3 bottom-3 transition-all duration-300 ${
+            isHovered ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-2'
+          }`}>
+            <div className="flex space-x-2">
               <button
-                onClick={handleCompare}
+                onClick={handleAddToFavorites}
                 className={`p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all ${
-                  isInComparison ? 'bg-blue-50' : ''
+                  isInFavorites ? 'bg-red-50' : ''
                 }`}
+                aria-label={isInFavorites ? 'Remove from favorites' : 'Add to favorites'}
               >
-                <BarChart3 className={`w-4 h-4 ${isInComparison ? 'text-blue-600' : 'text-gray-600'}`} />
+                <Heart className={`w-4 h-4 ${isInFavorites ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
               </button>
-            )}
-            
-            {onQuickView && (
-              <button
-                onClick={handleQuickView}
-                className="p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all"
-              >
-                <Eye className="w-4 h-4 text-gray-600" />
-              </button>
-            )}
+              
+              {onCompare && (
+                <button
+                  onClick={handleCompare}
+                  className={`p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all ${
+                    isInComparison ? 'bg-blue-50' : ''
+                  }`}
+                  aria-label={isInComparison ? 'Remove from comparison' : 'Add to comparison'}
+                >
+                  <BarChart3 className={`w-4 h-4 ${isInComparison ? 'text-blue-600' : 'text-gray-600'}`} />
+                </button>
+              )}
+              
+              {onQuickView && (
+                <button
+                  onClick={handleQuickView}
+                  className="p-2 bg-white bg-opacity-90 backdrop-blur-sm rounded-full shadow-sm hover:bg-opacity-100 transition-all"
+                  aria-label="Quick view"
+                >
+                  <Eye className="w-4 h-4 text-gray-600" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Content Section */}
@@ -384,7 +541,7 @@ const EcommerceProductCard = ({
             ))}
           </div>
           <span className="text-sm text-gray-600 ml-2">
-            {typeof productData.rating === 'number' ? productData.rating.toFixed(1) : '4.0'} ({productData.reviewCount})
+            {productData.rating.toFixed(1)} ({productData.reviewCount})
           </span>
         </div>
 
@@ -410,17 +567,11 @@ const EcommerceProductCard = ({
         {productData.keySpecs.length > 0 && (
           <div className="mb-3">
             <div className="flex flex-wrap gap-1">
-              {productData.keySpecs.map((spec, index) => {
-                // Ensure spec is a string and not too long
-                const specString = typeof spec === 'string' ? spec : String(spec);
-                const truncatedSpec = specString.length > 20 ? specString.substring(0, 20) + '...' : specString;
-                
-                return (
-                  <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs truncate">
-                    {truncatedSpec}
-                  </span>
-                );
-              })}
+              {productData.keySpecs.map((spec, index) => (
+                <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs truncate">
+                  {spec}
+                </span>
+              ))}
             </div>
           </div>
         )}
@@ -428,25 +579,23 @@ const EcommerceProductCard = ({
         {/* Pricing */}
         <div className="flex items-baseline space-x-2 mb-3">
           <span className="text-xl font-bold text-gray-900">
-            {productData.currency} {typeof productData.price === 'number' ? 
-              productData.price.toLocaleString() : '0'}
+            {productData.currency} {productData.price.toLocaleString()}
           </span>
-          {productData.originalPrice && productData.originalPrice > productData.price && (
+          {productData.originalPrice && (
             <span className="text-sm text-gray-500 line-through">
-              {productData.currency} {typeof productData.originalPrice === 'number' ? 
-                productData.originalPrice.toLocaleString() : productData.originalPrice}
+              {productData.currency} {productData.originalPrice.toLocaleString()}
             </span>
           )}
         </div>
 
-        {/* Stock Status with Enhanced Safety */}
+        {/* Stock Status */}
         <div className="flex items-center mb-4">
           <div className={`w-2 h-2 rounded-full mr-2 ${productData.stockStatus.bgClass}`}></div>
           <span className={`text-sm font-medium ${productData.stockStatus.colorClass}`}>
-            {String(productData.stockStatus.text)}
+            {productData.stockStatus.text}
           </span>
           <span className="text-sm text-gray-500 ml-2">
-            • {String(productData.deliveryTime)}
+            • {productData.deliveryTime}
           </span>
           {process.env.NODE_ENV === 'development' && (
             <span className="text-xs text-gray-400 ml-2">
@@ -464,6 +613,7 @@ const EcommerceProductCard = ({
                 ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md'
                 : 'bg-orange-600 text-white hover:bg-orange-700 shadow-sm hover:shadow-md'
             }`}
+            disabled={!productData.isValid}
           >
             {productData.stockStatus.status === 'in_stock' ? (
               <>
@@ -479,11 +629,11 @@ const EcommerceProductCard = ({
           </button>
         </div>
 
-        {/* Debug Info (development only) with Enhanced Safety */}
+        {/* Debug Info (development only) */}
         {process.env.NODE_ENV === 'development' && productData.syncStatus && (
           <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-500">
-            <div>Sync: {String(productData.syncStatus)}</div>
-            <div>Source: {String(productData.dataSource)}</div>
+            <div>Sync: {productData.syncStatus}</div>
+            <div>Source: {productData.dataSource}</div>
             {productData.lastSyncedAt && (
               <div>Last sync: {new Date(productData.lastSyncedAt?.seconds * 1000).toLocaleString()}</div>
             )}
@@ -500,7 +650,7 @@ const EcommerceProductCard = ({
   // List view component
   const ListCard = () => (
     <div 
-      className="group bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer"
+      className={`group bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer ${className}`}
       onClick={handleCardClick}
     >
       <div className="flex">
@@ -510,9 +660,9 @@ const EcommerceProductCard = ({
             src={productData.imageUrl} 
             alt={productData.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => {
-              e.target.src = '/api/placeholder/128/128';
-            }}
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            loading="lazy"
           />
           
           {/* Badges */}
@@ -551,7 +701,7 @@ const EcommerceProductCard = ({
                   ))}
                 </div>
                 <span className="text-sm text-gray-600">
-                  {typeof productData.rating === 'number' ? productData.rating.toFixed(1) : '4.0'} ({productData.reviewCount})
+                  {productData.rating.toFixed(1)} ({productData.reviewCount})
                 </span>
               </div>
               
@@ -566,35 +716,24 @@ const EcommerceProductCard = ({
                 </span>
               </div>
               
-              {/* Stock Status with Enhanced Safety */}
+              {/* Stock Status */}
               <div className="flex items-center mb-2">
                 <div className={`w-2 h-2 rounded-full mr-2 ${productData.stockStatus.bgClass}`}></div>
                 <span className={`text-sm font-medium ${productData.stockStatus.colorClass}`}>
-                  {String(productData.stockStatus.text)}
+                  {productData.stockStatus.text}
                 </span>
                 <span className="text-sm text-gray-500 ml-2">
-                  • {String(productData.deliveryTime)}
+                  • {productData.deliveryTime}
                 </span>
-                {process.env.NODE_ENV === 'development' && (
-                  <span className="text-xs text-gray-400 ml-2">
-                    (Stock: {productData.stock})
-                  </span>
-                )}
               </div>
               
               {productData.keySpecs.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {productData.keySpecs.slice(0, 3).map((spec, index) => {
-                    // Ensure spec is a string and not too long
-                    const specString = typeof spec === 'string' ? spec : String(spec);
-                    const truncatedSpec = specString.length > 15 ? specString.substring(0, 15) + '...' : specString;
-                    
-                    return (
-                      <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
-                        {truncatedSpec}
-                      </span>
-                    );
-                  })}
+                  {productData.keySpecs.slice(0, 3).map((spec, index) => (
+                    <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                      {spec.length > 15 ? spec.substring(0, 15) + '...' : spec}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -603,13 +742,11 @@ const EcommerceProductCard = ({
             <div className="flex flex-col items-end justify-between">
               <div className="text-right mb-3">
                 <div className="text-xl font-bold text-gray-900">
-                  {productData.currency} {typeof productData.price === 'number' ? 
-                    productData.price.toLocaleString() : '0'}
+                  {productData.currency} {productData.price.toLocaleString()}
                 </div>
-                {productData.originalPrice && productData.originalPrice > productData.price && (
+                {productData.originalPrice && (
                   <div className="text-sm text-gray-500 line-through">
-                    {productData.currency} {typeof productData.originalPrice === 'number' ? 
-                      productData.originalPrice.toLocaleString() : productData.originalPrice}
+                    {productData.currency} {productData.originalPrice.toLocaleString()}
                   </div>
                 )}
               </div>
@@ -620,6 +757,7 @@ const EcommerceProductCard = ({
                   className={`p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ${
                     isInFavorites ? 'bg-red-50 border-red-300' : ''
                   }`}
+                  aria-label={isInFavorites ? 'Remove from favorites' : 'Add to favorites'}
                 >
                   <Heart className={`w-4 h-4 ${isInFavorites ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
                 </button>
@@ -630,6 +768,7 @@ const EcommerceProductCard = ({
                     className={`p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ${
                       isInComparison ? 'bg-blue-50 border-blue-300' : ''
                     }`}
+                    aria-label={isInComparison ? 'Remove from comparison' : 'Add to comparison'}
                   >
                     <BarChart3 className={`w-4 h-4 ${isInComparison ? 'text-blue-600' : 'text-gray-600'}`} />
                   </button>
@@ -642,6 +781,7 @@ const EcommerceProductCard = ({
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'bg-orange-600 text-white hover:bg-orange-700'
                   }`}
+                  disabled={!productData.isValid}
                 >
                   {productData.stockStatus.status === 'in_stock' ? 'Add to Cart' : 'Get Quote'}
                 </button>
@@ -654,6 +794,9 @@ const EcommerceProductCard = ({
   );
 
   return viewMode === 'grid' ? <GridCard /> : <ListCard />;
-};
+});
+
+// Display name for debugging
+EcommerceProductCard.displayName = 'EcommerceProductCard';
 
 export default EcommerceProductCard;
