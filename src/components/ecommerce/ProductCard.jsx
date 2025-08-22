@@ -59,11 +59,11 @@ const EcommerceProductCard = ({
     supplier: String(product.supplier?.name || product.supplier || 'HiggsFlow Partner'),
     supplierLocation: String(product.supplier?.location || product.location || 'Malaysia'),
     
-    // Stock and delivery
-    stock: Number(product.stock) || 0,
-    stockStatus: getStockStatus(product.stock),
-    deliveryTime: String(product.deliveryTime || getDeliveryTime(product.stock)),
-    quickDelivery: (Number(product.stock) || 0) > 10,
+    // Enhanced stock handling to prevent object rendering
+    stock: parseStockValue(product.stock),
+    stockStatus: getStockStatus(parseStockValue(product.stock)),
+    deliveryTime: String(product.deliveryTime || getDeliveryTime(parseStockValue(product.stock))),
+    quickDelivery: parseStockValue(product.stock) > 10,
     
     // Specifications (safely handle object)
     specifications: (typeof product.specifications === 'object' && product.specifications) ? 
@@ -100,6 +100,47 @@ const EcommerceProductCard = ({
       const parsed = parseFloat(price.replace(/[^\d.-]/g, ''));
       return isNaN(parsed) ? 0 : parsed;
     }
+    return 0;
+  }
+
+  function parseStockValue(stockData) {
+    // Handle different stock data structures
+    if (typeof stockData === 'number') {
+      return stockData;
+    }
+    
+    if (typeof stockData === 'string') {
+      const parsed = parseInt(stockData, 10);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    
+    if (typeof stockData === 'object' && stockData !== null) {
+      // Handle complex stock objects from Firestore
+      const possibleStockValues = [
+        stockData.availableStock,
+        stockData.stockLevel,
+        stockData.currentStock,
+        stockData.quantity,
+        stockData.available,
+        stockData.stock
+      ];
+      
+      for (const value of possibleStockValues) {
+        if (typeof value === 'number' && value >= 0) {
+          return value;
+        }
+        if (typeof value === 'string') {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed) && parsed >= 0) {
+            return parsed;
+          }
+        }
+      }
+      
+      // If no valid stock value found in object, return 0
+      return 0;
+    }
+    
     return 0;
   }
 
@@ -371,15 +412,20 @@ const EcommerceProductCard = ({
           )}
         </div>
 
-        {/* Stock Status */}
+        {/* Stock Status with Enhanced Safety */}
         <div className="flex items-center mb-4">
           <div className={`w-2 h-2 rounded-full mr-2 ${productData.stockStatus.bgClass}`}></div>
           <span className={`text-sm font-medium ${productData.stockStatus.colorClass}`}>
-            {productData.stockStatus.text}
+            {String(productData.stockStatus.text)}
           </span>
           <span className="text-sm text-gray-500 ml-2">
-            • {productData.deliveryTime}
+            • {String(productData.deliveryTime)}
           </span>
+          {process.env.NODE_ENV === 'development' && (
+            <span className="text-xs text-gray-400 ml-2">
+              (Stock: {productData.stock})
+            </span>
+          )}
         </div>
 
         {/* Action Buttons */}
@@ -489,15 +535,20 @@ const EcommerceProductCard = ({
                 </span>
               </div>
               
-              {/* Stock Status */}
+              {/* Stock Status with Enhanced Safety */}
               <div className="flex items-center mb-2">
                 <div className={`w-2 h-2 rounded-full mr-2 ${productData.stockStatus.bgClass}`}></div>
                 <span className={`text-sm font-medium ${productData.stockStatus.colorClass}`}>
-                  {productData.stockStatus.text}
+                  {String(productData.stockStatus.text)}
                 </span>
                 <span className="text-sm text-gray-500 ml-2">
-                  • {productData.deliveryTime}
+                  • {String(productData.deliveryTime)}
                 </span>
+                {process.env.NODE_ENV === 'development' && (
+                  <span className="text-xs text-gray-400 ml-2">
+                    (Stock: {productData.stock})
+                  </span>
+                )}
               </div>
               
               {productData.keySpecs.length > 0 && (
