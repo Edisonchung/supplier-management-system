@@ -174,6 +174,7 @@ const fixPOItemPrices = (items, debug = true) => {
   });
 };
 
+// ✅ UPDATED: validatePOTotals with no automatic tax
 const validatePOTotals = (formData, debug = false) => {
   if (!formData.items || formData.items.length === 0) {
     return { ...formData, subtotal: 0, tax: 0, totalAmount: 0 };
@@ -183,6 +184,7 @@ const validatePOTotals = (formData, debug = false) => {
     return sum + (parseFloat(item.totalPrice) || 0);
   }, 0);
 
+  // ✅ FIXED: Use explicit tax value or 0 (no auto 10% tax)
   const tax = parseFloat(formData.tax) || 0;
   const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
@@ -291,6 +293,7 @@ const processExtractedPOData = (extractedData, debug = true) => {
   
   return processedData;
 };
+
 // ✅ ADD THIS FUNCTION RIGHT AFTER processExtractedPOData
 const extractProjectCodesFromPO = (extractedData) => {
   // Look for project codes in various formats from PTP PO
@@ -338,7 +341,7 @@ const extractProjectCodesFromPO = (extractedData) => {
           item.product_code || ''
         ].filter(Boolean).join(' ');
 
-        console.log(`  📝 Searchable text for item ${index + 1}:`, searchableText.substring(0, 100));
+        console.log(`  🔍 Searchable text for item ${index + 1}:`, searchableText.substring(0, 100));
 
         // Try each pattern
         for (const pattern of projectCodePatterns) {
@@ -378,6 +381,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState("");
+  const [extractedData, setExtractedData] = useState(null);
   
   // ✅ ENHANCED: Add document storage fields to useState
   const [formData, setFormData] = useState({
@@ -388,6 +392,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     hasStoredDocuments: false,
     storageInfo: null,
     originalFileName: '',
+    fileSize: 0,
+    contentType: '',
+    extractedAt: '',
     
     // Existing PO fields
     poNumber: '',
@@ -403,6 +410,12 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     deliveryTerms: 'FOB',
     status: 'draft',
     notes: '',
+    // ✅ NEW: Financial fields
+    subtotal: 0,
+    tax: 0,
+    shipping: 0,
+    discount: 0,
+    totalAmount: 0,
     items: []
   });
 
@@ -445,188 +458,179 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     return `PO-${year}${month}${day}-${random}`;
   };
 
-  // ✅ ENHANCED: useEffect with document field preservation
-useEffect(() => {
-  if (editingPO) {
-    // ✅ CRITICAL DEBUG: Check both arrays
-    console.log('🎯 POModal: Setting form data from editing PO:', editingPO);
-    
-    if (editingPO.items && editingPO.items.length > 0) {
-      console.log('🔍 EDITING PO DEBUG: editingPO.items check:');
-      editingPO.items.forEach((item, i) => {
-        console.log(`  EditingPO Item ${i + 1} DETAILS:`);
-        console.log(`    clientItemCode: "${item.clientItemCode}"`);
-        console.log(`    productCode: "${item.productCode}"`);
-        console.log(`    productName: "${item.productName}"`);
-        console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
-        console.log(`    ALL KEYS:`, Object.keys(item));
-      });
-    }
-    
-    if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
-      console.log('🔍 EDITING PO DEBUG: extractedData.items check:');
-      editingPO.extractedData.items.forEach((item, i) => {
-        console.log(`  ExtractedData Item ${i + 1} DETAILS:`);
-        console.log(`    clientItemCode: "${item.clientItemCode}"`);
-        console.log(`    productCode: "${item.productCode}"`);
-        console.log(`    productName: "${item.productName}"`);
-        console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
-      });
-    }
-    
-    // ✅ PRESERVE DOCUMENT STORAGE FIELDS
-    const documentFields = {
-      documentId: editingPO.documentId || '',
-      documentNumber: editingPO.documentNumber || '',
-      documentType: 'po',
-      hasStoredDocuments: editingPO.hasStoredDocuments || false,
-      storageInfo: editingPO.storageInfo || null,
-      originalFileName: editingPO.originalFileName || ''
-    };
-    
-    console.log('🎯 POModal: Document storage fields set:', documentFields);
-    
-    // ✅ CRITICAL FIX: Use extractedData.items if it has clientItemCode, otherwise use editingPO.items
-    let itemsToUse = editingPO.items;
-    
-    if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
-      // Check if extractedData.items has clientItemCode that editingPO.items is missing
-      const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
-      const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
+  // ✅ UPDATED: useEffect with enhanced document field preservation
+  useEffect(() => {
+    if (editingPO) {
+      console.log('🎯 POModal: Setting form data from editing PO:', editingPO.poNumber);
       
-      if (extractedHasClientCode && !editingHasClientCode) {
-        console.log('🚨 CRITICAL FIX: Using extractedData.items because it has clientItemCode');
-        itemsToUse = editingPO.extractedData.items;
+      if (editingPO.items && editingPO.items.length > 0) {
+        console.log('🔍 EDITING PO DEBUG: editingPO.items check:');
+        editingPO.items.forEach((item, i) => {
+          console.log(`  EditingPO Item ${i + 1} DETAILS:`);
+          console.log(`    clientItemCode: "${item.clientItemCode}"`);
+          console.log(`    productCode: "${item.productCode}"`);
+          console.log(`    productName: "${item.productName}"`);
+          console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
+          console.log(`    ALL KEYS:`, Object.keys(item));
+        });
       }
+      
+      // ✅ ENHANCED DOCUMENT STORAGE FIELDS PRESERVATION
+      const documentFields = {
+        documentId: editingPO.documentId || '',
+        documentNumber: editingPO.documentNumber || editingPO.poNumber || '',
+        documentType: 'po',
+        hasStoredDocuments: editingPO.hasStoredDocuments || false,
+        storageInfo: editingPO.storageInfo || null,
+        originalFileName: editingPO.originalFileName || '',
+        fileSize: editingPO.fileSize || 0,
+        contentType: editingPO.contentType || '',
+        extractedAt: editingPO.extractedAt || editingPO.createdAt || new Date().toISOString()
+      };
+      
+      console.log('🎯 POModal: Document storage fields set:', documentFields);
+      
+      // Use correct items array (preserving existing logic)
+      let itemsToUse = editingPO.items;
+      
+      if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
+        const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
+        const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
+        
+        if (extractedHasClientCode && !editingHasClientCode) {
+          console.log('🚨 CRITICAL FIX: Using extractedData.items because it has clientItemCode');
+          itemsToUse = editingPO.extractedData.items;
+        }
+      }
+      
+      setFormData({
+        ...editingPO,
+        ...documentFields,  // ✅ Apply enhanced document fields
+        items: itemsToUse
+      });
+    } else {
+      // Initialize new PO with basic structure
+      setFormData(prev => ({
+        ...prev,
+        poNumber: generatePONumber(),
+        documentType: 'po',
+        hasStoredDocuments: false
+      }));
     }
-    
-    console.log('🔧 Items array selected:', itemsToUse.length, 'items');
-    console.log('🔧 First item clientItemCode:', itemsToUse[0]?.clientItemCode);
-    
-    setFormData({
-      ...editingPO,
-      ...documentFields,
-      items: itemsToUse  // ✅ Use the correct items array
-    });
-    
-    // ✅ CRITICAL DEBUG: Check formData after setting
-    console.log('🔍 EDITING PO DEBUG: FormData items after setting:');
-    itemsToUse.forEach((item, i) => {
-      console.log(`  FormData Item ${i + 1} DETAILS:`);
-      console.log(`    clientItemCode: "${item.clientItemCode}"`);
-      console.log(`    productCode: "${item.productCode}"`);
-      console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
-    });
-    
-  } else {
-    setFormData(prev => ({
-      ...prev,
-      poNumber: generatePONumber()
-    }));
-  }
-}, [editingPO]);
+  }, [editingPO]);
 
-  // ✅ ENHANCED: AI Extraction with Price Fixing
-    const handleFileUpload = async (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
-  
-      console.log('🔍 PRICE FIX DEBUG: Starting PO extraction for:', file.name);
-      setExtracting(true);
-      setValidationErrors([]);
-  
-      try {
-        // Use the real AI extraction service
-        const extractedData = await AIExtractionService.extractFromFile(file);
-        console.log("🔍 PRICE FIX DEBUG: Raw extracted data:", extractedData);
-  
-        // ✅ Apply price fixing to extracted data
-        const processedData = processExtractedPOData(extractedData.data || extractedData, true);
-        console.log("✅ PRICE FIX DEBUG: Processed data:", processedData);
-  
-        // ✅ CRITICAL DEBUG: Check raw vs processed data
-  console.log("🔍 RAW vs PROCESSED comparison:");
-  if (extractedData.data?.items || extractedData.items) {
-    const rawItems = extractedData.data?.items || extractedData.items;
-    console.log("Raw backend items:", rawItems.map((item, i) => ({
-      index: i + 1,
-      part_number: item.part_number,
-      clientItemCode: item.clientItemCode,
-      description: item.description?.substring(0, 40)
-    })));
-  }
-  
-  if (processedData.items) {
-    console.log("Processed frontend items:", processedData.items.map((item, i) => ({
-      index: i + 1,
-      clientItemCode: item.clientItemCode,
-      productCode: item.productCode,
-      productName: item.productName?.substring(0, 40)
-    })));
-  }
-        
-        // Validate the extracted data
-        const validation = ValidationService.validateExtractedData(processedData);
-        
-        if (!validation.isValid) {
-          setValidationErrors(validation.errors);
-          // Still populate form with partial data
-        }
-  
-        // ✅ DEBUG: Check extracted items structure
-  console.log("🔍 POModal DEBUG: processedData.items:", processedData.items);
-  if (processedData.items && processedData.items.length > 0) {
-    console.log("🔍 POModal DEBUG: First item structure:", processedData.items[0]);
-    console.log("🔍 POModal DEBUG: First item clientItemCode:", processedData.items[0].clientItemCode);
-  }
-  
-        // ✅ Update form data with processed (price-fixed) information
-        setFormData(prev => ({
-          ...prev,
-          orderNumber: processedData.orderNumber || prev.orderNumber,
-          clientName: processedData.clientName || prev.clientName,
-          orderDate: processedData.orderDate || prev.orderDate,
-          deliveryDate: processedData.deliveryDate || prev.deliveryDate,
-          paymentTerms: processedData.paymentTerms || prev.paymentTerms,
-          notes: processedData.notes || prev.notes,
-          items: processedData.items || prev.items // Price-fixed items
-        }));
-        // ✅ DEBUG: Check form data after setting
-  console.log("🔍 POModal DEBUG: Form data items after setting:", processedData.items);
-  
-  
-        // Check if supplier matching data is available
-        if (processedData.sourcingPlan || processedData.matchingMetrics) {
-          setSupplierMatchingData({
-            items: processedData.items,
-            sourcingPlan: processedData.sourcingPlan,
-            metrics: processedData.matchingMetrics
-          });
-          setShowSupplierMatching(true);
-        }
-  
-        // Show recommendations if any
-        if (extractedData.recommendations && extractedData.recommendations.length > 0) {
-          const recommendationMessages = extractedData.recommendations
-            .map(rec => rec.message)
-            .join('\n');
-          alert(`AI Recommendations:\n${recommendationMessages}`);
-        }
-        
-        // Show confidence score
-        if (extractedData.metadata?.confidence) {
-          console.log(`Extraction confidence: ${(extractedData.metadata.confidence * 100).toFixed(0)}%`);
-        }
-        
-      } catch (error) {
-        console.error('Extraction failed:', error);
-        setValidationErrors([{ field: 'file', message: error.message || 'Failed to extract data from file' }]);
-      } finally {
-        setExtracting(false);
-        // Reset file input
-        event.target.value = '';
+  // ✅ ENHANCED: AI Extraction with Document Storage (Updated handleFileUpload)
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    console.log('📄 Starting PO extraction with document storage for:', file.name);
+    setExtracting(true);
+    setValidationErrors([]);
+
+    try {
+      // ✅ CRITICAL: Use extractPOWithStorage instead of basic extractFromFile
+      const extractedData = await AIExtractionService.extractPOWithStorage(file);
+      console.log("📄 Raw extracted data with storage:", extractedData);
+
+      // Apply price fixing to extracted data
+      const processedData = processExtractedPOData(extractedData.data || extractedData, true);
+      console.log("✅ Processed data:", processedData);
+
+      // ✅ CRITICAL: Extract document storage information from AI response
+      let documentStorageFields = {};
+      
+      if (extractedData.documentStorage) {
+        // Primary source: Direct document storage from AI service
+        documentStorageFields = {
+          documentId: extractedData.documentStorage.documentId,
+          documentNumber: extractedData.documentStorage.documentNumber || processedData.poNumber,
+          documentType: 'po',
+          hasStoredDocuments: true,
+          storageInfo: extractedData.documentStorage,
+          originalFileName: extractedData.documentStorage.originalFile?.originalFileName || file.name,
+          fileSize: extractedData.documentStorage.originalFile?.fileSize || file.size,
+          contentType: extractedData.documentStorage.originalFile?.contentType || file.type,
+          extractedAt: extractedData.documentStorage.storedAt || new Date().toISOString()
+        };
+        console.log('✅ Using AI document storage:', documentStorageFields.documentId);
+      } 
+      else if (extractedData.extractionMetadata?.documentId) {
+        // Fallback source: Extraction metadata
+        documentStorageFields = {
+          documentId: extractedData.extractionMetadata.documentId,
+          documentNumber: extractedData.extractionMetadata.documentNumber || processedData.poNumber,
+          documentType: 'po',
+          hasStoredDocuments: !!extractedData.extractionMetadata.hasStoredDocuments,
+          originalFileName: extractedData.extractionMetadata.originalFileName || file.name,
+          fileSize: extractedData.extractionMetadata.fileSize || file.size,
+          contentType: extractedData.extractionMetadata.contentType || file.type,
+          extractedAt: extractedData.extractionMetadata.extractedAt || new Date().toISOString(),
+          storageInfo: extractedData.extractionMetadata.storageInfo || null
+        };
+        console.log('✅ Using extraction metadata:', documentStorageFields.documentId);
       }
-    };
+      else {
+        // Generate fallback document ID if none provided
+        documentStorageFields = {
+          documentId: `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          documentNumber: processedData.poNumber,
+          documentType: 'po',
+          hasStoredDocuments: false,
+          originalFileName: file.name,
+          fileSize: file.size,
+          contentType: file.type,
+          extractedAt: new Date().toISOString(),
+          storageInfo: null
+        };
+        console.log('⚠️ Generated fallback document ID:', documentStorageFields.documentId);
+      }
+      
+      // Validate the extracted data
+      const validation = ValidationService.validateExtractedData(processedData);
+      
+      if (!validation.isValid) {
+        setValidationErrors(validation.errors);
+      }
+
+      // ✅ CRITICAL: Combine processed data with document storage fields
+      const completeFormData = {
+        ...processedData,
+        ...documentStorageFields,
+        // Preserve any existing form data
+        ...formData,
+        // Override with new extracted data
+        items: processedData.items || [],
+        // Ensure PO number is set
+        poNumber: processedData.poNumber || formData.poNumber || generatePONumber()
+      };
+
+      console.log('📋 Setting form data with document fields:', {
+        documentId: completeFormData.documentId,
+        hasStoredDocuments: completeFormData.hasStoredDocuments,
+        originalFileName: completeFormData.originalFileName
+      });
+
+      // ✅ Set form data with complete document integration
+      setFormData(completeFormData);
+      
+      // Store the complete extracted data for potential reference
+      setExtractedData({
+        ...extractedData,
+        processedData: completeFormData
+      });
+      
+      console.log('✅ PO extraction with document storage completed successfully');
+      
+    } catch (error) {
+      console.error('❌ PO extraction failed:', error);
+      setValidationErrors([{ field: 'general', message: 'Failed to extract PO data: ' + error.message }]);
+    } finally {
+      setExtracting(false);
+      // Reset file input
+      event.target.value = '';
+    }
+  };
 
   const handleInputChange = (field, value) => {
     // Auto-format project codes
@@ -651,68 +655,68 @@ useEffect(() => {
 
   // ✅ ENHANCED: Item change handler with price fixing
   const handleItemChange = (index, field, value) => {
-  const newItems = [...formData.items];
-  const oldValue = newItems[index][field];
-  
-  newItems[index] = {
-    ...newItems[index],
-    [field]: value
-  };
-  
-  // ✅ NEW: Auto-extract product code when product name changes
-  if (field === 'productName' && value !== oldValue) {
-    const extractedCode = extractProductCodeFromName(value);
-    if (extractedCode && !newItems[index].productCode) {
-      newItems[index].productCode = extractedCode;
-      console.log(`🔍 Auto-extracted product code: "${extractedCode}" from "${value}"`);
-    }
-  }
-   // ✅ CRITICAL: Ensure project code changes are preserved
-  if (field === 'projectCode') {
-    console.log(`✅ Project code for item ${index} changed from "${oldValue}" to "${value}"`);
-  }
-  
-  // Auto-format project codes
-  if (field === 'projectCode' && value) {
-    value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-    newItems[index][field] = value;
-  }
-  // Apply price fixing immediately after any change (your existing logic)
-  const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
-  
-  setFormData(prev => ({
-    ...prev,
-    items: fixedItems
-  }));
-};
-
-
-// ✅ NEW: Product Code Bulk Extraction for all items (compatible with fixPOItemPrices)
-const handleBulkProductCodeExtraction = () => {
-  setFormData(prev => {
-    const updatedItems = prev.items.map(item => {
-      if (!item.productCode && item.productName) {
-        const extractedCode = extractProductCodeFromName(item.productName);
-        if (extractedCode) {
-          console.log(`🔍 Bulk extracted: "${extractedCode}" from "${item.productName}"`);
-          return {
-            ...item,
-            productCode: extractedCode
-          };
-        }
+    const newItems = [...formData.items];
+    const oldValue = newItems[index][field];
+    
+    newItems[index] = {
+      ...newItems[index],
+      [field]: value
+    };
+    
+    // ✅ NEW: Auto-extract product code when product name changes
+    if (field === 'productName' && value !== oldValue) {
+      const extractedCode = extractProductCodeFromName(value);
+      if (extractedCode && !newItems[index].productCode) {
+        newItems[index].productCode = extractedCode;
+        console.log(`🔍 Auto-extracted product code: "${extractedCode}" from "${value}"`);
       }
-      return item;
-    });
+    }
+     // ✅ CRITICAL: Ensure project code changes are preserved
+    if (field === 'projectCode') {
+      console.log(`✅ Project code for item ${index} changed from "${oldValue}" to "${value}"`);
+    }
     
-    // Apply your existing price fixing to all updated items
-    const fixedItems = fixPOItemPrices(updatedItems, true); // debug=true for bulk operations
+    // Auto-format project codes
+    if (field === 'projectCode' && value) {
+      value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      newItems[index][field] = value;
+    }
+    // Apply price fixing immediately after any change (your existing logic)
+    const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
     
-    return {
+    setFormData(prev => ({
       ...prev,
       items: fixedItems
-    };
-  });
-};
+    }));
+  };
+
+  // ✅ NEW: Product Code Bulk Extraction for all items (compatible with fixPOItemPrices)
+  const handleBulkProductCodeExtraction = () => {
+    setFormData(prev => {
+      const updatedItems = prev.items.map(item => {
+        if (!item.productCode && item.productName) {
+          const extractedCode = extractProductCodeFromName(item.productName);
+          if (extractedCode) {
+            console.log(`🔍 Bulk extracted: "${extractedCode}" from "${item.productName}"`);
+            return {
+              ...item,
+              productCode: extractedCode
+            };
+          }
+        }
+        return item;
+      });
+      
+      // Apply your existing price fixing to all updated items
+      const fixedItems = fixPOItemPrices(updatedItems, true); // debug=true for bulk operations
+      
+      return {
+        ...prev,
+        items: fixedItems
+      };
+    });
+  };
+
   // ✅ ENHANCED: Add item with price fixing
   const addItem = () => {
     if (currentItem.productName && currentItem.quantity > 0) {
@@ -776,7 +780,7 @@ const handleBulkProductCodeExtraction = () => {
     setShowProductSearch(false);
   };
 
-  // ✅ ENHANCED: Submit with document field preservation
+  // ✅ ENHANCED: Submit with complete document field preservation
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -785,7 +789,6 @@ const handleBulkProductCodeExtraction = () => {
     if (!formData.clientName) errors.push({ field: 'clientName', message: 'Client name is required' });
     if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
 
-    // ADD PROJECT CODE VALIDATION
     if (formData.projectCode && formData.projectCode.length < 3) {
       errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
     }
@@ -800,22 +803,26 @@ const handleBulkProductCodeExtraction = () => {
       // ✅ Final price validation before saving
       const validatedData = validatePOTotals(formData, true);
       
-      // ✅ PRESERVE DOCUMENT STORAGE FIELDS
+      // ✅ COMPLETE DOCUMENT STORAGE FIELDS PRESERVATION
       const dataToSave = {
         ...validatedData,
-        // Explicitly preserve document storage fields
-        documentId: formData.documentId,
-        documentNumber: formData.documentNumber,
+        // Core document storage fields
+        documentId: formData.documentId || `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        documentNumber: formData.documentNumber || formData.poNumber,
         documentType: 'po',
-        hasStoredDocuments: formData.hasStoredDocuments,
-        storageInfo: formData.storageInfo,
-        originalFileName: formData.originalFileName
+        hasStoredDocuments: formData.hasStoredDocuments || false,
+        storageInfo: formData.storageInfo || null,
+        originalFileName: formData.originalFileName || '',
+        fileSize: formData.fileSize || 0,
+        contentType: formData.contentType || '',
+        extractedAt: formData.extractedAt || new Date().toISOString()
       };
       
-      console.log('🎯 POModal: Saving PO with document storage fields:', {
+      console.log('🎯 POModal: Saving PO with complete document storage fields:', {
         documentId: dataToSave.documentId,
         hasStoredDocuments: dataToSave.hasStoredDocuments,
-        originalFileName: dataToSave.originalFileName
+        originalFileName: dataToSave.originalFileName,
+        documentType: dataToSave.documentType
       });
       
       await onSave(dataToSave);
@@ -1136,24 +1143,100 @@ const handleBulkProductCodeExtraction = () => {
                   </div>
                 </div>
 
+                {/* ✅ NEW: Financial Details Section */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Financial Details</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    
+                    {/* Subtotal Field */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Subtotal (RM)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.subtotal || calculateTotal()}
+                        onChange={(e) => handleInputChange('subtotal', parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    
+                    {/* Tax Field - NEW */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Tax (RM)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.tax || 0}
+                        onChange={(e) => handleInputChange('tax', parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Set to 0 for Flow Solution POs</p>
+                    </div>
+                    
+                    {/* Shipping Field */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Shipping (RM)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.shipping || 0}
+                        onChange={(e) => handleInputChange('shipping', parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    
+                    {/* Discount Field */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Discount (RM)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.discount || 0}
+                        onChange={(e) => handleInputChange('discount', parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Total Amount Display */}
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                    <div className="flex justify-between items-center text-lg font-semibold">
+                      <span>Total Amount:</span>
+                      <span>RM {((formData.subtotal || calculateTotal()) + (formData.tax || 0) + (formData.shipping || 0) - (formData.discount || 0)).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Items Section */}
-<div>
-  <div className="flex justify-between items-center mb-4">
-    <h3 className="text-lg font-semibold text-gray-800">Order Items</h3>
-    <div className="flex gap-2">
-      {/* ✅ NEW: Bulk Product Code Extraction Button */}
-      {formData.items.length > 0 && (
-        <button
-          type="button"
-          onClick={handleBulkProductCodeExtraction}
-          className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
-          title="Extract product codes from all product names"
-        >
-          🔍 Extract Codes
-        </button>
-      )}
-    </div>
-  </div>
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Order Items</h3>
+                    <div className="flex gap-2">
+                      {/* ✅ NEW: Bulk Product Code Extraction Button */}
+                      {formData.items.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleBulkProductCodeExtraction}
+                          className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+                          title="Extract product codes from all product names"
+                        >
+                          🔍 Extract Codes
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   
                   {/* Add Item Form */}
                   <div className="bg-gray-50 p-4 rounded-lg mb-4">
@@ -1286,72 +1369,73 @@ const handleBulkProductCodeExtraction = () => {
                     {formData.items.map((item, index) => (
                       <div key={item.id || index} className="bg-white p-4 rounded-lg border border-gray-200">
                         <div className="grid grid-cols-9 gap-3"> {/* ✅ CHANGE FROM 8 TO 9 COLUMNS */}
-  <div className="col-span-2">
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      Product Name *
-    </label>
-    <input
-      type="text"
-      value={item.productName}
-      onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-      required
-      placeholder="Enter product description"
-    />
-  </div>
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                              Product Name *
+                            </label>
+                            <input
+                              type="text"
+                              value={item.productName}
+                              onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                              required
+                              placeholder="Enter product description"
+                            />
+                          </div>
 
-  {/* ✅ NEW: Product Code/SKU Field */}
-  <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      Product Code/SKU
-      <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔍</span>
-    </label>
-    <input
-      type="text"
-      value={item.productCode || ''}
-      onChange={(e) => handleItemChange(index, 'productCode', e.target.value)}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm font-mono"
-      placeholder="Auto-extracted"
-      title="Manufacturer's product code/part number/SKU"
-    />
-  </div>
+                          {/* ✅ NEW: Product Code/SKU Field */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                              Product Code/SKU
+                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔍</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={item.productCode || ''}
+                              onChange={(e) => handleItemChange(index, 'productCode', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm font-mono"
+                              placeholder="Auto-extracted"
+                              title="Manufacturer's product code/part number/SKU"
+                            />
+                          </div>
 
-  {/* ✅ NEW: Client Item Code Field */}
-  <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      Client Item Code
-      <span className="text-blue-600 ml-1" title="Client's unique identifier">🏷️</span>
-    </label>
-    <input
-      type="text"
-      value={item.clientItemCode || ''}
-      onChange={(e) => handleItemChange(index, 'clientItemCode', e.target.value)}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-mono"
-      placeholder="e.g. 400RTG0091"
-      title="Client's own unique code for this product (e.g. 400RTG0091, 200SHA0162)"
-    />
-  </div>
+                          {/* ✅ NEW: Client Item Code Field */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                              Client Item Code
+                              <span className="text-blue-600 ml-1" title="Client's unique identifier">🏷️</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={item.clientItemCode || ''}
+                              onChange={(e) => handleItemChange(index, 'clientItemCode', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                              placeholder="e.g. 400RTG0091"
+                              title="Client's own unique code for this product (e.g. 400RTG0091, 200SHA0162)"
+                            />
+                          </div>
                          
                           {/* ✅ NEW: Project Code Field */}
- <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">
-    Project Code 
-    <span className="text-blue-500 text-xs ml-1">📋</span>
-  </label>
-  <input
-    type="text"
-    placeholder="e.g., BWS-S1046"
-    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-    value={item.projectCode || ''} // ✅ CRITICAL FIX: Make sure this binds to item.projectCode
-    onChange={(e) => handleItemChange(index, 'projectCode', e.target.value)}
-  />
-  {/* Debug indicator to show if project code exists */}
-  {item.projectCode && (
-    <div className="text-xs text-green-600 mt-1">
-      ✅ Project code: {item.projectCode}
-    </div>
-  )}
-</div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Project Code 
+                              <span className="text-blue-500 text-xs ml-1">📋</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g., BWS-S1046"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              value={item.projectCode || ''} // ✅ CRITICAL FIX: Make sure this binds to item.projectCode
+                              onChange={(e) => handleItemChange(index, 'projectCode', e.target.value)}
+                            />
+                            {/* Debug indicator to show if project code exists */}
+                            {item.projectCode && (
+                              <div className="text-xs text-green-600 mt-1">
+                                ✅ Project code: {item.projectCode}
+                              </div>
+                            )}
+                          </div>
+
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Quantity
@@ -1394,31 +1478,31 @@ const handleBulkProductCodeExtraction = () => {
                           </div>
                         </div>
 
-                        {/* ✅ ADD THE ENHANCED CODE PREVIEW HERE - RIGHT AFTER THE CLOSING </div> OF THE GRID */}
-{(item.productCode || item.clientItemCode || item.projectCode) && (
-  <div className="mt-2 text-xs bg-gray-50 px-2 py-1 rounded space-y-1">
-    {item.productCode && (
-      <div className="text-purple-600">
-        Product Code: <span className="font-mono font-medium">{item.productCode}</span>
-        {item.productName && extractProductCodeFromName(item.productName) === item.productCode && (
-          <span className="ml-2 text-purple-500">🔍 Auto-extracted</span>
-        )}
-      </div>
-    )}
-    {item.clientItemCode && (
-      <div className="text-blue-600">
-        Client Code: <span className="font-mono font-medium">{item.clientItemCode}</span>
-        <span className="ml-2 text-blue-500">🏷️ Client's unique ID</span>
-      </div>
-    )}
-  </div>
-)}
-    {item.projectCode && (
-      <div className="text-green-600">
-        Project Code: <span className="font-mono font-medium">{item.projectCode}</span>
-        <span className="ml-2 text-green-500">🏢 Project reference</span>
-      </div>
-    )}
+                        {/* ✅ ADD THE ENHANCED CODE PREVIEW HERE */}
+                        {(item.productCode || item.clientItemCode || item.projectCode) && (
+                          <div className="mt-2 text-xs bg-gray-50 px-2 py-1 rounded space-y-1">
+                            {item.productCode && (
+                              <div className="text-purple-600">
+                                Product Code: <span className="font-mono font-medium">{item.productCode}</span>
+                                {item.productName && extractProductCodeFromName(item.productName) === item.productCode && (
+                                  <span className="ml-2 text-purple-500">🔍 Auto-extracted</span>
+                                )}
+                              </div>
+                            )}
+                            {item.clientItemCode && (
+                              <div className="text-blue-600">
+                                Client Code: <span className="font-mono font-medium">{item.clientItemCode}</span>
+                                <span className="ml-2 text-blue-500">🏷️ Client's unique ID</span>
+                              </div>
+                            )}
+                            {item.projectCode && (
+                              <div className="text-green-600">
+                                Project Code: <span className="font-mono font-medium">{item.projectCode}</span>
+                                <span className="ml-2 text-green-500">🏢 Project reference</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         
                         <button
                           type="button"
@@ -1434,26 +1518,26 @@ const handleBulkProductCodeExtraction = () => {
 
                   {/* Total */}
                   {formData.items.length > 0 && (
-  <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-    <div className="flex justify-between items-center">
-      <div>
-        <span className="text-lg font-semibold">Total Amount:</span>
-        <div className="text-sm text-gray-600 mt-1">
-          📋 {formData.items.length} items • 
-          🔍 {formData.items.filter(item => item.productCode).length} with product codes • 
-          🏷️ {formData.items.filter(item => item.clientItemCode).length} with client codes • 
-          🏢 {formData.items.filter(item => item.projectCode).length} with project codes
-        </div>
-      </div>
-      <span className="text-2xl font-bold text-blue-600">
-        ${calculateTotal().toFixed(2)}
-      </span>
-    </div>
-    <p className="text-sm text-gray-600 mt-1">
-      * Tax will be calculated at checkout
-    </p>
-  </div>
-)}
+                    <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="text-lg font-semibold">Total Amount:</span>
+                          <div className="text-sm text-gray-600 mt-1">
+                            📋 {formData.items.length} items • 
+                            🔍 {formData.items.filter(item => item.productCode).length} with product codes • 
+                            🏷️ {formData.items.filter(item => item.clientItemCode).length} with client codes • 
+                            🏢 {formData.items.filter(item => item.projectCode).length} with project codes
+                          </div>
+                        </div>
+                        <span className="text-2xl font-bold text-blue-600">
+                          RM {calculateTotal().toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        * Financial details can be adjusted in the Financial Details section above
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Supplier Matching Tab */}
@@ -1531,23 +1615,51 @@ const handleBulkProductCodeExtraction = () => {
           ) : null}
         </div>
 
-        {/* Footer */}
-        <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-            disabled={loading}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !formData.clientName || formData.items.length === 0}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {editingPO ? 'Update' : 'Create'} Purchase Order
-          </button>
+        {/* ✅ ENHANCED Footer with prominent button */}
+        <div className="bg-gray-50 px-6 py-4 flex justify-between items-center gap-3 border-t">
+          {/* Left side - Additional info */}
+          <div className="text-sm text-gray-600">
+            {formData.items.length > 0 && (
+              <span>{formData.items.length} item{formData.items.length > 1 ? 's' : ''} • Total: RM {((formData.subtotal || calculateTotal()) + (formData.tax || 0) + (formData.shipping || 0) - (formData.discount || 0)).toFixed(2)}</span>
+            )}
+          </div>
+          
+          {/* Right side - Action buttons */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 hover:border-gray-400 transition-all duration-200 font-medium"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            
+            {/* Enhanced Primary Action Button */}
+            <button
+              onClick={handleSubmit}
+              disabled={loading || !formData.clientName || formData.items.length === 0}
+              className={`
+                px-8 py-3 rounded-lg font-semibold text-white transition-all duration-200 
+                flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-[1.02]
+                ${loading || !formData.clientName || formData.items.length === 0 
+                  ? 'bg-gray-400 cursor-not-allowed opacity-60' 
+                  : editingPO 
+                    ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 ring-2 ring-green-200'
+                    : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 ring-2 ring-blue-200'
+                }
+              `}
+            >
+              {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+              <span className="text-lg">
+                {editingPO ? '💾 Update Purchase Order' : '📋 Create Purchase Order'}
+              </span>
+              {!loading && (
+                <span className="ml-1 text-sm opacity-80">
+                  {editingPO ? '(Save Changes)' : '(New PO)'}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
