@@ -1626,7 +1626,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             Cancel
           </button>
           <button
-            type="submit"
+            type="button"
             onClick={handleSubmit}
             disabled={loading || !formData.clientName || formData.items.length === 0}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
