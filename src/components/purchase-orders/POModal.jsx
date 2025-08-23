@@ -184,8 +184,9 @@ const validatePOTotals = (formData, debug = false) => {
   }, 0);
 
   // 🔥 FIXED: Use explicit tax value or 0 (no automatic 10% tax)
-  const tax = parseFloat(formData.tax) || 0;
-  const shipping = parseFloat(formData.shipping) || 0;
+const tax = formData.tax !== undefined && formData.tax !== null ? 
+  parseFloat(formData.tax) : 0;  
+const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
   const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
 
