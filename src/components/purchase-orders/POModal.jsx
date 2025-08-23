@@ -913,7 +913,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           </nav>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-160px)] flex-1">
           {/* Tab Content */}
           {activeTab === 'details' ? (
             <>
@@ -1615,87 +1615,26 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           ) : null}
         </div>
 
-        {/* ✅ STICKY Footer - Always Visible */}
-        <div className="bg-white border-t-2 border-gray-200 px-6 py-4 flex justify-between items-center gap-3 shadow-lg">
-          {/* Left side - Additional info */}
-          <div className="text-sm text-gray-600">
-            {formData.items.length > 0 && (
-              <span className="font-medium">{formData.items.length} item{formData.items.length > 1 ? 's' : ''} • Total: <span className="text-blue-600 font-bold">RM {((formData.subtotal || calculateTotal()) + (formData.tax || 0) + (formData.shipping || 0) - (formData.discount || 0)).toFixed(2)}</span></span>
-            )}
-          </div>
-          
-          {/* Right side - Action buttons */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 hover:border-gray-400 transition-all duration-200 font-medium"
-              disabled={loading}
-            >
-              Cancel
-            </button>
-            
-            {/* ✅ HIGHLY VISIBLE Primary Action Button */}
-            <button
-              onClick={handleSubmit}
-              disabled={loading || !formData.clientName || formData.items.length === 0}
-              className={`
-                px-10 py-4 rounded-lg font-bold text-lg text-white transition-all duration-200 
-                flex items-center gap-3 shadow-xl hover:shadow-2xl transform hover:scale-105
-                border-2 border-opacity-50
-                ${loading || !formData.clientName || formData.items.length === 0 
-                  ? 'bg-gray-400 cursor-not-allowed opacity-60 border-gray-300' 
-                  : editingPO 
-                    ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 border-green-400 animate-pulse'
-                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 border-blue-400 animate-pulse'
-                }
-              `}
-              style={{
-                minWidth: '280px',
-                minHeight: '56px'
-              }}
-            >
-              {loading && <Loader2 className="w-6 h-6 animate-spin" />}
-              <span className="text-xl font-bold">
-                {editingPO ? '💾 UPDATE PURCHASE ORDER' : '📋 CREATE PURCHASE ORDER'}
-              </span>
-              {!loading && (
-                <span className="bg-black bg-opacity-20 px-2 py-1 rounded text-sm font-medium">
-                  {editingPO ? 'SAVE' : 'NEW'}
-                </span>
-              )}
-            </button>
-          </div>
+        {/* ✅ FIXED Footer with Action Buttons - Matching PIModal Style */}
+        <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            disabled={loading}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={loading || !formData.clientName || formData.items.length === 0}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {editingPO ? 'Update Purchase Order' : 'Create Purchase Order'}
+          </button>
         </div>
-
-        {/* ✅ FLOATING SAVE BUTTON (Alternative) - Only show on PO Details tab when scrolled */}
-        {activeTab === 'details' && (editingPO || formData.items.length > 0) && (
-          <div className="fixed bottom-8 right-8 z-50">
-            <button
-              onClick={handleSubmit}
-              disabled={loading || !formData.clientName || formData.items.length === 0}
-              className={`
-                px-6 py-3 rounded-full font-bold text-white shadow-2xl 
-                flex items-center gap-2 transform hover:scale-110 transition-all duration-300
-                ${loading || !formData.clientName || formData.items.length === 0 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : editingPO 
-                    ? 'bg-green-600 hover:bg-green-700 animate-bounce'
-                    : 'bg-blue-600 hover:bg-blue-700 animate-bounce'
-                }
-              `}
-              title={editingPO ? 'Save Changes' : 'Create Purchase Order'}
-            >
-              {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <span className="text-lg">💾</span>
-                  <span>{editingPO ? 'SAVE' : 'CREATE'}</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
