@@ -173,7 +173,7 @@ const fixPOItemPrices = (items, debug = true) => {
   });
 };
 
-// Validate PO totals with no automatic tax
+// 🔥 CRITICAL FIX: validatePOTotals - No automatic tax application
 const validatePOTotals = (formData, debug = false) => {
   if (!formData.items || formData.items.length === 0) {
     return { ...formData, subtotal: 0, tax: 0, totalAmount: 0 };
@@ -183,8 +183,8 @@ const validatePOTotals = (formData, debug = false) => {
     return sum + (parseFloat(item.totalPrice) || 0);
   }, 0);
 
-  // FIXED: Preserve exact tax value including 0 (no automatic 10% tax fallback)
-  const tax = formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0;
+  // 🔥 FIXED: Use explicit tax value or 0 (no automatic 10% tax)
+  const tax = parseFloat(formData.tax) || 0;
   const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
   const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
@@ -193,8 +193,7 @@ const validatePOTotals = (formData, debug = false) => {
     console.log('[DEBUG] PO TOTAL VALIDATION:', {
       itemsCount: formData.items.length,
       calculatedSubtotal,
-      tax: tax,
-      originalTaxInput: formData.tax,
+      tax,
       shipping,
       discount,
       calculatedTotal
@@ -204,7 +203,7 @@ const validatePOTotals = (formData, debug = false) => {
   return {
     ...formData,
     subtotal: calculatedSubtotal,
-    tax: tax,
+    tax,
     shipping,
     discount,
     totalAmount: calculatedTotal
@@ -752,10 +751,10 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     console.log('[DEBUG] Manual price fix triggered');
     const fixedItems = fixPOItemPrices(formData.items, true); // Enable debug for manual fix
     
-    setFormData(prev => ({
-      ...prev,
-      items: fixedItems
-    }));
+    // Apply total validation after price fixing
+    const validatedData = validatePOTotals({ ...formData, items: fixedItems }, true);
+    
+    setFormData(validatedData);
     
     // Show visual feedback
     alert('Item prices have been recalculated and corrected!');
@@ -780,7 +779,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setShowProductSearch(false);
   };
 
-  // Enhanced: Submit with complete document field preservation
+  // 🔥 CRITICAL FIX: Enhanced submit with proper total calculation AND refresh trigger
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -800,7 +799,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     
     setLoading(true);
     try {
-      // Final price validation before saving
+      // Final price validation before saving with corrected tax handling
       const validatedData = validatePOTotals(formData, true);
       
       // Complete document storage fields preservation
@@ -815,17 +814,22 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         originalFileName: formData.originalFileName || '',
         fileSize: formData.fileSize || 0,
         contentType: formData.contentType || '',
-        extractedAt: formData.extractedAt || new Date().toISOString()
+        extractedAt: formData.extractedAt || new Date().toISOString(),
+        // 🔥 CRITICAL: Add refresh trigger
+        lastUpdated: new Date().toISOString()
       };
       
       console.log('[DEBUG] POModal: Saving PO with complete document storage fields:', {
         documentId: dataToSave.documentId,
         hasStoredDocuments: dataToSave.hasStoredDocuments,
         originalFileName: dataToSave.originalFileName,
-        documentType: dataToSave.documentType
+        documentType: dataToSave.documentType,
+        totalAmount: dataToSave.totalAmount,
+        tax: dataToSave.tax
       });
       
-      await onSave(dataToSave);
+      // 🔥 CRITICAL: Pass refresh flag to parent component
+      await onSave(dataToSave, { shouldRefresh: true });
       onClose();
     } catch (error) {
       console.error('Save failed:', error);
@@ -835,8 +839,13 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   };
 
+  // 🔥 UPDATED: Calculate total using the same logic as validatePOTotals
   const calculateTotal = () => {
-    return formData.items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+    const subtotal = formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0);
+    const tax = parseFloat(formData.tax) || 0;
+    const shipping = parseFloat(formData.shipping) || 0;
+    const discount = parseFloat(formData.discount) || 0;
+    return subtotal + tax + shipping - discount;
   };
 
   const filteredProducts = mockProducts.filter(product =>
@@ -1144,7 +1153,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   </div>
                 </div>
 
-                {/* Financial Details Section */}
+                {/* 🔥 UPDATED Financial Details Section with enhanced styling */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Financial Details</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1157,14 +1166,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       <input
                         type="number"
                         step="0.01"
-                        value={formData.subtotal || calculateTotal()}
+                        value={formData.subtotal || formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0)}
                         onChange={(e) => handleInputChange('subtotal', parseFloat(e.target.value) || 0)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0.00"
                       />
                     </div>
                     
-                    {/* Tax Field */}
+                    {/* Tax Field - CRITICAL UPDATE */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Tax (RM)
@@ -1172,7 +1181,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       <input
                         type="number"
                         step="0.01"
-                        value={formData.tax || 0}
+                        value={formData.tax}
                         onChange={(e) => handleInputChange('tax', parseFloat(e.target.value) || 0)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0.00"
@@ -1211,11 +1220,17 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     </div>
                   </div>
                   
-                  {/* Total Amount Display */}
+                  {/* 🔥 UPDATED Total Amount Display */}
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                     <div className="flex justify-between items-center text-lg font-semibold">
                       <span>Total Amount:</span>
-                      <span>RM {((formData.subtotal || calculateTotal()) + (formData.tax || 0) + (formData.shipping || 0) - (formData.discount || 0)).toFixed(2)}</span>
+                      <span className="text-blue-600">RM {calculateTotal().toFixed(2)}</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Subtotal: RM {formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0).toFixed(2)} + 
+                      Tax: RM {(parseFloat(formData.tax) || 0).toFixed(2)} + 
+                      Shipping: RM {(parseFloat(formData.shipping) || 0).toFixed(2)} - 
+                      Discount: RM {(parseFloat(formData.discount) || 0).toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -1616,24 +1631,37 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           ) : null}
         </div>
 
-        {/* Fixed Footer with Action Buttons - Always Visible */}
+        {/* 🔥 ENHANCED Fixed Footer with More Prominent Button Styling */}
         <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-6 py-3 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
             disabled={loading}
           >
             Cancel
           </button>
+          
+          {/* 🔥 CRITICAL: Much more prominent Update Purchase Order button */}
           <button
             type="button"
             onClick={handleSubmit}
             disabled={loading || !formData.clientName || formData.items.length === 0}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium shadow-lg"
+            className="px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 font-bold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 border-2 border-green-800"
+            style={{ minWidth: '220px' }}
           >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {editingPO ? 'Update Purchase Order' : 'Create Purchase Order'}
+            {loading && <Loader2 className="w-5 h-5 animate-spin" />}
+            {editingPO ? (
+              <>
+                <CheckCircle className="w-5 h-5" />
+                Update Purchase Order
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5" />
+                Create Purchase Order
+              </>
+            )}
           </button>
         </div>
       </div>
