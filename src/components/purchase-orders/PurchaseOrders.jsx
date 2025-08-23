@@ -62,7 +62,6 @@ const extractPartNumberFromDescription = (description) => {
   return '';
 };
 
-
 // Simple date formatter
 const formatDate = (dateString) => {
   if (!dateString) return '-';
@@ -125,6 +124,23 @@ const PurchaseOrders = () => {
     { id: 1, name: 'John Doe' },
     { id: 2, name: 'Sarah Chen' }
   ]);
+
+  // 🔥 CRITICAL FIX: Function to calculate PO total from items array
+  const calculatePOTotal = (po) => {
+    if (!po.items || !Array.isArray(po.items)) return 0;
+    
+    // Calculate subtotal from items
+    const subtotal = po.items.reduce((sum, item) => {
+      return sum + (parseFloat(item.totalPrice) || 0);
+    }, 0);
+    
+    // Add financial components
+    const tax = parseFloat(po.tax) || 0;
+    const shipping = parseFloat(po.shipping) || 0;  
+    const discount = parseFloat(po.discount) || 0;
+    
+    return subtotal + tax + shipping - discount;
+  };
 
   // Enhanced filtering with multi-company support
   const filteredPOs = React.useMemo(() => {
@@ -234,8 +250,9 @@ const PurchaseOrders = () => {
       return acc;
     }, {});
 
+    // 🔥 UPDATED: Use calculatePOTotal for totalValue calculation
     const totalValue = purchaseOrders.reduce((sum, po) => {
-      const amount = po.totalAmount || po.total || 0;
+      const amount = po.totalAmount || calculatePOTotal(po);
       return sum + (typeof amount === 'number' ? amount : 0);
     }, 0);
 
@@ -302,7 +319,7 @@ const PurchaseOrders = () => {
       return;
     }
 
-    console.log('🔄 Processing PO file with document storage:', file.name);
+    console.log('📄 Processing PO file with document storage:', file.name);
     setExtracting(true);
     setUploadError(null);
 
@@ -335,7 +352,7 @@ const PurchaseOrders = () => {
       if (result.success && result.data) {
         console.log('📄 PO data structure:', result.data);
         console.log('🗂️ Document storage info:', result.data.storageInfo);
-        console.log('📁 Document ID:', result.data.documentId);
+        console.log('🔍 Document ID:', result.data.documentId);
         
         // Create POModal-compatible structure with company assignment
         let modalData;
@@ -540,8 +557,8 @@ const PurchaseOrders = () => {
     setModalOpen(true);
   };
 
-  // Enhanced PO save with company validation
-  const handleSavePO = async (poData) => {
+  // 🔥 UPDATED: Enhanced PO save with refresh trigger
+  const handleSavePO = async (poData, options = {}) => {
     try {
       // Check if user can create/edit PO for this company/branch
       if (!canCreatePOFor(poData.companyId, poData.branchId)) {
@@ -560,7 +577,9 @@ const PurchaseOrders = () => {
           branchId: poData.branchId,
           documentId: poData.documentId,
           hasStoredDocuments: poData.hasStoredDocuments,
-          originalFileName: poData.originalFileName
+          originalFileName: poData.originalFileName,
+          totalAmount: poData.totalAmount,
+          tax: poData.tax
         });
         
         let result;
@@ -593,6 +612,12 @@ const PurchaseOrders = () => {
           
           setModalOpen(false);
           setCurrentPO(null);
+
+          // 🔥 CRITICAL: Force refresh if requested
+          if (options.shouldRefresh && typeof refetch === 'function') {
+            console.log('🔄 Refreshing PO list after save...');
+            await refetch();
+          }
         } else {
           throw new Error(result?.error || 'Failed to save purchase order');
         }
@@ -612,7 +637,7 @@ const PurchaseOrders = () => {
           actions: [
             {
               label: 'Retry',
-              onClick: () => handleSavePO(poData)
+              onClick: () => handleSavePO(poData, options)
             }
           ]
         });
@@ -1215,9 +1240,9 @@ const PurchaseOrders = () => {
                       </div>
                     </td>
 
-                    {/* TOTAL */}
+                    {/* 🔥 CRITICAL FIX: TOTAL - Use calculatePOTotal fallback */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      RM {(po.total || po.totalAmount || 0).toLocaleString()}
+                      RM {(po.totalAmount || calculatePOTotal(po)).toLocaleString()}
                     </td>
 
                     {/* STATUS */}
