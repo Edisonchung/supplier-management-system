@@ -183,8 +183,8 @@ const validatePOTotals = (formData, debug = false) => {
     return sum + (parseFloat(item.totalPrice) || 0);
   }, 0);
 
-  // Use explicit tax value or 0 (no auto 10% tax)
-  const tax = parseFloat(formData.tax) || 0;
+  // FIXED: Preserve exact tax value including 0 (no automatic 10% tax fallback)
+  const tax = formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0;
   const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
   const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
@@ -193,7 +193,8 @@ const validatePOTotals = (formData, debug = false) => {
     console.log('[DEBUG] PO TOTAL VALIDATION:', {
       itemsCount: formData.items.length,
       calculatedSubtotal,
-      tax,
+      tax: tax,
+      originalTaxInput: formData.tax,
       shipping,
       discount,
       calculatedTotal
@@ -203,7 +204,7 @@ const validatePOTotals = (formData, debug = false) => {
   return {
     ...formData,
     subtotal: calculatedSubtotal,
-    tax,
+    tax: tax,
     shipping,
     discount,
     totalAmount: calculatedTotal
