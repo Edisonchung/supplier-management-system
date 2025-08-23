@@ -173,7 +173,7 @@ const fixPOItemPrices = (items, debug = true) => {
   });
 };
 
-// 🔥 CRITICAL FIX: validatePOTotals - No automatic tax application
+// CRITICAL FIX: validatePOTotals - No automatic tax application
 const validatePOTotals = (formData, debug = false) => {
   if (!formData.items || formData.items.length === 0) {
     return { ...formData, subtotal: 0, tax: 0, totalAmount: 0 };
@@ -183,10 +183,10 @@ const validatePOTotals = (formData, debug = false) => {
     return sum + (parseFloat(item.totalPrice) || 0);
   }, 0);
 
-  // 🔥 FIXED: Use explicit tax value or 0 (no automatic 10% tax)
-const tax = formData.tax !== undefined && formData.tax !== null ? 
-  parseFloat(formData.tax) : 0;  
-const shipping = parseFloat(formData.shipping) || 0;
+  // FIXED: Use explicit tax value or 0 (no automatic 10% tax)
+  const tax = formData.tax !== undefined && formData.tax !== null ? 
+    parseFloat(formData.tax) : 0;
+  const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
   const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
 
@@ -780,7 +780,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setShowProductSearch(false);
   };
 
-  // 🔥 CRITICAL FIX: Enhanced submit with proper total calculation AND refresh trigger
+  // CRITICAL FIX: Enhanced submit with proper total calculation AND refresh trigger
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -816,7 +816,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         fileSize: formData.fileSize || 0,
         contentType: formData.contentType || '',
         extractedAt: formData.extractedAt || new Date().toISOString(),
-        // 🔥 CRITICAL: Add refresh trigger
+        // CRITICAL: Add refresh trigger
         lastUpdated: new Date().toISOString()
       };
       
@@ -829,7 +829,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         tax: dataToSave.tax
       });
       
-      // 🔥 CRITICAL: Pass refresh flag to parent component
+      // CRITICAL: Pass refresh flag to parent component
       await onSave(dataToSave, { shouldRefresh: true });
       onClose();
     } catch (error) {
@@ -840,16 +840,16 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   };
 
-  // 🔥 UPDATED: Calculate total using the same logic as validatePOTotals
+  // UPDATED: Calculate total using the same logic as validatePOTotals
   const calculateTotal = () => {
     const subtotal = formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0);
-    const tax = parseFloat(formData.tax) || 0;
+    const tax = formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0;
     const shipping = parseFloat(formData.shipping) || 0;
     const discount = parseFloat(formData.discount) || 0;
     return subtotal + tax + shipping - discount;
   };
 
-  // 🔥 NEW: Function to calculate PO total for list display consistency  
+  // NEW: Function to calculate PO total for list display consistency  
   const calculatePOTotal = (po) => {
     if (!po.items || !Array.isArray(po.items)) return 0;
     
@@ -859,7 +859,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }, 0);
     
     // Add financial components
-    const tax = parseFloat(po.tax) || 0;
+    const tax = po.tax !== undefined && po.tax !== null ? parseFloat(po.tax) : 0;
     const shipping = parseFloat(po.shipping) || 0;  
     const discount = parseFloat(po.discount) || 0;
     
@@ -1171,7 +1171,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   </div>
                 </div>
 
-                {/* 🔥 UPDATED Financial Details Section with enhanced styling */}
+                {/* UPDATED Financial Details Section with enhanced styling */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Financial Details</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1238,7 +1238,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     </div>
                   </div>
                   
-                  {/* 🔥 UPDATED Total Amount Display */}
+                  {/* UPDATED Total Amount Display */}
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                     <div className="flex justify-between items-center text-lg font-semibold">
                       <span>Total Amount:</span>
@@ -1246,7 +1246,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
                       Subtotal: RM {formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0).toFixed(2)} + 
-                      Tax: RM {(parseFloat(formData.tax) || 0).toFixed(2)} + 
+                      Tax: RM {(formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0).toFixed(2)} + 
                       Shipping: RM {(parseFloat(formData.shipping) || 0).toFixed(2)} - 
                       Discount: RM {(parseFloat(formData.discount) || 0).toFixed(2)}
                     </div>
@@ -1421,7 +1421,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Product Code
-                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔍</span>
+                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">📝</span>
                             </label>
                             <input
                               type="text"
@@ -1649,7 +1649,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           ) : null}
         </div>
 
-        {/* 🔥 ENHANCED Fixed Footer with More Prominent Button Styling */}
+        {/* ENHANCED Fixed Footer with More Prominent Button Styling */}
         <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
           <button
             type="button"
@@ -1660,7 +1660,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             Cancel
           </button>
           
-          {/* 🔥 CRITICAL: Much more prominent Update Purchase Order button */}
+          {/* CRITICAL: Much more prominent Update Purchase Order button */}
           <button
             type="button"
             onClick={handleSubmit}
