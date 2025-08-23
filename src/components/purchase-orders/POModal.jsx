@@ -183,7 +183,7 @@ const validatePOTotals = (formData, debug = false) => {
     return sum + (parseFloat(item.totalPrice) || 0);
   }, 0);
 
-  const tax = parseFloat(formData.tax) || calculatedSubtotal * 0.1;
+  const tax = parseFloat(formData.tax) || 0;
   const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
   const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
