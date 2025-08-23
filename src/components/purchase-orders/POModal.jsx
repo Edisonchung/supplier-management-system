@@ -3,10 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, Building2, ChevronDown, ChevronUp, Plus, Trash2, Calculator } from 'lucide-react';
 import { AIExtractionService, ValidationService } from "../../services/ai";
 import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDisplay';
-// ✅ NEW: Add DocumentViewer import
+// âœ… NEW: Add DocumentViewer import
 import DocumentViewer from '../common/DocumentViewer';
 
-// ✅ NEW: Product Code Extraction Utility
+// âœ… NEW: Product Code Extraction Utility
 const extractProductCodeFromName = (productName) => {
   if (!productName) return '';
   
@@ -38,7 +38,7 @@ const extractProductCodeFromName = (productName) => {
   return '';
 };
 
-// ✅ ENHANCED: Price Fixing Functions (keep existing)
+// âœ… ENHANCED: Price Fixing Functions (keep existing)
 const fixPOItemPrices = (items, debug = true) => {
   if (!items || !Array.isArray(items)) {
     console.warn('No valid items array provided to fixPOItemPrices');
@@ -46,12 +46,12 @@ const fixPOItemPrices = (items, debug = true) => {
   }
 
   if (debug) {
-    console.log('🔧 FIXING PO ITEM PRICES...');
+    console.log('ðŸ"§ FIXING PO ITEM PRICES...');
     console.log('Original items:', items);
   }
 
-  // ✅ ADD THIS DEBUG TO TRACK PROJECT CODES
-  console.log('🏢 DEBUG: Items entering fixPOItemPrices:');
+  // âœ… ADD THIS DEBUG TO TRACK PROJECT CODES
+  console.log('ðŸ¢ DEBUG: Items entering fixPOItemPrices:');
   items.forEach((item, i) => {
     console.log(`  Item ${i + 1}: projectCode = "${item.projectCode || 'MISSING'}", clientItemCode = "${item.clientItemCode || 'MISSING'}"`);
   });
@@ -59,9 +59,9 @@ const fixPOItemPrices = (items, debug = true) => {
   return items.map((item, index) => {
     const originalItem = { ...item };
     
-    // ✅ CRITICAL DEBUG: Log BEFORE processing
+    // âœ… CRITICAL DEBUG: Log BEFORE processing
     if (debug) {
-      console.log(`🔍 BEFORE processing item ${index + 1}:`, {
+      console.log(`ðŸ" BEFORE processing item ${index + 1}:`, {
         clientItemCode: originalItem.clientItemCode,
         productCode: originalItem.productCode,
         projectCode: originalItem.projectCode,
@@ -73,10 +73,10 @@ const fixPOItemPrices = (items, debug = true) => {
     const unitPrice = parseFloat(item.unitPrice) || 0;
     const totalPrice = parseFloat(item.totalPrice) || 0;
     
-    // ✅ CRITICAL FIX: Start with ALL original fields AND immediately preserve critical fields
+    // âœ… CRITICAL FIX: Start with ALL original fields AND immediately preserve critical fields
     let fixedItem = { ...originalItem };
     
-    // ✅ IMMEDIATELY preserve critical fields before ANY processing
+    // âœ… IMMEDIATELY preserve critical fields before ANY processing
     fixedItem.clientItemCode = originalItem.clientItemCode || '';
     fixedItem.productCode = originalItem.productCode || '';
     fixedItem.projectCode = originalItem.projectCode || '';
@@ -84,40 +84,40 @@ const fixPOItemPrices = (items, debug = true) => {
     fixedItem.id = originalItem.id || `item_${index + 1}`;
     
     if (debug) {
-      console.log(`🔒 IMMEDIATELY PRESERVED fields for item ${index + 1}:`, {
+      console.log(`ðŸ"' IMMEDIATELY PRESERVED fields for item ${index + 1}:`, {
         clientItemCode: fixedItem.clientItemCode,
         productCode: fixedItem.productCode,
         projectCode: fixedItem.projectCode
       });
     }
 
-    // Strategy 1: Calculate total from quantity × unit price
+    // Strategy 1: Calculate total from quantity Ã— unit price
     if (quantity > 0 && unitPrice > 0) {
       const calculatedTotal = quantity * unitPrice;
       const variance = totalPrice > 0 ? Math.abs(calculatedTotal - totalPrice) / totalPrice : 1;
       
       if (variance > 0.1 || totalPrice === 0) {
-        if (debug) console.log(`  ✅ Fixed: Using calculated total ${calculatedTotal} (was ${totalPrice})`);
+        if (debug) console.log(`  âœ… Fixed: Using calculated total ${calculatedTotal} (was ${totalPrice})`);
         fixedItem.totalPrice = calculatedTotal;
       }
     } 
-    // Strategy 2: Calculate unit price from total ÷ quantity
+    // Strategy 2: Calculate unit price from total Ã· quantity
     else if (quantity > 0 && totalPrice > 0 && (unitPrice === 0 || !unitPrice)) {
       const calculatedUnitPrice = totalPrice / quantity;
-      if (debug) console.log(`  ✅ Fixed: Calculated unit price ${calculatedUnitPrice}`);
+      if (debug) console.log(`  âœ… Fixed: Calculated unit price ${calculatedUnitPrice}`);
       fixedItem.unitPrice = calculatedUnitPrice;
     } 
-    // Strategy 3: Calculate quantity from total ÷ unit price
+    // Strategy 3: Calculate quantity from total Ã· unit price
     else if (unitPrice > 0 && totalPrice > 0 && (quantity === 0 || !quantity)) {
       const calculatedQuantity = Math.round(totalPrice / unitPrice);
-      if (debug) console.log(`  ✅ Fixed: Calculated quantity ${calculatedQuantity}`);
+      if (debug) console.log(`  âœ… Fixed: Calculated quantity ${calculatedQuantity}`);
       fixedItem.quantity = calculatedQuantity;
     } 
     // Strategy 4: Handle only total price existing
     else if (totalPrice > 0 && quantity === 0 && unitPrice === 0) {
       fixedItem.unitPrice = totalPrice;
       fixedItem.quantity = 1;
-      if (debug) console.log(`  ✅ Fixed: Set unit price to total and quantity to 1`);
+      if (debug) console.log(`  âœ… Fixed: Set unit price to total and quantity to 1`);
     }
     // Strategy 5: Default missing values
     else {
@@ -128,41 +128,41 @@ const fixPOItemPrices = (items, debug = true) => {
       }
     }
 
-    // ✅ DOUBLE-CHECK: Preserve critical fields again as safety net
+    // âœ… DOUBLE-CHECK: Preserve critical fields again as safety net
     if (originalItem.clientItemCode) {
       fixedItem.clientItemCode = originalItem.clientItemCode;
       if (debug) {
-        console.log(`🔍 Double-check preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
+        console.log(`ðŸ" Double-check preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
       }
     } else if (debug) {
-      console.log(`⚠️ WARNING: No clientItemCode found in originalItem for item ${index + 1}`);
+      console.log(`âš ï¸ WARNING: No clientItemCode found in originalItem for item ${index + 1}`);
       console.log(`Original item keys:`, Object.keys(originalItem));
     }
 
-    // ✅ Also preserve other important fields that might get lost
+    // âœ… Also preserve other important fields that might get lost
     if (originalItem.productCode && !fixedItem.productCode) {
       fixedItem.productCode = originalItem.productCode;
     }
 
-    // ✅ Preserve project code
+    // âœ… Preserve project code
     if (originalItem.projectCode) {
       fixedItem.projectCode = originalItem.projectCode;
       if (debug) {
-        console.log(`🏢 Double-check preserving projectCode for item ${index + 1}:`, originalItem.projectCode);
+        console.log(`ðŸ¢ Double-check preserving projectCode for item ${index + 1}:`, originalItem.projectCode);
       }
     } else if (debug) {
-      console.log(`⚠️ WARNING: No projectCode found in originalItem for item ${index + 1}`);
+      console.log(`âš ï¸ WARNING: No projectCode found in originalItem for item ${index + 1}`);
     }
 
-    // ✅ FINAL SAFETY CHECK: Ensure nothing got lost
+    // âœ… FINAL SAFETY CHECK: Ensure nothing got lost
     if (originalItem.clientItemCode && !fixedItem.clientItemCode) {
       fixedItem.clientItemCode = originalItem.clientItemCode;
-      if (debug) console.log(`🚨 EMERGENCY RESCUE: clientItemCode restored for item ${index + 1}`);
+      if (debug) console.log(`ðŸš¨ EMERGENCY RESCUE: clientItemCode restored for item ${index + 1}`);
     }
 
-    // ✅ CRITICAL DEBUG: Log AFTER processing
+    // âœ… CRITICAL DEBUG: Log AFTER processing
     if (debug) {
-      console.log(`🔍 AFTER processing item ${index + 1}:`, {
+      console.log(`ðŸ" AFTER processing item ${index + 1}:`, {
         clientItemCode: fixedItem.clientItemCode,
         productCode: fixedItem.productCode,
         projectCode: fixedItem.projectCode,
@@ -174,7 +174,7 @@ const fixPOItemPrices = (items, debug = true) => {
   });
 };
 
-// ✅ UPDATED: validatePOTotals with no automatic tax
+// âœ… UPDATED: validatePOTotals with no automatic tax
 const validatePOTotals = (formData, debug = false) => {
   if (!formData.items || formData.items.length === 0) {
     return { ...formData, subtotal: 0, tax: 0, totalAmount: 0 };
@@ -184,14 +184,14 @@ const validatePOTotals = (formData, debug = false) => {
     return sum + (parseFloat(item.totalPrice) || 0);
   }, 0);
 
-  // ✅ FIXED: Use explicit tax value or 0 (no auto 10% tax)
+  // âœ… FIXED: Use explicit tax value or 0 (no auto 10% tax)
   const tax = parseFloat(formData.tax) || 0;
   const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
   const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
 
   if (debug) {
-    console.log('💰 PO TOTAL VALIDATION:', {
+    console.log('ðŸ'° PO TOTAL VALIDATION:', {
       itemsCount: formData.items.length,
       calculatedSubtotal,
       tax,
@@ -213,12 +213,12 @@ const validatePOTotals = (formData, debug = false) => {
 
 const processExtractedPOData = (extractedData, debug = true) => {
   if (debug) {
-    console.log('🚀 PROCESSING EXTRACTED PO DATA');
+    console.log('ðŸš€ PROCESSING EXTRACTED PO DATA');
     console.log('Original extracted data:', extractedData);
     
-    // ✅ CRITICAL DEBUG: Check clientItemCode at the START
+    // âœ… CRITICAL DEBUG: Check clientItemCode at the START
     if (extractedData.items && extractedData.items.length > 0) {
-      console.log('🔍 BEFORE processing - Items details:');
+      console.log('ðŸ" BEFORE processing - Items details:');
       extractedData.items.forEach((item, index) => {
         console.log(`  Item ${index + 1}:`, {
           clientItemCode: item.clientItemCode,
@@ -231,9 +231,9 @@ const processExtractedPOData = (extractedData, debug = true) => {
 
   let processedData = { ...extractedData };
   
-  // ✅ CRITICAL DEBUG: Check AFTER copying extractedData
+  // âœ… CRITICAL DEBUG: Check AFTER copying extractedData
   if (debug && processedData.items && processedData.items.length > 0) {
-    console.log('🔍 AFTER copying extractedData - Items details:');
+    console.log('ðŸ" AFTER copying extractedData - Items details:');
     processedData.items.forEach((item, index) => {
       console.log(`  Item ${index + 1}:`, {
         clientItemCode: item.clientItemCode,
@@ -243,12 +243,12 @@ const processExtractedPOData = (extractedData, debug = true) => {
     });
   }
 
-  // ✅ NEW: Extract project codes from PO data
+  // âœ… NEW: Extract project codes from PO data
   processedData = extractProjectCodesFromPO(processedData);
   
-  // ✅ CRITICAL DEBUG: Check AFTER extractProjectCodesFromPO
+  // âœ… CRITICAL DEBUG: Check AFTER extractProjectCodesFromPO
   if (debug && processedData.items && processedData.items.length > 0) {
-    console.log('🔍 AFTER extractProjectCodesFromPO - Items details:');
+    console.log('ðŸ" AFTER extractProjectCodesFromPO - Items details:');
     processedData.items.forEach((item, index) => {
       console.log(`  Item ${index + 1}:`, {
         clientItemCode: item.clientItemCode,
@@ -262,9 +262,9 @@ const processExtractedPOData = (extractedData, debug = true) => {
   if (processedData.items && processedData.items.length > 0) {
     processedData.items = fixPOItemPrices(processedData.items, debug);
     
-    // ✅ ENHANCED DEBUG
+    // âœ… ENHANCED DEBUG
     if (debug && processedData.items.length > 0) {
-      console.log('🔍 AFTER fixPOItemPrices - Items details:');
+      console.log('ðŸ" AFTER fixPOItemPrices - Items details:');
       processedData.items.forEach((item, index) => {
         console.log(`  Item ${index + 1}:`, {
           clientItemCode: item.clientItemCode,
@@ -278,9 +278,9 @@ const processExtractedPOData = (extractedData, debug = true) => {
   
   processedData = validatePOTotals(processedData, debug);
   
-  // ✅ FINAL DEBUG: Check AFTER validatePOTotals
+  // âœ… FINAL DEBUG: Check AFTER validatePOTotals
   if (debug && processedData.items && processedData.items.length > 0) {
-    console.log('🔍 FINAL - AFTER validatePOTotals - Items details:');
+    console.log('ðŸ" FINAL - AFTER validatePOTotals - Items details:');
     processedData.items.forEach((item, index) => {
       console.log(`  Item ${index + 1}:`, {
         clientItemCode: item.clientItemCode,
@@ -294,7 +294,7 @@ const processExtractedPOData = (extractedData, debug = true) => {
   return processedData;
 };
 
-// ✅ ADD THIS FUNCTION RIGHT AFTER processExtractedPOData
+// âœ… ADD THIS FUNCTION RIGHT AFTER processExtractedPOData
 const extractProjectCodesFromPO = (extractedData) => {
   // Look for project codes in various formats from PTP PO
   const projectCodePatterns = [
@@ -305,15 +305,15 @@ const extractProjectCodesFromPO = (extractedData) => {
     /Job\s*No[:\s]+([A-Z0-9-]+)/gi
   ];
   
-  console.log('🏢 EXTRACTING PROJECT CODES from PO data');
+  console.log('ðŸ¢ EXTRACTING PROJECT CODES from PO data');
   
   if (extractedData.items) {
     extractedData.items = extractedData.items.map((item, index) => {
-      // ✅ CRITICAL: Start with ALL original fields
+      // âœ… CRITICAL: Start with ALL original fields
       let updatedItem = { ...item };
       
-      // ✅ CRITICAL DEBUG: Log what we're starting with
-      console.log(`🔍 extractProjectCodesFromPO - Item ${index + 1} BEFORE:`, {
+      // âœ… CRITICAL DEBUG: Log what we're starting with
+      console.log(`ðŸ" extractProjectCodesFromPO - Item ${index + 1} BEFORE:`, {
         clientItemCode: item.clientItemCode,
         productCode: item.productCode,
         projectCode: item.projectCode,
@@ -325,7 +325,7 @@ const extractProjectCodesFromPO = (extractedData) => {
       // Check if project code is already extracted
       if (item.projectCode) {
         projectCode = item.projectCode;
-        console.log(`  ✅ Item ${index + 1}: Found existing project code: ${projectCode}`);
+        console.log(`  âœ… Item ${index + 1}: Found existing project code: ${projectCode}`);
       } else {
         // Try to extract from description, notes, or part number
         const searchableText = [
@@ -341,26 +341,26 @@ const extractProjectCodesFromPO = (extractedData) => {
           item.product_code || ''
         ].filter(Boolean).join(' ');
 
-        console.log(`  🔍 Searchable text for item ${index + 1}:`, searchableText.substring(0, 100));
+        console.log(`  ðŸ" Searchable text for item ${index + 1}:`, searchableText.substring(0, 100));
 
         // Try each pattern
         for (const pattern of projectCodePatterns) {
           const matches = searchableText.match(pattern);
           if (matches && matches[0]) {
             projectCode = matches[0].toUpperCase();
-            console.log(`  ✅ Found project code "${projectCode}" using pattern: ${pattern}`);
+            console.log(`  âœ… Found project code "${projectCode}" using pattern: ${pattern}`);
             break;
           }
         }
       }
       
-      // ✅ Update only the projectCode, preserve everything else
+      // âœ… Update only the projectCode, preserve everything else
       if (projectCode) {
         updatedItem.projectCode = projectCode;
       }
       
-      // ✅ CRITICAL DEBUG: Log what we're returning
-      console.log(`🔍 extractProjectCodesFromPO - Item ${index + 1} AFTER:`, {
+      // âœ… CRITICAL DEBUG: Log what we're returning
+      console.log(`ðŸ" extractProjectCodesFromPO - Item ${index + 1} AFTER:`, {
         clientItemCode: updatedItem.clientItemCode,
         productCode: updatedItem.productCode,
         projectCode: updatedItem.projectCode,
@@ -372,7 +372,7 @@ const extractProjectCodesFromPO = (extractedData) => {
   }
   
   const foundCodes = extractedData.items?.filter(item => item.projectCode).length || 0;
-  console.log(`🏢 Project code extraction complete: ${foundCodes}/${extractedData.items?.length || 0} items have project codes`);
+  console.log(`ðŸ¢ Project code extraction complete: ${foundCodes}/${extractedData.items?.length || 0} items have project codes`);
   
   return extractedData;
 };
@@ -383,9 +383,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [extractionError, setExtractionError] = useState("");
   const [extractedData, setExtractedData] = useState(null);
   
-  // ✅ ENHANCED: Add document storage fields to useState
+  // âœ… ENHANCED: Add document storage fields to useState
   const [formData, setFormData] = useState({
-    // ✅ DOCUMENT STORAGE FIELDS
+    // âœ… DOCUMENT STORAGE FIELDS
     documentId: '',
     documentNumber: '',
     documentType: 'po',
@@ -410,7 +410,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     deliveryTerms: 'FOB',
     status: 'draft',
     notes: '',
-    // ✅ NEW: Financial fields
+    // âœ… NEW: Financial fields
     subtotal: 0,
     tax: 0,
     shipping: 0,
@@ -437,7 +437,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [showSupplierMatching, setShowSupplierMatching] = useState(false);
   const [supplierMatchingData, setSupplierMatchingData] = useState(null);
   
-  // ✅ NEW: Add activeTab state for Documents tab
+  // âœ… NEW: Add activeTab state for Documents tab
   const [activeTab, setActiveTab] = useState('details');
 
   // Mock products for demo
@@ -458,13 +458,13 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     return `PO-${year}${month}${day}-${random}`;
   };
 
-  // ✅ UPDATED: useEffect with enhanced document field preservation
+  // âœ… UPDATED: useEffect with enhanced document field preservation
   useEffect(() => {
     if (editingPO) {
-      console.log('🎯 POModal: Setting form data from editing PO:', editingPO.poNumber);
+      console.log('ðŸŽ¯ POModal: Setting form data from editing PO:', editingPO.poNumber);
       
       if (editingPO.items && editingPO.items.length > 0) {
-        console.log('🔍 EDITING PO DEBUG: editingPO.items check:');
+        console.log('ðŸ" EDITING PO DEBUG: editingPO.items check:');
         editingPO.items.forEach((item, i) => {
           console.log(`  EditingPO Item ${i + 1} DETAILS:`);
           console.log(`    clientItemCode: "${item.clientItemCode}"`);
@@ -475,7 +475,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         });
       }
       
-      // ✅ ENHANCED DOCUMENT STORAGE FIELDS PRESERVATION
+      // âœ… ENHANCED DOCUMENT STORAGE FIELDS PRESERVATION
       const documentFields = {
         documentId: editingPO.documentId || '',
         documentNumber: editingPO.documentNumber || editingPO.poNumber || '',
@@ -488,7 +488,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         extractedAt: editingPO.extractedAt || editingPO.createdAt || new Date().toISOString()
       };
       
-      console.log('🎯 POModal: Document storage fields set:', documentFields);
+      console.log('ðŸŽ¯ POModal: Document storage fields set:', documentFields);
       
       // Use correct items array (preserving existing logic)
       let itemsToUse = editingPO.items;
@@ -498,14 +498,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
         
         if (extractedHasClientCode && !editingHasClientCode) {
-          console.log('🚨 CRITICAL FIX: Using extractedData.items because it has clientItemCode');
+          console.log('ðŸš¨ CRITICAL FIX: Using extractedData.items because it has clientItemCode');
           itemsToUse = editingPO.extractedData.items;
         }
       }
       
       setFormData({
         ...editingPO,
-        ...documentFields,  // ✅ Apply enhanced document fields
+        ...documentFields,  // âœ… Apply enhanced document fields
         items: itemsToUse
       });
     } else {
@@ -519,25 +519,25 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   }, [editingPO]);
 
-  // ✅ ENHANCED: AI Extraction with Document Storage (Updated handleFileUpload)
+  // âœ… ENHANCED: AI Extraction with Document Storage (Updated handleFileUpload)
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    console.log('📄 Starting PO extraction with document storage for:', file.name);
+    console.log('ðŸ"„ Starting PO extraction with document storage for:', file.name);
     setExtracting(true);
     setValidationErrors([]);
 
     try {
-      // ✅ CRITICAL: Use extractPOWithStorage instead of basic extractFromFile
+      // âœ… CRITICAL: Use extractPOWithStorage instead of basic extractFromFile
       const extractedData = await AIExtractionService.extractPOWithStorage(file);
-      console.log("📄 Raw extracted data with storage:", extractedData);
+      console.log("ðŸ"„ Raw extracted data with storage:", extractedData);
 
       // Apply price fixing to extracted data
       const processedData = processExtractedPOData(extractedData.data || extractedData, true);
-      console.log("✅ Processed data:", processedData);
+      console.log("âœ… Processed data:", processedData);
 
-      // ✅ CRITICAL: Extract document storage information from AI response
+      // âœ… CRITICAL: Extract document storage information from AI response
       let documentStorageFields = {};
       
       if (extractedData.documentStorage) {
@@ -553,7 +553,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           contentType: extractedData.documentStorage.originalFile?.contentType || file.type,
           extractedAt: extractedData.documentStorage.storedAt || new Date().toISOString()
         };
-        console.log('✅ Using AI document storage:', documentStorageFields.documentId);
+        console.log('âœ… Using AI document storage:', documentStorageFields.documentId);
       } 
       else if (extractedData.extractionMetadata?.documentId) {
         // Fallback source: Extraction metadata
@@ -568,7 +568,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           extractedAt: extractedData.extractionMetadata.extractedAt || new Date().toISOString(),
           storageInfo: extractedData.extractionMetadata.storageInfo || null
         };
-        console.log('✅ Using extraction metadata:', documentStorageFields.documentId);
+        console.log('âœ… Using extraction metadata:', documentStorageFields.documentId);
       }
       else {
         // Generate fallback document ID if none provided
@@ -583,7 +583,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           extractedAt: new Date().toISOString(),
           storageInfo: null
         };
-        console.log('⚠️ Generated fallback document ID:', documentStorageFields.documentId);
+        console.log('âš ï¸ Generated fallback document ID:', documentStorageFields.documentId);
       }
       
       // Validate the extracted data
@@ -593,7 +593,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         setValidationErrors(validation.errors);
       }
 
-      // ✅ CRITICAL: Combine processed data with document storage fields
+      // âœ… CRITICAL: Combine processed data with document storage fields
       const completeFormData = {
         ...processedData,
         ...documentStorageFields,
@@ -605,13 +605,13 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         poNumber: processedData.poNumber || formData.poNumber || generatePONumber()
       };
 
-      console.log('📋 Setting form data with document fields:', {
+      console.log('ðŸ"‹ Setting form data with document fields:', {
         documentId: completeFormData.documentId,
         hasStoredDocuments: completeFormData.hasStoredDocuments,
         originalFileName: completeFormData.originalFileName
       });
 
-      // ✅ Set form data with complete document integration
+      // âœ… Set form data with complete document integration
       setFormData(completeFormData);
       
       // Store the complete extracted data for potential reference
@@ -620,10 +620,10 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         processedData: completeFormData
       });
       
-      console.log('✅ PO extraction with document storage completed successfully');
+      console.log('âœ… PO extraction with document storage completed successfully');
       
     } catch (error) {
-      console.error('❌ PO extraction failed:', error);
+      console.error('âŒ PO extraction failed:', error);
       setValidationErrors([{ field: 'general', message: 'Failed to extract PO data: ' + error.message }]);
     } finally {
       setExtracting(false);
@@ -653,7 +653,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setValidationErrors(prev => prev.filter(e => e.field !== field));
   };
 
-  // ✅ ENHANCED: Item change handler with price fixing
+  // âœ… ENHANCED: Item change handler with price fixing
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
     const oldValue = newItems[index][field];
@@ -663,17 +663,17 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       [field]: value
     };
     
-    // ✅ NEW: Auto-extract product code when product name changes
+    // âœ… NEW: Auto-extract product code when product name changes
     if (field === 'productName' && value !== oldValue) {
       const extractedCode = extractProductCodeFromName(value);
       if (extractedCode && !newItems[index].productCode) {
         newItems[index].productCode = extractedCode;
-        console.log(`🔍 Auto-extracted product code: "${extractedCode}" from "${value}"`);
+        console.log(`ðŸ" Auto-extracted product code: "${extractedCode}" from "${value}"`);
       }
     }
-     // ✅ CRITICAL: Ensure project code changes are preserved
+     // âœ… CRITICAL: Ensure project code changes are preserved
     if (field === 'projectCode') {
-      console.log(`✅ Project code for item ${index} changed from "${oldValue}" to "${value}"`);
+      console.log(`âœ… Project code for item ${index} changed from "${oldValue}" to "${value}"`);
     }
     
     // Auto-format project codes
@@ -690,14 +690,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }));
   };
 
-  // ✅ NEW: Product Code Bulk Extraction for all items (compatible with fixPOItemPrices)
+  // âœ… NEW: Product Code Bulk Extraction for all items (compatible with fixPOItemPrices)
   const handleBulkProductCodeExtraction = () => {
     setFormData(prev => {
       const updatedItems = prev.items.map(item => {
         if (!item.productCode && item.productName) {
           const extractedCode = extractProductCodeFromName(item.productName);
           if (extractedCode) {
-            console.log(`🔍 Bulk extracted: "${extractedCode}" from "${item.productName}"`);
+            console.log(`ðŸ" Bulk extracted: "${extractedCode}" from "${item.productName}"`);
             return {
               ...item,
               productCode: extractedCode
@@ -717,7 +717,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     });
   };
 
-  // ✅ ENHANCED: Add item with price fixing
+  // âœ… ENHANCED: Add item with price fixing
   const addItem = () => {
     if (currentItem.productName && currentItem.quantity > 0) {
       const newItems = [...formData.items, { 
@@ -747,9 +747,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   };
 
-  // ✅ NEW: Manual price fix button handler
+  // âœ… NEW: Manual price fix button handler
   const handleFixPrices = () => {
-    console.log('🔧 Manual price fix triggered');
+    console.log('ðŸ"§ Manual price fix triggered');
     const fixedItems = fixPOItemPrices(formData.items, true); // Enable debug for manual fix
     
     setFormData(prev => ({
@@ -780,7 +780,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setShowProductSearch(false);
   };
 
-  // ✅ ENHANCED: Submit with complete document field preservation
+  // âœ… ENHANCED: Submit with complete document field preservation
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -800,10 +800,10 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     
     setLoading(true);
     try {
-      // ✅ Final price validation before saving
+      // âœ… Final price validation before saving
       const validatedData = validatePOTotals(formData, true);
       
-      // ✅ COMPLETE DOCUMENT STORAGE FIELDS PRESERVATION
+      // âœ… COMPLETE DOCUMENT STORAGE FIELDS PRESERVATION
       const dataToSave = {
         ...validatedData,
         // Core document storage fields
@@ -818,7 +818,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         extractedAt: formData.extractedAt || new Date().toISOString()
       };
       
-      console.log('🎯 POModal: Saving PO with complete document storage fields:', {
+      console.log('ðŸŽ¯ POModal: Saving PO with complete document storage fields:', {
         documentId: dataToSave.documentId,
         hasStoredDocuments: dataToSave.hasStoredDocuments,
         originalFileName: dataToSave.originalFileName,
@@ -848,9 +848,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 flex justify-between items-center">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 flex justify-between items-center flex-shrink-0">
           <div>
             <h2 className="text-2xl font-bold">
               {editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'}
@@ -858,7 +858,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             <p className="text-blue-100 mt-1">AI-Enhanced Data Entry with Document Storage</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* ✅ NEW: Manual Price Fix Button */}
+            {/* âœ… NEW: Manual Price Fix Button */}
             {formData.items.length > 0 && (
               <button
                 type="button"
@@ -879,8 +879,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           </div>
         </div>
 
-        {/* ✅ NEW: Tab Navigation */}
-        <div className="border-b border-gray-200">
+        {/* âœ… NEW: Tab Navigation */}
+        <div className="border-b border-gray-200 flex-shrink-0">
           <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
             <button
               onClick={() => setActiveTab('details')}
@@ -893,7 +893,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
               PO Details
             </button>
             
-            {/* ✅ NEW DOCUMENTS TAB */}
+            {/* âœ… NEW DOCUMENTS TAB */}
             <button
               onClick={() => setActiveTab('documents')}
               className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
@@ -913,11 +913,12 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           </nav>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-160px)] flex-1">
+        {/* CONTENT AREA - Fixed height calculation */}
+        <div className="p-6 flex-1 min-h-0" style={{ overflowY: 'auto' }}>
           {/* Tab Content */}
           {activeTab === 'details' ? (
             <>
-              {/* ✅ ENHANCED: AI Upload Section with Price Fix Info */}
+              {/* âœ… ENHANCED: AI Upload Section with Price Fix Info */}
               <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -954,7 +955,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   </label>
                 </div>
                 
-                {/* ✅ Price Fix Status Info */}
+                {/* âœ… Price Fix Status Info */}
                 <div className="text-sm text-purple-700 bg-purple-100 rounded-lg p-2">
                   <div className="flex items-center gap-2">
                     <Calculator className="w-4 h-4" />
@@ -1143,7 +1144,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   </div>
                 </div>
 
-                {/* ✅ NEW: Financial Details Section */}
+                {/* âœ… NEW: Financial Details Section */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Financial Details</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1224,7 +1225,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-semibold text-gray-800">Order Items</h3>
                     <div className="flex gap-2">
-                      {/* ✅ NEW: Bulk Product Code Extraction Button */}
+                      {/* âœ… NEW: Bulk Product Code Extraction Button */}
                       {formData.items.length > 0 && (
                         <button
                           type="button"
@@ -1232,7 +1233,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                           className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
                           title="Extract product codes from all product names"
                         >
-                          🔍 Extract Codes
+                          ðŸ" Extract Codes
                         </button>
                       )}
                     </div>
@@ -1368,7 +1369,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   <div className="space-y-3">
                     {formData.items.map((item, index) => (
                       <div key={item.id || index} className="bg-white p-4 rounded-lg border border-gray-200">
-                        <div className="grid grid-cols-9 gap-3"> {/* ✅ CHANGE FROM 8 TO 9 COLUMNS */}
+                        <div className="grid grid-cols-9 gap-3"> {/* âœ… CHANGE FROM 8 TO 9 COLUMNS */}
                           <div className="col-span-2">
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Product Name *
@@ -1383,10 +1384,10 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                             />
                           </div>
 
-                          {/* ✅ NEW: Product Code/SKU Field */}
+                          {/* ✅ NEW: Product Code Field */}
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Product Code/SKU
+                              Product Code
                               <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔍</span>
                             </label>
                             <input
@@ -1395,7 +1396,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                               onChange={(e) => handleItemChange(index, 'productCode', e.target.value)}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm font-mono"
                               placeholder="Auto-extracted"
-                              title="Manufacturer's product code/part number/SKU"
+                              title="Manufacturer's product code/part number"
                             />
                           </div>
 
@@ -1615,7 +1616,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           ) : null}
         </div>
 
-        {/* ✅ FIXED Footer with Action Buttons - Matching PIModal Style */}
+        {/* ✅ FIXED Footer with Action Buttons - Always Visible */}
         <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
           <button
             type="button"
@@ -1629,7 +1630,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             type="button"
             onClick={handleSubmit}
             disabled={loading || !formData.clientName || formData.items.length === 0}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium shadow-lg"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             {editingPO ? 'Update Purchase Order' : 'Create Purchase Order'}
