@@ -848,6 +848,23 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     return subtotal + tax + shipping - discount;
   };
 
+  // 🔥 NEW: Function to calculate PO total for list display consistency  
+  const calculatePOTotal = (po) => {
+    if (!po.items || !Array.isArray(po.items)) return 0;
+    
+    // Calculate subtotal from items
+    const subtotal = po.items.reduce((sum, item) => {
+      return sum + (parseFloat(item.totalPrice) || 0);
+    }, 0);
+    
+    // Add financial components
+    const tax = parseFloat(po.tax) || 0;
+    const shipping = parseFloat(po.shipping) || 0;  
+    const discount = parseFloat(po.discount) || 0;
+    
+    return subtotal + tax + shipping - discount;
+  };
+
   const filteredProducts = mockProducts.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.code.toLowerCase().includes(searchTerm.toLowerCase())
