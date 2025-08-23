@@ -1,4 +1,4 @@
-// src/App.jsx - PHASE 2B ENHANCED VERSION - Real Data Integration
+// src/App.jsx - PHASE 2B ENHANCED VERSION - Real Data Integration + Business Registration
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -54,14 +54,21 @@ const LazyDualSystemDashboard = lazy(() => import('./components/mcp/DualSystemDa
 const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagement'));
 const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
 
-// Phase 2A E-commerce Components
+// Phase 2A E-commerce Components - UPDATED WITH BUSINESS REGISTRATION
 const LazyPublicCatalog = lazy(() => import('./components/ecommerce/PublicCatalog'));
 const LazyProductDetailPage = lazy(() => import('./components/ecommerce/ProductDetailPage'));
+
+// NEW: Business Registration Components (replacing Factory Registration)
+const LazyBusinessRegistration = lazy(() => import('./components/ecommerce/BusinessRegistration'));
+const LazyBusinessLogin = lazy(() => import('./components/ecommerce/BusinessLogin'));
+
+// Legacy Factory Components (keep for backward compatibility)
 const LazyFactoryRegistration = lazy(() => import('./components/ecommerce/FactoryRegistration'));
-const LazyShoppingCart = lazy(() => import('./components/ecommerce/ShoppingCart'));
-const LazyQuoteRequest = lazy(() => import('./components/ecommerce/QuoteRequest'));
 const LazyFactoryLogin = lazy(() => import('./components/ecommerce/FactoryLogin'));
 const LazyFactoryDashboard = lazy(() => import('./components/ecommerce/FactoryDashboard'));
+
+const LazyShoppingCart = lazy(() => import('./components/ecommerce/ShoppingCart'));
+const LazyQuoteRequest = lazy(() => import('./components/ecommerce/QuoteRequest'));
 
 // Phase 2B Advanced Analytics Components with Real Data
 const LazySmartPublicCatalog = lazy(() => import('./components/SmartPublicCatalog'));
@@ -158,36 +165,36 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-// Factory Route Component (for authenticated factory users) - Enhanced with Real Data
-const FactoryRoute = ({ children }) => {
+// Business Route Component (for authenticated business users) - Renamed from FactoryRoute
+const BusinessRoute = ({ children }) => {
   const { user, loading } = useAuth();
   const analytics = useHiggsFlowAnalytics();
   
   useEffect(() => {
     if (user) {
-      // Track factory user session with real data integration
-      const trackFactorySession = async () => {
+      // Track business user session with real data integration
+      const trackBusinessSession = async () => {
         try {
           const sessionData = {
             userId: user.uid,
             email: user.email,
             userAgent: navigator.userAgent,
-            entryPoint: 'factory_dashboard',
+            entryPoint: 'business_dashboard',
             ipAddress: await getClientIP(),
             timestamp: new Date().toISOString(),
             dataSource: 'real',
-            userType: 'factory',
+            userType: 'business', // Changed from 'factory'
             lastActivity: new Date().toISOString()
           };
 
           await analytics.trackSession(sessionData);
-          console.log('Factory user real data analytics tracked');
+          console.log('Business user real data analytics tracked');
         } catch (error) {
-          console.error('Error tracking factory session:', error);
+          console.error('Error tracking business session:', error);
         }
       };
 
-      trackFactorySession();
+      trackBusinessSession();
     }
   }, [user, analytics]);
   
@@ -200,18 +207,21 @@ const FactoryRoute = ({ children }) => {
   }
   
   if (!user) {
-    return <Navigate to="/factory/login" replace />;
+    return <Navigate to="/business/login" replace />;
   }
   
-  // Check if user is a factory user (not admin)
-  const isFactory = user.email && !user.email.includes('higgsflow.com') && !user.email.includes('admin');
+  // Check if user is a business user (not admin)
+  const isBusiness = user.email && !user.email.includes('higgsflow.com') && !user.email.includes('admin');
   
-  if (!isFactory) {
+  if (!isBusiness) {
     return <Navigate to="/admin" replace />;
   }
   
   return children;
 };
+
+// Legacy FactoryRoute for backward compatibility
+const FactoryRoute = BusinessRoute;
 
 // Enhanced Protected Route Component with Real Data Analytics
 const ProtectedRoute = ({ children, permission }) => {
@@ -372,7 +382,7 @@ function AppContent() {
           if (user) {
             sessionData.userId = user.uid;
             sessionData.email = user.email;
-            sessionData.userType = user.email?.includes('higgsflow.com') ? 'admin' : 'factory';
+            sessionData.userType = user.email?.includes('higgsflow.com') ? 'admin' : 'business';
           }
 
           await higgsFlowAnalytics.trackUserSession(sessionData);
@@ -386,7 +396,7 @@ function AppContent() {
     };
 
     initializeRealDataServices();
-  }, [user, analyticsInitialized, dataSource]); // Add dataSource dependency
+  }, [user, analyticsInitialized, dataSource]);
 
   if (loading) {
     return (
@@ -535,53 +545,112 @@ function AppContent() {
               } 
             />
             
-            {/* ========== FACTORY ROUTES WITH REAL DATA ========== */}
+            {/* ========== BUSINESS REGISTRATION ROUTES (NEW UNIVERSAL SYSTEM) ========== */}
             
-            {/* Factory registration - PUBLIC ACCESS */}
+            {/* Primary business registration route */}
             <Route 
-              path="/factory/register" 
+              path="/business/register" 
               element={
                 <PublicRoute>
-                  <LazyWrapper componentName="Factory Registration">
-                    <LazyFactoryRegistration realData={realDataEnabled} />
+                  <LazyWrapper componentName="Business Registration">
+                    <LazyBusinessRegistration realData={realDataEnabled} />
                   </LazyWrapper>
                 </PublicRoute>
               } 
             />
             
-            {/* NEW: Factory Registration - ALTERNATIVE PUBLIC ROUTE */}
+            {/* Alternative business registration routes for SEO */}
             <Route 
-              path="/factory-registration" 
+              path="/register" 
               element={
                 <PublicRoute>
-                  <LazyWrapper componentName="Factory Registration">
-                    <LazyFactoryRegistration realData={realDataEnabled} />
+                  <LazyWrapper componentName="Business Registration">
+                    <LazyBusinessRegistration realData={realDataEnabled} />
                   </LazyWrapper>
                 </PublicRoute>
               } 
             />
             
-            {/* Factory login */}
             <Route 
-              path="/factory/login" 
+              path="/company/register" 
               element={
                 <PublicRoute>
-                  <LazyWrapper componentName="Factory Login">
-                    <LazyFactoryLogin />
+                  <LazyWrapper componentName="Business Registration">
+                    <LazyBusinessRegistration realData={realDataEnabled} />
                   </LazyWrapper>
                 </PublicRoute>
               } 
             />
             
-            {/* Factory dashboard (authenticated factories) with real data */}
+            {/* Business login */}
             <Route 
-              path="/factory/dashboard" 
+              path="/business/login" 
               element={
-                <FactoryRoute>
-                  <LazyWrapper componentName="Factory Dashboard (Real Data)">
+                <PublicRoute>
+                  <LazyWrapper componentName="Business Login">
+                    <LazyBusinessLogin realData={realDataEnabled} />
+                  </LazyWrapper>
+                </PublicRoute>
+              } 
+            />
+            
+            {/* Business dashboard (authenticated business users) */}
+            <Route 
+              path="/business/dashboard" 
+              element={
+                <BusinessRoute>
+                  <LazyWrapper componentName="Business Dashboard">
                     <LazyFactoryDashboard realData={realDataEnabled} />
                   </LazyWrapper>
-                </FactoryRoute>
+                </BusinessRoute>
+              } 
+            />
+            
+            {/* ========== LEGACY FACTORY ROUTES (REDIRECTS TO BUSINESS ROUTES) ========== */}
+            
+            {/* Redirect old factory registration routes to business registration */}
+            <Route 
+              path="/factory/register" 
+              element={<Navigate to="/business/register" replace />}
+            />
+            
+            <Route 
+              path="/factory-registration" 
+              element={<Navigate to="/business/register" replace />}
+            />
+            
+            {/* Redirect old factory login to business login */}
+            <Route 
+              path="/factory/login" 
+              element={<Navigate to="/business/login" replace />}
+            />
+            
+            {/* Redirect old factory dashboard to business dashboard */}
+            <Route 
+              path="/factory/dashboard" 
+              element={<Navigate to="/business/dashboard" replace />}
+            />
+            
+            {/* Legacy factory routes for backward compatibility (if needed for testing) */}
+            <Route 
+              path="/legacy/factory/register" 
+              element={
+                <PublicRoute>
+                  <LazyWrapper componentName="Legacy Factory Registration">
+                    <LazyFactoryRegistration realData={realDataEnabled} />
+                  </LazyWrapper>
+                </PublicRoute>
+              } 
+            />
+            
+            <Route 
+              path="/legacy/factory/login" 
+              element={
+                <PublicRoute>
+                  <LazyWrapper componentName="Legacy Factory Login">
+                    <LazyFactoryLogin realData={realDataEnabled} />
+                  </LazyWrapper>
+                </PublicRoute>
               } 
             />
             
@@ -697,16 +766,22 @@ function AppContent() {
 
               {/* ========== PHASE 2B E-COMMERCE PLATFORM ROUTES WITH REAL DATA ========== */}
               
-              {/* Factory Dashboard - Protected Route with Real Data */}
+              {/* Business Dashboard - Protected Route with Real Data (renamed from factory-dashboard) */}
               <Route 
-                path="/factory-dashboard" 
+                path="/business-dashboard" 
                 element={
                   <ProtectedRoute permission="canAccessFactoryDashboard">
-                    <LazyWrapper componentName="Factory Dashboard (Real Data)">
+                    <LazyWrapper componentName="Business Dashboard (Real Data)">
                       <LazyFactoryDashboard realData={realDataEnabled} />
                     </LazyWrapper>
                   </ProtectedRoute>
                 } 
+              />
+
+              {/* Legacy factory-dashboard redirect */}
+              <Route 
+                path="/factory-dashboard" 
+                element={<Navigate to="/business-dashboard" replace />}
               />
 
               {/* Quote Requests Management with Real Data */}
@@ -1074,7 +1149,7 @@ function AppContent() {
                   user.email && (user.email.includes('higgsflow.com') || user.email.includes('admin')) ? (
                     <Navigate to="/admin" replace />
                   ) : (
-                    <Navigate to="/factory/dashboard" replace />
+                    <Navigate to="/business/dashboard" replace />
                   )
                 ) : (
                   // Anonymous users see the professional landing page with real data analytics
@@ -1118,7 +1193,7 @@ function AppContent() {
                   user.email && (user.email.includes('higgsflow.com') || user.email.includes('admin')) ? (
                     <Navigate to="/admin" replace />
                   ) : (
-                    <Navigate to="/factory/dashboard" replace />
+                    <Navigate to="/business/dashboard" replace />
                   )
                 ) : (
                   <Navigate to="/catalog" replace />
@@ -1147,6 +1222,9 @@ function AppContent() {
                   Real Data Integration Active
                 </div>
               )}
+              <div className="bg-purple-500 text-white text-xs px-3 py-1 rounded-full shadow-lg">
+                Business Registration Active
+              </div>
             </div>
           )}
           
@@ -1191,6 +1269,15 @@ function AppContent() {
                 title="Test Smart Catalog with Real Data"
               >
                 Smart Catalog
+              </button>
+              
+              {/* Business Registration Test Button */}
+              <button
+                onClick={() => window.location.href = '/business/register'}
+                className="fixed bottom-4 left-96 bg-orange-600 text-white text-xs px-3 py-1 rounded-full hover:bg-orange-700 z-50 shadow-lg transition-colors"
+                title="Test Business Registration System"
+              >
+                Business Registration
               </button>
             </>
           )}
