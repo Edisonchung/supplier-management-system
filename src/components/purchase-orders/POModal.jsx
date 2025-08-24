@@ -1094,30 +1094,25 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Client Information</h3>
                   <div className="grid grid-cols-2 gap-4">
+                    {/* PRIMARY: Client PO Number - Most Important */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        PO Number *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.poNumber}
-                        readOnly
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Client PO Number
+                      <label className="block text-sm font-semibold text-gray-800 mb-1">
+                        Client PO Number *
                       </label>
                       <input
                         type="text"
                         value={formData.clientPoNumber}
                         onChange={(e) => handleInputChange('clientPoNumber', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium text-lg"
+                        placeholder="e.g., PO-024974"
+                        required
                       />
+                      <p className="text-xs text-blue-600 mt-1 font-medium">
+                        Primary business reference
+                      </p>
                     </div>
 
+                    {/* Project Code - Secondary but Important */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Project Code
@@ -1131,7 +1126,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                             ? 'border-red-500' 
                             : 'border-gray-300'
                         }`}
-                        placeholder="e.g., PROJ-2025-001"
+                        placeholder="e.g., FS-S4814"
                       />
                       {validationErrors && validationErrors.find(e => e.field === 'projectCode') && (
                         <p className="text-red-500 text-xs mt-1">
@@ -1143,6 +1138,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       </p>
                     </div>
 
+                    {/* Client Name - Required */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Client Name *
@@ -1156,6 +1152,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                             ? 'border-red-500' 
                             : 'border-gray-300'
                         }`}
+                        placeholder="Enter client company name"
                         required
                       />
                     </div>
@@ -1169,6 +1166,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                         value={formData.clientContact}
                         onChange={(e) => handleInputChange('clientContact', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Primary contact name"
                       />
                     </div>
 
@@ -1181,6 +1179,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                         value={formData.clientEmail}
                         onChange={(e) => handleInputChange('clientEmail', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="client@company.com"
                       />
                     </div>
 
@@ -1193,6 +1192,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                         value={formData.clientPhone}
                         onChange={(e) => handleInputChange('clientPhone', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="+60 12-345 6789"
                       />
                     </div>
 
@@ -1252,6 +1252,17 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                         <option value="DDP">DDP</option>
                         <option value="EXW">EXW</option>
                       </select>
+                    </div>
+                  </div>
+                  
+                  {/* SECONDARY: Internal System Reference - De-emphasized */}
+                  <div className="mt-4 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span className="font-medium">System Reference:</span>
+                      <code className="px-2 py-1 bg-gray-50 rounded border text-xs font-mono">
+                        {formData.poNumber}
+                      </code>
+                      <span className="text-gray-400">• Internal tracking only</span>
                     </div>
                   </div>
                 </div>
