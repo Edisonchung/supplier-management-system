@@ -1750,7 +1750,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           ) : null}
         </div>
 
-        {/* ENHANCED Fixed Footer with More Prominent Button Styling */}
+        {/* Fixed Footer with Prominent Save Button - Matching PIModal Design */}
         <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
           <button
             type="button"
@@ -1761,26 +1761,36 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             Cancel
           </button>
           
-          {/* CRITICAL: Much more prominent Update Purchase Order button */}
+          {/* Enhanced Save Button - Matching PIModal Style */}
           <button
             type="button"
             onClick={handleSubmit}
             disabled={loading || !formData.clientName || formData.items.length === 0}
-            className="px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 font-bold text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 border-2 border-green-800"
-            style={{ minWidth: '220px' }}
+            className="relative px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 min-w-[200px] justify-center"
           >
-            {loading && <Loader2 className="w-5 h-5 animate-spin" />}
-            {editingPO ? (
+            {loading ? (
               <>
-                <CheckCircle className="w-5 h-5" />
-                Update Purchase Order
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Saving...</span>
               </>
             ) : (
               <>
-                <Plus className="w-5 h-5" />
-                Create Purchase Order
+                {editingPO ? (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    <span>Update Purchase Order</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5" />
+                    <span>Create Purchase Order</span>
+                  </>
+                )}
               </>
             )}
+            
+            {/* Subtle animation effect */}
+            <div className="absolute inset-0 rounded-lg bg-white opacity-0 hover:opacity-10 transition-opacity duration-200"></div>
           </button>
         </div>
       </div>
