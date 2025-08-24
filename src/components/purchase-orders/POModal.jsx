@@ -173,7 +173,7 @@ const fixPOItemPrices = (items, debug = true) => {
   });
 };
 
-// CRITICAL FIX: validatePOTotals - No automatic tax application
+// CRITICAL FIX: validatePOTotals - Enhanced with explicit tax handling
 const validatePOTotals = (formData, debug = false) => {
   if (!formData.items || formData.items.length === 0) {
     return { ...formData, subtotal: 0, tax: 0, totalAmount: 0 };
@@ -183,9 +183,10 @@ const validatePOTotals = (formData, debug = false) => {
     return sum + (parseFloat(item.totalPrice) || 0);
   }, 0);
 
-  // FIXED: Use explicit tax value or 0 (no automatic 10% tax)
+  // CRITICAL FIX: Explicit tax handling to avoid falsy value issues
   const tax = formData.tax !== undefined && formData.tax !== null ? 
     parseFloat(formData.tax) : 0;
+  
   const shipping = parseFloat(formData.shipping) || 0;
   const discount = parseFloat(formData.discount) || 0;
   const calculatedTotal = calculatedSubtotal + tax + shipping - discount;
@@ -193,8 +194,10 @@ const validatePOTotals = (formData, debug = false) => {
   if (debug) {
     console.log('[DEBUG] PO TOTAL VALIDATION:', {
       itemsCount: formData.items.length,
-      calculatedSubtotal,
-      tax,
+      calculatedSubtotal: calculatedSubtotal,
+      tax: tax,
+      taxOriginalInput: formData.tax,
+      taxWasExplicitlySet: formData.tax !== undefined && formData.tax !== null,
       shipping,
       discount,
       calculatedTotal
@@ -204,7 +207,7 @@ const validatePOTotals = (formData, debug = false) => {
   return {
     ...formData,
     subtotal: calculatedSubtotal,
-    tax,
+    tax: tax, // Ensure tax is preserved in returned data
     shipping,
     discount,
     totalAmount: calculatedTotal
@@ -458,6 +461,50 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     return `PO-${year}${month}${day}-${random}`;
   };
 
+  // CRITICAL FIX: Enhanced Tax Change Handler
+  const handleTaxChange = (value) => {
+    console.log('TAX FIELD CHANGE:', {
+      rawInput: value,
+      parsedValue: parseFloat(value) || 0,
+      isZero: (parseFloat(value) || 0) === 0,
+      isExplicitZero: value === '0' || value === 0
+    });
+    
+    setFormData(prev => {
+      const updatedData = { 
+        ...prev, 
+        tax: parseFloat(value) || 0 
+      };
+      console.log('PO FormData updated with tax:', updatedData.tax);
+      return updatedData;
+    });
+  };
+
+  // ENHANCED: Calculate total using the same logic as validatePOTotals
+  const calculateTotal = () => {
+    const subtotal = formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0);
+    
+    // CRITICAL: Use same tax logic as validatePOTotals
+    const tax = formData.tax !== undefined && formData.tax !== null ? 
+      parseFloat(formData.tax) : 0;
+    
+    const shipping = parseFloat(formData.shipping) || 0;
+    const discount = parseFloat(formData.discount) || 0;
+    
+    const total = subtotal + tax + shipping - discount;
+    
+    console.log('CALCULATE TOTAL DEBUG:', {
+      subtotal,
+      tax,
+      shipping,
+      discount,
+      total,
+      formDataTax: formData.tax
+    });
+    
+    return total;
+  };
+
   // useEffect with enhanced document field preservation
   useEffect(() => {
     if (editingPO) {
@@ -518,6 +565,41 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       }));
     }
   }, [editingPO]);
+
+  // CRITICAL FIX: Real-time total recalculation useEffect
+  useEffect(() => {
+    console.log('PO TOTALS RECALCULATION TRIGGERED:', {
+      itemsCount: formData.items?.length || 0,
+      currentTax: formData.tax,
+      currentShipping: formData.shipping,
+      currentDiscount: formData.discount
+    });
+    
+    // Force recalculation when financial fields change
+    if (formData.items?.length > 0) {
+      const validatedData = validatePOTotals(formData, true);
+      
+      // Only update if there's actually a change to avoid infinite loops
+      if (Math.abs(validatedData.totalAmount - (formData.totalAmount || 0)) > 0.01) {
+        console.log('UPDATING PO FORM DATA TOTALS...');
+        setFormData(prev => ({
+          ...prev,
+          subtotal: validatedData.subtotal,
+          totalAmount: validatedData.totalAmount,
+          tax: validatedData.tax || prev.tax // Preserve tax value
+        }));
+        
+        console.log('PO FORM DATA UPDATED WITH NEW TOTALS');
+      }
+    }
+  }, [
+    formData.tax, 
+    formData.shipping, 
+    formData.discount, 
+    formData.items?.length,
+    // Add items total as dependency to trigger on item changes
+    formData.items?.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0)
+  ]);
 
   // Enhanced: AI Extraction with Document Storage (Updated handleFileUpload)
   const handleFileUpload = async (event) => {
@@ -632,7 +714,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   };
 
+  // UPDATED: Enhanced handleInputChange with tax handling
   const handleInputChange = (field, value) => {
+    // Special handling for tax field to use enhanced tax change logic
+    if (field === 'tax') {
+      handleTaxChange(value);
+      return;
+    }
+    
     // Auto-format project codes
     if (field === 'projectCode' && value) {
       // Convert to uppercase and remove invalid characters
@@ -651,6 +740,11 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     
     // Clear validation error for this field
     setValidationErrors(prev => prev.filter(e => e.field !== field));
+    
+    // Log financial field changes for debugging
+    if (['shipping', 'discount'].includes(field)) {
+      console.log(`${field.toUpperCase()} FIELD CHANGE:`, value);
+    }
   };
 
   // Enhanced: Item change handler with price fixing
@@ -838,15 +932,6 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  // UPDATED: Calculate total using the same logic as validatePOTotals
-  const calculateTotal = () => {
-    const subtotal = formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0);
-    const tax = formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0;
-    const shipping = parseFloat(formData.shipping) || 0;
-    const discount = parseFloat(formData.discount) || 0;
-    return subtotal + tax + shipping - discount;
   };
 
   // NEW: Function to calculate PO total for list display consistency  
@@ -1171,7 +1256,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   </div>
                 </div>
 
-                {/* UPDATED Financial Details Section with enhanced styling */}
+                {/* CRITICAL FIX: Enhanced Financial Details Section */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4">Financial Details</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1191,7 +1276,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       />
                     </div>
                     
-                    {/* Tax Field - CRITICAL UPDATE */}
+                    {/* CRITICAL FIX: Enhanced Tax Field */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Tax (RM)
@@ -1199,12 +1284,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       <input
                         type="number"
                         step="0.01"
-                        value={formData.tax}
-                        onChange={(e) => handleInputChange('tax', parseFloat(e.target.value) || 0)}
+                        value={formData.tax || ''}
+                        onChange={(e) => handleTaxChange(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0.00"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Set to 0 for Flow Solution POs</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Set to 0 for Flow Solution POs | Current: RM {(formData.tax || 0).toFixed(2)}
+                      </p>
                     </div>
                     
                     {/* Shipping Field */}
@@ -1238,7 +1325,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     </div>
                   </div>
                   
-                  {/* UPDATED Total Amount Display */}
+                  {/* CRITICAL FIX: Enhanced Total Amount Display */}
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                     <div className="flex justify-between items-center text-lg font-semibold">
                       <span>Total Amount:</span>
@@ -1249,6 +1336,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       Tax: RM {(formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0).toFixed(2)} + 
                       Shipping: RM {(parseFloat(formData.shipping) || 0).toFixed(2)} - 
                       Discount: RM {(parseFloat(formData.discount) || 0).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-blue-600 mt-1">
+                      Real-time calculation: Updates automatically when values change
                     </div>
                   </div>
                 </div>
@@ -1364,20 +1454,20 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Project Code
-                        </label>
-                        <input
-                          type="text"
-                          value={currentItem.projectCode}
-                          onChange={(e) => setCurrentItem({
-                            ...currentItem,
-                            projectCode: e.target.value
-                          })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                          placeholder="BWS-S1046"
-                        />
-                      </div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Project Code
+                      </label>
+                      <input
+                        type="text"
+                        value={currentItem.projectCode}
+                        onChange={(e) => setCurrentItem({
+                          ...currentItem,
+                          projectCode: e.target.value
+                        })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                        placeholder="BWS-S1046"
+                      />
+                    </div>
 
                     <button
                       type="button"
@@ -1421,7 +1511,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Product Code
-                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">📝</span>
+                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">📱</span>
                             </label>
                             <input
                               type="text"
