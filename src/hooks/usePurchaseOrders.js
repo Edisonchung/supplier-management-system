@@ -1,4 +1,4 @@
-// src/hooks/usePurchaseOrders.js - Updated with Multi-Company Support
+// src/hooks/usePurchaseOrders.js - Updated with Multi-Company Support and Tax Fix
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
@@ -218,7 +218,7 @@ export const usePurchaseOrders = () => {
 
     const unsubscribe = onSnapshot(q, 
       async (snapshot) => {
-        console.log('🔍 Firestore snapshot received:', {
+        console.log('Firestore snapshot received:', {
           docsCount: snapshot.docs.length,
           currentUser: user?.uid,
           userRole: permissions.userCompanyRole,
@@ -227,7 +227,7 @@ export const usePurchaseOrders = () => {
 
         snapshot.docs.forEach((doc, index) => {
           const data = doc.data();
-          console.log(`📋 Firestore Doc ${index}:`, {
+          console.log(`Firestore Doc ${index}:`, {
             id: doc.id,
             poNumber: data.poNumber,
             clientPoNumber: data.clientPoNumber,
@@ -257,7 +257,7 @@ export const usePurchaseOrders = () => {
         
         setPurchaseOrders(enrichedOrders);
         setLoading(false);
-        console.log(`📋 Loaded ${enrichedOrders.length} purchase orders from Firestore`);
+        console.log(`Loaded ${enrichedOrders.length} purchase orders from Firestore`);
       },
       (err) => {
         console.error('Firestore subscription error:', err);
@@ -318,7 +318,7 @@ export const usePurchaseOrders = () => {
       
       const docRef = await addDoc(collection(db, 'purchaseOrders'), docData);
       
-      console.log(`📋 Added purchase order to Firestore: ${validatedData.poNumber} for ${validatedData.companyId}`);
+      console.log(`Added purchase order to Firestore: ${validatedData.poNumber} for ${validatedData.companyId}`);
       toast.success('Purchase order created successfully');
       
       return { 
@@ -341,7 +341,7 @@ export const usePurchaseOrders = () => {
     }
   }, [user, validatePOData, selectedCompany, selectedBranch]);
 
-  // Update existing purchase order
+  // CRITICAL FIX: Update existing purchase order with proper tax handling
   const updatePurchaseOrder = useCallback(async (id, updates) => {
     if (!user) {
       toast.error('Please sign in to update purchase orders');
@@ -351,12 +351,47 @@ export const usePurchaseOrders = () => {
     try {
       setLoading(true);
       
-      // Recalculate totals if items changed
+      console.log('Saving PO with company and document fields:', {
+        branchId: updates.branchId,
+        companyId: updates.companyId,
+        documentId: updates.documentId,
+        hasStoredDocuments: updates.hasStoredDocuments,
+        originalFileName: updates.originalFileName,
+        tax: updates.tax,
+        totalAmount: updates.totalAmount
+      });
+      
+      // CRITICAL FIX: Preserve explicit tax values and only recalculate when needed
       let processedUpdates = { ...updates };
+      
       if (updates.items) {
+        // Calculate subtotal from items
         processedUpdates.subtotal = calculateSubtotal(updates.items);
-        processedUpdates.tax = processedUpdates.subtotal * 0.1;
-        processedUpdates.totalAmount = processedUpdates.subtotal + processedUpdates.tax;
+        
+        // CRITICAL FIX: Only override tax if not explicitly provided
+        if (updates.tax === undefined || updates.tax === null) {
+          // Only apply automatic tax if no explicit tax was provided
+          processedUpdates.tax = processedUpdates.subtotal * 0.1;
+          console.log('[DEBUG] Applied automatic 10% tax:', processedUpdates.tax);
+        } else {
+          // Use the explicit tax value from the modal (including 0)
+          processedUpdates.tax = parseFloat(updates.tax) || 0;
+          console.log('[DEBUG] Using explicit tax value:', processedUpdates.tax);
+        }
+        
+        // Calculate total with the correct tax value
+        const shipping = parseFloat(updates.shipping) || 0;
+        const discount = parseFloat(updates.discount) || 0;
+        processedUpdates.totalAmount = processedUpdates.subtotal + processedUpdates.tax + shipping - discount;
+        
+        console.log('[DEBUG] PO UPDATE TOTALS:', {
+          subtotal: processedUpdates.subtotal,
+          tax: processedUpdates.tax,
+          taxWasExplicit: updates.tax !== undefined && updates.tax !== null,
+          shipping: shipping,
+          discount: discount,
+          totalAmount: processedUpdates.totalAmount
+        });
       }
       
       const updateData = {
@@ -365,9 +400,22 @@ export const usePurchaseOrders = () => {
         updatedBy: user.uid
       };
       
+      console.log('[DEBUG] Saving PO to Firestore with data:', {
+        id: id,
+        tax: updateData.tax,
+        totalAmount: updateData.totalAmount,
+        subtotal: updateData.subtotal
+      });
+      
       await updateDoc(doc(db, 'purchaseOrders', id), updateData);
       
-      console.log(`📋 Updated purchase order in Firestore: ${id}`);
+      console.log(`Updated purchase order in Firestore: ${id}`);
+      
+      // Trigger refresh if needed
+      if (updates.shouldRefresh) {
+        console.log('Refreshing PO list after save...');
+      }
+      
       toast.success('Purchase order updated successfully');
       
       return { success: true };
@@ -402,7 +450,7 @@ export const usePurchaseOrders = () => {
       
       await deleteDoc(doc(db, 'purchaseOrders', id));
       
-      console.log(`🗑️ Deleted purchase order from Firestore: ${id}`);
+      console.log(`Deleted purchase order from Firestore: ${id}`);
       toast.success('Purchase order deleted successfully');
       
       return { success: true };
@@ -630,7 +678,7 @@ export const usePurchaseOrders = () => {
       const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
       await Promise.all(deletePromises);
       
-      console.log(`🗑️ Deleted ${snapshot.docs.length} purchase orders`);
+      console.log(`Deleted ${snapshot.docs.length} purchase orders`);
       toast.success(`Deleted ${snapshot.docs.length} purchase orders`);
       
       return { success: true, deleted: snapshot.docs.length };
