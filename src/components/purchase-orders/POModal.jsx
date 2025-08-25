@@ -520,143 +520,129 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   // FIX 3: Enhanced useEffect for editingPO with ClientItemCode Preservation
   // =============================================================================
   useEffect(() => {
-    if (editingPO) {
-      console.log('[DEBUG] POModal: Setting form data from editing PO:', editingPO.poNumber);
-      
-      // Debug the items being loaded
-      if (editingPO.items && editingPO.items.length > 0) {
-        console.log('[DEBUG] EDITING PO - Items analysis:');
-        editingPO.items.forEach((item, i) => {
-          console.log(`  Item ${i + 1}:`, {
-            id: item.id,
-            clientItemCode: item.clientItemCode,
-            hasClientItemCode: !!item.clientItemCode,
-            productCode: item.productCode,
-            productName: item.productName?.substring(0, 30),
-            allKeys: Object.keys(item)
-          });
-        });
-      }
-      
-      // Check extractedData for better clientItemCode preservation
-      let itemsToUse = editingPO.items || [];
-      
-      if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
-        const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
-        const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
-        
-        console.log('[DEBUG] Item source comparison:', {
-          extractedItemsCount: editingPO.extractedData.items.length,
-          editingItemsCount: editingPO.items?.length || 0,
-          extractedHasClientCode,
-          editingHasClientCode
-        });
-        
-        if (extractedHasClientCode && !editingHasClientCode) {
-          console.log('[CRITICAL] Using extractedData.items because it has clientItemCode');
-          itemsToUse = editingPO.extractedData.items;
-        } else if (extractedHasClientCode && editingHasClientCode) {
-          // Both have client codes - merge to ensure nothing is lost
-          console.log('[MERGE] Both sources have client codes, merging intelligently');
-          itemsToUse = editingPO.items.map((editingItem, index) => {
-            const extractedItem = editingPO.extractedData.items[index];
-            return {
-              ...editingItem,
-              // Prefer extracted clientItemCode if editing item is missing it
-              clientItemCode: editingItem.clientItemCode || extractedItem?.clientItemCode || '',
-              // Also merge other important fields
-              productCode: editingItem.productCode || extractedItem?.productCode || '',
-              projectCode: editingItem.projectCode || extractedItem?.projectCode || ''
-            };
-          });
-        }
-      }
-      
-      // CRITICAL: Enhanced items preprocessing to ensure field preservation
-      const processedItems = itemsToUse.map((item, index) => ({
-        ...item,
-        // Ensure critical fields are never undefined
-        clientItemCode: item.clientItemCode || '',
-        productCode: item.productCode || '',
-        projectCode: item.projectCode || '',
-        productName: item.productName || '',
-        id: item.id || `item_${index + 1}`,
-        // Ensure numeric fields are properly formatted
-        quantity: parseFloat(item.quantity) || 0,
-        unitPrice: parseFloat(item.unitPrice) || 0,
-        totalPrice: parseFloat(item.totalPrice) || 0
-      }));
-      
-      console.log('[DEBUG] Processed items for form:', processedItems.map(item => ({
-        id: item.id,
-        clientItemCode: item.clientItemCode,
-        hasClientItemCode: !!item.clientItemCode,
-        productName: item.productName?.substring(0, 30)
-      })));
-      
-      // CRITICAL FIX: Preserve ALL original data first, then enhance
-      const preservedFormData = { 
-        ...formData,  // Start with defaults
-        ...editingPO  // Overlay with editing PO data - preserves everything
-      };
-      
-      // Enhanced document storage fields preservation with multiple fallback paths
-      const documentFields = {
-        documentId: editingPO.documentId || 
-                    editingPO.document?.id || 
-                    editingPO.extractionMetadata?.documentId || 
-                    editingPO.documentStorage?.documentId || 
-                    preservedFormData.documentId || '',
-        documentNumber: editingPO.documentNumber || 
-                        editingPO.document?.number || 
-                        editingPO.poNumber || 
-                        preservedFormData.documentNumber || '',
-        documentType: 'po',
+  if (editingPO) {
+    console.log('[DEBUG] POModal: Loading PO for editing:', editingPO.poNumber);
+    console.log('[DEBUG] POModal: Available document fields in editingPO:', {
+      documentId: editingPO.documentId,
+      hasStoredDocuments: editingPO.hasStoredDocuments,
+      originalFileName: editingPO.originalFileName,
+      storageInfo: !!editingPO.storageInfo,
+      documentMetadata: !!editingPO.documentMetadata,
+      allFields: Object.keys(editingPO).filter(k => k.includes('document') || k.includes('storage'))
+    });
+    
+    // CRITICAL FIX: Enhanced document field extraction with multiple fallback sources
+    const extractDocumentFields = (po) => {
+      return {
+        documentId: po.documentId || 
+                   po.document?.id || 
+                   po.extractionMetadata?.documentId || 
+                   po.documentStorage?.documentId || 
+                   po.documentMetadata?.documentId ||
+                   null,
+                   
+        documentNumber: po.documentNumber || 
+                       po.document?.number || 
+                       po.poNumber || 
+                       null,
+                       
         hasStoredDocuments: Boolean(
-          editingPO.hasStoredDocuments || 
-          editingPO.document?.stored || 
-          editingPO.documentId || 
-          editingPO.storageInfo
+          po.hasStoredDocuments || 
+          po.document?.stored || 
+          po.documentId || 
+          po.storageInfo ||
+          po.documentStorage ||
+          po.documentMetadata
         ),
-        storageInfo: editingPO.storageInfo || 
-                     editingPO.documentStorage || 
-                     null,
-        originalFileName: editingPO.originalFileName || 
-                          editingPO.document?.originalFileName || 
-                          preservedFormData.originalFileName || '',
-        fileSize: editingPO.fileSize || 
-                  editingPO.document?.fileSize || 
-                  0,
-        contentType: editingPO.contentType || 
-                     editingPO.document?.contentType || 
-                     '',
-        extractedAt: editingPO.extractedAt || 
-                     editingPO.document?.extractedAt || 
-                     editingPO.createdAt || 
-                     new Date().toISOString()
+        
+        originalFileName: po.originalFileName || 
+                         po.document?.originalFileName || 
+                         po.documentMetadata?.originalFileName ||
+                         '',
+                         
+        fileSize: po.fileSize || 
+                 po.document?.fileSize || 
+                 po.documentMetadata?.fileSize ||
+                 0,
+                 
+        contentType: po.contentType || 
+                    po.document?.contentType || 
+                    po.documentMetadata?.contentType ||
+                    '',
+                    
+        extractedAt: po.extractedAt || 
+                    po.document?.extractedAt || 
+                    po.documentMetadata?.uploadedAt ||
+                    po.createdAt || 
+                    new Date().toISOString(),
+                    
+        storageInfo: po.storageInfo || 
+                    po.documentStorage || 
+                    null,
+                    
+        documentType: 'po'
       };
+    };
+    
+    const documentFields = extractDocumentFields(editingPO);
+    
+    console.log('[DEBUG] POModal: Extracted document fields:', documentFields);
+    
+    // Process items with enhanced preservation
+    let itemsToUse = editingPO.items || [];
+    
+    if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
+      const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
+      const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
       
-      console.log('[DEBUG] POModal: Enhanced document storage fields set:', documentFields);
-      
-      // Set form data with processed items and enhanced document fields
-      setFormData({
-        ...preservedFormData,  // All original data preserved
-        ...documentFields,     // Enhanced document fields
-        items: processedItems  // Use processed items with preserved clientItemCode
-      });
-      
-      console.log('[SUCCESS] Form data set with', processedItems.length, 'items and enhanced document fields');
-      
-    } else {
-      // Initialize new PO with basic structure
-      setFormData(prev => ({
-        ...prev,
-        poNumber: generatePONumber(),
-        documentType: 'po',
-        hasStoredDocuments: false
-      }));
+      if (extractedHasClientCode && !editingHasClientCode) {
+        console.log('[CRITICAL] Using extractedData.items because it has clientItemCode');
+        itemsToUse = editingPO.extractedData.items;
+      } else if (extractedHasClientCode && editingHasClientCode) {
+        itemsToUse = editingPO.items.map((editingItem, index) => {
+          const extractedItem = editingPO.extractedData.items[index];
+          return {
+            ...editingItem,
+            clientItemCode: editingItem.clientItemCode || extractedItem?.clientItemCode || '',
+            productCode: editingItem.productCode || extractedItem?.productCode || '',
+            projectCode: editingItem.projectCode || extractedItem?.projectCode || ''
+          };
+        });
+      }
     }
-  }, [editingPO]);
+    
+    const processedItems = itemsToUse.map((item, index) => ({
+      ...item,
+      clientItemCode: item.clientItemCode || '',
+      productCode: item.productCode || '',
+      projectCode: item.projectCode || '',
+      productName: item.productName || '',
+      id: item.id || `item_${index + 1}`,
+      quantity: parseFloat(item.quantity) || 0,
+      unitPrice: parseFloat(item.unitPrice) || 0,
+      totalPrice: parseFloat(item.totalPrice) || 0
+    }));
+    
+    // CRITICAL: Set form data with ALL fields properly preserved
+    setFormData({
+      ...formData,        // Start with defaults
+      ...editingPO,       // Overlay with editing PO data
+      ...documentFields,  // Explicitly set document fields
+      items: processedItems,
+      documentType: 'po'  // Ensure this is always set
+    });
+    
+    console.log('[SUCCESS] POModal: Form data set with enhanced document field preservation');
+    
+  } else {
+    setFormData(prev => ({
+      ...prev,
+      poNumber: generatePONumber(),
+      documentType: 'po',
+      hasStoredDocuments: false
+    }));
+  }
+}, [editingPO]);
 
   // CRITICAL FIX: Real-time total recalculation useEffect with improved logic
   useEffect(() => {
@@ -1063,160 +1049,106 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   // FIX 6: Enhanced handleSubmit with ClientItemCode Preservation & CORS Protection
   // =============================================================================
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Validate before saving
-    const errors = [];
-    if (!formData.clientName) errors.push({ field: 'clientName', message: 'Client name is required' });
-    if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
+  e.preventDefault();
+  
+  // Validate before saving
+  const errors = [];
+  if (!formData.clientName) errors.push({ field: 'clientName', message: 'Client name is required' });
+  if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
 
-    if (formData.projectCode && formData.projectCode.length < 3) {
-      errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
-    }
+  if (formData.projectCode && formData.projectCode.length < 3) {
+    errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
+  }
+  
+  if (errors.length > 0) {
+    setValidationErrors(errors);
+    return;
+  }
+  
+  setLoading(true);
+  try {
+    const validatedData = validatePOTotals(formData, true);
     
-    if (errors.length > 0) {
-      setValidationErrors(errors);
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      // Final price validation before saving with corrected tax handling
-      const validatedData = validatePOTotals(formData, true);
+    const itemsWithPreservedClientCodes = validatedData.items.map((item, index) => {
+      const originalItem = formData.items[index];
       
-      // CRITICAL FIX: Explicit clientItemCode preservation in items
-      const itemsWithPreservedClientCodes = validatedData.items.map((item, index) => {
-        // Get original item from formData to ensure we have the latest values
-        const originalItem = formData.items[index];
-        
-        return {
-          ...item,
-          // CRITICAL: Explicitly preserve clientItemCode with multiple fallbacks
-          clientItemCode: item.clientItemCode || 
-                         originalItem?.clientItemCode || 
-                         item.productCode || // If client code is missing, try product code
-                         '',
-          // Also preserve other critical fields that might be lost
-          productCode: item.productCode || originalItem?.productCode || '',
-          projectCode: item.projectCode || originalItem?.projectCode || '',
-          productName: item.productName || originalItem?.productName || '',
-          // Ensure we have a unique ID for each item
-          id: item.id || originalItem?.id || `item_${index + 1}`,
-          // Preserve all pricing data
-          quantity: parseFloat(item.quantity) || 0,
-          unitPrice: parseFloat(item.unitPrice) || 0,
-          totalPrice: parseFloat(item.totalPrice) || 0
-        };
-      });
-      
-      // CRITICAL FIX: Complete document storage fields preservation with comprehensive fallbacks
-      const dataToSave = {
-        ...validatedData,
-        // CRITICAL: Use items with preserved clientItemCode
-        items: itemsWithPreservedClientCodes,
-        // Core document storage fields - COMPREHENSIVE preservation
-        documentId: formData.documentId || 
-            validatedData.documentId || 
-            editingPO?.documentId || 
-            null,
-        documentNumber: formData.documentNumber || 
-                        validatedData.documentNumber || 
-                        formData.poNumber || 
-                        validatedData.poNumber,
-        documentType: 'po',
-        hasStoredDocuments: Boolean(
-          formData.hasStoredDocuments || 
-          validatedData.hasStoredDocuments || 
-          formData.documentId || 
-          formData.storageInfo || 
-          formData.originalFileName
-        ),
-        storageInfo: formData.storageInfo || 
-                     validatedData.storageInfo || 
-                     null,
-        originalFileName: formData.originalFileName || 
-                          validatedData.originalFileName || 
-                          '',
-        fileSize: formData.fileSize || 
-                  validatedData.fileSize || 
-                  0,
-        contentType: formData.contentType || 
-                     validatedData.contentType || 
-                     '',
-        extractedAt: formData.extractedAt || 
-                     validatedData.extractedAt || 
-                     new Date().toISOString(),
-        // Additional document-related fields
-        downloadURL: formData.downloadURL || 
-                     validatedData.downloadURL || 
-                     formData.storageInfo?.downloadURL,
-        storagePath: formData.storagePath || 
-                     validatedData.storagePath || 
-                     formData.storageInfo?.path,
-        // Timestamps for tracking
-        lastUpdated: new Date().toISOString(),
-        // Preserve any existing document metadata
-        documentMetadata: formData.documentMetadata || 
-                          validatedData.documentMetadata || 
-                          null,
-        // Extraction-related fields
-        extractionStatus: formData.extractionStatus || 'completed',
-        extractionSource: formData.extractionSource || 'ai',
-        // Processing status
-        processingStatus: formData.processingStatus || 'completed',
-        // File validation
-        fileValidated: Boolean(formData.documentId && formData.originalFileName),
-        // CRITICAL: Add field preservation metadata for debugging
-        fieldPreservationMetadata: {
-          clientItemCodesPreserved: itemsWithPreservedClientCodes.map(item => ({
-            id: item.id,
-            hasClientItemCode: !!item.clientItemCode,
-            clientItemCode: item.clientItemCode
-          })),
-          preservedAt: new Date().toISOString()
-        }
+      return {
+        ...item,
+        clientItemCode: item.clientItemCode || originalItem?.clientItemCode || '',
+        productCode: item.productCode || originalItem?.productCode || '',
+        projectCode: item.projectCode || originalItem?.projectCode || '',
+        productName: item.productName || originalItem?.productName || '',
+        id: item.id || originalItem?.id || `item_${index + 1}`,
+        quantity: parseFloat(item.quantity) || 0,
+        unitPrice: parseFloat(item.unitPrice) || 0,
+        totalPrice: parseFloat(item.totalPrice) || 0
       };
+    });
+    
+    // CRITICAL FIX: Ensure all document storage fields are explicitly included
+    const documentStorageFields = {
+      // Core document identification
+      documentId: formData.documentId || null,
+      documentNumber: formData.documentNumber || formData.poNumber,
+      documentType: 'po',
       
-      console.log('[DEBUG] POModal: Saving PO with CORS protection and preserved clientItemCodes:', {
-        documentId: dataToSave.documentId,
-        hasStoredDocuments: dataToSave.hasStoredDocuments,
-        originalFileName: dataToSave.originalFileName,
-        documentType: dataToSave.documentType,
-        totalAmount: dataToSave.totalAmount,
-        tax: dataToSave.tax,
-        storageInfo: !!dataToSave.storageInfo,
-        downloadURL: !!dataToSave.downloadURL,
-        fileValidated: dataToSave.fileValidated,
-        itemsCount: itemsWithPreservedClientCodes.length,
-        itemsWithClientCode: itemsWithPreservedClientCodes.filter(item => item.clientItemCode).length,
-        debugData: itemsWithPreservedClientCodes.map(item => ({
-          id: item.id,
-          productName: item.productName?.substring(0, 30),
-          clientItemCode: item.clientItemCode,
-          hasClientItemCode: !!item.clientItemCode
-        }))
-      });
+      // Storage status and metadata
+      hasStoredDocuments: Boolean(formData.documentId && formData.hasStoredDocuments),
+      originalFileName: formData.originalFileName || '',
+      fileSize: formData.fileSize || 0,
+      contentType: formData.contentType || '',
+      extractedAt: formData.extractedAt || new Date().toISOString(),
       
-      // CRITICAL FIX: Wrap save operation in CORS protection
-      await safeFirestoreOperation(
-        () => onSave(dataToSave, { shouldRefresh: true }),
-        { success: true } // Fallback assumes success for offline scenarios
-      );
+      // Storage information object
+      storageInfo: formData.storageInfo || null,
       
-      onClose();
-    } catch (error) {
-      console.error('Save failed:', error);
-      
-      // Enhanced error messaging
-      if (error.message?.includes('CORS') || error.message?.includes('XMLHttpRequest')) {
-        alert('Network connectivity issue. Your data may have been saved. Please refresh the page to check.');
-      } else {
-        alert('Failed to save purchase order: ' + error.message);
+      // Additional tracking fields
+      documentMetadata: {
+        uploadedAt: formData.extractedAt || new Date().toISOString(),
+        processingStatus: 'completed',
+        extractionStatus: 'completed',
+        sourceType: 'upload'
       }
-    } finally {
-      setLoading(false);
+    };
+
+    const dataToSave = {
+      ...validatedData,
+      items: itemsWithPreservedClientCodes,
+      ...documentStorageFields, // Spread all document fields at root level
+      lastUpdated: new Date().toISOString()
+    };
+    
+    console.log('[DEBUG] POModal: Saving PO with document storage fields:', {
+      documentId: dataToSave.documentId,
+      hasStoredDocuments: dataToSave.hasStoredDocuments,
+      originalFileName: dataToSave.originalFileName,
+      storageInfoPresent: !!dataToSave.storageInfo,
+      allFields: Object.keys(dataToSave).filter(k => k.includes('document') || k.includes('storage'))
+    });
+    
+    // CRITICAL: Wrap save operation in CORS protection with enhanced metadata
+    await safeFirestoreOperation(
+      () => onSave(dataToSave, { 
+        shouldRefresh: true,
+        preserveDocumentFields: true, // Signal to parent to preserve these fields
+        documentStorageFields: documentStorageFields // Pass fields explicitly
+      }),
+      { success: true }
+    );
+    
+    onClose();
+  } catch (error) {
+    console.error('Save failed:', error);
+    
+    if (error.message?.includes('CORS') || error.message?.includes('XMLHttpRequest')) {
+      alert('Network connectivity issue. Your data may have been saved. Please refresh the page to check.');
+    } else {
+      alert('Failed to save purchase order: ' + error.message);
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   // NEW: Function to calculate PO total for list display consistency  
   const calculatePOTotal = (po) => {
@@ -2073,59 +2005,97 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 
                 {/* ENHANCED DOCUMENT VIEWER with better fallback logic */}
                 {(() => {
-                  // Try multiple sources for document ID
-                  const documentId = editingPO?.documentId || formData.documentId;
-                  const hasStoredDocuments = editingPO?.hasStoredDocuments || formData.hasStoredDocuments;
-                  const poNumber = editingPO?.poNumber || formData.poNumber;
-                  
-                  // Log the decision making process
-                  console.log('[DOCUMENT_TAB] Rendering decision:', {
-                    documentId: documentId,
-                    hasStoredDocuments: hasStoredDocuments,
-                    poNumber: poNumber,
-                    editingPO: !!editingPO,
-                    formData: !!formData
-                  });
-                  
-                  if (documentId || hasStoredDocuments) {
-                    return (
-                      <div>
-                        <div className="mb-2 text-sm text-green-600 font-medium">
-                          Documents should be available - attempting to load...
-                        </div>
-                        <DocumentViewer
-                          documentId={documentId}
-                          documentType="po"
-                          documentNumber={poNumber}
-                          allowDelete={true}
-                          onDocumentDeleted={(doc) => {
-                            console.log('Document deleted:', doc);
-                            alert('Document deleted successfully');
-                          }}
-                        />
-                      </div>
-                    );
-                  } else {
-                    return (
-                      <div className="text-center py-12">
-                        <FileText className="mx-auto h-12 w-12 text-red-300 mb-3" />
-                        <p className="font-medium mb-1 text-red-600">No Documents Found</p>
-                        <p className="text-sm text-gray-600 mb-4">Document linkage may be broken</p>
-                        
-                        {/* Show what we tried */}
-                        <div className="text-xs bg-red-50 border border-red-200 rounded p-3 max-w-md mx-auto">
-                          <h6 className="font-semibold text-red-700 mb-2">Attempted Sources:</h6>
-                          <div className="text-red-600 space-y-1">
-                            <div>editingPO.documentId: {editingPO?.documentId || 'null'}</div>
-                            <div>formData.documentId: {formData.documentId || 'null'}</div>
-                            <div>editingPO.hasStoredDocuments: {String(editingPO?.hasStoredDocuments || false)}</div>
-                            <div>formData.hasStoredDocuments: {String(formData.hasStoredDocuments || false)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-                })()}
+  // Try multiple sources for document ID with enhanced logging
+  const documentId = editingPO?.documentId || formData.documentId;
+  const hasStoredDocuments = editingPO?.hasStoredDocuments || formData.hasStoredDocuments;
+  const poNumber = editingPO?.poNumber || formData.poNumber;
+  
+  console.log('[DOCUMENT_TAB] Enhanced rendering decision:', {
+    documentId: documentId,
+    hasStoredDocuments: hasStoredDocuments,
+    poNumber: poNumber,
+    editingPO: !!editingPO,
+    formData: !!formData,
+    documentIdSource: editingPO?.documentId ? 'editingPO' : formData.documentId ? 'formData' : 'none',
+    storageSource: editingPO?.hasStoredDocuments ? 'editingPO' : formData.hasStoredDocuments ? 'formData' : 'none'
+  });
+  
+  // Enhanced condition: Check for valid document ID (not temp/fallback)
+  const hasValidDocumentId = documentId && 
+                             !documentId.includes('temp-') && 
+                             !documentId.includes('fallback') &&
+                             documentId.length > 10; // Valid IDs are usually longer
+  
+  if (hasValidDocumentId || hasStoredDocuments) {
+    return (
+      <div>
+        <div className="mb-2 text-sm text-green-600 font-medium flex items-center gap-2">
+          <CheckCircle className="w-4 h-4" />
+          Document storage available - loading files...
+        </div>
+        <DocumentViewer
+          documentId={documentId}
+          documentType="po"
+          documentNumber={poNumber}
+          allowDelete={true}
+          onDocumentDeleted={(doc) => {
+            console.log('Document deleted:', doc);
+            // Update form data to reflect deletion
+            setFormData(prev => ({
+              ...prev,
+              hasStoredDocuments: false,
+              documentId: null
+            }));
+            alert('Document deleted successfully');
+          }}
+        />
+      </div>
+    );
+  } else {
+    return (
+      <div className="text-center py-12">
+        <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+        <p className="font-medium mb-1 text-gray-600">No Documents Available</p>
+        <p className="text-sm text-gray-500 mb-4">
+          {documentId && documentId.includes('temp-') ? 
+            'Document storage failed during upload' :
+            documentId && documentId.includes('fallback') ?
+            'Document link was broken' :
+            'No document has been uploaded for this PO'
+          }
+        </p>
+        
+        {/* Enhanced troubleshooting info */}
+        <div className="text-xs bg-gray-50 border border-gray-200 rounded p-3 max-w-lg mx-auto">
+          <h6 className="font-semibold text-gray-700 mb-2">Troubleshooting Info:</h6>
+          <div className="text-gray-600 space-y-1 text-left">
+            <div>Document ID: {documentId || 'Not set'}</div>
+            <div>Has Stored Docs: {String(hasStoredDocuments)}</div>
+            <div>PO Number: {poNumber || 'Not set'}</div>
+            <div>Source: {editingPO?.documentId ? 'Database' : formData.documentId ? 'Form' : 'None'}</div>
+            {documentId && (
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                <div className="text-yellow-700 font-medium">ID Status:</div>
+                <div className="text-yellow-600">
+                  {documentId.includes('temp-') ? '⚠️ Temporary (storage failed)' :
+                   documentId.includes('fallback') ? '❌ Fallback (link broken)' :
+                   documentId.length < 10 ? '❌ Invalid format' :
+                   '✅ Valid format'}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div className="mt-4">
+          <p className="text-sm text-blue-600">
+            To add documents, upload a PDF using the AI Document Extraction feature above.
+          </p>
+        </div>
+      </div>
+    );
+  }
+})()}
               </div>
             ) : null}
           </div>
