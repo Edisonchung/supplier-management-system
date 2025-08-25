@@ -505,7 +505,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     return total;
   };
 
-  // useEffect with enhanced document field preservation
+  // CRITICAL FIX: Enhanced useEffect with comprehensive document field preservation
   useEffect(() => {
     if (editingPO) {
       console.log('[DEBUG] POModal: Setting form data from editing PO:', editingPO.poNumber);
@@ -522,20 +522,75 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         });
       }
       
-      // Enhanced document storage fields preservation
+      // CRITICAL FIX: Enhanced document storage fields preservation with multiple fallback paths
       const documentFields = {
-        documentId: editingPO.documentId || '',
-        documentNumber: editingPO.documentNumber || editingPO.poNumber || '',
+        // Try multiple possible sources for document fields
+        documentId: editingPO.documentId || 
+                    editingPO.document?.id || 
+                    editingPO.documentStorage?.documentId || 
+                    editingPO.extractionMetadata?.documentId || 
+                    '',
+        documentNumber: editingPO.documentNumber || 
+                        editingPO.document?.number || 
+                        editingPO.documentStorage?.documentNumber || 
+                        editingPO.poNumber || 
+                        '',
         documentType: 'po',
-        hasStoredDocuments: editingPO.hasStoredDocuments || false,
-        storageInfo: editingPO.storageInfo || null,
-        originalFileName: editingPO.originalFileName || '',
-        fileSize: editingPO.fileSize || 0,
-        contentType: editingPO.contentType || '',
-        extractedAt: editingPO.extractedAt || editingPO.createdAt || new Date().toISOString()
+        hasStoredDocuments: Boolean(
+          editingPO.hasStoredDocuments || 
+          editingPO.document?.stored || 
+          editingPO.documentStorage?.success || 
+          editingPO.documentId
+        ),
+        storageInfo: editingPO.storageInfo || 
+                     editingPO.documentStorage || 
+                     editingPO.document?.storageInfo || 
+                     null,
+        originalFileName: editingPO.originalFileName || 
+                          editingPO.document?.originalFileName || 
+                          editingPO.documentStorage?.originalFileName || 
+                          '',
+        fileSize: editingPO.fileSize || 
+                  editingPO.document?.fileSize || 
+                  editingPO.documentStorage?.fileSize || 
+                  0,
+        contentType: editingPO.contentType || 
+                     editingPO.document?.contentType || 
+                     editingPO.documentStorage?.contentType || 
+                     '',
+        extractedAt: editingPO.extractedAt || 
+                     editingPO.document?.extractedAt || 
+                     editingPO.documentStorage?.extractedAt || 
+                     editingPO.createdAt || 
+                     new Date().toISOString(),
+        // Additional fields that might contain document info
+        downloadURL: editingPO.downloadURL || 
+                     editingPO.document?.downloadURL || 
+                     editingPO.storageInfo?.downloadURL || 
+                     editingPO.documentStorage?.downloadURL,
+        storagePath: editingPO.storagePath || 
+                     editingPO.document?.storagePath || 
+                     editingPO.documentStorage?.path
       };
       
-      console.log('[DEBUG] POModal: Document storage fields set:', documentFields);
+      console.log('[DEBUG] POModal: Enhanced document storage fields set:', documentFields);
+      
+      // Log what we found from editingPO for debugging
+      console.log('[DEBUG] POModal: Available document-related fields in editingPO:', {
+        hasDocumentId: !!editingPO.documentId,
+        hasDocument: !!editingPO.document,
+        hasDocumentStorage: !!editingPO.documentStorage,
+        hasStorageInfo: !!editingPO.storageInfo,
+        hasStoredDocuments: editingPO.hasStoredDocuments,
+        hasOriginalFileName: !!editingPO.originalFileName,
+        extractedAt: editingPO.extractedAt,
+        allKeys: Object.keys(editingPO).filter(key => 
+          key.toLowerCase().includes('document') || 
+          key.toLowerCase().includes('storage') || 
+          key.toLowerCase().includes('file') ||
+          key.toLowerCase().includes('extract')
+        )
+      });
       
       // Use correct items array (preserving existing logic)
       let itemsToUse = editingPO.items;
@@ -550,10 +605,11 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         }
       }
       
+      // CRITICAL: Combine ALL editingPO data with enhanced document fields
       setFormData({
-        ...editingPO,
-        ...documentFields,  // Apply enhanced document fields
-        items: itemsToUse
+        ...editingPO,           // Start with all original data
+        ...documentFields,      // Override with enhanced document fields
+        items: itemsToUse       // Use the correct items array
       });
     } else {
       // Initialize new PO with basic structure
@@ -566,7 +622,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   }, [editingPO]);
 
-  // CRITICAL FIX: Real-time total recalculation useEffect
+  // CRITICAL FIX: Real-time total recalculation useEffect with improved logic
   useEffect(() => {
     console.log('PO TOTALS RECALCULATION TRIGGERED:', {
       itemsCount: formData.items?.length || 0,
@@ -580,13 +636,21 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       const validatedData = validatePOTotals(formData, true);
       
       // Only update if there's actually a change to avoid infinite loops
-      if (Math.abs(validatedData.totalAmount - (formData.totalAmount || 0)) > 0.01) {
-        console.log('UPDATING PO FORM DATA TOTALS...');
+      const currentTotal = formData.totalAmount || 0;
+      const newTotal = validatedData.totalAmount;
+      
+      if (Math.abs(newTotal - currentTotal) > 0.01) {
+        console.log('UPDATING PO FORM DATA TOTALS...', {
+          oldTotal: currentTotal,
+          newTotal: newTotal,
+          difference: newTotal - currentTotal
+        });
+        
         setFormData(prev => ({
           ...prev,
           subtotal: validatedData.subtotal,
           totalAmount: validatedData.totalAmount,
-          tax: validatedData.tax || prev.tax // Preserve tax value
+          tax: validatedData.tax !== undefined ? validatedData.tax : prev.tax // Preserve tax value
         }));
         
         console.log('PO FORM DATA UPDATED WITH NEW TOTALS');
@@ -915,7 +979,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setShowProductSearch(false);
   };
 
-  // CRITICAL FIX: Enhanced submit with proper total calculation AND refresh trigger
+  // CRITICAL FIX: Enhanced submit with comprehensive document field preservation
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -938,30 +1002,72 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       // Final price validation before saving with corrected tax handling
       const validatedData = validatePOTotals(formData, true);
       
-      // Complete document storage fields preservation
+      // CRITICAL FIX: Complete document storage fields preservation with comprehensive fallbacks
       const dataToSave = {
         ...validatedData,
-        // Core document storage fields
-        documentId: formData.documentId || `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        documentNumber: formData.documentNumber || formData.poNumber,
+        // Core document storage fields - COMPREHENSIVE preservation
+        documentId: formData.documentId || 
+                    validatedData.documentId || 
+                    `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        documentNumber: formData.documentNumber || 
+                        validatedData.documentNumber || 
+                        formData.poNumber || 
+                        validatedData.poNumber,
         documentType: 'po',
-        hasStoredDocuments: formData.hasStoredDocuments || false,
-        storageInfo: formData.storageInfo || null,
-        originalFileName: formData.originalFileName || '',
-        fileSize: formData.fileSize || 0,
-        contentType: formData.contentType || '',
-        extractedAt: formData.extractedAt || new Date().toISOString(),
-        // CRITICAL: Add refresh trigger
-        lastUpdated: new Date().toISOString()
+        hasStoredDocuments: Boolean(
+          formData.hasStoredDocuments || 
+          validatedData.hasStoredDocuments || 
+          formData.documentId || 
+          formData.storageInfo || 
+          formData.originalFileName
+        ),
+        storageInfo: formData.storageInfo || 
+                     validatedData.storageInfo || 
+                     null,
+        originalFileName: formData.originalFileName || 
+                          validatedData.originalFileName || 
+                          '',
+        fileSize: formData.fileSize || 
+                  validatedData.fileSize || 
+                  0,
+        contentType: formData.contentType || 
+                     validatedData.contentType || 
+                     '',
+        extractedAt: formData.extractedAt || 
+                     validatedData.extractedAt || 
+                     new Date().toISOString(),
+        // Additional document-related fields
+        downloadURL: formData.downloadURL || 
+                     validatedData.downloadURL || 
+                     formData.storageInfo?.downloadURL,
+        storagePath: formData.storagePath || 
+                     validatedData.storagePath || 
+                     formData.storageInfo?.path,
+        // Timestamps for tracking
+        lastUpdated: new Date().toISOString(),
+        // Preserve any existing document metadata
+        documentMetadata: formData.documentMetadata || 
+                          validatedData.documentMetadata || 
+                          null,
+        // Extraction-related fields
+        extractionStatus: formData.extractionStatus || 'completed',
+        extractionSource: formData.extractionSource || 'ai',
+        // Processing status
+        processingStatus: formData.processingStatus || 'completed',
+        // File validation
+        fileValidated: Boolean(formData.documentId && formData.originalFileName)
       };
       
-      console.log('[DEBUG] POModal: Saving PO with complete document storage fields:', {
+      console.log('[DEBUG] POModal: Saving PO with COMPREHENSIVE document storage fields:', {
         documentId: dataToSave.documentId,
         hasStoredDocuments: dataToSave.hasStoredDocuments,
         originalFileName: dataToSave.originalFileName,
         documentType: dataToSave.documentType,
         totalAmount: dataToSave.totalAmount,
-        tax: dataToSave.tax
+        tax: dataToSave.tax,
+        storageInfo: !!dataToSave.storageInfo,
+        downloadURL: !!dataToSave.downloadURL,
+        fileValidated: dataToSave.fileValidated
       });
       
       // CRITICAL: Pass refresh flag to parent component
@@ -969,7 +1075,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       onClose();
     } catch (error) {
       console.error('Save failed:', error);
-      alert('Failed to save purchase order');
+      alert('Failed to save purchase order: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -1066,755 +1172,758 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           </nav>
         </div>
 
-        {/* Content Area - Fixed height calculation */}
-        <div className="p-6 flex-1 min-h-0" style={{ overflowY: 'auto' }}>
-          {/* Tab Content */}
-          {activeTab === 'details' ? (
-            <>
-              {/* Enhanced: AI Upload Section with improved status feedback */}
-              <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-600 text-white rounded-lg">
-                      <Upload className="w-5 h-5" />
+        {/* Content Area - Scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6">
+            {/* Tab Content */}
+            {activeTab === 'details' ? (
+              <>
+                {/* Enhanced: AI Upload Section with improved status feedback */}
+                <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-600 text-white rounded-lg">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-800">AI Document Extraction & Storage</h3>
+                        <p className="text-sm text-gray-600">Upload PDF to auto-fill form with document storage</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-800">AI Document Extraction & Storage</h3>
-                      <p className="text-sm text-gray-600">Upload PDF to auto-fill form with document storage</p>
-                    </div>
+                    
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls"
+                        onChange={handleFileUpload}
+                        disabled={extracting}
+                      />
+                      <div className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2">
+                        {extracting ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Extracting & Storing...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4" />
+                            Upload Document
+                          </>
+                        )}
+                      </div>
+                    </label>
                   </div>
                   
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls"
-                      onChange={handleFileUpload}
-                      disabled={extracting}
-                    />
-                    <div className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2">
-                      {extracting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Extracting & Storing...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="w-4 h-4" />
-                          Upload Document
-                        </>
-                      )}
+                  {/* Document Storage Status */}
+                  {formData.documentId && (
+                    <div className="text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                      <div className="flex items-center gap-2">
+                        {formData.hasStoredDocuments ? (
+                          <>
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <span className="font-medium text-green-800">Document Stored Successfully</span>
+                          </>
+                        ) : (
+                          <>
+                            <Info className="w-4 h-4 text-blue-600" />
+                            <span className="font-medium text-blue-800">Document Processing...</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        ID: {formData.documentId} • File: {formData.originalFileName}
+                      </div>
                     </div>
-                  </label>
-                </div>
-                
-                {/* Document Storage Status */}
-                {formData.documentId && (
-                  <div className="text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                  )}
+
+                  {/* Price Fix Status Info */}
+                  <div className="text-sm text-purple-700 bg-purple-100 rounded-lg p-2">
                     <div className="flex items-center gap-2">
-                      {formData.hasStoredDocuments ? (
-                        <>
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                          <span className="font-medium text-green-800">Document Stored Successfully</span>
-                        </>
-                      ) : (
-                        <>
-                          <Info className="w-4 h-4 text-blue-600" />
-                          <span className="font-medium text-blue-800">Document Processing...</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">
-                      ID: {formData.documentId} • File: {formData.originalFileName}
+                      <Calculator className="w-4 h-4" />
+                      <span className="font-medium">Smart Price Correction:</span>
+                      <span>Automatically fixes inconsistent pricing data from extracted documents</span>
                     </div>
                   </div>
-                )}
 
-                {/* Price Fix Status Info */}
-                <div className="text-sm text-purple-700 bg-purple-100 rounded-lg p-2">
-                  <div className="flex items-center gap-2">
-                    <Calculator className="w-4 h-4" />
-                    <span className="font-medium">Smart Price Correction:</span>
-                    <span>Automatically fixes inconsistent pricing data from extracted documents</span>
-                  </div>
+                  {/* Extraction Error Display */}
+                  {extractionError && (
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                      <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-red-800">Extraction Issue</p>
+                        <p className="text-sm text-red-600 mt-1">{extractionError}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Extraction Error Display */}
-                {extractionError && (
-                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                    <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-red-800">Extraction Issue</p>
-                      <p className="text-sm text-red-600 mt-1">{extractionError}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Form Fields */}
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Client Information */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Client Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* PRIMARY: Client PO Number - Most Important */}
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-800 mb-1">
-                        Client PO Number *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.clientPoNumber}
-                        onChange={(e) => handleInputChange('clientPoNumber', e.target.value)}
-                        className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium text-lg"
-                        placeholder="e.g., PO-024974"
-                        required
-                      />
-                      <p className="text-xs text-blue-600 mt-1 font-medium">
-                        Primary business reference
-                      </p>
-                    </div>
-
-                    {/* Project Code - Secondary but Important */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Project Code
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.projectCode}
-                        onChange={(e) => handleInputChange('projectCode', e.target.value)}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                          validationErrors && validationErrors.find(e => e.field === 'projectCode') 
-                            ? 'border-red-500' 
-                            : 'border-gray-300'
-                        }`}
-                        placeholder="e.g., FS-S4814"
-                      />
-                      {validationErrors && validationErrors.find(e => e.field === 'projectCode') && (
-                        <p className="text-red-500 text-xs mt-1">
-                          {validationErrors.find(e => e.field === 'projectCode')?.message}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">
-                        For linking with CRM quotations and contacts
-                      </p>
-                    </div>
-
-                    {/* Client Name - Required */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Client Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.clientName}
-                        onChange={(e) => handleInputChange('clientName', e.target.value)}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                          validationErrors && validationErrors.find(e => e.field === 'clientName') 
-                            ? 'border-red-500' 
-                            : 'border-gray-300'
-                        }`}
-                        placeholder="Enter client company name"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Contact Person
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.clientContact}
-                        onChange={(e) => handleInputChange('clientContact', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Primary contact name"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        value={formData.clientEmail}
-                        onChange={(e) => handleInputChange('clientEmail', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="client@company.com"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Phone
-                      </label>
-                      <input
-                        type="tel"
-                        value={formData.clientPhone}
-                        onChange={(e) => handleInputChange('clientPhone', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="+60 12-345 6789"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Order Date *
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.orderDate}
-                        onChange={(e) => handleInputChange('orderDate', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Required Date
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.requiredDate}
-                        onChange={(e) => handleInputChange('requiredDate', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Payment Terms
-                      </label>
-                      <select
-                        value={formData.paymentTerms}
-                        onChange={(e) => handleInputChange('paymentTerms', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="Net 30">Net 30</option>
-                        <option value="Net 60">Net 60</option>
-                        <option value="Net 90">Net 90</option>
-                        <option value="Due on Receipt">Due on Receipt</option>
-                        <option value="2/10 Net 30">2/10 Net 30</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Delivery Terms
-                      </label>
-                      <select
-                        value={formData.deliveryTerms}
-                        onChange={(e) => handleInputChange('deliveryTerms', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="FOB">FOB</option>
-                        <option value="CIF">CIF</option>
-                        <option value="DDP">DDP</option>
-                        <option value="EXW">EXW</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  {/* SECONDARY: Internal System Reference - De-emphasized */}
-                  <div className="mt-4 pt-3 border-t border-gray-100">
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <span className="font-medium">System Reference:</span>
-                      <code className="px-2 py-1 bg-gray-50 rounded border text-xs font-mono">
-                        {formData.poNumber}
-                      </code>
-                      <span className="text-gray-400">• Internal tracking only</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CRITICAL FIX: Enhanced Financial Details Section */}
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Financial Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    
-                    {/* Subtotal Field */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Subtotal (RM)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.subtotal || formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0)}
-                        onChange={(e) => handleInputChange('subtotal', parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    
-                    {/* CRITICAL FIX: Enhanced Tax Field */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Tax (RM)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.tax || ''}
-                        onChange={(e) => handleTaxChange(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Set to 0 for Flow Solution POs | Current: RM {(formData.tax || 0).toFixed(2)}
-                      </p>
-                    </div>
-                    
-                    {/* Shipping Field */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Shipping (RM)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.shipping || 0}
-                        onChange={(e) => handleInputChange('shipping', parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    
-                    {/* Discount Field */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Discount (RM)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.discount || 0}
-                        onChange={(e) => handleInputChange('discount', parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* CRITICAL FIX: Enhanced Total Amount Display */}
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                    <div className="flex justify-between items-center text-lg font-semibold">
-                      <span>Total Amount:</span>
-                      <span className="text-blue-600">RM {calculateTotal().toFixed(2)}</span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Subtotal: RM {formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0).toFixed(2)} + 
-                      Tax: RM {(formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0).toFixed(2)} + 
-                      Shipping: RM {(parseFloat(formData.shipping) || 0).toFixed(2)} - 
-                      Discount: RM {(parseFloat(formData.discount) || 0).toFixed(2)}
-                    </div>
-                    <div className="text-xs text-blue-600 mt-1">
-                      Real-time calculation: Updates automatically when values change
-                    </div>
-                  </div>
-                </div>
-
-                {/* Items Section */}
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold text-gray-800">Order Items</h3>
-                    <div className="flex gap-2">
-                      {/* Bulk Product Code Extraction Button */}
-                      {formData.items.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleBulkProductCodeExtraction}
-                          className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
-                          title="Extract product codes from all product names"
-                        >
-                          Extract Codes
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Add Item Form */}
-                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                    <div className="grid grid-cols-6 gap-3 mb-3">
-                      <div className="col-span-2 relative">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Product Search
+                {/* Form Fields */}
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* Client Information */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Client Information</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* PRIMARY: Client PO Number - Most Important */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-800 mb-1">
+                          Client PO Number *
                         </label>
                         <input
                           type="text"
-                          value={searchTerm}
-                          onChange={(e) => {
-                            setSearchTerm(e.target.value);
-                            setShowProductSearch(true);
-                          }}
-                          onFocus={() => setShowProductSearch(true)}
-                          placeholder="Search products..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          value={formData.clientPoNumber}
+                          onChange={(e) => handleInputChange('clientPoNumber', e.target.value)}
+                          className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium text-lg"
+                          placeholder="e.g., PO-024974"
+                          required
                         />
-                        
-                        {showProductSearch && searchTerm && (
-                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {filteredProducts.length > 0 ? (
-                              filteredProducts.map(product => (
-                                <div
-                                  key={product.id}
-                                  onClick={() => selectProduct(product)}
-                                  className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                                >
-                                  <div className="font-medium">{product.name}</div>
-                                  <div className="text-sm text-gray-600">
-                                    Code: {product.code} | Price: ${product.price} | Stock: {product.stock}
-                                  </div>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="p-3 text-gray-500 text-center">
-                                No products found
-                              </div>
-                            )}
-                          </div>
+                        <p className="text-xs text-blue-600 mt-1 font-medium">
+                          Primary business reference
+                        </p>
+                      </div>
+
+                      {/* Project Code - Secondary but Important */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Project Code
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.projectCode}
+                          onChange={(e) => handleInputChange('projectCode', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                            validationErrors && validationErrors.find(e => e.field === 'projectCode') 
+                              ? 'border-red-500' 
+                              : 'border-gray-300'
+                          }`}
+                          placeholder="e.g., FS-S4814"
+                        />
+                        {validationErrors && validationErrors.find(e => e.field === 'projectCode') && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {validationErrors.find(e => e.field === 'projectCode')?.message}
+                          </p>
                         )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          For linking with CRM quotations and contacts
+                        </p>
+                      </div>
+
+                      {/* Client Name - Required */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Client Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.clientName}
+                          onChange={(e) => handleInputChange('clientName', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                            validationErrors && validationErrors.find(e => e.field === 'clientName') 
+                              ? 'border-red-500' 
+                              : 'border-gray-300'
+                          }`}
+                          placeholder="Enter client company name"
+                          required
+                        />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Quantity
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Contact Person
                         </label>
                         <input
-                          type="number"
-                          value={currentItem.quantity}
-                          onChange={(e) => setCurrentItem({
-                            ...currentItem,
-                            quantity: parseInt(e.target.value) || 1,
-                            totalPrice: (parseInt(e.target.value) || 1) * currentItem.unitPrice
-                          })}
+                          type="text"
+                          value={formData.clientContact}
+                          onChange={(e) => handleInputChange('clientContact', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          min="1"
+                          placeholder="Primary contact name"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Unit Price
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Email
                         </label>
                         <input
-                          type="number"
-                          value={currentItem.unitPrice}
-                          onChange={(e) => setCurrentItem({
-                            ...currentItem,
-                            unitPrice: parseFloat(e.target.value) || 0,
-                            totalPrice: currentItem.quantity * (parseFloat(e.target.value) || 0)
-                          })}
+                          type="email"
+                          value={formData.clientEmail}
+                          onChange={(e) => handleInputChange('clientEmail', e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          min="0"
-                          step="0.01"
+                          placeholder="client@company.com"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Total
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Phone
                         </label>
                         <input
-                          type="number"
-                          value={currentItem.totalPrice}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
-                          readOnly
+                          type="tel"
+                          value={formData.clientPhone}
+                          onChange={(e) => handleInputChange('clientPhone', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="+60 12-345 6789"
                         />
                       </div>
-                    </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Project Code
-                      </label>
-                      <input
-                        type="text"
-                        value={currentItem.projectCode}
-                        onChange={(e) => setCurrentItem({
-                          ...currentItem,
-                          projectCode: e.target.value
-                        })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                        placeholder="BWS-S1046"
-                      />
-                    </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Order Date *
+                        </label>
+                        <input
+                          type="date"
+                          value={formData.orderDate}
+                          onChange={(e) => handleInputChange('orderDate', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          required
+                        />
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={addItem}
-                      disabled={!currentItem.productName || currentItem.quantity <= 0}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center gap-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add Item
-                    </button>
-                  </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Required Date
+                        </label>
+                        <input
+                          type="date"
+                          value={formData.requiredDate}
+                          onChange={(e) => handleInputChange('requiredDate', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
 
-                  {/* Items List */}
-                  {validationErrors && validationErrors.find(e => e.field === 'items') && (
-                    <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-sm text-red-600">
-                        {validationErrors && validationErrors.find(e => e.field === 'items')?.message}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    {formData.items.map((item, index) => (
-                      <div key={item.id || index} className="bg-white p-4 rounded-lg border border-gray-200">
-                        <div className="grid grid-cols-9 gap-3">
-                          <div className="col-span-2">
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Product Name *
-                            </label>
-                            <input
-                              type="text"
-                              value={item.productName}
-                              onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                              required
-                              placeholder="Enter product description"
-                            />
-                          </div>
-
-                          {/* Product Code Field */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Product Code
-                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔱</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={item.productCode || ''}
-                              onChange={(e) => handleItemChange(index, 'productCode', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm font-mono"
-                              placeholder="Auto-extracted"
-                              title="Manufacturer's product code/part number"
-                            />
-                          </div>
-
-                          {/* Client Item Code Field */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Client Item Code
-                              <span className="text-blue-600 ml-1" title="Client's unique identifier">🏷️</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={item.clientItemCode || ''}
-                              onChange={(e) => handleItemChange(index, 'clientItemCode', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-mono"
-                              placeholder="e.g. 400RTG0091"
-                              title="Client's own unique code for this product (e.g. 400RTG0091, 200SHA0162)"
-                            />
-                          </div>
-                         
-                          {/* Project Code Field */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Project Code 
-                              <span className="text-blue-500 text-xs ml-1">Project</span>
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g., BWS-S1046"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              value={item.projectCode || ''}
-                              onChange={(e) => handleItemChange(index, 'projectCode', e.target.value)}
-                            />
-                            {/* Debug indicator to show if project code exists */}
-                            {item.projectCode && (
-                              <div className="text-xs text-green-600 mt-1">
-                                Project code: {item.projectCode}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Quantity
-                            </label>
-                            <input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                              min="1"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Unit Price
-                            </label>
-                            <input
-                              type="number"
-                              value={item.unitPrice}
-                              onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                              min="0"
-                              step="0.01"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                              Total Price
-                            </label>
-                            <input
-                              type="number"
-                              value={item.totalPrice}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-sm"
-                              readOnly
-                            />
-                          </div>
-                        </div>
-
-                        {/* Enhanced code preview */}
-                        {(item.productCode || item.clientItemCode || item.projectCode) && (
-                          <div className="mt-2 text-xs bg-gray-50 px-2 py-1 rounded space-y-1">
-                            {item.productCode && (
-                              <div className="text-purple-600">
-                                Product Code: <span className="font-mono font-medium">{item.productCode}</span>
-                                {item.productName && extractProductCodeFromName(item.productName) === item.productCode && (
-                                  <span className="ml-2 text-purple-500">Auto-extracted</span>
-                                )}
-                              </div>
-                            )}
-                            {item.clientItemCode && (
-                              <div className="text-blue-600">
-                                Client Code: <span className="font-mono font-medium">{item.clientItemCode}</span>
-                                <span className="ml-2 text-blue-500">Client's unique ID</span>
-                              </div>
-                            )}
-                            {item.projectCode && (
-                              <div className="text-green-600">
-                                Project Code: <span className="font-mono font-medium">{item.projectCode}</span>
-                                <span className="ml-2 text-green-500">Project reference</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        <button
-                          type="button"
-                          onClick={() => removeItem(index)}
-                          className="mt-2 text-red-600 hover:text-red-800 text-sm flex items-center gap-1"
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Payment Terms
+                        </label>
+                        <select
+                          value={formData.paymentTerms}
+                          onChange={(e) => handleInputChange('paymentTerms', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         >
-                          <Trash2 className="w-3 h-3" />
-                          Remove Item
-                        </button>
+                          <option value="Net 30">Net 30</option>
+                          <option value="Net 60">Net 60</option>
+                          <option value="Net 90">Net 90</option>
+                          <option value="Due on Receipt">Due on Receipt</option>
+                          <option value="2/10 Net 30">2/10 Net 30</option>
+                        </select>
                       </div>
-                    ))}
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Delivery Terms
+                        </label>
+                        <select
+                          value={formData.deliveryTerms}
+                          onChange={(e) => handleInputChange('deliveryTerms', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="FOB">FOB</option>
+                          <option value="CIF">CIF</option>
+                          <option value="DDP">DDP</option>
+                          <option value="EXW">EXW</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    {/* SECONDARY: Internal System Reference - De-emphasized */}
+                    <div className="mt-4 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className="font-medium">System Reference:</span>
+                        <code className="px-2 py-1 bg-gray-50 rounded border text-xs font-mono">
+                          {formData.poNumber}
+                        </code>
+                        <span className="text-gray-400">• Internal tracking only</span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Total */}
-                  {formData.items.length > 0 && (
-                    <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-lg font-semibold">Total Amount:</span>
-                          <div className="text-sm text-gray-600 mt-1">
-                            {formData.items.length} items • 
-                            {formData.items.filter(item => item.productCode).length} with product codes • 
-                            {formData.items.filter(item => item.clientItemCode).length} with client codes • 
-                            {formData.items.filter(item => item.projectCode).length} with project codes
-                          </div>
-                        </div>
-                        <span className="text-2xl font-bold text-blue-600">
-                          RM {calculateTotal().toFixed(2)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        * Financial details can be adjusted in the Financial Details section above
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Supplier Matching Tab */}
-                {supplierMatchingData && (
+                  {/* CRITICAL FIX: Enhanced Financial Details Section */}
                   <div className="mb-6">
-                    <button
-                      type="button"
-                      onClick={() => setShowSupplierMatching(!showSupplierMatching)}
-                      className="w-full flex justify-between items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-blue-600" />
-                        <span className="font-semibold text-blue-900">
-                          Supplier Recommendations Available
-                        </span>
-                        {supplierMatchingData.metrics && (
-                          <span className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
-                            {supplierMatchingData.metrics.supplierDiversity} suppliers found
-                          </span>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Financial Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      
+                      {/* Subtotal Field */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Subtotal (RM)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.subtotal || formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0)}
+                          onChange={(e) => handleInputChange('subtotal', parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      
+                      {/* CRITICAL FIX: Enhanced Tax Field */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Tax (RM)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.tax || ''}
+                          onChange={(e) => handleTaxChange(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.00"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Set to 0 for Flow Solution POs | Current: RM {(formData.tax || 0).toFixed(2)}
+                        </p>
+                      </div>
+                      
+                      {/* Shipping Field */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Shipping (RM)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.shipping || 0}
+                          onChange={(e) => handleInputChange('shipping', parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      
+                      {/* Discount Field */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Discount (RM)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.discount || 0}
+                          onChange={(e) => handleInputChange('discount', parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* CRITICAL FIX: Enhanced Total Amount Display */}
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                      <div className="flex justify-between items-center text-lg font-semibold">
+                        <span>Total Amount:</span>
+                        <span className="text-blue-600">RM {calculateTotal().toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Subtotal: RM {formData.items.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0).toFixed(2)} + 
+                        Tax: RM {(formData.tax !== undefined && formData.tax !== null ? parseFloat(formData.tax) : 0).toFixed(2)} + 
+                        Shipping: RM {(parseFloat(formData.shipping) || 0).toFixed(2)} - 
+                        Discount: RM {(parseFloat(formData.discount) || 0).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-blue-600 mt-1">
+                        Real-time calculation: Updates automatically when values change
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items Section */}
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-gray-800">Order Items</h3>
+                      <div className="flex gap-2">
+                        {/* Bulk Product Code Extraction Button */}
+                        {formData.items.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleBulkProductCodeExtraction}
+                            className="px-3 py-1 text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+                            title="Extract product codes from all product names"
+                          >
+                            Extract Codes
+                          </button>
                         )}
                       </div>
-                      {showSupplierMatching ? <ChevronUp /> : <ChevronDown />}
-                    </button>
+                    </div>
                     
-                    {showSupplierMatching && (
-                      <div className="mt-4">
-                        <SupplierMatchingDisplay
-                          items={supplierMatchingData.items}
-                          sourcingPlan={supplierMatchingData.sourcingPlan}
-                          metrics={supplierMatchingData.metrics}
+                    {/* Add Item Form */}
+                    <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                      <div className="grid grid-cols-6 gap-3 mb-3">
+                        <div className="col-span-2 relative">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Product Search
+                          </label>
+                          <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => {
+                              setSearchTerm(e.target.value);
+                              setShowProductSearch(true);
+                            }}
+                            onFocus={() => setShowProductSearch(true)}
+                            placeholder="Search products..."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          />
+                          
+                          {showProductSearch && searchTerm && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {filteredProducts.length > 0 ? (
+                                filteredProducts.map(product => (
+                                  <div
+                                    key={product.id}
+                                    onClick={() => selectProduct(product)}
+                                    className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                                  >
+                                    <div className="font-medium">{product.name}</div>
+                                    <div className="text-sm text-gray-600">
+                                      Code: {product.code} | Price: ${product.price} | Stock: {product.stock}
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="p-3 text-gray-500 text-center">
+                                  No products found
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Quantity
+                          </label>
+                          <input
+                            type="number"
+                            value={currentItem.quantity}
+                            onChange={(e) => setCurrentItem({
+                              ...currentItem,
+                              quantity: parseInt(e.target.value) || 1,
+                              totalPrice: (parseInt(e.target.value) || 1) * currentItem.unitPrice
+                            })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            min="1"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Unit Price
+                          </label>
+                          <input
+                            type="number"
+                            value={currentItem.unitPrice}
+                            onChange={(e) => setCurrentItem({
+                              ...currentItem,
+                              unitPrice: parseFloat(e.target.value) || 0,
+                              totalPrice: currentItem.quantity * (parseFloat(e.target.value) || 0)
+                            })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Total
+                          </label>
+                          <input
+                            type="number"
+                            value={currentItem.totalPrice}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                            readOnly
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Project Code
+                        </label>
+                        <input
+                          type="text"
+                          value={currentItem.projectCode}
+                          onChange={(e) => setCurrentItem({
+                            ...currentItem,
+                            projectCode: e.target.value
+                          })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          placeholder="BWS-S1046"
                         />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={addItem}
+                        disabled={!currentItem.productName || currentItem.quantity <= 0}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 flex items-center gap-2 mt-3"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Item
+                      </button>
+                    </div>
+
+                    {/* Items List */}
+                    {validationErrors && validationErrors.find(e => e.field === 'items') && (
+                      <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-600">
+                          {validationErrors && validationErrors.find(e => e.field === 'items')?.message}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      {formData.items.map((item, index) => (
+                        <div key={item.id || index} className="bg-white p-4 rounded-lg border border-gray-200">
+                          <div className="grid grid-cols-9 gap-3">
+                            <div className="col-span-2">
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Product Name *
+                              </label>
+                              <input
+                                type="text"
+                                value={item.productName}
+                                onChange={(e) => handleItemChange(index, 'productName', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                                required
+                                placeholder="Enter product description"
+                              />
+                            </div>
+
+                            {/* Product Code Field */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Product Code
+                                <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔱</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={item.productCode || ''}
+                                onChange={(e) => handleItemChange(index, 'productCode', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-sm font-mono"
+                                placeholder="Auto-extracted"
+                                title="Manufacturer's product code/part number"
+                              />
+                            </div>
+
+                            {/* Client Item Code Field */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Client Item Code
+                                <span className="text-blue-600 ml-1" title="Client's unique identifier">🏷️</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={item.clientItemCode || ''}
+                                onChange={(e) => handleItemChange(index, 'clientItemCode', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                                placeholder="e.g. 400RTG0091"
+                                title="Client's own unique code for this product (e.g. 400RTG0091, 200SHA0162)"
+                              />
+                            </div>
+                           
+                            {/* Project Code Field */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Project Code 
+                                <span className="text-blue-500 text-xs ml-1">Project</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g., BWS-S1046"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                value={item.projectCode || ''}
+                                onChange={(e) => handleItemChange(index, 'projectCode', e.target.value)}
+                              />
+                              {/* Debug indicator to show if project code exists */}
+                              {item.projectCode && (
+                                <div className="text-xs text-green-600 mt-1">
+                                  Project code: {item.projectCode}
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Quantity
+                              </label>
+                              <input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                                min="1"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Unit Price
+                              </label>
+                              <input
+                                type="number"
+                                value={item.unitPrice}
+                                onChange={(e) => handleItemChange(index, 'unitPrice', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                                min="0"
+                                step="0.01"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Total Price
+                              </label>
+                              <input
+                                type="number"
+                                value={item.totalPrice}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-sm"
+                                readOnly
+                              />
+                            </div>
+                          </div>
+
+                          {/* Enhanced code preview */}
+                          {(item.productCode || item.clientItemCode || item.projectCode) && (
+                            <div className="mt-2 text-xs bg-gray-50 px-2 py-1 rounded space-y-1">
+                              {item.productCode && (
+                                <div className="text-purple-600">
+                                  Product Code: <span className="font-mono font-medium">{item.productCode}</span>
+                                  {item.productName && extractProductCodeFromName(item.productName) === item.productCode && (
+                                    <span className="ml-2 text-purple-500">Auto-extracted</span>
+                                  )}
+                                </div>
+                              )}
+                              {item.clientItemCode && (
+                                <div className="text-blue-600">
+                                  Client Code: <span className="font-mono font-medium">{item.clientItemCode}</span>
+                                  <span className="ml-2 text-blue-500">Client's unique ID</span>
+                                </div>
+                              )}
+                              {item.projectCode && (
+                                <div className="text-green-600">
+                                  Project Code: <span className="font-mono font-medium">{item.projectCode}</span>
+                                  <span className="ml-2 text-green-500">Project reference</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          <button
+                            type="button"
+                            onClick={() => removeItem(index)}
+                            className="mt-2 text-red-600 hover:text-red-800 text-sm flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove Item
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Total */}
+                    {formData.items.length > 0 && (
+                      <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-lg font-semibold">Total Amount:</span>
+                            <div className="text-sm text-gray-600 mt-1">
+                              {formData.items.length} items • 
+                              {formData.items.filter(item => item.productCode).length} with product codes • 
+                              {formData.items.filter(item => item.clientItemCode).length} with client codes • 
+                              {formData.items.filter(item => item.projectCode).length} with project codes
+                            </div>
+                          </div>
+                          <span className="text-2xl font-bold text-blue-600">
+                            RM {calculateTotal().toFixed(2)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">
+                          * Financial details can be adjusted in the Financial Details section above
+                        </p>
                       </div>
                     )}
                   </div>
-                )}
 
-                {/* Notes */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Internal Notes
-                  </label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => handleInputChange('notes', e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="Add any internal notes..."
+                  {/* Supplier Matching Tab */}
+                  {supplierMatchingData && (
+                    <div className="mb-6">
+                      <button
+                        type="button"
+                        onClick={() => setShowSupplierMatching(!showSupplierMatching)}
+                        className="w-full flex justify-between items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-blue-600" />
+                          <span className="font-semibold text-blue-900">
+                            Supplier Recommendations Available
+                          </span>
+                          {supplierMatchingData.metrics && (
+                            <span className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-full">
+                              {supplierMatchingData.metrics.supplierDiversity} suppliers found
+                            </span>
+                          )}
+                        </div>
+                        {showSupplierMatching ? <ChevronUp /> : <ChevronDown />}
+                      </button>
+                      
+                      {showSupplierMatching && (
+                        <div className="mt-4">
+                          <SupplierMatchingDisplay
+                            items={supplierMatchingData.items}
+                            sourcingPlan={supplierMatchingData.sourcingPlan}
+                            metrics={supplierMatchingData.metrics}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Internal Notes
+                    </label>
+                    <textarea
+                      value={formData.notes}
+                      onChange={(e) => handleInputChange('notes', e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Add any internal notes..."
+                    />
+                  </div>
+                </form>
+              </>
+            ) : activeTab === 'documents' ? (
+              // Documents tab content  
+              <div className="space-y-4">
+                {(editingPO?.documentId || formData.documentId || 
+                  editingPO?.hasStoredDocuments || formData.hasStoredDocuments) ? (
+                  <DocumentViewer
+                    documentId={editingPO?.documentId || formData.documentId}
+                    documentType="po"
+                    documentNumber={editingPO?.poNumber || formData.poNumber}
+                    allowDelete={true}
+                    onDocumentDeleted={(doc) => {
+                      console.log('Document deleted:', doc);
+                      // Optional: show notification
+                      alert('Document deleted successfully');
+                    }}
                   />
-                </div>
-              </form>
-            </>
-          ) : activeTab === 'documents' ? (
-            // Documents tab content
-            <div className="space-y-4">
-              {(editingPO?.documentId || formData.documentId) ? (
-                <DocumentViewer
-                  documentId={editingPO?.documentId || formData.documentId}
-                  documentType="po"
-                  documentNumber={editingPO?.poNumber || formData.poNumber}
-                  allowDelete={true}
-                  onDocumentDeleted={(doc) => {
-                    console.log('Document deleted:', doc);
-                    // Optional: show notification
-                    alert('Document deleted successfully');
-                  }}
-                />
-              ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-                  <p className="font-medium mb-1">Documents will be available after saving this PO</p>
-                  <p className="text-xs">Upload and AI extraction files will be stored here automatically</p>
-                </div>
-              )}
-            </div>
-          ) : null}
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                    <p className="font-medium mb-1">Documents will be available after saving this PO</p>
+                    <p className="text-xs">Upload and AI extraction files will be stored here automatically</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        {/* Fixed Footer with Prominent Save Button - Always Visible */}
-        <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
+        {/* FIXED: Footer with Prominent Save Button - Always Visible on All Tabs */}
+        <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0 sticky bottom-0">
           <button
             type="button"
             onClick={onClose}
@@ -1824,7 +1933,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             Cancel
           </button>
           
-          {/* Enhanced Save Button - Always Present */}
+          {/* Enhanced Save Button - Always Present and Visible */}
           <button
             type="button"
             onClick={handleSubmit}
