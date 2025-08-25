@@ -375,6 +375,22 @@ const extractProjectCodesFromPO = (extractedData) => {
   return extractedData;
 };
 
+// =============================================================================
+// DEBUG UTILITY: ClientItemCode Tracking Function
+// =============================================================================
+const debugClientItemCodes = (items, location) => {
+  console.log(`[DEBUG] ClientItemCode check at ${location}:`, 
+    items.map((item, i) => ({
+      index: i,
+      id: item.id,
+      clientItemCode: item.clientItemCode,
+      type: typeof item.clientItemCode,
+      hasValue: !!item.clientItemCode,
+      productName: item.productName?.substring(0, 30)
+    }))
+  );
+};
+
 const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
@@ -501,23 +517,82 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   };
 
   // =============================================================================
-  // FIX 3: Enhanced useEffect for editingPO with Comprehensive Field Preservation
+  // FIX 3: Enhanced useEffect for editingPO with ClientItemCode Preservation
   // =============================================================================
   useEffect(() => {
     if (editingPO) {
       console.log('[DEBUG] POModal: Setting form data from editing PO:', editingPO.poNumber);
       
+      // Debug the items being loaded
       if (editingPO.items && editingPO.items.length > 0) {
-        console.log('[DEBUG] EDITING PO DEBUG: editingPO.items check:');
+        console.log('[DEBUG] EDITING PO - Items analysis:');
         editingPO.items.forEach((item, i) => {
-          console.log(`  EditingPO Item ${i + 1} DETAILS:`);
-          console.log(`    clientItemCode: "${item.clientItemCode}"`);
-          console.log(`    productCode: "${item.productCode}"`);
-          console.log(`    productName: "${item.productName}"`);
-          console.log(`    hasClientItemCode: ${!!item.clientItemCode}`);
-          console.log(`    ALL KEYS:`, Object.keys(item));
+          console.log(`  Item ${i + 1}:`, {
+            id: item.id,
+            clientItemCode: item.clientItemCode,
+            hasClientItemCode: !!item.clientItemCode,
+            productCode: item.productCode,
+            productName: item.productName?.substring(0, 30),
+            allKeys: Object.keys(item)
+          });
         });
       }
+      
+      // Check extractedData for better clientItemCode preservation
+      let itemsToUse = editingPO.items || [];
+      
+      if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
+        const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
+        const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
+        
+        console.log('[DEBUG] Item source comparison:', {
+          extractedItemsCount: editingPO.extractedData.items.length,
+          editingItemsCount: editingPO.items?.length || 0,
+          extractedHasClientCode,
+          editingHasClientCode
+        });
+        
+        if (extractedHasClientCode && !editingHasClientCode) {
+          console.log('[CRITICAL] Using extractedData.items because it has clientItemCode');
+          itemsToUse = editingPO.extractedData.items;
+        } else if (extractedHasClientCode && editingHasClientCode) {
+          // Both have client codes - merge to ensure nothing is lost
+          console.log('[MERGE] Both sources have client codes, merging intelligently');
+          itemsToUse = editingPO.items.map((editingItem, index) => {
+            const extractedItem = editingPO.extractedData.items[index];
+            return {
+              ...editingItem,
+              // Prefer extracted clientItemCode if editing item is missing it
+              clientItemCode: editingItem.clientItemCode || extractedItem?.clientItemCode || '',
+              // Also merge other important fields
+              productCode: editingItem.productCode || extractedItem?.productCode || '',
+              projectCode: editingItem.projectCode || extractedItem?.projectCode || ''
+            };
+          });
+        }
+      }
+      
+      // CRITICAL: Enhanced items preprocessing to ensure field preservation
+      const processedItems = itemsToUse.map((item, index) => ({
+        ...item,
+        // Ensure critical fields are never undefined
+        clientItemCode: item.clientItemCode || '',
+        productCode: item.productCode || '',
+        projectCode: item.projectCode || '',
+        productName: item.productName || '',
+        id: item.id || `item_${index + 1}`,
+        // Ensure numeric fields are properly formatted
+        quantity: parseFloat(item.quantity) || 0,
+        unitPrice: parseFloat(item.unitPrice) || 0,
+        totalPrice: parseFloat(item.totalPrice) || 0
+      }));
+      
+      console.log('[DEBUG] Processed items for form:', processedItems.map(item => ({
+        id: item.id,
+        clientItemCode: item.clientItemCode,
+        hasClientItemCode: !!item.clientItemCode,
+        productName: item.productName?.substring(0, 30)
+      })));
       
       // CRITICAL FIX: Preserve ALL original data first, then enhance
       const preservedFormData = { 
@@ -525,100 +600,53 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         ...editingPO  // Overlay with editing PO data - preserves everything
       };
       
-      // CRITICAL FIX: Enhanced document storage fields preservation with multiple fallback paths
+      // Enhanced document storage fields preservation with multiple fallback paths
       const documentFields = {
-        // Try multiple possible sources for document fields
         documentId: editingPO.documentId || 
                     editingPO.document?.id || 
-                    editingPO.documentStorage?.documentId || 
                     editingPO.extractionMetadata?.documentId || 
+                    editingPO.documentStorage?.documentId || 
                     preservedFormData.documentId || '',
         documentNumber: editingPO.documentNumber || 
                         editingPO.document?.number || 
-                        editingPO.documentStorage?.documentNumber || 
                         editingPO.poNumber || 
                         preservedFormData.documentNumber || '',
         documentType: 'po',
         hasStoredDocuments: Boolean(
           editingPO.hasStoredDocuments || 
           editingPO.document?.stored || 
-          editingPO.documentStorage?.success || 
           editingPO.documentId || 
           editingPO.storageInfo
         ),
         storageInfo: editingPO.storageInfo || 
                      editingPO.documentStorage || 
-                     editingPO.document?.storageInfo || 
-                     preservedFormData.storageInfo || 
                      null,
         originalFileName: editingPO.originalFileName || 
                           editingPO.document?.originalFileName || 
-                          editingPO.documentStorage?.originalFileName || 
                           preservedFormData.originalFileName || '',
         fileSize: editingPO.fileSize || 
                   editingPO.document?.fileSize || 
-                  editingPO.documentStorage?.fileSize || 
-                  preservedFormData.fileSize || 0,
+                  0,
         contentType: editingPO.contentType || 
                      editingPO.document?.contentType || 
-                     editingPO.documentStorage?.contentType || 
-                     preservedFormData.contentType || '',
+                     '',
         extractedAt: editingPO.extractedAt || 
                      editingPO.document?.extractedAt || 
-                     editingPO.documentStorage?.extractedAt || 
                      editingPO.createdAt || 
-                     preservedFormData.extractedAt ||
-                     new Date().toISOString(),
-        // Additional fields that might contain document info
-        downloadURL: editingPO.downloadURL || 
-                     editingPO.document?.downloadURL || 
-                     editingPO.storageInfo?.downloadURL || 
-                     editingPO.documentStorage?.downloadURL ||
-                     preservedFormData.downloadURL,
-        storagePath: editingPO.storagePath || 
-                     editingPO.document?.storagePath || 
-                     editingPO.documentStorage?.path ||
-                     preservedFormData.storagePath
+                     new Date().toISOString()
       };
       
       console.log('[DEBUG] POModal: Enhanced document storage fields set:', documentFields);
       
-      // Log what we found from editingPO for debugging
-      console.log('[DEBUG] POModal: Available document-related fields in editingPO:', {
-        hasDocumentId: !!editingPO.documentId,
-        hasDocument: !!editingPO.document,
-        hasDocumentStorage: !!editingPO.documentStorage,
-        hasStorageInfo: !!editingPO.storageInfo,
-        hasStoredDocuments: editingPO.hasStoredDocuments,
-        hasOriginalFileName: !!editingPO.originalFileName,
-        extractedAt: editingPO.extractedAt,
-        allKeys: Object.keys(editingPO).filter(key => 
-          key.toLowerCase().includes('document') || 
-          key.toLowerCase().includes('storage') || 
-          key.toLowerCase().includes('file') ||
-          key.toLowerCase().includes('extract')
-        )
-      });
-      
-      // Use correct items array (preserving existing logic)
-      let itemsToUse = editingPO.items || [];
-      
-      if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
-        const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
-        const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
-        
-        if (extractedHasClientCode && !editingHasClientCode) {
-          console.log('[CRITICAL] Using extractedData.items because it has clientItemCode');
-          itemsToUse = editingPO.extractedData.items;
-        }
-      }
-      
-      // CRITICAL: Combine ALL editingPO data with enhanced document fields
+      // Set form data with processed items and enhanced document fields
       setFormData({
         ...preservedFormData,  // All original data preserved
         ...documentFields,     // Enhanced document fields
-        items: itemsToUse      // Use the correct items array
+        items: processedItems  // Use processed items with preserved clientItemCode
       });
+      
+      console.log('[SUCCESS] Form data set with', processedItems.length, 'items and enhanced document fields');
+      
     } else {
       // Initialize new PO with basic structure
       setFormData(prev => ({
@@ -885,7 +913,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   };
 
   // =============================================================================
-  // FIX 4: Enhanced handleItemChange with Critical Field Preservation
+  // FIX 4: Enhanced handleItemChange with Critical ClientItemCode Field Preservation
   // =============================================================================
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
@@ -910,6 +938,11 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       console.log(`[SUCCESS] Project code for item ${index} changed from "${oldValue}" to "${value}"`);
     }
     
+    // Special logging for clientItemCode changes
+    if (field === 'clientItemCode') {
+      console.log(`[CLIENT_CODE_CHANGE] Item ${index}: "${oldItem.clientItemCode}" → "${value}"`);
+    }
+    
     // Auto-format project codes
     if (field === 'projectCode' && value) {
       value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
@@ -927,8 +960,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       }
     });
     
-    // Apply price fixing immediately after any change (your existing logic)
-    const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
+    // Apply price fixing (but with enhanced field preservation)
+    const fixedItems = fixPOItemPrices(newItems, false);
     
     setFormData(prev => ({
       ...prev,
@@ -1027,7 +1060,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   };
 
   // =============================================================================
-  // FIX 6: Enhanced handleSubmit with CORS Protection
+  // FIX 6: Enhanced handleSubmit with ClientItemCode Preservation & CORS Protection
   // =============================================================================
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1051,9 +1084,36 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       // Final price validation before saving with corrected tax handling
       const validatedData = validatePOTotals(formData, true);
       
+      // CRITICAL FIX: Explicit clientItemCode preservation in items
+      const itemsWithPreservedClientCodes = validatedData.items.map((item, index) => {
+        // Get original item from formData to ensure we have the latest values
+        const originalItem = formData.items[index];
+        
+        return {
+          ...item,
+          // CRITICAL: Explicitly preserve clientItemCode with multiple fallbacks
+          clientItemCode: item.clientItemCode || 
+                         originalItem?.clientItemCode || 
+                         item.productCode || // If client code is missing, try product code
+                         '',
+          // Also preserve other critical fields that might be lost
+          productCode: item.productCode || originalItem?.productCode || '',
+          projectCode: item.projectCode || originalItem?.projectCode || '',
+          productName: item.productName || originalItem?.productName || '',
+          // Ensure we have a unique ID for each item
+          id: item.id || originalItem?.id || `item_${index + 1}`,
+          // Preserve all pricing data
+          quantity: parseFloat(item.quantity) || 0,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          totalPrice: parseFloat(item.totalPrice) || 0
+        };
+      });
+      
       // CRITICAL FIX: Complete document storage fields preservation with comprehensive fallbacks
       const dataToSave = {
         ...validatedData,
+        // CRITICAL: Use items with preserved clientItemCode
+        items: itemsWithPreservedClientCodes,
         // Core document storage fields - COMPREHENSIVE preservation
         documentId: formData.documentId || 
                     validatedData.documentId || 
@@ -1104,10 +1164,19 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         // Processing status
         processingStatus: formData.processingStatus || 'completed',
         // File validation
-        fileValidated: Boolean(formData.documentId && formData.originalFileName)
+        fileValidated: Boolean(formData.documentId && formData.originalFileName),
+        // CRITICAL: Add field preservation metadata for debugging
+        fieldPreservationMetadata: {
+          clientItemCodesPreserved: itemsWithPreservedClientCodes.map(item => ({
+            id: item.id,
+            hasClientItemCode: !!item.clientItemCode,
+            clientItemCode: item.clientItemCode
+          })),
+          preservedAt: new Date().toISOString()
+        }
       };
       
-      console.log('[DEBUG] POModal: Saving PO with CORS protection and COMPREHENSIVE document storage fields:', {
+      console.log('[DEBUG] POModal: Saving PO with CORS protection and preserved clientItemCodes:', {
         documentId: dataToSave.documentId,
         hasStoredDocuments: dataToSave.hasStoredDocuments,
         originalFileName: dataToSave.originalFileName,
@@ -1116,7 +1185,15 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         tax: dataToSave.tax,
         storageInfo: !!dataToSave.storageInfo,
         downloadURL: !!dataToSave.downloadURL,
-        fileValidated: dataToSave.fileValidated
+        fileValidated: dataToSave.fileValidated,
+        itemsCount: itemsWithPreservedClientCodes.length,
+        itemsWithClientCode: itemsWithPreservedClientCodes.filter(item => item.clientItemCode).length,
+        debugData: itemsWithPreservedClientCodes.map(item => ({
+          id: item.id,
+          productName: item.productName?.substring(0, 30),
+          clientItemCode: item.clientItemCode,
+          hasClientItemCode: !!item.clientItemCode
+        }))
       });
       
       // CRITICAL FIX: Wrap save operation in CORS protection
