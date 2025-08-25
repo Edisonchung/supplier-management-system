@@ -601,73 +601,88 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     formData.items?.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0)
   ]);
 
-  // Enhanced: AI Extraction with Document Storage (Updated handleFileUpload)
+  // CRITICAL FIX: Enhanced handleFileUpload with proper document storage integration
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     console.log('[DEBUG] Starting PO extraction with document storage for:', file.name);
     setExtracting(true);
+    setExtractionError("");
     setValidationErrors([]);
 
     try {
-      // Critical: Use extractPOWithStorage instead of basic extractFromFile
-      const extractedData = await AIExtractionService.extractPOWithStorage(file);
-      console.log("[DEBUG] Raw extracted data with storage:", extractedData);
+      // CRITICAL FIX: Use extractPOWithStorage instead of basic extraction
+      console.log('🚀 Calling AIExtractionService.extractPOWithStorage...');
+      const result = await AIExtractionService.extractPOWithStorage(file);
+      console.log("🎯 AI Extraction result:", result);
+
+      // CRITICAL: Check for successful document storage
+      if (!result.success) {
+        throw new Error(result.error || 'Document extraction failed');
+      }
+
+      // Extract the actual PO data (could be in result.data or result directly)
+      const extractedPOData = result.data || result;
+      console.log("📄 Extracted PO data structure:", extractedPOData);
 
       // Apply price fixing to extracted data
-      const processedData = processExtractedPOData(extractedData.data || extractedData, true);
-      console.log("[SUCCESS] Processed data:", processedData);
+      const processedData = processExtractedPOData(extractedPOData, true);
+      console.log("✅ Processed data:", processedData);
 
-      // Critical: Extract document storage information from AI response
-      let documentStorageFields = {};
-      
-      if (extractedData.documentStorage) {
-        // Primary source: Direct document storage from AI service
+      // CRITICAL: Document storage fields integration
+      let documentStorageFields = {
+        documentId: '',
+        documentNumber: '',
+        documentType: 'po',
+        hasStoredDocuments: false,
+        storageInfo: null,
+        originalFileName: file.name,
+        fileSize: file.size,
+        contentType: file.type,
+        extractedAt: new Date().toISOString()
+      };
+
+      // Extract document storage information from result
+      if (result.documentStorage) {
+        // Primary source: documentStorage object from AI service
         documentStorageFields = {
-          documentId: extractedData.documentStorage.documentId,
-          documentNumber: extractedData.documentStorage.documentNumber || processedData.poNumber,
-          documentType: 'po',
-          hasStoredDocuments: true,
-          storageInfo: extractedData.documentStorage,
-          originalFileName: extractedData.documentStorage.originalFile?.originalFileName || file.name,
-          fileSize: extractedData.documentStorage.originalFile?.fileSize || file.size,
-          contentType: extractedData.documentStorage.originalFile?.contentType || file.type,
-          extractedAt: extractedData.documentStorage.storedAt || new Date().toISOString()
+          ...documentStorageFields,
+          documentId: result.documentStorage.documentId,
+          documentNumber: result.documentStorage.documentNumber || processedData.poNumber || processedData.clientPoNumber,
+          hasStoredDocuments: Boolean(result.documentStorage.success && result.documentStorage.documentId),
+          storageInfo: result.documentStorage,
+          originalFileName: result.documentStorage.originalFileName || file.name,
+          fileSize: result.documentStorage.fileSize || file.size,
+          contentType: result.documentStorage.contentType || file.type,
+          extractedAt: result.documentStorage.storedAt || new Date().toISOString()
         };
-        console.log('[SUCCESS] Using AI document storage:', documentStorageFields.documentId);
+        
+        console.log('✅ Document storage successful:', {
+          documentId: documentStorageFields.documentId,
+          hasStoredDocuments: documentStorageFields.hasStoredDocuments
+        });
       } 
-      else if (extractedData.extractionMetadata?.documentId) {
-        // Fallback source: Extraction metadata
+      else if (result.storageInfo || extractedPOData.storageInfo) {
+        // Fallback: storageInfo in main result
+        const storageInfo = result.storageInfo || extractedPOData.storageInfo;
         documentStorageFields = {
-          documentId: extractedData.extractionMetadata.documentId,
-          documentNumber: extractedData.extractionMetadata.documentNumber || processedData.poNumber,
-          documentType: 'po',
-          hasStoredDocuments: !!extractedData.extractionMetadata.hasStoredDocuments,
-          originalFileName: extractedData.extractionMetadata.originalFileName || file.name,
-          fileSize: extractedData.extractionMetadata.fileSize || file.size,
-          contentType: extractedData.extractionMetadata.contentType || file.type,
-          extractedAt: extractedData.extractionMetadata.extractedAt || new Date().toISOString(),
-          storageInfo: extractedData.extractionMetadata.storageInfo || null
+          ...documentStorageFields,
+          documentId: storageInfo.documentId,
+          documentNumber: storageInfo.documentNumber || processedData.poNumber,
+          hasStoredDocuments: Boolean(storageInfo.documentId),
+          storageInfo: storageInfo
         };
-        console.log('[SUCCESS] Using extraction metadata:', documentStorageFields.documentId);
+        
+        console.log('✅ Using storage info from result:', documentStorageFields.documentId);
       }
       else {
-        // Generate fallback document ID if none provided
-        documentStorageFields = {
-          documentId: `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          documentNumber: processedData.poNumber,
-          documentType: 'po',
-          hasStoredDocuments: false,
-          originalFileName: file.name,
-          fileSize: file.size,
-          contentType: file.type,
-          extractedAt: new Date().toISOString(),
-          storageInfo: null
-        };
-        console.log('[WARNING] Generated fallback document ID:', documentStorageFields.documentId);
+        // Generate temporary ID for failed storage
+        documentStorageFields.documentId = `temp-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        console.log('⚠️ Document storage failed, using temporary ID:', documentStorageFields.documentId);
+        setExtractionError('Document uploaded but storage failed. Data extracted successfully.');
       }
-      
+
       // Validate the extracted data
       const validation = ValidationService.validateExtractedData(processedData);
       
@@ -675,22 +690,26 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         setValidationErrors(validation.errors);
       }
 
-      // Critical: Combine processed data with document storage fields
+      // CRITICAL: Combine processed data with document storage fields
       const completeFormData = {
         ...processedData,
         ...documentStorageFields,
-        // Preserve any existing form data
+        // Preserve any existing form data that shouldn't be overwritten
         ...formData,
-        // Override with new extracted data
+        // Override with new extracted data (most important fields)
         items: processedData.items || [],
-        // Ensure PO number is set
-        poNumber: processedData.poNumber || formData.poNumber || generatePONumber()
+        clientPoNumber: processedData.clientPoNumber || processedData.poNumber || formData.clientPoNumber,
+        poNumber: processedData.poNumber || formData.poNumber || generatePONumber(),
+        clientName: processedData.clientName || formData.clientName,
+        totalAmount: processedData.totalAmount || 0,
+        tax: processedData.tax !== undefined ? processedData.tax : formData.tax
       };
 
-      console.log('[DEBUG] Setting form data with document fields:', {
+      console.log('[SUCCESS] Setting complete form data with document fields:', {
         documentId: completeFormData.documentId,
         hasStoredDocuments: completeFormData.hasStoredDocuments,
-        originalFileName: completeFormData.originalFileName
+        clientPoNumber: completeFormData.clientPoNumber,
+        itemsCount: completeFormData.items?.length || 0
       });
 
       // Set form data with complete document integration
@@ -698,14 +717,15 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       
       // Store the complete extracted data for potential reference
       setExtractedData({
-        ...extractedData,
+        ...result,
         processedData: completeFormData
       });
       
-      console.log('[SUCCESS] PO extraction with document storage completed successfully');
+      console.log('🎉 PO extraction with document storage completed successfully');
       
     } catch (error) {
-      console.error('[ERROR] PO extraction failed:', error);
+      console.error('❌ PO extraction failed:', error);
+      setExtractionError('Failed to extract PO data: ' + error.message);
       setValidationErrors([{ field: 'general', message: 'Failed to extract PO data: ' + error.message }]);
     } finally {
       setExtracting(false);
@@ -1030,7 +1050,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           {/* Tab Content */}
           {activeTab === 'details' ? (
             <>
-              {/* Enhanced: AI Upload Section with Price Fix Info */}
+              {/* Enhanced: AI Upload Section with improved status feedback */}
               <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -1038,8 +1058,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       <Upload className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-800">AI Document Extraction</h3>
-                      <p className="text-sm text-gray-600">Upload PDF to auto-fill form with automatic price fixing</p>
+                      <h3 className="font-semibold text-gray-800">AI Document Extraction & Storage</h3>
+                      <p className="text-sm text-gray-600">Upload PDF to auto-fill form with document storage</p>
                     </div>
                   </div>
                   
@@ -1055,7 +1075,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                       {extracting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          Extracting & Fixing...
+                          Extracting & Storing...
                         </>
                       ) : (
                         <>
@@ -1067,6 +1087,28 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   </label>
                 </div>
                 
+                {/* Document Storage Status */}
+                {formData.documentId && (
+                  <div className="text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      {formData.hasStoredDocuments ? (
+                        <>
+                          <CheckCircle className="w-4 h-4 text-green-600" />
+                          <span className="font-medium text-green-800">Document Stored Successfully</span>
+                        </>
+                      ) : (
+                        <>
+                          <Info className="w-4 h-4 text-blue-600" />
+                          <span className="font-medium text-blue-800">Document Processing...</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      ID: {formData.documentId} • File: {formData.originalFileName}
+                    </div>
+                  </div>
+                )}
+
                 {/* Price Fix Status Info */}
                 <div className="text-sm text-purple-700 bg-purple-100 rounded-lg p-2">
                   <div className="flex items-center gap-2">
@@ -1081,7 +1123,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                   <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
                     <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-red-800">Extraction Error</p>
+                      <p className="text-sm font-medium text-red-800">Extraction Issue</p>
                       <p className="text-sm text-red-600 mt-1">{extractionError}</p>
                     </div>
                   </div>
@@ -1522,7 +1564,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                           <div>
                             <label className="block text-xs font-medium text-gray-700 mb-1">
                               Product Code
-                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">📱</span>
+                              <span className="text-purple-600 ml-1" title="Auto-extracted from product name">🔱</span>
                             </label>
                             <input
                               type="text"
@@ -1750,7 +1792,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           ) : null}
         </div>
 
-        {/* Fixed Footer with Prominent Save Button - Matching PIModal Design */}
+        {/* Fixed Footer with Prominent Save Button - Always Visible */}
         <div className="border-t bg-white p-6 flex justify-end gap-3 flex-shrink-0">
           <button
             type="button"
@@ -1761,7 +1803,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             Cancel
           </button>
           
-          {/* Enhanced Save Button - Matching PIModal Style */}
+          {/* Enhanced Save Button - Always Present */}
           <button
             type="button"
             onClick={handleSubmit}
