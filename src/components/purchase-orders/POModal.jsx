@@ -643,13 +643,13 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         extractedAt: new Date().toISOString()
       };
 
-      // CRITICAL FIX: Extract document storage information with multiple fallback paths
+      // CRITICAL FIX: Extract document storage information - corrected path for summary
       if (result.documentStorage && result.documentStorage.summary) {
-        // Primary source: documentStorage.summary object from AI service
+        // PRIMARY SOURCE: documentStorage.summary object (this is where the actual documentId is located)
         const summary = result.documentStorage.summary;
         documentStorageFields = {
           ...documentStorageFields,
-          documentId: summary.documentId,
+          documentId: summary.documentId, // FIXED: Correct path to document ID
           documentNumber: summary.documentNumber || processedData.poNumber || processedData.clientPoNumber,
           hasStoredDocuments: Boolean(summary.documentId && summary.filesStored > 0),
           storageInfo: result.documentStorage,
@@ -659,14 +659,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           extractedAt: result.documentStorage.original?.uploadedAt || new Date().toISOString()
         };
         
-        console.log('✅ Document storage successful (summary):', {
+        console.log('✅ Document storage successful (summary path):', {
           documentId: documentStorageFields.documentId,
           hasStoredDocuments: documentStorageFields.hasStoredDocuments,
           filesStored: summary.filesStored
         });
       }
       else if (result.documentStorage) {
-        // Secondary source: Direct documentStorage object
+        // Secondary source: Direct documentStorage object (fallback)
         documentStorageFields = {
           ...documentStorageFields,
           documentId: result.documentStorage.documentId,
@@ -679,7 +679,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
           extractedAt: result.documentStorage.storedAt || new Date().toISOString()
         };
         
-        console.log('✅ Document storage successful (direct):', {
+        console.log('✅ Document storage successful (direct path):', {
           documentId: documentStorageFields.documentId,
           hasStoredDocuments: documentStorageFields.hasStoredDocuments
         });
