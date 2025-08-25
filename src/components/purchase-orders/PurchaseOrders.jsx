@@ -344,14 +344,27 @@ const PurchaseOrders = () => {
           console.log('📦 Using extractPOWithStorage method...');
           result = await AIExtractionService.extractPOWithStorage(file);
           
-          // Verify storage success from multiple possible locations
+          // Enhanced storage success verification - check multiple locations and structures
           storageSuccess = Boolean(
             result?.documentStorage?.success ||
             result?.data?.hasStoredDocuments ||
-            result?.data?.storageInfo?.success
+            result?.data?.storageInfo?.success ||
+            result?.data?.storageInfo?.original?.success ||
+            (result?.documentStorage?.downloadURL && result?.documentStorage?.path) ||
+            (result?.data?.storageInfo?.original?.downloadURL && result?.data?.storageInfo?.original?.path)
           );
           
-          documentMetadata = result?.documentStorage || result?.data?.storageInfo;
+          documentMetadata = result?.documentStorage || 
+                             result?.data?.storageInfo || 
+                             result?.data?.storageInfo?.original;
+          
+          console.log('🔍 Storage verification details:', {
+            hasDocumentStorage: Boolean(result?.documentStorage),
+            hasDataStorageInfo: Boolean(result?.data?.storageInfo),
+            hasOriginalDownloadURL: Boolean(result?.data?.storageInfo?.original?.downloadURL),
+            storageSuccess: storageSuccess,
+            documentMetadata: documentMetadata
+          });
           
         } else {
           console.log('⚠️ extractPOWithStorage not found, using enhanced fallback...');
@@ -433,33 +446,40 @@ const PurchaseOrders = () => {
             !result.data.documentType) {
           
           modalData = {
-            // ✅ ENHANCED DOCUMENT STORAGE FIELDS
+            // Enhanced document storage fields with better validation
             documentId: result.data.documentId || 
                        documentMetadata?.documentId || 
+                       result?.data?.storageInfo?.original?.documentId ||
                        `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                        
             documentNumber: result.data.documentNumber || 
                            documentMetadata?.documentNumber || 
+                           result?.data?.storageInfo?.original?.documentNumber ||
                            result.data.clientPONumber || 
                            null,
                            
             documentType: 'po',
             
-            // CRITICAL: Accurate storage status
+            // CRITICAL FIX: Accurate storage status based on comprehensive checks
             hasStoredDocuments: storageSuccess,
             
-            storageInfo: documentMetadata || result.data.storageInfo,
+            storageInfo: documentMetadata || 
+                        result?.data?.storageInfo ||
+                        result?.data?.storageInfo?.original,
             
             originalFileName: result.data.originalFileName || 
                              documentMetadata?.originalFileName || 
+                             result?.data?.storageInfo?.original?.fileName ||
                              file.name,
                              
             fileSize: result.data.fileSize || 
                      documentMetadata?.fileSize || 
+                     result?.data?.storageInfo?.original?.size ||
                      file.size,
                      
             contentType: result.data.contentType || 
                         documentMetadata?.contentType || 
+                        result?.data?.storageInfo?.original?.type ||
                         file.type,
                         
             extractedAt: result.data.extractedAt || new Date().toISOString(),
@@ -529,7 +549,9 @@ const PurchaseOrders = () => {
             hasStoredDocuments: modalData.hasStoredDocuments,
             storageSuccess: storageSuccess,
             companyId: modalData.companyId,
-            branchId: modalData.branchId
+            branchId: modalData.branchId,
+            storageInfoExists: Boolean(modalData.storageInfo),
+            downloadURL: modalData.storageInfo?.downloadURL || modalData.storageInfo?.original?.downloadURL
           });
           
           // Set the modal data and open it
