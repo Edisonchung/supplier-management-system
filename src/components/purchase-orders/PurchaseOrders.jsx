@@ -350,8 +350,14 @@ const PurchaseOrders = () => {
             result?.data?.hasStoredDocuments ||
             result?.data?.storageInfo?.success ||
             result?.data?.storageInfo?.original?.success ||
+            result?.data?.storageInfo?.original?.downloadURL ||
             (result?.documentStorage?.downloadURL && result?.documentStorage?.path) ||
-            (result?.data?.storageInfo?.original?.downloadURL && result?.data?.storageInfo?.original?.path)
+            (result?.data?.storageInfo?.original?.downloadURL && result?.data?.storageInfo?.original?.path) ||
+            // CRITICAL FIX: Check if documentStorage exists and has the nested structure
+            (result?.documentStorage?.original?.downloadURL || result?.documentStorage?.extraction || result?.documentStorage?.summary) ||
+            // FINAL FIX: Direct check for any download URL presence which indicates successful storage
+            result?.documentStorage?.original?.downloadURL ||
+            result?.documentStorage?.downloadURL
           );
           
           documentMetadata = result?.documentStorage || 
@@ -362,6 +368,8 @@ const PurchaseOrders = () => {
             hasDocumentStorage: Boolean(result?.documentStorage),
             hasDataStorageInfo: Boolean(result?.data?.storageInfo),
             hasOriginalDownloadURL: Boolean(result?.data?.storageInfo?.original?.downloadURL),
+            hasDocumentStorageOriginal: Boolean(result?.documentStorage?.original),
+            hasDocumentStorageDownloadURL: Boolean(result?.documentStorage?.original?.downloadURL),
             storageSuccess: storageSuccess,
             documentMetadata: documentMetadata
           });
@@ -470,16 +478,19 @@ const PurchaseOrders = () => {
             originalFileName: result.data.originalFileName || 
                              documentMetadata?.originalFileName || 
                              result?.data?.storageInfo?.original?.fileName ||
+                             result?.documentStorage?.original?.fileName ||
                              file.name,
                              
             fileSize: result.data.fileSize || 
                      documentMetadata?.fileSize || 
                      result?.data?.storageInfo?.original?.size ||
+                     result?.documentStorage?.original?.size ||
                      file.size,
                      
             contentType: result.data.contentType || 
                         documentMetadata?.contentType || 
                         result?.data?.storageInfo?.original?.type ||
+                        result?.documentStorage?.original?.type ||
                         file.type,
                         
             extractedAt: result.data.extractedAt || new Date().toISOString(),
