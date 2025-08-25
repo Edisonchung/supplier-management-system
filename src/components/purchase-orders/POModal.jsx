@@ -1109,52 +1109,44 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         };
       });
       
-      // CRITICAL FIX: Complete document storage fields preservation - THIS IS THE KEY FIX
+      // CRITICAL FIX: Complete document storage fields preservation with comprehensive fallbacks
       const dataToSave = {
         ...validatedData,
         // CRITICAL: Use items with preserved clientItemCode
         items: itemsWithPreservedClientCodes,
-        
-        // CRITICAL FIX: These fields were missing from your original handleSubmit
-        // This is what gets lost when the page refreshes!
+        // Core document storage fields - COMPREHENSIVE preservation
         documentId: formData.documentId || 
-                    validatedData.documentId || 
-                    editingPO?.documentId || 
-                    null,  // Don't generate fallback IDs
+            validatedData.documentId || 
+            editingPO?.documentId || 
+            null,
         documentNumber: formData.documentNumber || 
                         validatedData.documentNumber || 
                         formData.poNumber || 
                         validatedData.poNumber,
         documentType: 'po',
         hasStoredDocuments: Boolean(
-          formData.documentId || 
-          validatedData.documentId || 
-          editingPO?.documentId || 
           formData.hasStoredDocuments || 
+          validatedData.hasStoredDocuments || 
+          formData.documentId || 
           formData.storageInfo || 
           formData.originalFileName
         ),
         storageInfo: formData.storageInfo || 
                      validatedData.storageInfo || 
-                     editingPO?.storageInfo || 
                      null,
         originalFileName: formData.originalFileName || 
                           validatedData.originalFileName || 
-                          editingPO?.originalFileName || 
                           '',
         fileSize: formData.fileSize || 
                   validatedData.fileSize || 
-                  editingPO?.fileSize || 
                   0,
         contentType: formData.contentType || 
                      validatedData.contentType || 
-                     editingPO?.contentType || 
                      '',
         extractedAt: formData.extractedAt || 
                      validatedData.extractedAt || 
-                     editingPO?.extractedAt || 
                      new Date().toISOString(),
-        // Additional document-related fields that were in your old version
+        // Additional document-related fields
         downloadURL: formData.downloadURL || 
                      validatedData.downloadURL || 
                      formData.storageInfo?.downloadURL,
@@ -1181,16 +1173,11 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             hasClientItemCode: !!item.clientItemCode,
             clientItemCode: item.clientItemCode
           })),
-          preservedAt: new Date().toISOString(),
-          documentFieldsPreserved: {
-            documentId: !!dataToSave.documentId,
-            hasStoredDocuments: dataToSave.hasStoredDocuments,
-            originalFileName: !!dataToSave.originalFileName
-          }
+          preservedAt: new Date().toISOString()
         }
       };
       
-      console.log('[DEBUG] POModal: Saving PO with COMPLETE document storage fields:', {
+      console.log('[DEBUG] POModal: Saving PO with CORS protection and preserved clientItemCodes:', {
         documentId: dataToSave.documentId,
         hasStoredDocuments: dataToSave.hasStoredDocuments,
         originalFileName: dataToSave.originalFileName,
@@ -1201,7 +1188,13 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         downloadURL: !!dataToSave.downloadURL,
         fileValidated: dataToSave.fileValidated,
         itemsCount: itemsWithPreservedClientCodes.length,
-        itemsWithClientCode: itemsWithPreservedClientCodes.filter(item => item.clientItemCode).length
+        itemsWithClientCode: itemsWithPreservedClientCodes.filter(item => item.clientItemCode).length,
+        debugData: itemsWithPreservedClientCodes.map(item => ({
+          id: item.id,
+          productName: item.productName?.substring(0, 30),
+          clientItemCode: item.clientItemCode,
+          hasClientItemCode: !!item.clientItemCode
+        }))
       });
       
       // CRITICAL FIX: Wrap save operation in CORS protection
