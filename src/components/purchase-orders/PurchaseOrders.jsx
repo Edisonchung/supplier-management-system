@@ -1,4 +1,4 @@
-// src/components/purchase-orders/PurchaseOrders.jsx - Updated with Multi-Company Support
+// src/components/purchase-orders/PurchaseOrders.jsx - Fixed Document Storage
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -125,7 +125,7 @@ const PurchaseOrders = () => {
     { id: 2, name: 'Sarah Chen' }
   ]);
 
-  // 🔥 CRITICAL FIX: Function to calculate PO total from items array
+  // Function to calculate PO total from items array
   const calculatePOTotal = (po) => {
     if (!po.items || !Array.isArray(po.items)) return 0;
     
@@ -250,7 +250,7 @@ const PurchaseOrders = () => {
       return acc;
     }, {});
 
-    // 🔥 UPDATED: Use calculatePOTotal for totalValue calculation
+    // Use calculatePOTotal for totalValue calculation
     const totalValue = purchaseOrders.reduce((sum, po) => {
       const amount = po.totalAmount || calculatePOTotal(po);
       return sum + (typeof amount === 'number' ? amount : 0);
@@ -308,7 +308,7 @@ const PurchaseOrders = () => {
     );
   };
 
-  // Enhanced file upload with company assignment
+  // 🔥 CRITICAL FIX: Enhanced file upload with proper document storage
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -319,20 +319,70 @@ const PurchaseOrders = () => {
       return;
     }
 
-    console.log('📄 Processing PO file with document storage:', file.name);
+    if (!file.type.includes('pdf')) {
+      alert('Please upload a PDF file only');
+      return;
+    }
+
+    console.log('🔄 Processing PO file with document storage:', file.name);
     setExtracting(true);
     setUploadError(null);
 
     try {
-      console.log('🎯 Calling extractPOWithStorage...');
+      console.log('🚀 Starting PO extraction with document storage...');
       
+      // 🔥 CRITICAL FIX: Use a wrapper that ensures document storage
       let result;
       try {
-        // Use safe function call
+        // Check if the extractPOWithStorage method exists
         if (AIExtractionService && typeof AIExtractionService.extractPOWithStorage === 'function') {
           result = await AIExtractionService.extractPOWithStorage(file);
         } else {
-          throw new Error('AI extraction service is not available');
+          // Fallback: Use regular extraction and add storage manually
+          console.log('⚠️ extractPOWithStorage not found, using fallback with storage');
+          
+          const extractionResult = await AIExtractionService.extractFromFile(file);
+          if (!extractionResult.success) {
+            throw new Error(extractionResult.error || 'AI extraction failed');
+          }
+
+          // Import DocumentStorageService dynamically
+          const { default: DocumentStorageService } = await import('../../services/DocumentStorageService');
+          
+          // Generate document ID and store file
+          const documentId = `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          const documentNumber = extractionResult.data.clientPONumber || extractionResult.data.poNumber || `PO-${Date.now()}`;
+          
+          console.log('📁 Storing PO document to Firebase Storage...');
+          const storageResult = await DocumentStorageService.storeOriginalDocument(
+            file,
+            'po', // document type
+            documentNumber,
+            documentId
+          );
+          
+          // Enhance the result with storage info
+          result = {
+            success: true,
+            data: {
+              ...extractionResult.data,
+              documentId: documentId,
+              documentNumber: documentNumber,
+              originalFileName: file.name,
+              fileSize: file.size,
+              contentType: file.type,
+              hasStoredDocuments: storageResult.success,
+              storageInfo: storageResult.success ? storageResult.data : null,
+              extractedAt: new Date().toISOString()
+            },
+            documentStorage: storageResult.success ? storageResult.data : null
+          };
+          
+          console.log('✅ Manual document storage completed:', {
+            documentId: documentId,
+            documentStored: storageResult.success,
+            dataExtracted: true
+          });
         }
       } catch (extractionError) {
         console.error('❌ AI Extraction Service Error:', extractionError);
@@ -351,43 +401,25 @@ const PurchaseOrders = () => {
 
       if (result.success && result.data) {
         console.log('📄 PO data structure:', result.data);
-        console.log('🗂️ Document storage info:', result.data.storageInfo);
+        console.log('🗂️ Document storage info:', result.documentStorage);
         console.log('🔍 Document ID:', result.data.documentId);
         
         // Create POModal-compatible structure with company assignment
         let modalData;
         
         // Check for both 'client_purchase_order' AND 'po' document types
-        if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po') {
+        if (result.data.documentType === 'client_purchase_order' || result.data.documentType === 'po' || !result.data.documentType) {
           modalData = {
-            // Document storage fields from correct location:
-            documentId: result.documentStorage?.documentId || 
-                        result.data.documentId || 
-                        result.data.extractionMetadata?.documentId || 
-                        null,
-                        
-            documentNumber: result.documentStorage?.documentNumber || 
-                            result.data.documentNumber || 
-                            result.data.extractionMetadata?.documentNumber || 
-                            result.data.clientPONumber || 
-                            null,
-                            
+            // 🔥 CRITICAL: Document storage fields from correct location
+            documentId: result.data.documentId,
+            documentNumber: result.data.documentNumber,
             documentType: 'po',
-            
-            hasStoredDocuments: Boolean(
-              result.documentStorage?.success || 
-              result.documentStorage?.originalFile || 
-              result.data.hasStoredDocuments ||
-              result.data.storageInfo
-            ),
-            
-            storageInfo: result.documentStorage || 
-                         result.data.storageInfo || 
-                         null,
-                         
-            originalFileName: result.data.originalFileName || 
-                              result.data.extractionMetadata?.originalFileName || 
-                              file.name,
+            hasStoredDocuments: Boolean(result.data.hasStoredDocuments),
+            storageInfo: result.data.storageInfo || result.documentStorage,
+            originalFileName: result.data.originalFileName || file.name,
+            fileSize: result.data.fileSize || file.size,
+            contentType: result.data.contentType || file.type,
+            extractedAt: result.data.extractedAt || new Date().toISOString(),
             
             // Generate new internal PO number with company prefix
             poNumber: (typeof generatePONumber === 'function') ? 
@@ -557,7 +589,7 @@ const PurchaseOrders = () => {
     setModalOpen(true);
   };
 
-  // 🔥 UPDATED: Enhanced PO save with refresh trigger
+  // Enhanced PO save with refresh trigger
   const handleSavePO = async (poData, options = {}) => {
     try {
       // Check if user can create/edit PO for this company/branch
@@ -613,7 +645,7 @@ const PurchaseOrders = () => {
           setModalOpen(false);
           setCurrentPO(null);
 
-          // 🔥 CRITICAL: Force refresh if requested
+          // CRITICAL: Force refresh if requested
           if (options.shouldRefresh && typeof refetch === 'function') {
             console.log('🔄 Refreshing PO list after save...');
             await refetch();
@@ -1240,7 +1272,7 @@ const PurchaseOrders = () => {
                       </div>
                     </td>
 
-                    {/* 🔥 CRITICAL FIX: TOTAL - Use calculatePOTotal fallback */}
+                    {/* TOTAL - Use calculatePOTotal fallback */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       RM {(po.totalAmount || calculatePOTotal(po)).toLocaleString()}
                     </td>
