@@ -555,7 +555,7 @@ const PurchaseOrders = () => {
               );
             }
           } else {
-            toast.warning(
+            toast.error(
               `⚠️ PO extracted: ${modalData.poNumber}\n` +
               `Document processing completed but storage needs verification. ` +
               `Assigned to ${getCompanyName(modalData.companyId)}.`,
@@ -571,7 +571,7 @@ const PurchaseOrders = () => {
         } else {
           // Handle unknown document types safely
           console.warn('Unknown document type:', result.data.documentType);
-          toast.warning(`Unknown document type: ${result.data.documentType}. Please check the extraction results.`);
+          toast.error(`Unknown document type: ${result.data.documentType}. Please check the extraction results.`, { duration: 4000 });
           
           modalData = {
             poNumber: (typeof generatePONumber === 'function') ? generatePONumber() : `PO-${Date.now()}`,
