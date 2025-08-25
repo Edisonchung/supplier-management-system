@@ -1,5 +1,5 @@
 // src/components/purchase-orders/PurchaseOrders.jsx - Fixed Document Storage & Modal Integration
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
@@ -31,7 +31,8 @@ import {
   MapPin,
   Crown,
   Filter,
-  ChevronDown
+  ChevronDown,
+  RefreshCw
 } from 'lucide-react';
 import POModal from './POModal';
 import { toast } from 'react-hot-toast';
@@ -114,11 +115,18 @@ const PurchaseOrders = () => {
   const [uploadError, setUploadError] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [documentStorageStatus, setDocumentStorageStatus] = useState(null);
+  const [processingFiles, setProcessingFiles] = useState(new Set());
+  const [extractionProgress, setExtractionProgress] = useState({});
   const fileInputRef = useRef(null);
   
   // Notification hooks with fallbacks
-  const { showSuccess, showError, showWarning } = useNotifications() || {};
-  const { withLoading } = useLoadingStates() || {};
+  const { showSuccess, showError, showWarning } = useNotifications() || {
+    showSuccess: (title, msg) => toast.success(msg || title),
+    showError: (title, msg) => toast.error(msg || title),
+    showWarning: (title, msg) => toast.warning(msg || title)
+  };
+  const { withLoading } = useLoadingStates() || { withLoading: (fn) => fn() };
+  
   const [lastSyncTime, setLastSyncTime] = useState(new Date());
   const [syncStatus, setSyncStatus] = useState('synced');
   const [activeUsers] = useState([
@@ -126,13 +134,14 @@ const PurchaseOrders = () => {
     { id: 2, name: 'Sarah Chen' }
   ]);
 
-  // Function to calculate PO total from items array
-  const calculatePOTotal = (po) => {
-    if (!po.items || !Array.isArray(po.items)) return 0;
+  // Enhanced function to calculate PO total from items array
+  const calculatePOTotal = useCallback((po) => {
+    if (!po || !po.items || !Array.isArray(po.items)) return 0;
     
     // Calculate subtotal from items
     const subtotal = po.items.reduce((sum, item) => {
-      return sum + (parseFloat(item.totalPrice) || 0);
+      const itemTotal = item.totalPrice || (item.quantity * item.unitPrice) || 0;
+      return sum + (parseFloat(itemTotal) || 0);
     }, 0);
     
     // Add financial components
@@ -140,8 +149,19 @@ const PurchaseOrders = () => {
     const shipping = parseFloat(po.shipping) || 0;  
     const discount = parseFloat(po.discount) || 0;
     
-    return subtotal + tax + shipping - discount;
-  };
+    const total = subtotal + tax + shipping - discount;
+    
+    console.log('CALCULATE TOTAL DEBUG:', {
+      subtotal,
+      tax: tax,
+      shipping,
+      discount,
+      total,
+      formDataTax: po.tax
+    });
+    
+    return total;
+  }, []);
 
   // Enhanced filtering with multi-company support
   const filteredPOs = React.useMemo(() => {
@@ -275,7 +295,7 @@ const PurchaseOrders = () => {
 
     console.log('📊 Calculated stats:', result);
     return result;
-  }, [purchaseOrders, allPurchaseOrders, getStatistics, filteredPOs.length]);
+  }, [purchaseOrders, allPurchaseOrders, getStatistics, filteredPOs.length, calculatePOTotal]);
 
   // Update sync status when data changes
   useEffect(() => {
@@ -309,174 +329,150 @@ const PurchaseOrders = () => {
     );
   };
 
-  // 🔥 ENHANCED FILE UPLOAD WITH PROPER DOCUMENT STORAGE INTEGRATION
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+  // Enhanced document upload with better error handling and progress tracking
+  const handleDocumentUpload = useCallback(async (files) => {
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    console.log('📄 Processing PO files with enhanced document storage:', fileArray.map(f => f.name));
 
     // Prevent double processing
     if (extracting) {
-      console.log('Already processing a file, ignoring...');
+      console.log('Already processing files, ignoring...');
       return;
     }
-
-    if (!file.type.includes('pdf')) {
-      setUploadError('Please upload a PDF file only');
-      toast.error('Please upload a PDF file only');
-      return;
-    }
-
-    console.log('📄 Processing PO file with enhanced document storage:', file.name);
-    setExtracting(true);
-    setUploadError(null);
-    setDocumentStorageStatus('processing');
 
     try {
-      console.log('🚀 Starting enhanced PO extraction with document storage...');
+      setExtracting(true);
+      setUploadError(null);
+      setDocumentStorageStatus('processing');
       
-      let result;
-      let storageSuccess = false;
-      let documentMetadata = null;
+      // Enhanced progress tracking
+      const newProcessingFiles = new Set(fileArray.map(f => f.name));
+      setProcessingFiles(newProcessingFiles);
+      
+      const results = [];
 
-      try {
-        // CRITICAL FIX: Enhanced extraction with proper storage verification
-        if (AIExtractionService && typeof AIExtractionService.extractPOWithStorage === 'function') {
-          console.log('📦 Using extractPOWithStorage method...');
-          result = await AIExtractionService.extractPOWithStorage(file);
-          
-          // Enhanced storage success verification - check multiple locations and structures
-          storageSuccess = Boolean(
-            result?.documentStorage?.success ||
-            result?.data?.hasStoredDocuments ||
-            result?.data?.storageInfo?.success ||
-            result?.data?.storageInfo?.original?.success ||
-            result?.data?.storageInfo?.original?.downloadURL ||
-            (result?.documentStorage?.downloadURL && result?.documentStorage?.path) ||
-            (result?.data?.storageInfo?.original?.downloadURL && result?.data?.storageInfo?.original?.path) ||
-            // CRITICAL FIX: Check if documentStorage exists and has the nested structure
-            (result?.documentStorage?.original?.downloadURL || result?.documentStorage?.extraction || result?.documentStorage?.summary) ||
-            // FINAL FIX: Direct check for any download URL presence which indicates successful storage
-            result?.documentStorage?.original?.downloadURL ||
-            result?.documentStorage?.downloadURL
-          );
-          
-          documentMetadata = result?.documentStorage || 
-                             result?.data?.storageInfo || 
-                             result?.data?.storageInfo?.original;
-          
-          console.log('🔍 Storage verification details:', {
-            hasDocumentStorage: Boolean(result?.documentStorage),
-            hasDataStorageInfo: Boolean(result?.data?.storageInfo),
-            hasOriginalDownloadURL: Boolean(result?.data?.storageInfo?.original?.downloadURL),
-            hasDocumentStorageOriginal: Boolean(result?.documentStorage?.original),
-            hasDocumentStorageDownloadURL: Boolean(result?.documentStorage?.original?.downloadURL),
-            actualDocumentId: result?.data?.documentId || result?.documentStorage?.documentId,
-            storageDocumentId: result?.documentStorage?.original?.documentId,
-            storageSuccess: storageSuccess,
-            documentMetadata: documentMetadata
-          });
+      for (const file of fileArray) {
+        if (!file.type.includes('pdf')) {
+          setUploadError('Please upload PDF files only');
+          toast.error('Please upload PDF files only');
+          continue;
+        }
 
-          console.log('📋 Document ID Sources Check:', {
-            fromResultData: result?.data?.documentId,
-            fromDocumentStorage: result?.documentStorage?.documentId,
-            fromStorageOriginal: result?.documentStorage?.original?.documentId,
-            fromMetadata: documentMetadata?.documentId,
-            storagePath: result?.documentStorage?.original?.path
-          });
+        try {
+          console.log(`🚀 Starting enhanced PO extraction with document storage for: ${file.name}`);
           
-        } else {
-          console.log('⚠️ extractPOWithStorage not found, using enhanced fallback...');
-          
-          // Enhanced fallback with explicit storage
-          const extractionResult = await AIExtractionService.extractFromFile(file);
-          if (!extractionResult.success) {
-            throw new Error(extractionResult.error || 'AI extraction failed');
-          }
+          // Update progress for this file
+          setExtractionProgress(prev => ({
+            ...prev,
+            [file.name]: { status: 'processing', progress: 0 }
+          }));
 
-          // Dynamic import DocumentStorageService
-          const { default: DocumentStorageService } = await import('../../services/DocumentStorageService');
-          
-          // Generate enhanced document metadata
-          const documentId = `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          const documentNumber = extractionResult.data.clientPONumber || 
-                                 extractionResult.data.poNumber || 
-                                 `PO-${Date.now()}`;
-          
-          console.log('📁 Storing PO document to Firebase Storage...');
-          const storageResult = await DocumentStorageService.storeOriginalDocument(
-            file,
-            'po', // document type
-            documentNumber,
-            documentId,
-            {
-              clientName: extractionResult.data.clientName,
-              projectCode: extractionResult.data.projectCode,
-              extractedAt: new Date().toISOString()
+          let result;
+          let storageSuccess = false;
+          let documentMetadata = null;
+
+          // CRITICAL FIX: Enhanced extraction with proper storage verification
+          if (AIExtractionService && typeof AIExtractionService.extractPOWithStorage === 'function') {
+            console.log('📦 Using extractPOWithStorage method...');
+            result = await AIExtractionService.extractPOWithStorage(file);
+            
+            // SIMPLIFIED storage success verification
+            storageSuccess = !!(
+              result?.success &&
+              (result?.documentStorage?.original?.downloadURL ||
+               result?.documentStorage?.downloadURL ||
+               result?.data?.storageInfo?.original?.downloadURL ||
+               result?.data?.hasStoredDocuments)
+            );
+            
+            documentMetadata = result?.documentStorage || result?.data?.storageInfo;
+            
+            console.log('🔍 Storage verification details:', {
+              hasDocumentStorage: Boolean(result?.documentStorage),
+              hasDataStorageInfo: Boolean(result?.data?.storageInfo),
+              hasOriginalDownloadURL: Boolean(result?.documentStorage?.original?.downloadURL),
+              hasDocumentStorageDownloadURL: Boolean(result?.documentStorage?.downloadURL),
+              actualDocumentId: result?.data?.documentId || result?.documentStorage?.documentId,
+              storageDocumentId: result?.documentStorage?.original?.documentId,
+              storageSuccess: storageSuccess,
+              documentMetadata: documentMetadata ? 'present' : 'missing'
+            });
+
+          } else {
+            console.log('⚠️ extractPOWithStorage not found, using enhanced fallback...');
+            
+            // Enhanced fallback with explicit storage
+            const extractionResult = await AIExtractionService.extractFromFile(file);
+            if (!extractionResult.success) {
+              throw new Error(extractionResult.error || 'AI extraction failed');
             }
-          );
-          
-          storageSuccess = storageResult.success;
-          documentMetadata = storageResult.data;
-          
-          // Enhanced result structure
-          result = {
-            success: true,
-            data: {
-              ...extractionResult.data,
-              documentId: documentId,
-              documentNumber: documentNumber,
-              hasStoredDocuments: storageResult.success,
-              storageInfo: storageResult.success ? storageResult.data : null,
-              originalFileName: file.name,
-              fileSize: file.size,
-              contentType: file.type,
-              extractedAt: new Date().toISOString()
-            },
-            documentStorage: storageResult.success ? storageResult.data : null
-          };
-        }
-        
-      } catch (extractionError) {
-        console.error('❌ Enhanced AI Extraction Error:', extractionError);
-        
-        if (extractionError.message?.includes('warning is not a function')) {
-          throw new Error('Internal processing error detected. The AI extraction service needs to be updated.');
-        }
-        
-        throw extractionError;
-      }
-      
-      console.log('🎯 Enhanced PO extraction result:', {
-        success: result.success,
-        storageSuccess,
-        hasDocumentMetadata: Boolean(documentMetadata)
-      });
 
-      if (result.success && result.data) {
-        // Update storage status
-        setDocumentStorageStatus(storageSuccess ? 'success' : 'partial');
-        
-        // Enhanced modal data preparation with proper document fields
-        let modalData;
-        
-        if (result.data.documentType === 'client_purchase_order' || 
-            result.data.documentType === 'po' || 
-            !result.data.documentType) {
+            // Dynamic import DocumentStorageService
+            const { default: DocumentStorageService } = await import('../../services/DocumentStorageService');
+            
+            // Generate enhanced document metadata
+            const documentId = `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const documentNumber = extractionResult.data.clientPONumber || 
+                                   extractionResult.data.poNumber || 
+                                   `PO-${Date.now()}`;
+            
+            console.log('📁 Storing PO document to Firebase Storage...');
+            const storageResult = await DocumentStorageService.storeOriginalDocument(
+              file,
+              'po', // document type
+              documentNumber,
+              documentId,
+              {
+                clientName: extractionResult.data.clientName,
+                projectCode: extractionResult.data.projectCode,
+                extractedAt: new Date().toISOString()
+              }
+            );
+            
+            storageSuccess = storageResult.success;
+            documentMetadata = storageResult.data;
+            
+            // Enhanced result structure
+            result = {
+              success: true,
+              data: {
+                ...extractionResult.data,
+                documentId: documentId,
+                documentNumber: documentNumber,
+                hasStoredDocuments: storageResult.success,
+                storageInfo: storageResult.success ? storageResult.data : null,
+                originalFileName: file.name,
+                fileSize: file.size,
+                contentType: file.type,
+                extractedAt: new Date().toISOString()
+              },
+              documentStorage: storageResult.success ? storageResult.data : null
+            };
+          }
           
-          modalData = {
-            // CRITICAL FIX: Use the actual document ID from storage, not a generated one
-            // Check multiple locations and parse from storage path if needed
-            documentId: (() => {
-              // Try to get from various result locations - WITH PROPER ORDER
+          console.log('🎯 Enhanced PO extraction result:', {
+            success: result?.success,
+            storageSuccess,
+            hasDocumentMetadata: Boolean(documentMetadata)
+          });
+
+          if (result?.success && result?.data) {
+            // Update storage status
+            setDocumentStorageStatus(storageSuccess ? 'success' : 'partial');
+            
+            // Enhanced modal data preparation - CRITICAL FIX for document ID extraction
+            const documentId = (() => {
+              // Try to get from various result locations
               const directId = result?.documentStorage?.original?.documentId ||
-                              result.data.documentId || 
+                              result?.data?.documentId || 
                               documentMetadata?.documentId ||
-                              result?.documentStorage?.documentId ||
-                              result?.data?.storageInfo?.original?.documentId;
+                              result?.documentStorage?.documentId;
               
               console.log('🔍 Document ID extraction attempt:', {
                 fromStorageOriginal: result?.documentStorage?.original?.documentId,
-                fromResultData: result.data.documentId,
+                fromResultData: result?.data?.documentId,
                 fromMetadata: documentMetadata?.documentId,
                 selectedId: directId
               });
@@ -497,199 +493,177 @@ const PurchaseOrders = () => {
               }
               
               // Final fallback
-              const fallbackId = `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              const fallbackId = `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               console.log('⚠️ Using fallback document ID:', fallbackId);
               return fallbackId;
-            })(),
-                       
-            documentNumber: result.data.documentNumber || 
-                           documentMetadata?.documentNumber || 
-                           result?.data?.storageInfo?.original?.documentNumber ||
-                           result.data.clientPONumber || 
-                           null,
-                           
-            documentType: 'po',
-            
-            // CRITICAL FIX: Accurate storage status based on comprehensive checks
-            hasStoredDocuments: storageSuccess,
-            
-            storageInfo: documentMetadata || 
-                        result?.data?.storageInfo ||
-                        result?.data?.storageInfo?.original,
-            
-            originalFileName: result.data.originalFileName || 
-                             documentMetadata?.originalFileName || 
-                             result?.data?.storageInfo?.original?.fileName ||
-                             result?.documentStorage?.original?.fileName ||
-                             file.name,
-                             
-            fileSize: result.data.fileSize || 
-                     documentMetadata?.fileSize || 
-                     result?.data?.storageInfo?.original?.size ||
-                     result?.documentStorage?.original?.size ||
-                     file.size,
-                     
-            contentType: result.data.contentType || 
-                        documentMetadata?.contentType || 
-                        result?.data?.storageInfo?.original?.type ||
-                        result?.documentStorage?.original?.type ||
-                        file.type,
-                        
-            extractedAt: result.data.extractedAt || new Date().toISOString(),
-            
-            // Generate new internal PO number with company prefix
-            poNumber: (typeof generatePONumber === 'function') ? 
-                      generatePONumber(selectedCompany !== 'all' ? selectedCompany : 'flow-solution') : 
-                      `PO-${Date.now()}`,
-            
-            // Multi-company assignment
-            companyId: selectedCompany !== 'all' ? selectedCompany : 'flow-solution',
-            branchId: selectedBranch !== 'all' ? selectedBranch : 'flow-solution-kl-hq',
-            
-            // Use client's original PO number  
-            clientPoNumber: result.data.clientPONumber || result.data.poNumber || '',
-            projectCode: result.data.projectCode || result.data.clientPONumber || result.data.poNumber || '',
+            })();
 
-            // Extract client information
-            clientName: result.data.clientName || result.data.client?.name || '',
-            clientContact: result.data.clientContact || result.data.client?.contact || '',
-            clientEmail: result.data.clientEmail || result.data.client?.email || '',
-            clientPhone: result.data.clientPhone || result.data.client?.phone || '',
+            const modalData = {
+              // Enhanced document fields
+              documentId,
+              documentNumber: result?.data?.documentNumber || 
+                             result?.data?.clientPONumber || 
+                             result?.data?.poNumber || 
+                             null,
+              documentType: 'po',
+              hasStoredDocuments: storageSuccess,
+              storageInfo: documentMetadata,
+              originalFileName: file.name,
+              fileSize: file.size,
+              contentType: file.type,
+              extractedAt: result?.data?.extractedAt || new Date().toISOString(),
+              
+              // Enhanced download URL handling
+              downloadURL: result?.documentStorage?.original?.downloadURL ||
+                          result?.documentStorage?.downloadURL ||
+                          documentMetadata?.downloadURL,
+              
+              // Generate new internal PO number with company prefix
+              poNumber: (typeof generatePONumber === 'function') ? 
+                        generatePONumber(selectedCompany !== 'all' ? selectedCompany : 'flow-solution') : 
+                        `PO-${Date.now()}`,
+              
+              // Multi-company assignment
+              companyId: selectedCompany !== 'all' ? selectedCompany : 'flow-solution',
+              branchId: selectedBranch !== 'all' ? selectedBranch : 'flow-solution-kl-hq',
+              
+              // Use client's original PO number  
+              clientPoNumber: result?.data?.clientPONumber || result?.data?.poNumber || '',
+              projectCode: result?.data?.projectCode || result?.data?.clientPONumber || result?.data?.poNumber || '',
+
+              // Extract client information
+              clientName: result?.data?.clientName || result?.data?.client?.name || '',
+              clientContact: result?.data?.clientContact || result?.data?.client?.contact || '',
+              clientEmail: result?.data?.clientEmail || result?.data?.client?.email || '',
+              clientPhone: result?.data?.clientPhone || result?.data?.client?.phone || '',
+              
+              // Handle dates
+              orderDate: result?.data?.orderDate || new Date().toISOString().split('T')[0],
+              requiredDate: result?.data?.deliveryDate || result?.data?.requiredDate || '',
+              
+              // Terms
+              paymentTerms: result?.data?.paymentTerms || 'Net 30',
+              deliveryTerms: result?.data?.deliveryTerms || 'FOB',
+              
+              // Status and notes
+              status: 'draft',
+              notes: result?.data?.notes || '',
+              
+              // Items array - CRITICAL FIX for client item codes
+              items: (result?.data?.items || []).map((item, index) => {
+                console.log(`🔍 FULL ITEM ${index + 1} DUMP:`, JSON.stringify(item, null, 2));
+                
+                return {
+                  productName: item.productName || item.description || '',
+                  productCode: extractPartNumberFromDescription(item.productName || item.description || ''),
+                  clientItemCode: item.productCode || item.clientItemCode || '', // CRITICAL: Use extracted productCode as clientItemCode
+                  projectCode: item.projectCode || '',
+                  quantity: item.quantity || 0,
+                  unitPrice: item.unitPrice || 0,
+                  totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
+                  id: `item-${Date.now()}-${index}`
+                };
+              }),
+              
+              // Additional extracted data
+              extractedData: result?.data,
+              prNumbers: result?.data?.prNumbers || [],
+              
+              // Sourcing plan if available
+              sourcingPlan: result?.data?.sourcingPlan,
+              matchingMetrics: result?.data?.matchingMetrics,
+              
+              // Client details
+              clientDetails: {
+                name: result?.data?.client?.name || '',
+                registration: result?.data?.client?.registration || '',
+                address: result?.data?.client?.address || '',
+                shipTo: result?.data?.client?.shipTo || ''
+              }
+            };
             
-            // Handle dates
-            orderDate: result.data.orderDate || new Date().toISOString().split('T')[0],
-            requiredDate: result.data.deliveryDate || result.data.deliveryDate || '',
+            console.log('✅ Enhanced modal data prepared:', {
+              documentId: modalData.documentId,
+              hasStoredDocuments: modalData.hasStoredDocuments,
+              storageSuccess: storageSuccess,
+              companyId: modalData.companyId,
+              branchId: modalData.branchId,
+              storageInfoExists: Boolean(modalData.storageInfo),
+              downloadURL: Boolean(modalData.downloadURL)
+            });
             
-            // Terms
-            paymentTerms: result.data.paymentTerms || 'Net 30',
-            deliveryTerms: result.data.deliveryTerms || 'FOB',
+            results.push(modalData);
             
-            // Status and notes
-            status: 'draft',
-            notes: result.data.notes || '',
-            
-            // Items array - ensure it matches POModal's expected structure
-            items: (result.data.items || []).map((item, index) => ({
-              productName: item.productName || item.description || '',
-              productCode: extractPartNumberFromDescription(item.productName || item.description || ''),
-              clientItemCode: item.productCode || '', 
-              projectCode: item.projectCode || '',
-              quantity: item.quantity || 0,
-              unitPrice: item.unitPrice || 0,
-              totalPrice: item.totalPrice || (item.quantity * item.unitPrice) || 0,
-              id: `item-${Date.now()}-${index}`
-            })),
-            
-            // Additional extracted data
-            extractedData: result.data,
-            prNumbers: result.data.prNumbers || [],
-            
-            // Sourcing plan if available
-            sourcingPlan: result.data.sourcingPlan,
-            matchingMetrics: result.data.matchingMetrics,
-            
-            // Client details
-            clientDetails: {
-              name: result.data.client?.name || '',
-              registration: result.data.client?.registration || '',
-              address: result.data.client?.address || '',
-              shipTo: result.data.client?.shipTo || ''
-            }
-          };
-          
-          console.log('✅ Enhanced modal data prepared:', {
-            documentId: modalData.documentId,
-            hasStoredDocuments: modalData.hasStoredDocuments,
-            storageSuccess: storageSuccess,
-            companyId: modalData.companyId,
-            branchId: modalData.branchId,
-            storageInfoExists: Boolean(modalData.storageInfo),
-            downloadURL: modalData.storageInfo?.downloadURL || modalData.storageInfo?.original?.downloadURL
-          });
-          
-          // Set the modal data and open it
-          setCurrentPO(modalData);
-          setModalOpen(true);
-          
-          // Enhanced success message with storage status
-          if (storageSuccess) {
-            if (result.data.sourcingPlan && result.data.matchingMetrics) {
-              const metrics = result.data.matchingMetrics;
+            // Update progress
+            setExtractionProgress(prev => ({
+              ...prev,
+              [file.name]: { status: 'completed', progress: 100 }
+            }));
+
+            // Enhanced success notification
+            if (storageSuccess) {
               toast.success(
-                `Successfully extracted PO: ${modalData.poNumber}\n` +
-                `Documents stored successfully! Assigned to ${getCompanyName(modalData.companyId)}!\n` +
-                `Found ${metrics.supplierDiversity} suppliers! ` +
-                `Potential savings: $${metrics.potentialSavings?.toFixed(2) || '0.00'}`,
-                { duration: 6000 }
-              );
-            } else {
-              toast.success(
-                `✅ Successfully extracted PO: ${modalData.poNumber}\n` +
-                `Documents stored successfully and assigned to ${getCompanyName(modalData.companyId)}!`,
+                `✅ Successfully extracted: ${file.name}\nDocuments stored and assigned to ${getCompanyName ? getCompanyName(modalData.companyId) : modalData.companyId}!`,
                 { duration: 4000 }
               );
+            } else {
+              toast.warning(
+                `⚠️ Extracted: ${file.name}\nDocument processing completed but storage needs verification.`,
+                { duration: 5000 }
+              );
             }
+
           } else {
-            toast.error(
-              `⚠️ PO extracted: ${modalData.poNumber}\n` +
-              `Document processing completed but storage needs verification. ` +
-              `Assigned to ${getCompanyName(modalData.companyId)}.`,
-              { duration: 5000 }
-            );
+            throw new Error(result?.error || 'Extraction failed');
           }
+
+        } catch (fileError) {
+          console.error(`❌ Error processing ${file.name}:`, fileError);
           
-        } else if (result.data.documentType === 'supplier_proforma') {
-          // Handle supplier PI differently
-          toast.info('Supplier Proforma Invoice detected. This feature is coming soon.');
-          console.log('Supplier PI data:', result.data);
-          
-        } else {
-          // Handle unknown document types safely
-          console.warn('Unknown document type:', result.data.documentType);
-          toast.error(`Unknown document type: ${result.data.documentType}. Please check the extraction results.`, { duration: 4000 });
-          
-          modalData = {
-            poNumber: (typeof generatePONumber === 'function') ? generatePONumber() : `PO-${Date.now()}`,
-            companyId: selectedCompany !== 'all' ? selectedCompany : 'flow-solution',
-            branchId: selectedBranch !== 'all' ? selectedBranch : 'flow-solution-kl-hq',
-            clientPoNumber: '',
-            clientName: `Unknown Type: ${result.data.documentType}`,
-            status: 'draft',
-            notes: `Unknown document type detected: ${result.data.documentType}. Please review extracted data.`,
-            items: result.data.items || [],
-            extractedData: result.data,
-            requiresReview: true,
-            hasStoredDocuments: false
-          };
-          
-          setCurrentPO(modalData);
-          setModalOpen(true);
+          setExtractionProgress(prev => ({
+            ...prev,
+            [file.name]: { status: 'error', progress: 0, error: fileError.message }
+          }));
+
+          toast.error(`Failed to process ${file.name}: ${fileError.message}`);
         }
+      }
+
+      // Enhanced results processing
+      if (results.length > 0) {
+        console.log(`✅ Successfully processed ${results.length} files`);
         
-      } else {
-        throw new Error(result?.error || 'Enhanced extraction failed');
+        // Auto-open the first successful result
+        if (results.length === 1) {
+          setCurrentPO(results[0]);
+          setModalOpen(true);
+        } else {
+          // Show summary for multiple files
+          toast.success(`Successfully processed ${results.length} files`, {
+            duration: 5000
+          });
+        }
+
+        // Enhanced refresh logic
+        if (refetch) {
+          await refetch();
+        }
       }
-      
+
     } catch (error) {
-      console.error('❌ Enhanced PO extraction failed:', error);
+      console.error('❌ Enhanced document upload error:', error);
       setDocumentStorageStatus('failed');
-      
-      // Enhanced error messaging
-      let userMessage = 'Failed to extract PO: ' + error.message;
-      
-      if (error.message?.includes('warning is not a function')) {
-        userMessage = 'Internal system error detected. Please contact support - the AI extraction service needs an update.';
-        console.error('🚨 URGENT: Warning function missing in AIExtractionService - needs immediate fix');
-      }
-      
-      setUploadError(userMessage);
-      toast.error(userMessage, { duration: 6000 });
+      setUploadError(error.message);
+      toast.error(`Upload failed: ${error.message}`);
       
     } finally {
       setExtracting(false);
-      // Reset file input
-      if (event.target) {
-        event.target.value = '';
+      setProcessingFiles(new Set());
+      setExtractionProgress({});
+      
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
       
       // Reset storage status after delay
@@ -697,10 +671,18 @@ const PurchaseOrders = () => {
         setDocumentStorageStatus(null);
       }, 3000);
     }
-  };
+  }, [extracting, selectedCompany, selectedBranch, generatePONumber, getCompanyName, refetch]);
+
+  // Handle file upload
+  const handleFileUpload = useCallback(async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    await handleDocumentUpload(files);
+  }, [handleDocumentUpload]);
 
   // Handle manual PO creation with company assignment
-  const handleCreatePO = () => {
+  const handleCreatePO = useCallback(() => {
     const newPO = {
       poNumber: (typeof generatePONumber === 'function') ? 
                 generatePONumber(selectedCompany !== 'all' ? selectedCompany : 'flow-solution') : 
@@ -723,10 +705,10 @@ const PurchaseOrders = () => {
     };
     setCurrentPO(newPO);
     setModalOpen(true);
-  };
+  }, [generatePONumber, selectedCompany, selectedBranch]);
 
   // Enhanced PO save with refresh trigger and modal data validation
-  const handleSavePO = async (poData, options = {}) => {
+  const handleSavePO = useCallback(async (poData, options = {}) => {
     try {
       console.log('💾 Enhanced PO save with document validation:', {
         poNumber: poData.poNumber,
@@ -738,17 +720,12 @@ const PurchaseOrders = () => {
       });
 
       // Check if user can create/edit PO for this company/branch
-      if (!canCreatePOFor(poData.companyId, poData.branchId)) {
+      if (canCreatePOFor && !canCreatePOFor(poData.companyId, poData.branchId)) {
         toast.error('You do not have permission to create/edit POs for this company/branch');
         return;
       }
 
-      const loadingWrapper = withLoading || ((fn, options) => {
-        console.log(options?.title || 'Processing...');
-        return fn();
-      });
-
-      await loadingWrapper(async () => {
+      await withLoading(async () => {
         let result;
         if (poData.id) {
           if (typeof updatePurchaseOrder === 'function') {
@@ -765,7 +742,7 @@ const PurchaseOrders = () => {
         }
         
         if (result && result.success) {
-          const companyName = getCompanyName(poData.companyId);
+          const companyName = getCompanyName ? getCompanyName(poData.companyId) : poData.companyId;
           
           // Enhanced success message with document storage status
           let successMsg = `PO ${poData.poNumber} has been ${poData.id ? 'updated' : 'created'} successfully for ${companyName}.`;
@@ -773,14 +750,7 @@ const PurchaseOrders = () => {
             successMsg += ' Document storage verified!';
           }
           
-          if (showSuccess) {
-            showSuccess(
-              poData.id ? 'Purchase Order Updated' : 'Purchase Order Created',
-              successMsg
-            );
-          } else {
-            toast.success(successMsg, { duration: 4000 });
-          }
+          toast.success(successMsg, { duration: 4000 });
           
           setModalOpen(false);
           setCurrentPO(null);
@@ -795,32 +765,17 @@ const PurchaseOrders = () => {
         }
         
         setLastSyncTime(new Date());
-      }, {
-        title: poData.id ? 'Updating Purchase Order...' : 'Creating Purchase Order...',
-        message: 'Please wait while we save your changes.'
       });
       
     } catch (error) {
       console.error('Error saving PO:', error);
       const errorMsg = 'Unable to save purchase order. Please check your connection and try again.';
-      
-      if (showError) {
-        showError('Save Failed', errorMsg, {
-          actions: [
-            {
-              label: 'Retry',
-              onClick: () => handleSavePO(poData, options)
-            }
-          ]
-        });
-      } else {
-        toast.error(errorMsg);
-      }
+      toast.error(errorMsg);
     }
-  };
+  }, [canCreatePOFor, withLoading, updatePurchaseOrder, addPurchaseOrder, getCompanyName, refetch]);
 
   // Handle PO deletion with permission check
-  const handleDeletePO = async (poId) => {
+  const handleDeletePO = useCallback(async (poId) => {
     const po = purchaseOrders.find(p => p.id === poId);
     
     if (!permissions.canDeletePurchaseOrders) {
@@ -828,78 +783,34 @@ const PurchaseOrders = () => {
       return;
     }
     
-    const confirmDelete = () => {
-      if (window.confirm(`Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`)) {
-        performDelete();
-      }
-    };
-
-    const performDelete = async () => {
+    if (window.confirm(`Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`)) {
       try {
-        const loadingWrapper = withLoading || ((fn, options) => {
-          console.log(options?.title || 'Processing...');
-          return fn();
-        });
-
-        await loadingWrapper(async () => {
+        await withLoading(async () => {
           if (typeof deletePurchaseOrder === 'function') {
             const result = await deletePurchaseOrder(poId);
             if (result && result.success) {
               const successMsg = `PO ${po?.poNumber || po?.orderNumber} has been deleted.`;
-              if (showSuccess) {
-                showSuccess('Deleted', successMsg);
-              } else {
-                toast.success(successMsg);
-              }
+              toast.success(successMsg);
             } else {
               throw new Error(result?.error || 'Failed to delete purchase order');
             }
           } else {
             throw new Error('Delete function not available');
           }
-        }, {
-          title: 'Deleting Purchase Order...'
         });
       } catch (error) {
         console.error('Error deleting PO:', error);
-        const errorMsg = 'Unable to delete purchase order.';
-        if (showError) {
-          showError('Delete Failed', errorMsg);
-        } else {
-          toast.error(errorMsg);
-        }
+        toast.error('Unable to delete purchase order.');
       }
-    };
-
-    if (showWarning) {
-      showWarning(
-        'Delete Purchase Order',
-        `Are you sure you want to delete PO ${po?.poNumber || po?.orderNumber}? This action cannot be undone.`,
-        {
-          persistent: true,
-          actions: [
-            {
-              label: 'Delete',
-              onClick: performDelete
-            },
-            {
-              label: 'Cancel',
-              onClick: () => {} // Will auto-close notification
-            }
-          ]
-        }
-      );
-    } else {
-      confirmDelete();
     }
-  };
+  }, [purchaseOrders, permissions.canDeletePurchaseOrders, withLoading, deletePurchaseOrder]);
 
   // Navigate to supplier matching page
-  const handleViewSupplierMatching = (po) => {
+  const handleViewSupplierMatching = useCallback((po) => {
     navigate(`/purchase-orders/${po.id}/supplier-matching`);
-  };
+  }, [navigate]);
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = useCallback((status) => {
     const statusConfig = {
       draft: { color: 'bg-gray-100 text-gray-800', icon: Clock },
       pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
@@ -921,7 +832,7 @@ const PurchaseOrders = () => {
         {status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
-  };
+  }, []);
 
   // Enhanced Document Storage Status Indicator
   const DocumentStorageIndicator = () => {
@@ -959,6 +870,37 @@ const PurchaseOrders = () => {
         <div className="flex items-center">
           <Icon className={`h-5 w-5 mr-2 ${config.spin ? 'animate-spin' : ''}`} />
           <span className="text-sm font-medium">{config.message}</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Enhanced Processing Status Display
+  const ProcessingStatus = () => {
+    if (processingFiles.size === 0) return null;
+
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-4">
+        <h3 className="text-sm font-medium text-blue-800 mb-2">Processing Files</h3>
+        <div className="space-y-2">
+          {Array.from(processingFiles).map(fileName => {
+            const progress = extractionProgress[fileName];
+            return (
+              <div key={fileName} className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-blue-600" />
+                <span className="text-sm text-blue-700 flex-1">{fileName}</span>
+                {progress?.status === 'processing' && (
+                  <RefreshCw className="h-4 w-4 text-blue-600 animate-spin" />
+                )}
+                {progress?.status === 'completed' && (
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                )}
+                {progress?.status === 'error' && (
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1239,7 +1181,8 @@ const PurchaseOrders = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
+                accept=".pdf,.jpg,.jpeg,.png"
+                multiple
                 onChange={handleFileUpload}
                 className="hidden"
               />
@@ -1250,6 +1193,9 @@ const PurchaseOrders = () => {
 
       {/* Enhanced Document Storage Status */}
       <DocumentStorageIndicator />
+
+      {/* Enhanced Processing Status */}
+      <ProcessingStatus />
 
       {/* Upload Error Alert */}
       {uploadError && (
@@ -1316,12 +1262,12 @@ const PurchaseOrders = () => {
               </span>
               {selectedCompany !== 'all' && (
                 <span className="text-gray-500">
-                  Company: <span className="font-medium text-blue-600">{getCompanyName(selectedCompany)}</span>
+                  Company: <span className="font-medium text-blue-600">{getCompanyName ? getCompanyName(selectedCompany) : selectedCompany}</span>
                 </span>
               )}
               {selectedBranch !== 'all' && (
                 <span className="text-gray-500">
-                  Branch: <span className="font-medium text-green-600">{getBranchName(selectedBranch)}</span>
+                  Branch: <span className="font-medium text-green-600">{getBranchName ? getBranchName(selectedBranch) : selectedBranch}</span>
                 </span>
               )}
               <span className="text-gray-500">
@@ -1472,6 +1418,7 @@ const PurchaseOrders = () => {
                         </button>
                         <button
                           onClick={() => {
+                            console.log('[DEBUG] POModal: Setting form data from editing PO:', po.poNumber);
                             setCurrentPO(po);
                             setModalOpen(true);
                           }}
@@ -1483,6 +1430,7 @@ const PurchaseOrders = () => {
                         {permissions.canEditPurchaseOrders && (
                           <button
                             onClick={() => {
+                              console.log('[DEBUG] POModal: Setting form data from editing PO:', po.poNumber);
                               setCurrentPO(po);
                               setModalOpen(true);
                             }}
@@ -1521,7 +1469,7 @@ const PurchaseOrders = () => {
             {Object.entries(stats.byCompany).map(([companyId, count]) => (
               <div key={companyId} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
                 <span className="font-medium text-gray-900">
-                  {getCompanyName(companyId)}
+                  {getCompanyName ? getCompanyName(companyId) : companyId}
                 </span>
                 <span className="text-sm font-semibold text-blue-600">
                   {count} PO{count !== 1 ? 's' : ''}
