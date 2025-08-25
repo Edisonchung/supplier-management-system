@@ -370,8 +370,18 @@ const PurchaseOrders = () => {
             hasOriginalDownloadURL: Boolean(result?.data?.storageInfo?.original?.downloadURL),
             hasDocumentStorageOriginal: Boolean(result?.documentStorage?.original),
             hasDocumentStorageDownloadURL: Boolean(result?.documentStorage?.original?.downloadURL),
+            actualDocumentId: result?.data?.documentId || result?.documentStorage?.documentId,
+            storageDocumentId: result?.documentStorage?.original?.documentId,
             storageSuccess: storageSuccess,
             documentMetadata: documentMetadata
+          });
+
+          console.log('📋 Document ID Sources Check:', {
+            fromResultData: result?.data?.documentId,
+            fromDocumentStorage: result?.documentStorage?.documentId,
+            fromStorageOriginal: result?.documentStorage?.original?.documentId,
+            fromMetadata: documentMetadata?.documentId,
+            storagePath: result?.documentStorage?.original?.path
           });
           
         } else {
@@ -454,11 +464,30 @@ const PurchaseOrders = () => {
             !result.data.documentType) {
           
           modalData = {
-            // Enhanced document storage fields with better validation
-            documentId: result.data.documentId || 
-                       documentMetadata?.documentId || 
-                       result?.data?.storageInfo?.original?.documentId ||
-                       `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            // CRITICAL FIX: Use the actual document ID from storage, not a generated one
+            // Check multiple locations and parse from storage path if needed
+            documentId: (() => {
+              // Try to get from various result locations
+              const directId = result.data.documentId || 
+                              documentMetadata?.documentId ||
+                              result?.documentStorage?.documentId ||
+                              result?.data?.storageInfo?.original?.documentId;
+              
+              if (directId) return directId;
+              
+              // Parse from storage path as fallback
+              const storagePath = result?.documentStorage?.original?.path || documentMetadata?.path;
+              if (storagePath) {
+                const pathMatch = storagePath.match(/documents\/purchase-orders\/([^\/]+)\//);
+                if (pathMatch && pathMatch[1]) {
+                  console.log('📋 Extracted document ID from path:', pathMatch[1]);
+                  return pathMatch[1];
+                }
+              }
+              
+              // Final fallback
+              return `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            })(),
                        
             documentNumber: result.data.documentNumber || 
                            documentMetadata?.documentNumber || 
