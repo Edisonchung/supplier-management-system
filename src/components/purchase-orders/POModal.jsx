@@ -2031,28 +2031,100 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                 </form>
               </>
             ) : activeTab === 'documents' ? (
-              // Documents tab content  
+              // Documents tab content with enhanced debugging
               <div className="space-y-4">
-                {(editingPO?.documentId || formData.documentId || 
-                  editingPO?.hasStoredDocuments || formData.hasStoredDocuments) ? (
-                  <DocumentViewer
-                    documentId={editingPO?.documentId || formData.documentId}
-                    documentType="po"
-                    documentNumber={editingPO?.poNumber || formData.poNumber}
-                    allowDelete={true}
-                    onDocumentDeleted={(doc) => {
-                      console.log('Document deleted:', doc);
-                      // Optional: show notification
-                      alert('Document deleted successfully');
-                    }}
-                  />
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-                    <p className="font-medium mb-1">Documents will be available after saving this PO</p>
-                    <p className="text-xs">Upload and AI extraction files will be stored here automatically</p>
+                {/* DEBUG PANEL - Temporary for troubleshooting document linkage */}
+                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
+                  <h4 className="font-bold text-yellow-800 mb-3">Document Debug Panel</h4>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <h5 className="font-semibold text-yellow-700">editingPO Fields:</h5>
+                      <div className="space-y-1 text-yellow-600">
+                        <div>documentId: {editingPO?.documentId || 'MISSING'}</div>
+                        <div>hasStoredDocuments: {String(editingPO?.hasStoredDocuments || false)}</div>
+                        <div>originalFileName: {editingPO?.originalFileName || 'MISSING'}</div>
+                        <div>poNumber: {editingPO?.poNumber || 'MISSING'}</div>
+                        <div>storageInfo: {editingPO?.storageInfo ? 'Present' : 'MISSING'}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="font-semibold text-yellow-700">formData Fields:</h5>
+                      <div className="space-y-1 text-yellow-600">
+                        <div>documentId: {formData.documentId || 'MISSING'}</div>
+                        <div>hasStoredDocuments: {String(formData.hasStoredDocuments || false)}</div>
+                        <div>originalFileName: {formData.originalFileName || 'MISSING'}</div>
+                        <div>poNumber: {formData.poNumber || 'MISSING'}</div>
+                        <div>storageInfo: {formData.storageInfo ? 'Present' : 'MISSING'}</div>
+                      </div>
+                    </div>
                   </div>
-                )}
+                  
+                  {/* Show which props will be passed to DocumentViewer */}
+                  <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                    <h5 className="font-semibold text-blue-700">DocumentViewer Props:</h5>
+                    <div className="text-xs text-blue-600">
+                      <div>documentId: {editingPO?.documentId || formData.documentId || 'NULL'}</div>
+                      <div>documentType: "po"</div>
+                      <div>documentNumber: {editingPO?.poNumber || formData.poNumber || 'NULL'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ENHANCED DOCUMENT VIEWER with better fallback logic */}
+                {(() => {
+                  // Try multiple sources for document ID
+                  const documentId = editingPO?.documentId || formData.documentId;
+                  const hasStoredDocuments = editingPO?.hasStoredDocuments || formData.hasStoredDocuments;
+                  const poNumber = editingPO?.poNumber || formData.poNumber;
+                  
+                  // Log the decision making process
+                  console.log('[DOCUMENT_TAB] Rendering decision:', {
+                    documentId: documentId,
+                    hasStoredDocuments: hasStoredDocuments,
+                    poNumber: poNumber,
+                    editingPO: !!editingPO,
+                    formData: !!formData
+                  });
+                  
+                  if (documentId || hasStoredDocuments) {
+                    return (
+                      <div>
+                        <div className="mb-2 text-sm text-green-600 font-medium">
+                          Documents should be available - attempting to load...
+                        </div>
+                        <DocumentViewer
+                          documentId={documentId}
+                          documentType="po"
+                          documentNumber={poNumber}
+                          allowDelete={true}
+                          onDocumentDeleted={(doc) => {
+                            console.log('Document deleted:', doc);
+                            alert('Document deleted successfully');
+                          }}
+                        />
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="text-center py-12">
+                        <FileText className="mx-auto h-12 w-12 text-red-300 mb-3" />
+                        <p className="font-medium mb-1 text-red-600">No Documents Found</p>
+                        <p className="text-sm text-gray-600 mb-4">Document linkage may be broken</p>
+                        
+                        {/* Show what we tried */}
+                        <div className="text-xs bg-red-50 border border-red-200 rounded p-3 max-w-md mx-auto">
+                          <h6 className="font-semibold text-red-700 mb-2">Attempted Sources:</h6>
+                          <div className="text-red-600 space-y-1">
+                            <div>editingPO.documentId: {editingPO?.documentId || 'null'}</div>
+                            <div>formData.documentId: {formData.documentId || 'null'}</div>
+                            <div>editingPO.hasStoredDocuments: {String(editingPO?.hasStoredDocuments || false)}</div>
+                            <div>formData.hasStoredDocuments: {String(formData.hasStoredDocuments || false)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                })()}
               </div>
             ) : null}
           </div>
