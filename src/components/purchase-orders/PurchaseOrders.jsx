@@ -467,13 +467,24 @@ const PurchaseOrders = () => {
             // CRITICAL FIX: Use the actual document ID from storage, not a generated one
             // Check multiple locations and parse from storage path if needed
             documentId: (() => {
-              // Try to get from various result locations
-              const directId = result.data.documentId || 
+              // Try to get from various result locations - WITH PROPER ORDER
+              const directId = result?.documentStorage?.original?.documentId ||
+                              result.data.documentId || 
                               documentMetadata?.documentId ||
                               result?.documentStorage?.documentId ||
                               result?.data?.storageInfo?.original?.documentId;
               
-              if (directId) return directId;
+              console.log('🔍 Document ID extraction attempt:', {
+                fromStorageOriginal: result?.documentStorage?.original?.documentId,
+                fromResultData: result.data.documentId,
+                fromMetadata: documentMetadata?.documentId,
+                selectedId: directId
+              });
+              
+              if (directId) {
+                console.log('✅ Using document ID from storage:', directId);
+                return directId;
+              }
               
               // Parse from storage path as fallback
               const storagePath = result?.documentStorage?.original?.path || documentMetadata?.path;
@@ -486,7 +497,9 @@ const PurchaseOrders = () => {
               }
               
               // Final fallback
-              return `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              const fallbackId = `doc-po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              console.log('⚠️ Using fallback document ID:', fallbackId);
+              return fallbackId;
             })(),
                        
             documentNumber: result.data.documentNumber || 
