@@ -726,16 +726,42 @@ const PurchaseOrders = () => {
       }
 
       await withLoading(async () => {
+        // CRITICAL FIX: Ensure all document storage fields are preserved
+        const completeDataToSave = {
+          ...poData,
+          // Core document storage fields - MUST be preserved
+          documentId: poData.documentId || '',
+          documentNumber: poData.documentNumber || poData.poNumber || '',
+          documentType: 'po',
+          hasStoredDocuments: poData.hasStoredDocuments || false,
+          storageInfo: poData.storageInfo || null,
+          originalFileName: poData.originalFileName || '',
+          fileSize: poData.fileSize || 0,
+          contentType: poData.contentType || '',
+          extractedAt: poData.extractedAt || '',
+          // Add timestamp for tracking
+          lastUpdated: new Date().toISOString()
+        };
+
+        console.log('[DEBUG] POModal: Saving PO with complete document storage fields:', {
+          documentId: completeDataToSave.documentId,
+          hasStoredDocuments: completeDataToSave.hasStoredDocuments,
+          originalFileName: completeDataToSave.originalFileName,
+          documentType: completeDataToSave.documentType,
+          totalAmount: completeDataToSave.totalAmount,
+          tax: completeDataToSave.tax
+        });
+
         let result;
         if (poData.id) {
           if (typeof updatePurchaseOrder === 'function') {
-            result = await updatePurchaseOrder(poData.id, poData);
+            result = await updatePurchaseOrder(poData.id, completeDataToSave);
           } else {
             throw new Error('Update function not available');
           }
         } else {
           if (typeof addPurchaseOrder === 'function') {
-            result = await addPurchaseOrder(poData);
+            result = await addPurchaseOrder(completeDataToSave);
           } else {
             throw new Error('Add function not available');
           }
