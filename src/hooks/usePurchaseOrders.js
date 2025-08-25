@@ -1,4 +1,4 @@
-// src/hooks/usePurchaseOrders.js - Updated with Multi-Company Support and Tax Fix
+// src/hooks/usePurchaseOrders.js - Updated with Multi-Company Support and Document Storage Fix
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
@@ -341,7 +341,7 @@ export const usePurchaseOrders = () => {
     }
   }, [user, validatePOData, selectedCompany, selectedBranch]);
 
-  // CRITICAL FIX: Update existing purchase order with proper tax handling
+  // CRITICAL FIX: Update existing purchase order with document storage preservation
   const updatePurchaseOrder = useCallback(async (id, updates) => {
     if (!user) {
       toast.error('Please sign in to update purchase orders');
@@ -351,9 +351,10 @@ export const usePurchaseOrders = () => {
     try {
       setLoading(true);
       
-      console.log('Saving PO with company and document fields:', {
-        branchId: updates.branchId,
+      console.log('💾 Enhanced PO save with document validation:', {
+        poNumber: updates.poNumber,
         companyId: updates.companyId,
+        branchId: updates.branchId,
         documentId: updates.documentId,
         hasStoredDocuments: updates.hasStoredDocuments,
         originalFileName: updates.originalFileName,
@@ -394,17 +395,50 @@ export const usePurchaseOrders = () => {
         });
       }
       
+      // CRITICAL FIX: Explicitly preserve all document storage fields
+      const documentStorageFields = {};
+      
+      // Core document identification
+      if (updates.documentId !== undefined) documentStorageFields.documentId = updates.documentId;
+      if (updates.documentNumber !== undefined) documentStorageFields.documentNumber = updates.documentNumber;
+      if (updates.documentType !== undefined) documentStorageFields.documentType = updates.documentType;
+      
+      // Storage status and metadata
+      if (updates.hasStoredDocuments !== undefined) documentStorageFields.hasStoredDocuments = updates.hasStoredDocuments;
+      if (updates.originalFileName !== undefined) documentStorageFields.originalFileName = updates.originalFileName;
+      if (updates.fileSize !== undefined) documentStorageFields.fileSize = updates.fileSize;
+      if (updates.contentType !== undefined) documentStorageFields.contentType = updates.contentType;
+      if (updates.extractedAt !== undefined) documentStorageFields.extractedAt = updates.extractedAt;
+      
+      // Storage information and metadata
+      if (updates.storageInfo !== undefined) documentStorageFields.storageInfo = updates.storageInfo;
+      if (updates.documentMetadata !== undefined) documentStorageFields.documentMetadata = updates.documentMetadata;
+      
+      // Additional document fields
+      if (updates.downloadURL !== undefined) documentStorageFields.downloadURL = updates.downloadURL;
+      if (updates.storagePath !== undefined) documentStorageFields.storagePath = updates.storagePath;
+      if (updates.fileValidated !== undefined) documentStorageFields.fileValidated = updates.fileValidated;
+      if (updates.extractionStatus !== undefined) documentStorageFields.extractionStatus = updates.extractionStatus;
+      if (updates.processingStatus !== undefined) documentStorageFields.processingStatus = updates.processingStatus;
+      
       const updateData = {
         ...processedUpdates,
+        ...documentStorageFields, // CRITICAL: Include ALL document storage fields
         updatedAt: serverTimestamp(),
         updatedBy: user.uid
       };
       
-      console.log('[DEBUG] Saving PO to Firestore with data:', {
-        id: id,
-        tax: updateData.tax,
+      console.log('[DEBUG] POModal: Saving PO with complete document storage fields:', {
+        documentId: updateData.documentId,
+        hasStoredDocuments: updateData.hasStoredDocuments,
+        originalFileName: updateData.originalFileName,
+        documentType: updateData.documentType,
         totalAmount: updateData.totalAmount,
-        subtotal: updateData.subtotal
+        tax: updateData.tax,
+        storageInfo: !!updateData.storageInfo,
+        downloadURL: !!updateData.downloadURL,
+        fileValidated: updateData.fileValidated,
+        allDocumentFields: Object.keys(documentStorageFields)
       });
       
       await updateDoc(doc(db, 'purchaseOrders', id), updateData);
@@ -413,7 +447,7 @@ export const usePurchaseOrders = () => {
       
       // Trigger refresh if needed
       if (updates.shouldRefresh) {
-        console.log('Refreshing PO list after save...');
+        console.log('🔄 Refreshing PO list after save...');
       }
       
       toast.success('Purchase order updated successfully');
