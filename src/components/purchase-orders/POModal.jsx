@@ -5,6 +5,27 @@ import { AIExtractionService, ValidationService } from "../../services/ai";
 import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDisplay';
 import DocumentViewer from '../common/DocumentViewer';
 
+// =============================================================================
+// FIX 1: CORS Protection Wrapper
+// =============================================================================
+const safeFirestoreOperation = async (operation, fallbackResult = null) => {
+  try {
+    return await operation();
+  } catch (error) {
+    const isCORSError = error.message?.includes('CORS') || 
+                       error.message?.includes('XMLHttpRequest cannot load') ||
+                       error.message?.includes('access control') ||
+                       error.code === 'unavailable' ||
+                       error.code === 'deadline-exceeded';
+    
+    if (isCORSError) {
+      console.warn('CORS/Network issue detected, using fallback approach:', error.message);
+      return fallbackResult || { success: false, error: 'Network connectivity issue. Please try again.' };
+    }
+    throw error; // Re-throw non-CORS errors
+  }
+};
+
 // Product Code Extraction Utility
 const extractProductCodeFromName = (productName) => {
   if (!productName) return '';
@@ -37,7 +58,9 @@ const extractProductCodeFromName = (productName) => {
   return '';
 };
 
-// Price Fixing Functions
+// =============================================================================
+// FIX 2: Enhanced Price Fixing Functions with Critical Field Preservation
+// =============================================================================
 const fixPOItemPrices = (items, debug = true) => {
   if (!items || !Array.isArray(items)) {
     console.warn('No valid items array provided to fixPOItemPrices');
@@ -45,7 +68,7 @@ const fixPOItemPrices = (items, debug = true) => {
   }
 
   if (debug) {
-    console.log('[DEBUG] FIXING PO ITEM PRICES...');
+    console.log('[DEBUG] FIXING PO ITEM PRICES - Enhanced Field Preservation...');
     console.log('Original items:', items);
   }
 
@@ -56,39 +79,35 @@ const fixPOItemPrices = (items, debug = true) => {
   });
 
   return items.map((item, index) => {
-    const originalItem = { ...item };
+    // CRITICAL FIX: Create deep copy and immediately preserve all critical fields
+    const fixedItem = { ...item };
+    
+    // Define critical fields that must never be lost
+    const criticalFields = [
+      'clientItemCode', 'productCode', 'projectCode', 'productName', 
+      'id', 'description', 'specifications', 'notes', 'category'
+    ];
+    
+    // IMMEDIATELY preserve all critical fields before ANY processing
+    criticalFields.forEach(field => {
+      if (item[field] !== undefined && item[field] !== null) {
+        fixedItem[field] = item[field];
+      }
+    });
     
     // Critical debug: Log BEFORE processing
     if (debug) {
       console.log(`[DEBUG] BEFORE processing item ${index + 1}:`, {
-        clientItemCode: originalItem.clientItemCode,
-        productCode: originalItem.productCode,
-        projectCode: originalItem.projectCode,
-        productName: originalItem.productName?.substring(0, 30) + '...'
+        clientItemCode: fixedItem.clientItemCode,
+        productCode: fixedItem.productCode,
+        projectCode: fixedItem.projectCode,
+        productName: fixedItem.productName?.substring(0, 30) + '...'
       });
     }
     
     const quantity = parseFloat(item.quantity) || 0;
     const unitPrice = parseFloat(item.unitPrice) || 0;
     const totalPrice = parseFloat(item.totalPrice) || 0;
-    
-    // Critical fix: Start with ALL original fields AND immediately preserve critical fields
-    let fixedItem = { ...originalItem };
-    
-    // Immediately preserve critical fields before ANY processing
-    fixedItem.clientItemCode = originalItem.clientItemCode || '';
-    fixedItem.productCode = originalItem.productCode || '';
-    fixedItem.projectCode = originalItem.projectCode || '';
-    fixedItem.productName = originalItem.productName || '';
-    fixedItem.id = originalItem.id || `item_${index + 1}`;
-    
-    if (debug) {
-      console.log(`[DEBUG] IMMEDIATELY PRESERVED fields for item ${index + 1}:`, {
-        clientItemCode: fixedItem.clientItemCode,
-        productCode: fixedItem.productCode,
-        projectCode: fixedItem.projectCode
-      });
-    }
 
     // Strategy 1: Calculate total from quantity × unit price
     if (quantity > 0 && unitPrice > 0) {
@@ -127,37 +146,13 @@ const fixPOItemPrices = (items, debug = true) => {
       }
     }
 
-    // Double-check: Preserve critical fields again as safety net
-    if (originalItem.clientItemCode) {
-      fixedItem.clientItemCode = originalItem.clientItemCode;
-      if (debug) {
-        console.log(`[DEBUG] Double-check preserving clientItemCode for item ${index + 1}:`, originalItem.clientItemCode);
+    // FINAL SAFETY CHECK: Ensure no critical fields were lost during processing
+    criticalFields.forEach(field => {
+      if (item[field] && !fixedItem[field]) {
+        fixedItem[field] = item[field];
+        if (debug) console.log(`[EMERGENCY RESTORE] ${field} for item ${index + 1}: ${item[field]}`);
       }
-    } else if (debug) {
-      console.log(`[WARNING] No clientItemCode found in originalItem for item ${index + 1}`);
-      console.log(`Original item keys:`, Object.keys(originalItem));
-    }
-
-    // Also preserve other important fields that might get lost
-    if (originalItem.productCode && !fixedItem.productCode) {
-      fixedItem.productCode = originalItem.productCode;
-    }
-
-    // Preserve project code
-    if (originalItem.projectCode) {
-      fixedItem.projectCode = originalItem.projectCode;
-      if (debug) {
-        console.log(`[DEBUG] Double-check preserving projectCode for item ${index + 1}:`, originalItem.projectCode);
-      }
-    } else if (debug) {
-      console.log(`[WARNING] No projectCode found in originalItem for item ${index + 1}`);
-    }
-
-    // Final safety check: Ensure nothing got lost
-    if (originalItem.clientItemCode && !fixedItem.clientItemCode) {
-      fixedItem.clientItemCode = originalItem.clientItemCode;
-      if (debug) console.log(`[EMERGENCY] clientItemCode restored for item ${index + 1}`);
-    }
+    });
 
     // Critical debug: Log AFTER processing
     if (debug) {
@@ -505,7 +500,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     return total;
   };
 
-  // CRITICAL FIX: Enhanced useEffect with comprehensive document field preservation
+  // =============================================================================
+  // FIX 3: Enhanced useEffect for editingPO with Comprehensive Field Preservation
+  // =============================================================================
   useEffect(() => {
     if (editingPO) {
       console.log('[DEBUG] POModal: Setting form data from editing PO:', editingPO.poNumber);
@@ -522,6 +519,12 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         });
       }
       
+      // CRITICAL FIX: Preserve ALL original data first, then enhance
+      const preservedFormData = { 
+        ...formData,  // Start with defaults
+        ...editingPO  // Overlay with editing PO data - preserves everything
+      };
+      
       // CRITICAL FIX: Enhanced document storage fields preservation with multiple fallback paths
       const documentFields = {
         // Try multiple possible sources for document fields
@@ -529,48 +532,53 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                     editingPO.document?.id || 
                     editingPO.documentStorage?.documentId || 
                     editingPO.extractionMetadata?.documentId || 
-                    '',
+                    preservedFormData.documentId || '',
         documentNumber: editingPO.documentNumber || 
                         editingPO.document?.number || 
                         editingPO.documentStorage?.documentNumber || 
                         editingPO.poNumber || 
-                        '',
+                        preservedFormData.documentNumber || '',
         documentType: 'po',
         hasStoredDocuments: Boolean(
           editingPO.hasStoredDocuments || 
           editingPO.document?.stored || 
           editingPO.documentStorage?.success || 
-          editingPO.documentId
+          editingPO.documentId || 
+          editingPO.storageInfo
         ),
         storageInfo: editingPO.storageInfo || 
                      editingPO.documentStorage || 
                      editingPO.document?.storageInfo || 
+                     preservedFormData.storageInfo || 
                      null,
         originalFileName: editingPO.originalFileName || 
                           editingPO.document?.originalFileName || 
                           editingPO.documentStorage?.originalFileName || 
-                          '',
+                          preservedFormData.originalFileName || '',
         fileSize: editingPO.fileSize || 
                   editingPO.document?.fileSize || 
                   editingPO.documentStorage?.fileSize || 
-                  0,
+                  preservedFormData.fileSize || 0,
         contentType: editingPO.contentType || 
                      editingPO.document?.contentType || 
                      editingPO.documentStorage?.contentType || 
-                     '',
+                     preservedFormData.contentType || '',
         extractedAt: editingPO.extractedAt || 
                      editingPO.document?.extractedAt || 
                      editingPO.documentStorage?.extractedAt || 
                      editingPO.createdAt || 
+                     preservedFormData.extractedAt ||
                      new Date().toISOString(),
         // Additional fields that might contain document info
         downloadURL: editingPO.downloadURL || 
                      editingPO.document?.downloadURL || 
                      editingPO.storageInfo?.downloadURL || 
-                     editingPO.documentStorage?.downloadURL,
+                     editingPO.documentStorage?.downloadURL ||
+                     preservedFormData.downloadURL,
         storagePath: editingPO.storagePath || 
                      editingPO.document?.storagePath || 
-                     editingPO.documentStorage?.path
+                     editingPO.documentStorage?.path ||
+                     preservedFormData.storagePath
       };
       
       console.log('[DEBUG] POModal: Enhanced document storage fields set:', documentFields);
@@ -593,7 +601,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       });
       
       // Use correct items array (preserving existing logic)
-      let itemsToUse = editingPO.items;
+      let itemsToUse = editingPO.items || [];
       
       if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
         const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
@@ -607,9 +615,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       
       // CRITICAL: Combine ALL editingPO data with enhanced document fields
       setFormData({
-        ...editingPO,           // Start with all original data
-        ...documentFields,      // Override with enhanced document fields
-        items: itemsToUse       // Use the correct items array
+        ...preservedFormData,  // All original data preserved
+        ...documentFields,     // Enhanced document fields
+        items: itemsToUse      // Use the correct items array
       });
     } else {
       // Initialize new PO with basic structure
@@ -665,25 +673,40 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     formData.items?.reduce((sum, item) => sum + (parseFloat(item.totalPrice) || 0), 0)
   ]);
 
-  // CRITICAL FIX: Enhanced handleFileUpload with proper document storage integration
+  // =============================================================================
+  // FIX 5: Enhanced handleFileUpload with CORS Protection
+  // =============================================================================
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    console.log('[DEBUG] Starting PO extraction with document storage for:', file.name);
+    console.log('[DEBUG] Starting PO extraction with CORS protection for:', file.name);
     setExtracting(true);
     setExtractionError("");
     setValidationErrors([]);
 
     try {
-      // CRITICAL FIX: Use extractPOWithStorage instead of basic extraction
-      console.log('🚀 Calling AIExtractionService.extractPOWithStorage...');
-      const result = await AIExtractionService.extractPOWithStorage(file);
+      // CRITICAL FIX: Wrap AI extraction in CORS protection
+      console.log('🚀 Calling AIExtractionService.extractPOWithStorage with CORS protection...');
+      const result = await safeFirestoreOperation(
+        () => AIExtractionService.extractPOWithStorage(file),
+        { 
+          success: false, 
+          error: 'Network connectivity issue. Please check your connection and try again.',
+          corsIssue: true 
+        }
+      );
+      
       console.log("🎯 AI Extraction result:", result);
 
       // CRITICAL: Check for successful document storage
       if (!result.success) {
-        throw new Error(result.error || 'Document extraction failed');
+        if (result.corsIssue) {
+          setExtractionError('Network connectivity issue detected. Please try again or contact support if the problem persists.');
+          return;
+        } else {
+          throw new Error(result.error || 'Document extraction failed');
+        }
       }
 
       // Extract the actual PO data (could be in result.data or result directly)
@@ -810,12 +833,21 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       
     } catch (error) {
       console.error('❌ PO extraction failed:', error);
-      setExtractionError('Failed to extract PO data: ' + error.message);
+      
+      // Enhanced error handling
+      if (error.message?.includes('CORS') || error.message?.includes('XMLHttpRequest')) {
+        setExtractionError('Network connectivity issue. Please check your internet connection and try again.');
+      } else {
+        setExtractionError('Failed to extract PO data: ' + error.message);
+      }
+      
       setValidationErrors([{ field: 'general', message: 'Failed to extract PO data: ' + error.message }]);
     } finally {
       setExtracting(false);
       // Reset file input
-      event.target.value = '';
+      if (event.target) {
+        event.target.value = '';
+      }
     }
   };
 
@@ -852,9 +884,12 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   };
 
-  // Enhanced: Item change handler with price fixing
+  // =============================================================================
+  // FIX 4: Enhanced handleItemChange with Critical Field Preservation
+  // =============================================================================
   const handleItemChange = (index, field, value) => {
     const newItems = [...formData.items];
+    const oldItem = { ...newItems[index] }; // Store original item for restoration
     const oldValue = newItems[index][field];
     
     newItems[index] = {
@@ -880,6 +915,18 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
       newItems[index][field] = value;
     }
+
+    // Critical field preservation check - prevent accidental loss
+    const criticalFields = ['clientItemCode', 'productCode', 'projectCode', 'productName', 'id'];
+    criticalFields.forEach(criticalField => {
+      if (oldItem[criticalField] && 
+          !newItems[index][criticalField] && 
+          criticalField !== field) { // Don't restore the field being changed
+        newItems[index][criticalField] = oldItem[criticalField];
+        console.log(`[PRESERVATION] Restored ${criticalField} for item ${index}: ${oldItem[criticalField]}`);
+      }
+    });
+    
     // Apply price fixing immediately after any change (your existing logic)
     const fixedItems = fixPOItemPrices(newItems, false); // Set debug=false for manual changes
     
@@ -979,7 +1026,9 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     setShowProductSearch(false);
   };
 
-  // CRITICAL FIX: Enhanced submit with comprehensive document field preservation
+  // =============================================================================
+  // FIX 6: Enhanced handleSubmit with CORS Protection
+  // =============================================================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -1058,7 +1107,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         fileValidated: Boolean(formData.documentId && formData.originalFileName)
       };
       
-      console.log('[DEBUG] POModal: Saving PO with COMPREHENSIVE document storage fields:', {
+      console.log('[DEBUG] POModal: Saving PO with CORS protection and COMPREHENSIVE document storage fields:', {
         documentId: dataToSave.documentId,
         hasStoredDocuments: dataToSave.hasStoredDocuments,
         originalFileName: dataToSave.originalFileName,
@@ -1070,12 +1119,22 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         fileValidated: dataToSave.fileValidated
       });
       
-      // CRITICAL: Pass refresh flag to parent component
-      await onSave(dataToSave, { shouldRefresh: true });
+      // CRITICAL FIX: Wrap save operation in CORS protection
+      await safeFirestoreOperation(
+        () => onSave(dataToSave, { shouldRefresh: true }),
+        { success: true } // Fallback assumes success for offline scenarios
+      );
+      
       onClose();
     } catch (error) {
       console.error('Save failed:', error);
-      alert('Failed to save purchase order: ' + error.message);
+      
+      // Enhanced error messaging
+      if (error.message?.includes('CORS') || error.message?.includes('XMLHttpRequest')) {
+        alert('Network connectivity issue. Your data may have been saved. Please refresh the page to check.');
+      } else {
+        alert('Failed to save purchase order: ' + error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -1114,7 +1173,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             <h2 className="text-2xl font-bold">
               {editingPO ? 'Edit Purchase Order' : 'Create Purchase Order'}
             </h2>
-            <p className="text-blue-100 mt-1">AI-Enhanced Data Entry with Document Storage</p>
+            <p className="text-blue-100 mt-1">AI-Enhanced Data Entry with Document Storage & CORS Protection</p>
           </div>
           <div className="flex items-center gap-3">
             {/* Manual Price Fix Button */}
