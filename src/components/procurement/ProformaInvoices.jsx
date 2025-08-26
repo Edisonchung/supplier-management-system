@@ -1404,43 +1404,43 @@ const renderPaymentStatus = (pi) => {
   setSelectedPIs(newSelection);
 };
   // ✅ UPDATED: Enhanced handleSavePI with product sync (PRESERVED)
-  const handleSavePI = async (piData) => {
-    try {
-      console.log('Saving PI data:', piData);
-      console.log('selectedPI:', selectedPI);
-      console.log('selectedPI?.id:', selectedPI?.id);
-      
-      // Check if selectedPI has a valid ID, not just if it exists
-      // If selectedPI exists but has no ID, it's extracted data for a NEW PI
-      const isUpdate = selectedPI && selectedPI.id && selectedPI.id !== undefined && selectedPI.id !== null;
-      
-      console.log('isUpdate:', isUpdate);
-      
-      const result = isUpdate
-        ? await updateProformaInvoice(selectedPI.id, piData)
-        : await addProformaInvoice(piData);
+const handleSavePI = async (piData) => {
+  try {
+    console.log('Saving PI data:', piData);
+    console.log('selectedPI:', selectedPI);
+    console.log('selectedPI?.id:', selectedPI?.id);
+    
+    // Check BOTH selectedPI and piData.id for update detection
+    const isUpdate = (selectedPI && selectedPI.id) || piData.id;
+    const updateId = selectedPI?.id || piData.id;
+    
+    console.log('isUpdate:', isUpdate);
+    console.log('updateId:', updateId);
+    
+    const result = isUpdate
+      ? await updateProformaInvoice(updateId, piData)
+      : await addProformaInvoice(piData);
 
-      console.log('Save result:', result);
+    console.log('Save result:', result);
 
-      if (result.success) {
-        // ✅ NEW: Sync products to Products database
-        const savedPI = result.data || { ...piData, id: result.id || selectedPI?.id };
-        await syncPIProductsToDatabase(piData, savedPI);
-        
-        showNotification(
-          isUpdate ? 'PI updated successfully' : 'PI created successfully',
-          'success'
-        );
-        setShowModal(false);
-        setSelectedPI(null);
-      } else {
-        showNotification('Failed to save PI', 'error');
-      }
-    } catch (error) {
-      console.error('Error saving PI:', error);
+    if (result.success) {
+      const savedPI = result.data || { ...piData, id: result.id || updateId };
+      await syncPIProductsToDatabase(piData, savedPI);
+      
+      showNotification(
+        isUpdate ? 'PI updated successfully' : 'PI created successfully',
+        'success'
+      );
+      setShowModal(false);
+      setSelectedPI(null);
+    } else {
       showNotification('Failed to save PI', 'error');
     }
-  };
+  } catch (error) {
+    console.error('Error saving PI:', error);
+    showNotification('Failed to save PI', 'error');
+  }
+};
 
   // Status color helpers (PRESERVED)
   const getStatusColor = (status) => {
