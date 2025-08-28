@@ -1,4 +1,4 @@
-// src/App.jsx - PHASE 2B ENHANCED VERSION - Real Data Integration + Business Registration
+// src/App.jsx - PHASE 2B ENHANCED VERSION - Real Data Integration + Business Registration + Image Generation Dashboard
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -53,6 +53,9 @@ const LazyCompanyStructureManager = lazy(() => import('./components/admin/Compan
 const LazyDualSystemDashboard = lazy(() => import('./components/mcp/DualSystemDashboard'));
 const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagement'));
 const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
+
+// Image Generation Dashboard - NEW COMPONENT
+const LazyImageGenerationDashboard = lazy(() => import('./components/mcp/ImageGenerationDashboard'));
 
 // Phase 2A E-commerce Components - UPDATED WITH BUSINESS REGISTRATION
 const LazyPublicCatalog = lazy(() => import('./components/ecommerce/PublicCatalog'));
@@ -1065,6 +1068,44 @@ function AppContent() {
                   </ProtectedRoute>
                 } 
               />
+
+              {/* ========== IMAGE GENERATION DASHBOARD ROUTES ========== */}
+              
+              {/* Image Generation Dashboard Route with Real Data - PRIMARY ROUTE */}
+              <Route 
+                path="/admin/image-generation" 
+                element={
+                  <ProtectedRoute permission="canManageUsers">
+                    <LazyWrapper componentName="Image Generation Dashboard (Real Data)">
+                      <LazyImageGenerationDashboard realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+
+              {/* Alternative route for direct access */}
+              <Route 
+                path="/image-generation" 
+                element={
+                  <ProtectedRoute permission="canManageUsers">
+                    <LazyWrapper componentName="Image Generation Dashboard (Real Data)">
+                      <LazyImageGenerationDashboard realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+
+              {/* MCP-specific image generation route */}
+              <Route 
+                path="/mcp/image-generation" 
+                element={
+                  <ProtectedRoute permission="canViewAI">
+                    <LazyWrapper componentName="Image Generation Dashboard (Real Data)">
+                      <LazyImageGenerationDashboard realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
               
               {/* Other Admin Routes */}
               <Route 
@@ -1278,6 +1319,15 @@ function AppContent() {
                 title="Test Business Registration System"
               >
                 Business Registration
+              </button>
+
+              {/* NEW: Image Generation Dashboard Test Button */}
+              <button
+                onClick={() => window.location.href = '/admin/image-generation'}
+                className="fixed bottom-16 left-4 bg-pink-600 text-white text-xs px-3 py-1 rounded-full hover:bg-pink-700 z-50 shadow-lg transition-colors"
+                title="Test Image Generation Dashboard"
+              >
+                Image Generation
               </button>
             </>
           )}
