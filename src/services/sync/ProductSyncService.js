@@ -63,7 +63,7 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // ✅ NEW: AI IMAGE GENERATION METHODS
+  // ✅ UPDATED: AI IMAGE GENERATION METHODS WITH COMPREHENSIVE DEBUG
   // ====================================================================
 
   async startImageProcessor() {
@@ -73,25 +73,59 @@ class ProductSyncService {
     }
 
     console.log('🎨 Starting AI-powered image processor...');
+    console.log(`🔗 MCP API Base: ${this.mcpApiBase}`);
+    console.log(`📦 Queue length: ${this.imageGenerationQueue.length}`);
+    
+    // Test API connectivity first
+    console.log('🧪 Testing API connectivity before processing...');
+    const testResult = await this.testDirectImageGeneration('Test Component');
+    if (!testResult.success) {
+      console.error('❌ API connectivity test failed:', testResult.error);
+      console.error('🔧 Image generation will likely fail - check server logs');
+    } else {
+      console.log('✅ API connectivity test passed');
+    }
+    
     this.processingImages = true;
     
     try {
+      let processedCount = 0;
+      
       while (this.processingImages && this.imageGenerationQueue.length > 0) {
         // Process images in small batches to respect API limits
         const batch = this.imageGenerationQueue.splice(0, this.maxConcurrentImages);
         
-        await Promise.allSettled(
-          batch.map(imageTask => this.processImageGeneration(imageTask))
-        );
+        console.log(`🔄 Processing batch of ${batch.length} products...`);
+        
+        const batchPromises = batch.map(async (imageTask) => {
+          try {
+            console.log(`🎯 Processing ${imageTask.productId}...`);
+            const result = await this.processImageGeneration(imageTask);
+            processedCount++;
+            console.log(`✅ Completed ${imageTask.productId} (${processedCount} total)`);
+            return result;
+          } catch (error) {
+            console.error(`❌ Failed ${imageTask.productId}:`, error.message);
+            throw error;
+          }
+        });
+        
+        const results = await Promise.allSettled(batchPromises);
+        
+        // Log results
+        const successful = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        
+        console.log(`📊 Batch completed: ${successful} successful, ${failed} failed`);
         
         // Rate limiting for OpenAI API (recommended 3-5 seconds between batches)
         if (this.imageGenerationQueue.length > 0) {
-          console.log(`🔄 Processing next batch... (${this.imageGenerationQueue.length} remaining)`);
+          console.log(`⏳ Rate limiting... ${this.imageGenerationQueue.length} remaining`);
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
       }
       
-      console.log('✅ Image processing batch completed');
+      console.log(`✅ Image processing completed - processed ${processedCount} products`);
       
     } catch (error) {
       console.error('❌ Image processor error:', error);
@@ -99,6 +133,8 @@ class ProductSyncService {
       if (this.imageGenerationQueue.length === 0) {
         this.processingImages = false;
         console.log('🏁 Image processor finished');
+      } else {
+        console.log(`⚠️ Image processor stopped with ${this.imageGenerationQueue.length} items remaining`);
       }
     }
   }
@@ -148,38 +184,57 @@ class ProductSyncService {
     }
   }
 
+  // ✅ UPDATED: Enhanced generateProductImagesWithMCP with comprehensive debugging
   async generateProductImagesWithMCP(product) {
     try {
       console.log(`🤖 Generating images for ${product.name} using MCP + OpenAI...`);
+      console.log(`🔗 API Base: ${this.mcpApiBase}`);
       
-      // Call your MCP image generation endpoint
+      const requestBody = {
+        product: {
+          name: product.name,
+          partNumber: product.partNumber || product.sku,
+          category: product.category,
+          brand: product.brand || 'Professional Grade',
+          description: product.description || product.name
+        },
+        imageTypes: ['primary', 'technical', 'application'],
+        promptCategory: this.getImagePromptCategory(product.category),
+        provider: 'openai'
+      };
+      
+      console.log(`📤 Making request to: ${this.mcpApiBase}/api/mcp/generate-product-images`);
+      console.log(`📋 Request body:`, JSON.stringify(requestBody, null, 2));
+      
+      // Add explicit timeout and error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
       const response = await fetch(`${this.mcpApiBase}/api/mcp/generate-product-images`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          product: {
-            name: product.name,
-            partNumber: product.partNumber || product.sku,
-            category: product.category,
-            brand: product.brand || 'Professional Grade',
-            description: product.description || product.name
-          },
-          imageTypes: ['primary', 'technical', 'application'],
-          promptCategory: this.getImagePromptCategory(product.category),
-          provider: 'openai' // Use OpenAI/ChatGPT
-        })
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
       });
-
+      
+      clearTimeout(timeoutId);
+      
+      console.log(`📥 Response status: ${response.status}`);
+      console.log(`📥 Response ok: ${response.ok}`);
+      
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ MCP API error: ${response.status} - ${errorText}`);
         throw new Error(`MCP API error: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
+      console.log(`📊 Response result:`, JSON.stringify(result, null, 2));
       
       if (!result.success) {
+        console.error(`❌ MCP result failed:`, result);
         throw new Error(result.error || 'Image generation failed');
       }
 
@@ -198,8 +253,55 @@ class ProductSyncService {
     } catch (error) {
       console.error('❌ MCP image generation failed:', error);
       
-      // Fallback to placeholder images
-      return await this.getFallbackImages(product);
+      if (error.name === 'AbortError') {
+        console.error('❌ Request timed out after 60 seconds');
+      }
+      
+      // Don't fallback immediately - let the error bubble up for proper retry logic
+      throw error;
+    }
+  }
+
+  // ✅ NEW: Test direct API connectivity
+  async testDirectImageGeneration(productName = 'Test Industrial Component') {
+    try {
+      console.log('🧪 Testing direct image generation...');
+      
+      const testRequestBody = {
+        prompt: `Professional industrial product photography of ${productName}. Modern industrial facility setting with clean workspace and professional lighting. Component integrated into larger industrial system showing practical application. Safety compliance visible with proper cable management and organization. No workers or people in frame. Focus on component within system context. Clean, organized, professional environment. No visible brand names, logos, or signage. Industrial facility photography style, realistic, well-lit, high quality.`,
+        provider: 'openai',
+        model: 'dall-e-3',
+        size: '1024x1024',
+        quality: 'hd',
+        style: 'natural'
+      };
+      
+      console.log(`🔗 Testing: ${this.mcpApiBase}/api/ai/generate-image`);
+      
+      const response = await fetch(`${this.mcpApiBase}/api/ai/generate-image`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(testRequestBody)
+      });
+      
+      console.log(`📥 Direct API Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Direct API error: ${response.status} - ${errorText}`);
+        return { success: false, error: errorText };
+      }
+      
+      const result = await response.json();
+      console.log(`📊 Direct API result:`, result);
+      
+      return result;
+      
+    } catch (error) {
+      console.error('❌ Direct image generation test failed:', error);
+      return { success: false, error: error.message };
     }
   }
 
