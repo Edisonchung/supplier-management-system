@@ -1,4 +1,4 @@
-// src/components/LazyComponents.jsx - UPDATED with Smart Product Sync Dashboard
+// src/components/LazyComponents.jsx - UPDATED with Smart Product Sync Dashboard + Image Generation Dashboard
 
 import { lazy } from 'react';
 import React, { Suspense } from 'react';
@@ -157,6 +157,44 @@ export const LazyMCPTools = lazy(() => import('./mcp/MCPTools'));
 export const LazyDualSystemDashboard = lazy(() => import('./mcp/DualSystemDashboard'));
 export const LazyPromptManagement = lazy(() => import('./mcp/PromptManagement'));
 
+// NEW: Image Generation Dashboard
+export const LazyImageGenerationDashboard = lazy(() => 
+  import('./mcp/ImageGenerationDashboard').catch((error) => {
+    console.warn('ImageGenerationDashboard failed to load:', error);
+    return {
+      default: () => (
+        <div className="flex items-center justify-center h-64 bg-gradient-to-br from-pink-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 rounded-lg shadow-md">
+          <div className="text-center p-8">
+            <div className="mx-auto h-16 w-16 bg-pink-100 dark:bg-pink-900 rounded-full flex items-center justify-center mb-4">
+              <svg className="h-8 w-8 text-pink-600 dark:text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              AI Image Generation Dashboard
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Monitor and manage OpenAI-powered product image generation
+            </p>
+            <div className="text-sm text-pink-600 dark:text-pink-400 font-medium">
+              Component loading failed - using fallback
+            </div>
+            <div className="mt-4 text-xs text-gray-500 dark:text-gray-500">
+              Expected features: Image Generation Stats • System Health • Generation History
+            </div>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="mt-4 px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 text-sm transition-colors"
+            >
+              Reload Component
+            </button>
+          </div>
+        </div>
+      )
+    };
+  })
+);
+
 // Landing Page
 export const LazyHiggsFlowLandingPage = lazy(() => import('./HiggsFlowLandingPage'));
 
@@ -205,6 +243,7 @@ export const componentRegistry = {
   'MCP Tools': LazyMCPTools,
   'Dual System Dashboard': LazyDualSystemDashboard,
   'Prompt Management': LazyPromptManagement,
+  'Image Generation Dashboard': LazyImageGenerationDashboard,
   
   // Landing
   'HiggsFlow Landing Page': LazyHiggsFlowLandingPage,
