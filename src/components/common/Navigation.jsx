@@ -583,6 +583,12 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           badgeColor: 'bg-green-500'
         },
         {
+  name: 'Image Generation',
+  href: '/image-generation', 
+  icon: Camera,
+  permission: 'canViewAI'
+},
+        {
           name: 'Prompt Management',
           href: '/prompt-management',
           icon: FileEdit,
