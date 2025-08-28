@@ -1,5 +1,5 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// Fixed version using actual ProductSyncService data instead of mock data
+// Final version using only stable lucide-react icons
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -21,7 +21,6 @@ import {
   FileImage,
   Palette,
   X,
-  ExternalLink,
   Filter,
   Search
 } from 'lucide-react';
@@ -363,7 +362,7 @@ const ImageGenerationDashboard = () => {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header - Using FileImage instead of Camera */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
@@ -748,7 +747,7 @@ const ImageGenerationDashboard = () => {
           <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-semibold flex items-center gap-2">
-                <Image className="w-6 h-6 text-blue-600" />
+                <FileImage className="w-6 h-6 text-blue-600" />
                 Image Generation Details
               </h3>
               <button
