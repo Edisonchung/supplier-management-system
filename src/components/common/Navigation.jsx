@@ -585,7 +585,7 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         {
   name: 'Image Generation',
   href: '/image-generation', 
-  icon: Camera,
+  icon: FileImage,
   permission: 'canViewAI'
 },
         {
