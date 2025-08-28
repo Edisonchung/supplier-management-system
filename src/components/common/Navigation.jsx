@@ -59,6 +59,7 @@ import {
   WifiOff,
   CheckCircle,
   AlertCircle,
+  FileImage,
   RotateCw
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
