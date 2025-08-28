@@ -55,7 +55,8 @@ const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagemen
 const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
 
 // Image Generation Dashboard - NEW COMPONENT
-const LazyImageGenerationDashboard = lazy(() => import('./components/mcp/ImageGenerationDashboard'));
+//const LazyImageGenerationDashboard = lazy(() => import('./components/mcp/ImageGenerationDashboard'));
+import { LazyImageGenerationDashboard } from './components/LazyComponents';
 
 // Phase 2A E-commerce Components - UPDATED WITH BUSINESS REGISTRATION
 const LazyPublicCatalog = lazy(() => import('./components/ecommerce/PublicCatalog'));
