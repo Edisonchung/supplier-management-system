@@ -1,6 +1,6 @@
 // src/services/sync/ProductSyncService.js
 // Enhanced Product Sync Service for HiggsFlow E-commerce
-// Now includes dashboard management methods + real-time sync capabilities
+// Now includes dashboard management methods + real-time sync capabilities + AI Image Generation
 
 import { 
   collection, 
@@ -32,7 +32,11 @@ class ProductSyncService {
       successCount: 0,
       errorCount: 0,
       lastSyncTime: null,
-      syncedProducts: new Set()
+      syncedProducts: new Set(),
+      // ✅ NEW: Image generation stats
+      imagesGenerated: 0,
+      imageErrors: 0,
+      imageGenerationTime: 0
     };
     
     // Sync rules for dashboard
@@ -44,13 +48,312 @@ class ProductSyncService {
       requireApproval: true
     };
     
-    // AI Image generation queue
+    // ✅ ENHANCED: AI Image generation queue with proper management
     this.imageGenerationQueue = [];
     this.processingImages = false;
+    this.maxConcurrentImages = 2; // Limit concurrent generation for API limits
+    this.imageRetryLimit = 3;
+    
+    // ✅ NEW: MCP API configuration
+    this.mcpApiBase = import.meta.env?.VITE_MCP_SERVER_URL || 
+                     (typeof process !== 'undefined' ? process.env.VITE_MCP_SERVER_URL : null) ||
+                     'https://supplier-mcp-server-production.up.railway.app';
+    
+    console.log('🎨 ProductSyncService initialized with AI image generation');
   }
 
   // ====================================================================
-  // DASHBOARD MANAGEMENT METHODS
+  // ✅ NEW: AI IMAGE GENERATION METHODS
+  // ====================================================================
+
+  async startImageProcessor() {
+    if (this.processingImages) {
+      console.log('🎨 Image processor already running');
+      return;
+    }
+
+    console.log('🎨 Starting AI-powered image processor...');
+    this.processingImages = true;
+    
+    try {
+      while (this.processingImages && this.imageGenerationQueue.length > 0) {
+        // Process images in small batches to respect API limits
+        const batch = this.imageGenerationQueue.splice(0, this.maxConcurrentImages);
+        
+        await Promise.allSettled(
+          batch.map(imageTask => this.processImageGeneration(imageTask))
+        );
+        
+        // Rate limiting for OpenAI API (recommended 3-5 seconds between batches)
+        if (this.imageGenerationQueue.length > 0) {
+          console.log(`🔄 Processing next batch... (${this.imageGenerationQueue.length} remaining)`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+      
+      console.log('✅ Image processing batch completed');
+      
+    } catch (error) {
+      console.error('❌ Image processor error:', error);
+    } finally {
+      if (this.imageGenerationQueue.length === 0) {
+        this.processingImages = false;
+        console.log('🏁 Image processor finished');
+      }
+    }
+  }
+
+  async processImageGeneration(imageTask) {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`🎯 Processing images for product: ${imageTask.productId}`);
+      
+      // Get product details
+      const internalProduct = await this.getProductById(imageTask.productId);
+      
+      if (!internalProduct) {
+        throw new Error('Internal product not found');
+      }
+
+      // Generate images using your MCP system with OpenAI
+      const generatedImages = await this.generateProductImagesWithMCP(internalProduct);
+      
+      // Update public product with generated images
+      await this.updateProductImages(imageTask.publicProductId, generatedImages);
+      
+      // Update statistics
+      this.syncStats.imagesGenerated++;
+      
+      const processingTime = Date.now() - startTime;
+      this.syncStats.imageGenerationTime += processingTime;
+      
+      console.log(`✅ Generated images for ${internalProduct.name} in ${processingTime}ms`);
+      
+      // Log successful image generation
+      await this.logImageGeneration(imageTask, 'success', generatedImages, processingTime);
+      
+    } catch (error) {
+      console.error(`❌ Image generation failed for ${imageTask.productId}:`, error);
+      
+      // Handle retry logic
+      imageTask.retries = (imageTask.retries || 0) + 1;
+      if (imageTask.retries < this.imageRetryLimit) {
+        console.log(`🔄 Retrying image generation (${imageTask.retries}/${this.imageRetryLimit})`);
+        this.imageGenerationQueue.push(imageTask);
+      } else {
+        this.syncStats.imageErrors++;
+        await this.handleImageGenerationError(imageTask, error);
+      }
+    }
+  }
+
+  async generateProductImagesWithMCP(product) {
+    try {
+      console.log(`🤖 Generating images for ${product.name} using MCP + OpenAI...`);
+      
+      // Call your MCP image generation endpoint
+      const response = await fetch(`${this.mcpApiBase}/api/mcp/generate-product-images`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          product: {
+            name: product.name,
+            partNumber: product.partNumber || product.sku,
+            category: product.category,
+            brand: product.brand || 'Professional Grade',
+            description: product.description || product.name
+          },
+          imageTypes: ['primary', 'technical', 'application'],
+          promptCategory: this.getImagePromptCategory(product.category),
+          provider: 'openai' // Use OpenAI/ChatGPT
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`MCP API error: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Image generation failed');
+      }
+
+      console.log(`✅ MCP generated ${result.imagesGenerated} images using ${result.provider}`);
+      
+      return {
+        ...result.images,
+        generated: true,
+        generatedAt: new Date(),
+        provider: result.provider,
+        model: result.model || 'dall-e-3',
+        compliance: result.compliance,
+        processingTime: result.processingTime
+      };
+      
+    } catch (error) {
+      console.error('❌ MCP image generation failed:', error);
+      
+      // Fallback to placeholder images
+      return await this.getFallbackImages(product);
+    }
+  }
+
+  getImagePromptCategory(productCategory) {
+    // Map product categories to image prompt categories
+    const categoryMap = {
+      'electronics': 'product_image_primary',
+      'hydraulics': 'product_image_primary', 
+      'pneumatics': 'product_image_primary',
+      'automation': 'product_image_primary',
+      'cables': 'product_image_primary',
+      'sensors': 'product_image_primary',
+      'components': 'product_image_primary'
+    };
+    
+    return categoryMap[productCategory?.toLowerCase()] || 'product_image_primary';
+  }
+
+  async getFallbackImages(product) {
+    console.log(`🎨 Using fallback images for ${product.name}`);
+    
+    return {
+      primary: {
+        url: `/images/placeholders/${product.category || 'industrial'}-primary.svg`,
+        alt: `${product.name} - Product image`,
+        type: 'primary',
+        provider: 'placeholder'
+      },
+      technical: {
+        url: `/images/placeholders/${product.category || 'industrial'}-technical.svg`,
+        alt: `${product.name} - Technical diagram`,
+        type: 'technical',
+        provider: 'placeholder'
+      },
+      application: {
+        url: `/images/placeholders/${product.category || 'industrial'}-context.svg`,
+        alt: `${product.name} - Application context`,
+        type: 'application',
+        provider: 'placeholder'
+      },
+      generated: false,
+      fallback: true,
+      generatedAt: new Date(),
+      provider: 'fallback',
+      compliance: {
+        noTrademarks: true,
+        brandFree: true,
+        industrialStandard: true
+      }
+    };
+  }
+
+  calculateImagePriority(product) {
+    let priority = 0;
+    
+    // High-value products get priority
+    if (product.price > 1000) priority += 30;
+    else if (product.price > 100) priority += 20;
+    else priority += 10;
+    
+    // High-stock products get priority (likely to sell)
+    if (product.stock > 50) priority += 20;
+    else if (product.stock > 10) priority += 10;
+    
+    // Category-based priority
+    const highPriorityCategories = ['electronics', 'automation', 'sensors'];
+    if (highPriorityCategories.includes(product.category?.toLowerCase())) {
+      priority += 15;
+    }
+    
+    // Active status bonus
+    if (product.status === 'active') priority += 10;
+    
+    return priority;
+  }
+
+  async updateProductImages(publicProductId, images) {
+    try {
+      await updateDoc(doc(this.db, 'products_public', publicProductId), {
+        images: images,
+        imageGenerationStatus: images.generated ? 'completed' : 'failed',
+        needsImageGeneration: false,
+        lastImageUpdate: new Date()
+      });
+      
+      console.log(`✅ Updated images for product ${publicProductId}`);
+      
+    } catch (error) {
+      console.error('❌ Failed to update product images:', error);
+      throw error;
+    }
+  }
+
+  async logImageGeneration(imageTask, status, images, processingTime) {
+    try {
+      const logEntry = {
+        syncId: `IMG-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        internalProductId: imageTask.productId,
+        publicProductId: imageTask.publicProductId,
+        operation: 'image_generation',
+        status: status,
+        
+        imageDetails: {
+          types: images ? Object.keys(images).filter(k => typeof images[k] === 'object') : [],
+          provider: images?.provider || 'unknown',
+          model: images?.model || 'unknown',
+          compliance: images?.compliance || {},
+          fallback: images?.fallback || false
+        },
+        
+        performance: {
+          processingTime: processingTime || 0,
+          retries: imageTask.retries || 0,
+          queuePosition: imageTask.priority || 0
+        },
+        
+        timestamp: new Date()
+      };
+      
+      await addDoc(collection(this.db, 'product_sync_log'), logEntry);
+      
+    } catch (error) {
+      console.error('❌ Failed to log image generation:', error);
+    }
+  }
+
+  async handleImageGenerationError(imageTask, error) {
+    console.error(`❌ Final image generation failure for ${imageTask.productId}:`, error.message);
+    
+    try {
+      // Update product with error status and fallback images
+      const fallbackImages = await this.getFallbackImages({ 
+        name: 'Unknown Product', 
+        category: 'industrial' 
+      });
+      
+      await updateDoc(doc(this.db, 'products_public', imageTask.publicProductId), {
+        images: fallbackImages,
+        imageGenerationStatus: 'error',
+        imageGenerationError: error.message,
+        needsImageGeneration: true, // Allow manual retry
+        lastImageError: new Date()
+      });
+      
+      // Log the error
+      await this.logImageGeneration(imageTask, 'error', null, 0);
+      
+    } catch (logError) {
+      console.error('❌ Failed to log image generation error:', logError);
+    }
+  }
+
+  // ====================================================================
+  // DASHBOARD MANAGEMENT METHODS (ENHANCED WITH IMAGE STATUS)
   // ====================================================================
 
   async getInternalProductsWithSyncStatus() {
@@ -90,8 +393,14 @@ class ProductSyncService {
         return {
           ...product,
           publicStatus: publicVersion ? 'synced' : 'not_synced',
+          // ✅ NEW: Image status tracking
+          imageStatus: publicVersion?.imageGenerationStatus || 'not_generated',
+          hasImages: publicVersion?.images?.generated || false,
+          imageProvider: publicVersion?.images?.provider || null,
           eligible: isEligible,
           priority: this.calculateSyncPriority(product),
+          // ✅ NEW: Image priority calculation
+          imagePriority: this.calculateImagePriority(product),
           suggestedPublicPrice: this.calculatePublicPrice(product.price || 0),
           eligibilityReasons: isEligible ? ['Eligible for sync'] : [this.getIneligibilityReason(product)]
         };
@@ -127,6 +436,11 @@ class ProductSyncService {
       const internalProducts = internalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const eligibleCount = internalProducts.filter(product => this.isEligibleForSync(product)).length;
       
+      // ✅ NEW: Count products with images
+      const publicProducts = publicSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const productsWithImages = publicProducts.filter(product => product.images?.generated === true).length;
+      const imageGenerationRate = totalPublic > 0 ? Math.round((productsWithImages / totalPublic) * 100) : 0;
+      
       // Calculate sync rate
       const syncRate = totalInternal > 0 ? Math.round((totalPublic / totalInternal) * 100) : 0;
       
@@ -137,6 +451,13 @@ class ProductSyncService {
           totalPublic,
           eligible: eligibleCount,
           syncRate,
+          // ✅ NEW: Image statistics
+          productsWithImages,
+          imageGenerationRate,
+          totalImagesGenerated: this.syncStats.imagesGenerated,
+          imageErrors: this.syncStats.imageErrors,
+          averageImageTime: this.syncStats.imagesGenerated > 0 ? 
+            Math.round(this.syncStats.imageGenerationTime / this.syncStats.imagesGenerated) : 0,
           lastUpdated: new Date()
         }
       };
@@ -150,9 +471,135 @@ class ProductSyncService {
           totalPublic: 87,
           eligible: 92,
           syncRate: 58,
+          // ✅ NEW: Demo image stats
+          productsWithImages: 73,
+          imageGenerationRate: 84,
+          totalImagesGenerated: 241,
+          imageErrors: 8,
+          averageImageTime: 7200,
           lastUpdated: new Date()
         }
       };
+    }
+  }
+
+  // ✅ NEW: Get image generation health status
+  async getImageGenerationHealth() {
+    try {
+      // Check MCP API health
+      const healthResponse = await fetch(`${this.mcpApiBase}/health`, {
+        method: 'GET',
+        timeout: 5000
+      });
+      const mcpHealth = healthResponse.ok;
+      
+      // Get queue statistics
+      const queueStats = {
+        pending: this.imageGenerationQueue.length,
+        processing: this.processingImages,
+        totalGenerated: this.syncStats.imagesGenerated,
+        totalErrors: this.syncStats.imageErrors,
+        successRate: this.syncStats.imagesGenerated > 0 ? 
+          ((this.syncStats.imagesGenerated / (this.syncStats.imagesGenerated + this.syncStats.imageErrors)) * 100).toFixed(1) : 100
+      };
+      
+      return {
+        mcpApiHealthy: mcpHealth,
+        imageGeneration: queueStats,
+        lastCheck: new Date()
+      };
+      
+    } catch (error) {
+      console.error('❌ Failed to check image generation health:', error);
+      return {
+        mcpApiHealthy: false,
+        imageGeneration: { error: error.message },
+        lastCheck: new Date()
+      };
+    }
+  }
+
+  // ====================================================================
+  // ✅ ENHANCED: EXISTING SYNC METHODS WITH IMAGE INTEGRATION
+  // ====================================================================
+
+  async syncSingleProductToPublic(internalProductId) {
+    // Get internal product
+    const internalDoc = await getDoc(doc(this.db, 'products', internalProductId));
+    if (!internalDoc.exists()) {
+      throw new Error('Internal product not found');
+    }
+    
+    const internalProduct = { id: internalDoc.id, ...internalDoc.data() };
+    
+    // Check eligibility
+    if (!this.isEligibleForSync(internalProduct)) {
+      throw new Error(`Product not eligible: ${this.getIneligibilityReason(internalProduct)}`);
+    }
+    
+    // Check if already exists in public catalog
+    const existingQuery = query(
+      collection(this.db, 'products_public'),
+      where('internalProductId', '==', internalProductId)
+    );
+    const existingSnapshot = await getDocs(existingQuery);
+    
+    let publicProductId;
+    if (existingSnapshot.empty) {
+      // ✅ ENHANCED: Create new public product with image generation setup
+      const publicProduct = this.transformToEcommerceProduct(internalProduct);
+      
+      // Add image generation flags
+      publicProduct.images = {
+        generated: false,
+        generationPending: true,
+        needsGeneration: true
+      };
+      publicProduct.imageGenerationStatus = 'pending';
+      
+      const docRef = await addDoc(collection(this.db, 'products_public'), publicProduct);
+      publicProductId = docRef.id;
+      console.log(`✅ Created new public product: ${publicProductId}`);
+      
+      // ✅ NEW: Add to image generation queue
+      this.addToImageGenerationQueue(internalProduct.id, publicProductId, internalProduct);
+      
+    } else {
+      // Update existing public product
+      publicProductId = existingSnapshot.docs[0].id;
+      const updates = this.generateEcommerceUpdates(internalProduct, existingSnapshot.docs[0].data());
+      await updateDoc(doc(this.db, 'products_public', publicProductId), {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      console.log(`✅ Updated existing public product: ${publicProductId}`);
+      
+      // ✅ NEW: Check if needs image generation
+      const existingData = existingSnapshot.docs[0].data();
+      if (!existingData.images?.generated) {
+        this.addToImageGenerationQueue(internalProduct.id, publicProductId, internalProduct);
+      }
+    }
+    
+    return publicProductId;
+  }
+
+  // ✅ NEW: Helper method to add products to image generation queue
+  addToImageGenerationQueue(internalProductId, publicProductId, product) {
+    const imageTask = {
+      productId: internalProductId,
+      publicProductId: publicProductId,
+      priority: this.calculateImagePriority(product),
+      addedAt: new Date(),
+      retries: 0
+    };
+    
+    this.imageGenerationQueue.push(imageTask);
+    console.log(`📸 Added ${product.name} to image generation queue (${this.imageGenerationQueue.length} pending)`);
+    
+    // Start image processor if not already running
+    if (!this.processingImages && this.imageGenerationQueue.length > 0) {
+      setTimeout(() => this.startImageProcessor(), 2000); // Small delay to batch requests
     }
   }
 
@@ -186,10 +633,11 @@ class ProductSyncService {
       }
       
       console.log(`✅ Bulk sync complete: ${results.length} success, ${errors.length} failed`);
+      console.log(`🎨 ${this.imageGenerationQueue.length} products queued for image generation`);
       
       return {
         success: true,
-        data: { results, errors }
+        data: { results, errors, imageQueueLength: this.imageGenerationQueue.length }
       };
 
     } catch (error) {
@@ -199,6 +647,173 @@ class ProductSyncService {
       };
     }
   }
+
+  // ====================================================================
+  // ✅ ENHANCED: EXISTING HELPER METHODS
+  // ====================================================================
+
+  async getProductById(productId) {
+    try {
+      const docSnap = await getDoc(doc(this.db, 'products', productId));
+      return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+    } catch (error) {
+      console.error(`❌ Failed to get product ${productId}:`, error);
+      return null;
+    }
+  }
+
+  async getPublicProductById(publicProductId) {
+    try {
+      const docSnap = await getDoc(doc(this.db, 'products_public', publicProductId));
+      return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+    } catch (error) {
+      console.error(`❌ Failed to get public product ${publicProductId}:`, error);
+      return null;
+    }
+  }
+
+  getSyncStats() {
+    return {
+      ...this.syncStats,
+      isRunning: this.isRunning,
+      queueLength: this.syncQueue.length,
+      // ✅ ENHANCED: Image generation stats
+      imageQueueLength: this.imageGenerationQueue.length,
+      processingImages: this.processingImages,
+      imageSuccessRate: this.syncStats.imagesGenerated > 0 ? 
+        ((this.syncStats.imagesGenerated / (this.syncStats.imagesGenerated + this.syncStats.imageErrors)) * 100).toFixed(1) : 0,
+      averageImageTime: this.syncStats.imagesGenerated > 0 ? 
+        Math.round(this.syncStats.imageGenerationTime / this.syncStats.imagesGenerated) : 0,
+      activeListeners: this.syncListeners.size
+    };
+  }
+
+  async getSyncHealth() {
+    try {
+      const [internalSnapshot, ecommerceSnapshot, imageHealth] = await Promise.all([
+        getDocs(collection(this.db, 'products')),
+        getDocs(collection(this.db, 'products_public')),
+        this.getImageGenerationHealth()
+      ]);
+      
+      return {
+        internalProductCount: internalSnapshot.size,
+        ecommerceProductCount: ecommerceSnapshot.size,
+        syncCoverage: ecommerceSnapshot.size / internalSnapshot.size,
+        syncStats: this.getSyncStats(),
+        // ✅ NEW: Image generation health
+        imageGenerationHealth: imageHealth,
+        lastHealthCheck: new Date()
+      };
+      
+    } catch (error) {
+      console.error('❌ Failed to get sync health:', error);
+      return null;
+    }
+  }
+
+  // ====================================================================
+  // ✅ ENHANCED: DEMO DATA WITH IMAGE STATUS
+  // ====================================================================
+
+  getDemoProductsWithSyncStatus() {
+    return [
+      {
+        id: 'PROD-001',
+        name: 'Hydraulic Pump Model HP-200',
+        category: 'hydraulics',
+        stock: 25,
+        price: 850,
+        suggestedPublicPrice: 977.50,
+        status: 'active',
+        supplier: 'TechFlow Systems',
+        publicStatus: 'synced',
+        imageStatus: 'completed',
+        hasImages: true,
+        imageProvider: 'openai',
+        eligible: true,
+        priority: 'high',
+        imagePriority: 65,
+        eligibilityReasons: ['Eligible for sync']
+      },
+      {
+        id: 'PROD-002',
+        name: 'Pneumatic Cylinder PC-150',
+        category: 'pneumatics',
+        stock: 12,
+        price: 320,
+        suggestedPublicPrice: 368,
+        status: 'active',
+        supplier: 'AirTech Solutions',
+        publicStatus: 'synced',
+        imageStatus: 'pending',
+        hasImages: false,
+        imageProvider: null,
+        eligible: true,
+        priority: 'medium',
+        imagePriority: 40,
+        eligibilityReasons: ['Eligible for sync']
+      },
+      {
+        id: 'PROD-003',
+        name: 'Industrial Sensor Module',
+        category: 'sensors',
+        stock: 8,
+        price: 245,
+        suggestedPublicPrice: 281.75,
+        status: 'active',
+        supplier: 'SensorTech Inc',
+        publicStatus: 'not_synced',
+        imageStatus: 'not_generated',
+        hasImages: false,
+        imageProvider: null,
+        eligible: true,
+        priority: 'medium',
+        imagePriority: 35,
+        eligibilityReasons: ['Eligible for sync']
+      },
+      {
+        id: 'PROD-004',
+        name: 'Cable Assembly CAB-500',
+        category: 'cables',
+        stock: 3,
+        price: 125,
+        suggestedPublicPrice: 143.75,
+        status: 'active',
+        supplier: 'CableTech Pro',
+        publicStatus: 'not_synced',
+        imageStatus: 'not_generated',
+        hasImages: false,
+        imageProvider: null,
+        eligible: false,
+        priority: 'low',
+        imagePriority: 20,
+        eligibilityReasons: ['Stock too low (3 < 5)']
+      },
+      {
+        id: 'PROD-005',
+        name: 'Automation Controller AC-300',
+        category: 'automation',
+        stock: 18,
+        price: 675,
+        suggestedPublicPrice: 776.25,
+        status: 'active',
+        supplier: 'AutoTech Systems',
+        publicStatus: 'synced',
+        imageStatus: 'error',
+        hasImages: false,
+        imageProvider: 'fallback',
+        eligible: true,
+        priority: 'high',
+        imagePriority: 60,
+        eligibilityReasons: ['Eligible for sync']
+      }
+    ];
+  }
+
+  // ====================================================================
+  // EXISTING METHODS (UNCHANGED)
+  // ====================================================================
 
   async syncProductToPublic(internalProductId) {
     try {
@@ -246,52 +861,6 @@ class ProductSyncService {
         message: error.message
       };
     }
-  }
-
-  // ====================================================================
-  // SYNC HELPER METHODS
-  // ====================================================================
-
-  async syncSingleProductToPublic(internalProductId) {
-    // Get internal product
-    const internalDoc = await getDoc(doc(this.db, 'products', internalProductId));
-    if (!internalDoc.exists()) {
-      throw new Error('Internal product not found');
-    }
-    
-    const internalProduct = { id: internalDoc.id, ...internalDoc.data() };
-    
-    // Check eligibility
-    if (!this.isEligibleForSync(internalProduct)) {
-      throw new Error(`Product not eligible: ${this.getIneligibilityReason(internalProduct)}`);
-    }
-    
-    // Check if already exists in public catalog
-    const existingQuery = query(
-      collection(this.db, 'products_public'),
-      where('internalProductId', '==', internalProductId)
-    );
-    const existingSnapshot = await getDocs(existingQuery);
-    
-    let publicProductId;
-    if (existingSnapshot.empty) {
-      // Create new public product
-      const publicProduct = this.transformToEcommerceProduct(internalProduct);
-      const docRef = await addDoc(collection(this.db, 'products_public'), publicProduct);
-      publicProductId = docRef.id;
-      console.log(`✅ Created new public product: ${publicProductId}`);
-    } else {
-      // Update existing public product
-      publicProductId = existingSnapshot.docs[0].id;
-      const updates = this.generateEcommerceUpdates(internalProduct, existingSnapshot.docs[0].data());
-      await updateDoc(doc(this.db, 'products_public', publicProductId), {
-        ...updates,
-        updatedAt: serverTimestamp()
-      });
-      console.log(`✅ Updated existing public product: ${publicProductId}`);
-    }
-    
-    return publicProductId;
   }
 
   transformToEcommerceProduct(internalProduct) {
@@ -378,10 +947,7 @@ class ProductSyncService {
     return updates;
   }
 
-  // ====================================================================
-  // VALIDATION AND CALCULATION METHODS
-  // ====================================================================
-
+  // All other existing methods remain unchanged...
   isEligibleForSync(product) {
     // Check stock levels
     if ((product.stock || 0) < this.syncRules.minStock) {
@@ -469,10 +1035,6 @@ class ProductSyncService {
     if (stockLevel < 20) return 'limited';
     return 'in-stock';
   }
-
-  // ====================================================================
-  // TRANSFORMATION HELPER METHODS
-  // ====================================================================
 
   generateDisplayName(internalProduct) {
     let displayName = internalProduct.name || 'Industrial Product';
@@ -586,89 +1148,6 @@ class ProductSyncService {
     return hasGoodStock && isHighValue;
   }
 
-  // ====================================================================
-  // DEMO DATA
-  // ====================================================================
-
-  getDemoProductsWithSyncStatus() {
-    return [
-      {
-        id: 'PROD-001',
-        name: 'Hydraulic Pump Model HP-200',
-        category: 'hydraulics',
-        stock: 25,
-        price: 850,
-        suggestedPublicPrice: 977.50,
-        status: 'active',
-        supplier: 'TechFlow Systems',
-        publicStatus: 'not_synced',
-        eligible: true,
-        priority: 'high',
-        eligibilityReasons: ['Eligible for sync']
-      },
-      {
-        id: 'PROD-002',
-        name: 'Pneumatic Cylinder PC-150',
-        category: 'pneumatics',
-        stock: 12,
-        price: 320,
-        suggestedPublicPrice: 368,
-        status: 'active',
-        supplier: 'AirTech Solutions',
-        publicStatus: 'synced',
-        eligible: true,
-        priority: 'medium',
-        eligibilityReasons: ['Eligible for sync']
-      },
-      {
-        id: 'PROD-003',
-        name: 'Industrial Sensor Module',
-        category: 'sensors',
-        stock: 8,
-        price: 245,
-        suggestedPublicPrice: 281.75,
-        status: 'active',
-        supplier: 'SensorTech Inc',
-        publicStatus: 'not_synced',
-        eligible: true,
-        priority: 'medium',
-        eligibilityReasons: ['Eligible for sync']
-      },
-      {
-        id: 'PROD-004',
-        name: 'Cable Assembly CAB-500',
-        category: 'cables',
-        stock: 3,
-        price: 125,
-        suggestedPublicPrice: 143.75,
-        status: 'active',
-        supplier: 'CableTech Pro',
-        publicStatus: 'not_synced',
-        eligible: false,
-        priority: 'low',
-        eligibilityReasons: ['Stock too low (3 < 5)']
-      },
-      {
-        id: 'PROD-005',
-        name: 'Automation Controller AC-300',
-        category: 'automation',
-        stock: 18,
-        price: 675,
-        suggestedPublicPrice: 776.25,
-        status: 'active',
-        supplier: 'AutoTech Systems',
-        publicStatus: 'not_synced',
-        eligible: true,
-        priority: 'high',
-        eligibilityReasons: ['Eligible for sync']
-      }
-    ];
-  }
-
-  // ====================================================================
-  // REAL-TIME SYNC METHODS (PLACEHOLDER IMPLEMENTATIONS)
-  // ====================================================================
-
   async startSync() {
     if (this.isRunning) {
       console.log('🔄 Product sync is already running');
@@ -683,7 +1162,7 @@ class ProductSyncService {
       await this.performInitialSync();
       this.setupRealTimeSync();
       this.startBatchProcessor();
-      this.startImageProcessor();
+      this.startImageProcessor(); // ✅ Enhanced to include image processing
       
       console.log('✅ Product sync service started successfully');
       
@@ -697,6 +1176,7 @@ class ProductSyncService {
   async stopSync() {
     console.log('🛑 Stopping product sync service...');
     this.isRunning = false;
+    this.processingImages = false; // ✅ Stop image processing too
     this.syncListeners.forEach(unsubscribe => unsubscribe());
     this.syncListeners.clear();
     console.log('✅ Product sync service stopped');
@@ -715,41 +1195,6 @@ class ProductSyncService {
   startBatchProcessor() {
     console.log('⚡ Starting batch processor...');
     // Placeholder implementation
-  }
-
-  startImageProcessor() {
-    console.log('🎨 Starting image processor...');
-    // Placeholder implementation
-  }
-
-  getSyncStats() {
-    return {
-      ...this.syncStats,
-      isRunning: this.isRunning,
-      queueLength: this.syncQueue.length,
-      imageQueueLength: this.imageGenerationQueue.length,
-      activeListeners: this.syncListeners.size,
-      processingImages: this.processingImages
-    };
-  }
-
-  async getSyncHealth() {
-    try {
-      const internalSnapshot = await getDocs(collection(this.db, 'products'));
-      const ecommerceSnapshot = await getDocs(collection(this.db, 'products_public'));
-      
-      return {
-        internalProductCount: internalSnapshot.size,
-        ecommerceProductCount: ecommerceSnapshot.size,
-        syncCoverage: ecommerceSnapshot.size / internalSnapshot.size,
-        syncStats: this.getSyncStats(),
-        lastHealthCheck: new Date()
-      };
-      
-    } catch (error) {
-      console.error('❌ Failed to get sync health:', error);
-      return null;
-    }
   }
 }
 
