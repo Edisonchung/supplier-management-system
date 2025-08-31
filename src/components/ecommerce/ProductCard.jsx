@@ -1,5 +1,5 @@
 // src/components/ecommerce/ProductCard.jsx
-// Enhanced E-commerce Product Card with improved error handling and performance
+// Enhanced E-commerce Product Card with FIXED image handling
 
 import React, { useState, useCallback, useMemo, memo } from 'react';
 import { 
@@ -84,7 +84,7 @@ const EcommerceProductCard = memo(({
       certifications: [],
       rating: 0,
       reviewCount: 0,
-      imageUrl: '/api/placeholder/300/200',
+      imageUrl: '/api/placeholder/300/200?text=No+Image',
       tags: [],
       industries: [],
       syncStatus: 'error',
@@ -254,6 +254,69 @@ const EcommerceProductCard = memo(({
       return keySpecs.slice(0, 3);
     };
 
+    // FIXED: Enhanced image URL resolution
+    const getImageUrl = (product) => {
+      // Priority order for image URL sources
+      const imageFields = [
+        'imageUrl',
+        'image_url', 
+        'image',
+        'photo',
+        'pictures',
+        'thumbnail'
+      ];
+
+      for (const field of imageFields) {
+        const imageValue = product[field];
+        
+        if (imageValue) {
+          // Handle array of images (take first one)
+          if (Array.isArray(imageValue) && imageValue.length > 0) {
+            const firstImage = imageValue[0];
+            if (typeof firstImage === 'string' && firstImage.trim()) {
+              return firstImage;
+            }
+            if (typeof firstImage === 'object' && firstImage.url) {
+              return firstImage.url;
+            }
+          }
+          
+          // Handle string image URLs
+          if (typeof imageValue === 'string' && imageValue.trim()) {
+            // FIXED: Don't use placeholder-product.jpg or similar hardcoded paths
+            if (!imageValue.includes('placeholder-product.jpg') && 
+                !imageValue.includes('/placeholder/') &&
+                imageValue !== '/api/placeholder/300/200') {
+              return imageValue;
+            }
+          }
+          
+          // Handle image objects
+          if (typeof imageValue === 'object' && imageValue !== null) {
+            if (imageValue.url) return imageValue.url;
+            if (imageValue.primary?.url) return imageValue.primary.url;
+            if (imageValue.primary) return imageValue.primary;
+          }
+        }
+      }
+
+      // Check for generated images object (from our AI generation)
+      if (product.images && typeof product.images === 'object') {
+        if (product.images.primary?.url) return product.images.primary.url;
+        if (product.images.technical?.url) return product.images.technical.url;
+        if (product.images.application?.url) return product.images.application.url;
+        
+        // Handle direct URL strings in images object
+        if (typeof product.images.primary === 'string') return product.images.primary;
+        if (typeof product.images.technical === 'string') return product.images.technical;
+        if (typeof product.images.application === 'string') return product.images.application;
+      }
+
+      // FIXED: Generate proper placeholder with product name
+      const productName = product.name || product.displayName || 'Industrial Component';
+      return `/api/placeholder/400/300?text=${encodeURIComponent(productName)}`;
+    };
+
     // Process the data safely
     const stockValue = parseStockValue(safeGet(product, 'stock'));
     const priceValue = parsePrice(safeGet(product, 'price') || safeGet(product, 'pricing.listPrice'));
@@ -293,8 +356,8 @@ const EcommerceProductCard = memo(({
       rating: Math.max(0, Math.min(5, Number(safeGet(product, 'rating')) || (Math.random() * 2 + 3))),
       reviewCount: Math.max(0, Number(safeGet(product, 'reviewCount')) || Math.floor(Math.random() * 50) + 5),
       
-      imageUrl: String(safeGet(product, 'image') || safeGet(product, 'images.primary') || 
-                safeGet(product, 'imageUrl', '/api/placeholder/300/200')),
+      // FIXED: Use the enhanced image URL resolution
+      imageUrl: getImageUrl(product),
       
       tags: Array.isArray(safeGet(product, 'tags')) ? 
         safeGet(product, 'tags', []).map(tag => String(tag)).filter(Boolean) : [],
@@ -382,7 +445,7 @@ const EcommerceProductCard = memo(({
     }
   }, [onQuickView, productData]);
 
-  // Enhanced image loading handlers
+  // FIXED: Enhanced image loading handlers
   const handleImageLoad = useCallback(() => {
     setIsImageLoaded(true);
     setImageError(false);
@@ -392,10 +455,12 @@ const EcommerceProductCard = memo(({
     console.warn('Image load failed for product:', productData.id, productData.imageUrl);
     setImageError(true);
     setIsImageLoaded(true);
+    
+    // FIXED: Set proper fallback with product name
     if (e.target) {
-      e.target.src = '/api/placeholder/300/200';
+      e.target.src = `/api/placeholder/400/300?text=${encodeURIComponent(productData.name)}`;
     }
-  }, [productData.id, productData.imageUrl]);
+  }, [productData.id, productData.imageUrl, productData.name]);
 
   // Return early for invalid products
   if (!productData.isValid) {
@@ -417,24 +482,29 @@ const EcommerceProductCard = memo(({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Image Section */}
+      {/* Image Section - FIXED */}
       <div className="relative">
         <div className="w-full h-48 bg-gray-100 overflow-hidden">
-          {!isImageLoaded && (
+          {/* FIXED: Loading state */}
+          {!isImageLoaded && !imageError && (
             <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse flex items-center justify-center">
               <Package className="w-12 h-12 text-gray-400" />
             </div>
           )}
+          
+          {/* FIXED: Image with proper loading and error handling */}
           <img 
             src={productData.imageUrl} 
             alt={productData.name}
             className={`w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300 ${
-              isImageLoaded ? 'block' : 'hidden'
+              isImageLoaded && !imageError ? 'opacity-100' : 'opacity-0'
             }`}
             onLoad={handleImageLoad}
             onError={handleImageError}
             loading="lazy"
           />
+          
+          {/* FIXED: Error state display */}
           {imageError && isImageLoaded && (
             <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
               <div className="text-center">
@@ -632,6 +702,7 @@ const EcommerceProductCard = memo(({
         {/* Debug Info (development only) */}
         {process.env.NODE_ENV === 'development' && productData.syncStatus && (
           <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-500">
+            <div>Image URL: {productData.imageUrl}</div>
             <div>Sync: {productData.syncStatus}</div>
             <div>Source: {productData.dataSource}</div>
             {productData.lastSyncedAt && (
@@ -654,16 +725,32 @@ const EcommerceProductCard = memo(({
       onClick={handleCardClick}
     >
       <div className="flex">
-        {/* Image */}
+        {/* Image - FIXED */}
         <div className="flex-shrink-0 w-32 h-32 bg-gray-100 relative overflow-hidden">
+          {/* FIXED: Loading state for list view */}
+          {!isImageLoaded && !imageError && (
+            <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse flex items-center justify-center">
+              <Package className="w-8 h-8 text-gray-400" />
+            </div>
+          )}
+          
           <img 
             src={productData.imageUrl} 
             alt={productData.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${
+              isImageLoaded && !imageError ? 'opacity-100' : 'opacity-0'
+            }`}
             onLoad={handleImageLoad}
             onError={handleImageError}
             loading="lazy"
           />
+          
+          {/* FIXED: Error state for list view */}
+          {imageError && isImageLoaded && (
+            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+              <Package className="w-8 h-8 text-gray-400" />
+            </div>
+          )}
           
           {/* Badges */}
           <div className="absolute top-2 left-2 flex flex-col gap-1">
