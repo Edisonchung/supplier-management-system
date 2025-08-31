@@ -1284,10 +1284,55 @@ class ProductSyncService {
     console.log('✅ Product sync service stopped');
   }
 
-  async performInitialSync() {
-    console.log('📦 Performing initial product sync...');
-    // Placeholder implementation
+async performInitialSync() {
+  console.log('📦 Performing initial product sync from internal to public...');
+  
+  try {
+    // Get internal products
+    const { collection, getDocs, addDoc } = await import('firebase/firestore');
+    const internalSnapshot = await getDocs(collection(this.db, 'products'));
+    
+    // Get existing public products
+    const publicSnapshot = await getDocs(collection(this.db, 'products_public'));
+    const existingPublicIds = new Set();
+    publicSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.internalProductId) {
+        existingPublicIds.add(data.internalProductId);
+      }
+    });
+
+    let syncCount = 0;
+    
+    // Sync eligible products that aren't already in public catalog
+    for (const doc of internalSnapshot.docs) {
+      const internalProduct = { id: doc.id, ...doc.data() };
+      
+      // Skip if already synced
+      if (existingPublicIds.has(doc.id)) {
+        continue;
+      }
+      
+      // Check if product is eligible for public sync
+      if (this.isProductEligible(internalProduct)) {
+        const publicProduct = this.transformForPublicCatalog(internalProduct);
+        publicProduct.internalProductId = doc.id;
+        
+        await addDoc(collection(this.db, 'products_public'), publicProduct);
+        syncCount++;
+        
+        console.log(`✅ Synced product: ${internalProduct.name}`);
+      }
+    }
+    
+    console.log(`✅ Initial sync complete: ${syncCount} products synced`);
+    return syncCount;
+    
+  } catch (error) {
+    console.error('❌ Initial sync failed:', error);
+    throw error;
   }
+}
 
   setupRealTimeSync() {
     console.log('👂 Setting up real-time sync listeners...');
