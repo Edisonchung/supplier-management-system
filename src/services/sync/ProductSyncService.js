@@ -33,7 +33,7 @@ class ProductSyncService {
       errorCount: 0,
       lastSyncTime: null,
       syncedProducts: new Set(),
-      // ✅ NEW: Image generation stats
+      // Image generation stats
       imagesGenerated: 0,
       imageErrors: 0,
       imageGenerationTime: 0
@@ -48,42 +48,289 @@ class ProductSyncService {
       requireApproval: true
     };
     
-    // ✅ ENHANCED: AI Image generation queue with proper management
+    // AI Image generation queue with proper management
     this.imageGenerationQueue = [];
     this.processingImages = false;
     this.maxConcurrentImages = 2; // Limit concurrent generation for API limits
     this.imageRetryLimit = 3;
     
-    // ✅ NEW: MCP API configuration
+    // MCP API configuration
     this.mcpApiBase = import.meta.env?.VITE_MCP_SERVER_URL || 
                      (typeof process !== 'undefined' ? process.env.VITE_MCP_SERVER_URL : null) ||
                      'https://supplier-mcp-server-production.up.railway.app';
     
-    console.log('🎨 ProductSyncService initialized with AI image generation');
+    console.log('ProductSyncService initialized with AI image generation');
   }
 
   // ====================================================================
-  // ✅ UPDATED: AI IMAGE GENERATION METHODS WITH COMPREHENSIVE DEBUG
+  // FIXED: REAL SYNC IMPLEMENTATION
+  // ====================================================================
+
+  async performInitialSync() {
+    console.log('Performing initial product sync from internal to public...');
+    
+    try {
+      // Get internal products
+      const internalSnapshot = await getDocs(collection(this.db, 'products'));
+      
+      // Get existing public products
+      const publicSnapshot = await getDocs(collection(this.db, 'products_public'));
+      const existingPublicIds = new Set();
+      publicSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.internalProductId) {
+          existingPublicIds.add(data.internalProductId);
+        }
+      });
+
+      let syncCount = 0;
+      
+      console.log(`Found ${internalSnapshot.size} internal products, ${existingPublicIds.size} already synced`);
+      
+      // Sync eligible products that aren't already in public catalog
+      for (const doc of internalSnapshot.docs) {
+        const internalProduct = { id: doc.id, ...doc.data() };
+        
+        // Skip if already synced
+        if (existingPublicIds.has(doc.id)) {
+          continue;
+        }
+        
+        // Check if product is eligible for public sync
+        if (this.isProductEligible(internalProduct)) {
+          const publicProduct = this.transformForPublicCatalog(internalProduct);
+          publicProduct.internalProductId = doc.id;
+          
+          await addDoc(collection(this.db, 'products_public'), publicProduct);
+          syncCount++;
+          
+          console.log(`Synced product: ${internalProduct.name}`);
+        }
+      }
+      
+      console.log(`Initial sync complete: ${syncCount} products synced`);
+      return syncCount;
+      
+    } catch (error) {
+      console.error('Initial sync failed:', error);
+      throw error;
+    }
+  }
+
+  setupRealTimeSync() {
+    console.log('Setting up real-time sync listeners...');
+    
+    try {
+      // Listen to internal products for changes
+      const internalQuery = query(collection(this.db, 'products'));
+      
+      const unsubscribe = onSnapshot(internalQuery, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added' || change.type === 'modified') {
+            const product = { id: change.doc.id, ...change.doc.data() };
+            
+            if (this.isProductEligible(product)) {
+              // Queue for sync
+              this.syncQueue.push({
+                type: 'sync',
+                productId: change.doc.id,
+                product: product,
+                priority: this.calculateSyncPriority(product)
+              });
+              
+              console.log(`Queued ${product.name} for sync`);
+            }
+          }
+        });
+      });
+      
+      this.syncListeners.set('internal_products', unsubscribe);
+      console.log('Real-time sync listeners active');
+      
+    } catch (error) {
+      console.error('Failed to setup real-time sync:', error);
+    }
+  }
+
+  startBatchProcessor() {
+    console.log('Starting batch processor...');
+    
+    const processQueue = async () => {
+      if (this.syncQueue.length === 0) {
+        setTimeout(processQueue, 5000); // Check every 5 seconds
+        return;
+      }
+      
+      // Sort by priority
+      this.syncQueue.sort((a, b) => {
+        const priorityMap = { high: 3, medium: 2, low: 1 };
+        return priorityMap[b.priority] - priorityMap[a.priority];
+      });
+      
+      // Process batch
+      const batch = this.syncQueue.splice(0, this.batchSize);
+      console.log(`Processing batch of ${batch.length} products`);
+      
+      for (const item of batch) {
+        try {
+          await this.syncSingleProductToPublic(item.productId);
+          this.syncStats.successCount++;
+        } catch (error) {
+          console.error(`Failed to sync ${item.productId}:`, error);
+          this.syncStats.errorCount++;
+        }
+      }
+      
+      this.syncStats.lastSyncTime = new Date();
+      
+      // Continue processing
+      setTimeout(processQueue, 2000);
+    };
+    
+    processQueue();
+  }
+
+  isProductEligible(product) {
+    return (
+      product.name && 
+      product.name.trim().length > 0 &&
+      product.status !== 'pending' &&
+      (product.stock || 0) >= 0
+    );
+  }
+
+  transformForPublicCatalog(internalProduct) {
+    return {
+      // Link to internal system
+      internalProductId: internalProduct.id,
+      
+      // Customer-facing information
+      name: internalProduct.name,
+      displayName: this.generateDisplayName(internalProduct),
+      description: this.generateCustomerDescription(internalProduct),
+      
+      // Pricing
+      price: this.calculatePublicPrice(internalProduct.price || 0),
+      originalPrice: internalProduct.price || 0,
+      markup: this.syncRules.priceMarkup,
+      currency: 'MYR',
+      
+      // Inventory
+      stock: internalProduct.stock || 0,
+      availability: this.calculateAvailability(internalProduct),
+      
+      // Category & Classification
+      category: this.mapCategory(internalProduct.category),
+      subcategory: this.mapSubcategory(internalProduct.category),
+      
+      // Technical specifications
+      sku: internalProduct.sku || internalProduct.id,
+      brand: internalProduct.brand || 'Professional Grade',
+      specifications: this.formatSpecifications(internalProduct),
+      
+      // SEO and search
+      seo: this.generateSEOData(internalProduct),
+      
+      // E-commerce settings
+      visibility: this.determineVisibility(internalProduct),
+      featured: this.shouldBeFeatured(internalProduct),
+      minOrderQty: 1,
+      
+      // Image generation setup
+      hasImage: false,
+      imageUrl: null,
+      imageGeneratedAt: null,
+      imageProvider: null,
+      imagePrompt: null,
+      
+      // Metadata
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      syncedAt: serverTimestamp(),
+      lastModifiedBy: 'product_sync_service',
+      version: 1.0,
+      dataSource: 'internal_sync'
+    };
+  }
+
+  async syncAllEligibleProducts() {
+    console.log('Starting full product sync to public catalog...');
+    
+    try {
+      // Get all internal products
+      const internalSnapshot = await getDocs(collection(this.db, 'products'));
+      let eligibleCount = 0;
+      let syncedCount = 0;
+      
+      for (const doc of internalSnapshot.docs) {
+        const product = { id: doc.id, ...doc.data() };
+        
+        if (this.isProductEligible(product)) {
+          eligibleCount++;
+          
+          // Check if already exists in public catalog
+          const existingQuery = query(
+            collection(this.db, 'products_public'),
+            where('internalProductId', '==', doc.id)
+          );
+          const existing = await getDocs(existingQuery);
+          
+          if (existing.empty) {
+            // Sync this product
+            const result = await this.syncSingleProduct(product);
+            if (result.success) {
+              syncedCount++;
+            }
+          }
+        }
+      }
+      
+      console.log(`Sync complete: ${syncedCount}/${eligibleCount} eligible products synced`);
+      return { eligible: eligibleCount, synced: syncedCount };
+      
+    } catch (error) {
+      console.error('Full sync failed:', error);
+      throw error;
+    }
+  }
+
+  async syncSingleProduct(internalProduct) {
+    try {
+      const publicProduct = this.transformForPublicCatalog(internalProduct);
+      
+      const docRef = await addDoc(collection(this.db, 'products_public'), publicProduct);
+      
+      console.log(`Synced product: ${internalProduct.name} -> ${docRef.id}`);
+      return { success: true, publicId: docRef.id };
+      
+    } catch (error) {
+      console.error(`Failed to sync product ${internalProduct.name}:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ====================================================================
+  // AI IMAGE GENERATION METHODS WITH COMPREHENSIVE DEBUG
   // ====================================================================
 
   async startImageProcessor() {
     if (this.processingImages) {
-      console.log('🎨 Image processor already running');
+      console.log('Image processor already running');
       return;
     }
 
-    console.log('🎨 Starting AI-powered image processor...');
-    console.log(`🔗 MCP API Base: ${this.mcpApiBase}`);
-    console.log(`📦 Queue length: ${this.imageGenerationQueue.length}`);
+    console.log('Starting AI-powered image processor...');
+    console.log(`MCP API Base: ${this.mcpApiBase}`);
+    console.log(`Queue length: ${this.imageGenerationQueue.length}`);
     
     // Test API connectivity first
-    console.log('🧪 Testing API connectivity before processing...');
+    console.log('Testing API connectivity before processing...');
     const testResult = await this.testDirectImageGeneration('Test Component');
     if (!testResult.success) {
-      console.error('❌ API connectivity test failed:', testResult.error);
-      console.error('🔧 Image generation will likely fail - check server logs');
+      console.error('API connectivity test failed:', testResult.error);
+      console.error('Image generation will likely fail - check server logs');
     } else {
-      console.log('✅ API connectivity test passed');
+      console.log('API connectivity test passed');
     }
     
     this.processingImages = true;
@@ -95,17 +342,17 @@ class ProductSyncService {
         // Process images in small batches to respect API limits
         const batch = this.imageGenerationQueue.splice(0, this.maxConcurrentImages);
         
-        console.log(`🔄 Processing batch of ${batch.length} products...`);
+        console.log(`Processing batch of ${batch.length} products...`);
         
         const batchPromises = batch.map(async (imageTask) => {
           try {
-            console.log(`🎯 Processing ${imageTask.productId}...`);
+            console.log(`Processing ${imageTask.productId}...`);
             const result = await this.processImageGeneration(imageTask);
             processedCount++;
-            console.log(`✅ Completed ${imageTask.productId} (${processedCount} total)`);
+            console.log(`Completed ${imageTask.productId} (${processedCount} total)`);
             return result;
           } catch (error) {
-            console.error(`❌ Failed ${imageTask.productId}:`, error.message);
+            console.error(`Failed ${imageTask.productId}:`, error.message);
             throw error;
           }
         });
@@ -116,25 +363,25 @@ class ProductSyncService {
         const successful = results.filter(r => r.status === 'fulfilled').length;
         const failed = results.filter(r => r.status === 'rejected').length;
         
-        console.log(`📊 Batch completed: ${successful} successful, ${failed} failed`);
+        console.log(`Batch completed: ${successful} successful, ${failed} failed`);
         
         // Rate limiting for OpenAI API (recommended 3-5 seconds between batches)
         if (this.imageGenerationQueue.length > 0) {
-          console.log(`⏳ Rate limiting... ${this.imageGenerationQueue.length} remaining`);
+          console.log(`Rate limiting... ${this.imageGenerationQueue.length} remaining`);
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
       }
       
-      console.log(`✅ Image processing completed - processed ${processedCount} products`);
+      console.log(`Image processing completed - processed ${processedCount} products`);
       
     } catch (error) {
-      console.error('❌ Image processor error:', error);
+      console.error('Image processor error:', error);
     } finally {
       if (this.imageGenerationQueue.length === 0) {
         this.processingImages = false;
-        console.log('🏁 Image processor finished');
+        console.log('Image processor finished');
       } else {
-        console.log(`⚠️ Image processor stopped with ${this.imageGenerationQueue.length} items remaining`);
+        console.log(`Image processor stopped with ${this.imageGenerationQueue.length} items remaining`);
       }
     }
   }
@@ -143,7 +390,7 @@ class ProductSyncService {
     const startTime = Date.now();
     
     try {
-      console.log(`🎯 Processing images for product: ${imageTask.productId}`);
+      console.log(`Processing images for product: ${imageTask.productId}`);
       
       // Get product details
       const internalProduct = await this.getProductById(imageTask.productId);
@@ -164,18 +411,18 @@ class ProductSyncService {
       const processingTime = Date.now() - startTime;
       this.syncStats.imageGenerationTime += processingTime;
       
-      console.log(`✅ Generated images for ${internalProduct.name} in ${processingTime}ms`);
+      console.log(`Generated images for ${internalProduct.name} in ${processingTime}ms`);
       
       // Log successful image generation
       await this.logImageGeneration(imageTask, 'success', generatedImages, processingTime);
       
     } catch (error) {
-      console.error(`❌ Image generation failed for ${imageTask.productId}:`, error);
+      console.error(`Image generation failed for ${imageTask.productId}:`, error);
       
       // Handle retry logic
       imageTask.retries = (imageTask.retries || 0) + 1;
       if (imageTask.retries < this.imageRetryLimit) {
-        console.log(`🔄 Retrying image generation (${imageTask.retries}/${this.imageRetryLimit})`);
+        console.log(`Retrying image generation (${imageTask.retries}/${this.imageRetryLimit})`);
         this.imageGenerationQueue.push(imageTask);
       } else {
         this.syncStats.imageErrors++;
@@ -184,11 +431,11 @@ class ProductSyncService {
     }
   }
 
-  // ✅ UPDATED: Enhanced generateProductImagesWithMCP with comprehensive debugging
+  // Enhanced generateProductImagesWithMCP with comprehensive debugging
   async generateProductImagesWithMCP(product) {
     try {
-      console.log(`🤖 Generating images for ${product.name} using MCP + OpenAI...`);
-      console.log(`🔗 API Base: ${this.mcpApiBase}`);
+      console.log(`Generating images for ${product.name} using MCP + OpenAI...`);
+      console.log(`API Base: ${this.mcpApiBase}`);
       
       const requestBody = {
         product: {
@@ -203,8 +450,8 @@ class ProductSyncService {
         provider: 'openai'
       };
       
-      console.log(`📤 Making request to: ${this.mcpApiBase}/api/mcp/generate-product-images`);
-      console.log(`📋 Request body:`, JSON.stringify(requestBody, null, 2));
+      console.log(`Making request to: ${this.mcpApiBase}/api/mcp/generate-product-images`);
+      console.log(`Request body:`, JSON.stringify(requestBody, null, 2));
       
       // Add explicit timeout and error handling
       const controller = new AbortController();
@@ -221,24 +468,24 @@ class ProductSyncService {
       
       clearTimeout(timeoutId);
       
-      console.log(`📥 Response status: ${response.status}`);
-      console.log(`📥 Response ok: ${response.ok}`);
+      console.log(`Response status: ${response.status}`);
+      console.log(`Response ok: ${response.ok}`);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ MCP API error: ${response.status} - ${errorText}`);
+        console.error(`MCP API error: ${response.status} - ${errorText}`);
         throw new Error(`MCP API error: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
-      console.log(`📊 Response result:`, JSON.stringify(result, null, 2));
+      console.log(`Response result:`, JSON.stringify(result, null, 2));
       
       if (!result.success) {
-        console.error(`❌ MCP result failed:`, result);
+        console.error(`MCP result failed:`, result);
         throw new Error(result.error || 'Image generation failed');
       }
 
-      console.log(`✅ MCP generated ${result.imagesGenerated} images using ${result.provider}`);
+      console.log(`MCP generated ${result.imagesGenerated} images using ${result.provider}`);
       
       return {
         ...result.images,
@@ -251,10 +498,10 @@ class ProductSyncService {
       };
       
     } catch (error) {
-      console.error('❌ MCP image generation failed:', error);
+      console.error('MCP image generation failed:', error);
       
       if (error.name === 'AbortError') {
-        console.error('❌ Request timed out after 60 seconds');
+        console.error('Request timed out after 60 seconds');
       }
       
       // Don't fallback immediately - let the error bubble up for proper retry logic
@@ -262,10 +509,10 @@ class ProductSyncService {
     }
   }
 
-  // ✅ NEW: Test direct API connectivity
+  // Test direct API connectivity
   async testDirectImageGeneration(productName = 'Test Industrial Component') {
     try {
-      console.log('🧪 Testing direct image generation...');
+      console.log('Testing direct image generation...');
       
       const testRequestBody = {
         prompt: `Professional industrial product photography of ${productName}. Modern industrial facility setting with clean workspace and professional lighting. Component integrated into larger industrial system showing practical application. Safety compliance visible with proper cable management and organization. No workers or people in frame. Focus on component within system context. Clean, organized, professional environment. No visible brand names, logos, or signage. Industrial facility photography style, realistic, well-lit, high quality.`,
@@ -276,7 +523,7 @@ class ProductSyncService {
         style: 'natural'
       };
       
-      console.log(`🔗 Testing: ${this.mcpApiBase}/api/ai/generate-image`);
+      console.log(`Testing: ${this.mcpApiBase}/api/ai/generate-image`);
       
       const response = await fetch(`${this.mcpApiBase}/api/ai/generate-image`, {
         method: 'POST',
@@ -286,21 +533,21 @@ class ProductSyncService {
         body: JSON.stringify(testRequestBody)
       });
       
-      console.log(`📥 Direct API Response status: ${response.status}`);
+      console.log(`Direct API Response status: ${response.status}`);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Direct API error: ${response.status} - ${errorText}`);
+        console.error(`Direct API error: ${response.status} - ${errorText}`);
         return { success: false, error: errorText };
       }
       
       const result = await response.json();
-      console.log(`📊 Direct API result:`, result);
+      console.log(`Direct API result:`, result);
       
       return result;
       
     } catch (error) {
-      console.error('❌ Direct image generation test failed:', error);
+      console.error('Direct image generation test failed:', error);
       return { success: false, error: error.message };
     }
   }
@@ -321,7 +568,7 @@ class ProductSyncService {
   }
 
   async getFallbackImages(product) {
-    console.log(`🎨 Using fallback images for ${product.name}`);
+    console.log(`Using fallback images for ${product.name}`);
     
     return {
       primary: {
@@ -387,10 +634,10 @@ class ProductSyncService {
         lastImageUpdate: new Date()
       });
       
-      console.log(`✅ Updated images for product ${publicProductId}`);
+      console.log(`Updated images for product ${publicProductId}`);
       
     } catch (error) {
-      console.error('❌ Failed to update product images:', error);
+      console.error('Failed to update product images:', error);
       throw error;
     }
   }
@@ -424,12 +671,12 @@ class ProductSyncService {
       await addDoc(collection(this.db, 'product_sync_log'), logEntry);
       
     } catch (error) {
-      console.error('❌ Failed to log image generation:', error);
+      console.error('Failed to log image generation:', error);
     }
   }
 
   async handleImageGenerationError(imageTask, error) {
-    console.error(`❌ Final image generation failure for ${imageTask.productId}:`, error.message);
+    console.error(`Final image generation failure for ${imageTask.productId}:`, error.message);
     
     try {
       // Update product with error status and fallback images
@@ -450,7 +697,7 @@ class ProductSyncService {
       await this.logImageGeneration(imageTask, 'error', null, 0);
       
     } catch (logError) {
-      console.error('❌ Failed to log image generation error:', logError);
+      console.error('Failed to log image generation error:', logError);
     }
   }
 
@@ -460,7 +707,7 @@ class ProductSyncService {
 
   async getInternalProductsWithSyncStatus() {
     try {
-      console.log('📦 Fetching internal products with sync status...');
+      console.log('Fetching internal products with sync status...');
       
       // Get internal products
       const internalQuery = query(
@@ -495,20 +742,20 @@ class ProductSyncService {
         return {
           ...product,
           publicStatus: publicVersion ? 'synced' : 'not_synced',
-          // ✅ NEW: Image status tracking
+          // Image status tracking
           imageStatus: publicVersion?.imageGenerationStatus || 'not_generated',
           hasImages: publicVersion?.images?.generated || false,
           imageProvider: publicVersion?.images?.provider || null,
           eligible: isEligible,
           priority: this.calculateSyncPriority(product),
-          // ✅ NEW: Image priority calculation
+          // Image priority calculation
           imagePriority: this.calculateImagePriority(product),
           suggestedPublicPrice: this.calculatePublicPrice(product.price || 0),
           eligibilityReasons: isEligible ? ['Eligible for sync'] : [this.getIneligibilityReason(product)]
         };
       });
 
-      console.log(`✅ Loaded ${productsWithStatus.length} products with sync status`);
+      console.log(`Loaded ${productsWithStatus.length} products with sync status`);
       
       return {
         success: true,
@@ -516,7 +763,7 @@ class ProductSyncService {
       };
 
     } catch (error) {
-      console.warn('⚠️ Firestore unavailable, using demo data for development');
+      console.warn('Firestore unavailable, using demo data for development');
       return {
         success: true,
         data: this.getDemoProductsWithSyncStatus()
@@ -538,7 +785,7 @@ class ProductSyncService {
       const internalProducts = internalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const eligibleCount = internalProducts.filter(product => this.isEligibleForSync(product)).length;
       
-      // ✅ NEW: Count products with images
+      // Count products with images
       const publicProducts = publicSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const productsWithImages = publicProducts.filter(product => product.images?.generated === true).length;
       const imageGenerationRate = totalPublic > 0 ? Math.round((productsWithImages / totalPublic) * 100) : 0;
@@ -553,7 +800,7 @@ class ProductSyncService {
           totalPublic,
           eligible: eligibleCount,
           syncRate,
-          // ✅ NEW: Image statistics
+          // Image statistics
           productsWithImages,
           imageGenerationRate,
           totalImagesGenerated: this.syncStats.imagesGenerated,
@@ -565,7 +812,7 @@ class ProductSyncService {
       };
 
     } catch (error) {
-      console.warn('⚠️ Using demo statistics');
+      console.warn('Using demo statistics');
       return {
         success: true,
         data: {
@@ -573,7 +820,7 @@ class ProductSyncService {
           totalPublic: 87,
           eligible: 92,
           syncRate: 58,
-          // ✅ NEW: Demo image stats
+          // Demo image stats
           productsWithImages: 73,
           imageGenerationRate: 84,
           totalImagesGenerated: 241,
@@ -585,7 +832,7 @@ class ProductSyncService {
     }
   }
 
-  // ✅ NEW: Get image generation health status
+  // Get image generation health status
   async getImageGenerationHealth() {
     try {
       // Check MCP API health
@@ -612,7 +859,7 @@ class ProductSyncService {
       };
       
     } catch (error) {
-      console.error('❌ Failed to check image generation health:', error);
+      console.error('Failed to check image generation health:', error);
       return {
         mcpApiHealthy: false,
         imageGeneration: { error: error.message },
@@ -622,7 +869,7 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // ✅ ENHANCED: EXISTING SYNC METHODS WITH IMAGE INTEGRATION
+  // EXISTING SYNC METHODS WITH IMAGE INTEGRATION
   // ====================================================================
 
   async syncSingleProductToPublic(internalProductId) {
@@ -648,7 +895,7 @@ class ProductSyncService {
     
     let publicProductId;
     if (existingSnapshot.empty) {
-      // ✅ ENHANCED: Create new public product with image generation setup
+      // Create new public product with image generation setup
       const publicProduct = this.transformToEcommerceProduct(internalProduct);
       
       // Add image generation flags
@@ -661,9 +908,9 @@ class ProductSyncService {
       
       const docRef = await addDoc(collection(this.db, 'products_public'), publicProduct);
       publicProductId = docRef.id;
-      console.log(`✅ Created new public product: ${publicProductId}`);
+      console.log(`Created new public product: ${publicProductId}`);
       
-      // ✅ NEW: Add to image generation queue
+      // Add to image generation queue
       this.addToImageGenerationQueue(internalProduct.id, publicProductId, internalProduct);
       
     } else {
@@ -674,9 +921,9 @@ class ProductSyncService {
         ...updates,
         updatedAt: serverTimestamp()
       });
-      console.log(`✅ Updated existing public product: ${publicProductId}`);
+      console.log(`Updated existing public product: ${publicProductId}`);
       
-      // ✅ NEW: Check if needs image generation
+      // Check if needs image generation
       const existingData = existingSnapshot.docs[0].data();
       if (!existingData.images?.generated) {
         this.addToImageGenerationQueue(internalProduct.id, publicProductId, internalProduct);
@@ -686,7 +933,7 @@ class ProductSyncService {
     return publicProductId;
   }
 
-  // ✅ NEW: Helper method to add products to image generation queue
+  // Helper method to add products to image generation queue
   addToImageGenerationQueue(internalProductId, publicProductId, product) {
     const imageTask = {
       productId: internalProductId,
@@ -697,7 +944,7 @@ class ProductSyncService {
     };
     
     this.imageGenerationQueue.push(imageTask);
-    console.log(`📸 Added ${product.name} to image generation queue (${this.imageGenerationQueue.length} pending)`);
+    console.log(`Added ${product.name} to image generation queue (${this.imageGenerationQueue.length} pending)`);
     
     // Start image processor if not already running
     if (!this.processingImages && this.imageGenerationQueue.length > 0) {
@@ -707,7 +954,7 @@ class ProductSyncService {
 
   async bulkSyncProducts(internalProductIds) {
     try {
-      console.log(`🔄 Bulk syncing ${internalProductIds.length} products...`);
+      console.log(`Bulk syncing ${internalProductIds.length} products...`);
       
       const results = [];
       const errors = [];
@@ -734,8 +981,8 @@ class ProductSyncService {
         }
       }
       
-      console.log(`✅ Bulk sync complete: ${results.length} success, ${errors.length} failed`);
-      console.log(`🎨 ${this.imageGenerationQueue.length} products queued for image generation`);
+      console.log(`Bulk sync complete: ${results.length} success, ${errors.length} failed`);
+      console.log(`${this.imageGenerationQueue.length} products queued for image generation`);
       
       return {
         success: true,
@@ -751,7 +998,7 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // ✅ ENHANCED: EXISTING HELPER METHODS
+  // HELPER METHODS
   // ====================================================================
 
   async getProductById(productId) {
@@ -759,7 +1006,7 @@ class ProductSyncService {
       const docSnap = await getDoc(doc(this.db, 'products', productId));
       return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
     } catch (error) {
-      console.error(`❌ Failed to get product ${productId}:`, error);
+      console.error(`Failed to get product ${productId}:`, error);
       return null;
     }
   }
@@ -769,7 +1016,7 @@ class ProductSyncService {
       const docSnap = await getDoc(doc(this.db, 'products_public', publicProductId));
       return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
     } catch (error) {
-      console.error(`❌ Failed to get public product ${publicProductId}:`, error);
+      console.error(`Failed to get public product ${publicProductId}:`, error);
       return null;
     }
   }
@@ -779,7 +1026,7 @@ class ProductSyncService {
       ...this.syncStats,
       isRunning: this.isRunning,
       queueLength: this.syncQueue.length,
-      // ✅ ENHANCED: Image generation stats
+      // Image generation stats
       imageQueueLength: this.imageGenerationQueue.length,
       processingImages: this.processingImages,
       imageSuccessRate: this.syncStats.imagesGenerated > 0 ? 
@@ -803,21 +1050,18 @@ class ProductSyncService {
         ecommerceProductCount: ecommerceSnapshot.size,
         syncCoverage: ecommerceSnapshot.size / internalSnapshot.size,
         syncStats: this.getSyncStats(),
-        // ✅ NEW: Image generation health
+        // Image generation health
         imageGenerationHealth: imageHealth,
         lastHealthCheck: new Date()
       };
       
     } catch (error) {
-      console.error('❌ Failed to get sync health:', error);
+      console.error('Failed to get sync health:', error);
       return null;
     }
   }
 
-  // ====================================================================
-  // ✅ ENHANCED: DEMO DATA WITH IMAGE STATUS
-  // ====================================================================
-
+  // DEMO DATA WITH IMAGE STATUS
   getDemoProductsWithSyncStatus() {
     return [
       {
@@ -873,53 +1117,15 @@ class ProductSyncService {
         priority: 'medium',
         imagePriority: 35,
         eligibilityReasons: ['Eligible for sync']
-      },
-      {
-        id: 'PROD-004',
-        name: 'Cable Assembly CAB-500',
-        category: 'cables',
-        stock: 3,
-        price: 125,
-        suggestedPublicPrice: 143.75,
-        status: 'active',
-        supplier: 'CableTech Pro',
-        publicStatus: 'not_synced',
-        imageStatus: 'not_generated',
-        hasImages: false,
-        imageProvider: null,
-        eligible: false,
-        priority: 'low',
-        imagePriority: 20,
-        eligibilityReasons: ['Stock too low (3 < 5)']
-      },
-      {
-        id: 'PROD-005',
-        name: 'Automation Controller AC-300',
-        category: 'automation',
-        stock: 18,
-        price: 675,
-        suggestedPublicPrice: 776.25,
-        status: 'active',
-        supplier: 'AutoTech Systems',
-        publicStatus: 'synced',
-        imageStatus: 'error',
-        hasImages: false,
-        imageProvider: 'fallback',
-        eligible: true,
-        priority: 'high',
-        imagePriority: 60,
-        eligibilityReasons: ['Eligible for sync']
       }
     ];
   }
 
-  // ====================================================================
   // EXISTING METHODS (UNCHANGED)
-  // ====================================================================
 
   async syncProductToPublic(internalProductId) {
     try {
-      console.log(`🔄 Syncing product ${internalProductId} to public catalog...`);
+      console.log(`Syncing product ${internalProductId} to public catalog...`);
       
       const publicId = await this.syncSingleProductToPublic(internalProductId);
       
@@ -951,7 +1157,7 @@ class ProductSyncService {
         console.warn('Could not save sync rules to Firestore:', error);
       }
       
-      console.log('✅ Sync rules updated');
+      console.log('Sync rules updated');
       
       return {
         success: true,
@@ -1049,7 +1255,6 @@ class ProductSyncService {
     return updates;
   }
 
-  // All other existing methods remain unchanged...
   isEligibleForSync(product) {
     // Check stock levels
     if ((product.stock || 0) < this.syncRules.minStock) {
@@ -1252,96 +1457,35 @@ class ProductSyncService {
 
   async startSync() {
     if (this.isRunning) {
-      console.log('🔄 Product sync is already running');
+      console.log('Product sync is already running');
       return;
     }
 
-    console.log('🚀 Starting HiggsFlow Product Sync Service...');
+    console.log('Starting HiggsFlow Product Sync Service...');
     this.isRunning = true;
 
     try {
-      // Placeholder for full sync implementation
       await this.performInitialSync();
       this.setupRealTimeSync();
       this.startBatchProcessor();
-      this.startImageProcessor(); // ✅ Enhanced to include image processing
+      this.startImageProcessor();
       
-      console.log('✅ Product sync service started successfully');
+      console.log('Product sync service started successfully');
       
     } catch (error) {
-      console.error('❌ Failed to start product sync:', error);
+      console.error('Failed to start product sync:', error);
       this.isRunning = false;
       throw error;
     }
   }
 
   async stopSync() {
-    console.log('🛑 Stopping product sync service...');
+    console.log('Stopping product sync service...');
     this.isRunning = false;
-    this.processingImages = false; // ✅ Stop image processing too
+    this.processingImages = false;
     this.syncListeners.forEach(unsubscribe => unsubscribe());
     this.syncListeners.clear();
-    console.log('✅ Product sync service stopped');
-  }
-
-async performInitialSync() {
-  console.log('📦 Performing initial product sync from internal to public...');
-  
-  try {
-    // Get internal products
-    const { collection, getDocs, addDoc } = await import('firebase/firestore');
-    const internalSnapshot = await getDocs(collection(this.db, 'products'));
-    
-    // Get existing public products
-    const publicSnapshot = await getDocs(collection(this.db, 'products_public'));
-    const existingPublicIds = new Set();
-    publicSnapshot.forEach(doc => {
-      const data = doc.data();
-      if (data.internalProductId) {
-        existingPublicIds.add(data.internalProductId);
-      }
-    });
-
-    let syncCount = 0;
-    
-    // Sync eligible products that aren't already in public catalog
-    for (const doc of internalSnapshot.docs) {
-      const internalProduct = { id: doc.id, ...doc.data() };
-      
-      // Skip if already synced
-      if (existingPublicIds.has(doc.id)) {
-        continue;
-      }
-      
-      // Check if product is eligible for public sync
-      if (this.isProductEligible(internalProduct)) {
-        const publicProduct = this.transformForPublicCatalog(internalProduct);
-        publicProduct.internalProductId = doc.id;
-        
-        await addDoc(collection(this.db, 'products_public'), publicProduct);
-        syncCount++;
-        
-        console.log(`✅ Synced product: ${internalProduct.name}`);
-      }
-    }
-    
-    console.log(`✅ Initial sync complete: ${syncCount} products synced`);
-    return syncCount;
-    
-  } catch (error) {
-    console.error('❌ Initial sync failed:', error);
-    throw error;
-  }
-}
-
-  setupRealTimeSync() {
-    console.log('👂 Setting up real-time sync listeners...');
-    // Placeholder implementation
-  }
-
-  startBatchProcessor() {
-    console.log('⚡ Starting batch processor...');
-    // Placeholder implementation
+    console.log('Product sync service stopped');
   }
 }
 
