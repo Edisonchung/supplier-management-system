@@ -2,7 +2,6 @@
 // E-commerce Firestore Collections Setup Script
 // Run this to add e-commerce collections to your existing HiggsFlow Firestore
 
-
 import { 
   collection, 
   doc, 
@@ -26,8 +25,8 @@ class EcommerceFirestoreSetup {
   }
 
   async setupEcommerceCollections() {
-    console.log('🚀 Setting up HiggsFlow E-commerce Collections...');
-    console.log('📋 Extending your existing Firestore with e-commerce capabilities\n');
+    console.log('Setting up HiggsFlow E-commerce Collections...');
+    console.log('Extending your existing Firestore with e-commerce capabilities\n');
 
     try {
       // 1. Create e-commerce product catalog
@@ -54,13 +53,13 @@ class EcommerceFirestoreSetup {
       // 8. Display setup summary
       this.displaySetupSummary();
       
-      console.log('\n🎉 E-commerce collections setup completed successfully!');
-      console.log('✅ Your existing internal system remains completely unchanged');
+      console.log('\nE-commerce collections setup completed successfully!');
+      console.log('Your existing internal system remains completely unchanged');
       
       return this.results;
       
     } catch (error) {
-      console.error('❌ Setup failed:', error);
+      console.error('Setup failed:', error);
       this.results.errors.push(error.message);
       throw error;
     }
@@ -71,7 +70,7 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   async createProductsPublicCollection() {
-    console.log('📦 Creating products_public collection (E-commerce Catalog)...');
+    console.log('Creating products_public collection (E-commerce Catalog)...');
 
     const sampleProducts = [
       {
@@ -357,12 +356,12 @@ class EcommerceFirestoreSetup {
     try {
       for (const product of sampleProducts) {
         const docRef = await addDoc(collection(this.db, 'products_public'), product);
-        console.log(`✅ Created: ${product.displayName} (ID: ${docRef.id})`);
+        console.log(`Created: ${product.displayName} (ID: ${docRef.id})`);
         this.results.success.push(`products_public: ${product.displayName}`);
       }
       this.results.collections.push('products_public');
     } catch (error) {
-      console.error('❌ Error creating products_public:', error);
+      console.error('Error creating products_public:', error);
       this.results.errors.push(`products_public: ${error.message}`);
     }
   }
@@ -372,7 +371,7 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   async createFactoriesCollection() {
-    console.log('🏭 Creating factories collection (E-commerce Customers)...');
+    console.log('Creating factories collection (E-commerce Customers)...');
 
     const sampleFactories = [
       {
@@ -556,12 +555,12 @@ class EcommerceFirestoreSetup {
     try {
       for (const factory of sampleFactories) {
         const docRef = await addDoc(collection(this.db, 'factories'), factory);
-        console.log(`✅ Created: ${factory.profile.companyName} (ID: ${docRef.id})`);
+        console.log(`Created: ${factory.profile.companyName} (ID: ${docRef.id})`);
         this.results.success.push(`factories: ${factory.profile.companyName}`);
       }
       this.results.collections.push('factories');
     } catch (error) {
-      console.error('❌ Error creating factories:', error);
+      console.error('Error creating factories:', error);
       this.results.errors.push(`factories: ${error.message}`);
     }
   }
@@ -571,7 +570,7 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   async createEcommerceOrdersCollection() {
-    console.log('📋 Creating orders_ecommerce collection...');
+    console.log('Creating orders_ecommerce collection...');
 
     // Create structure with sample order
     const sampleOrder = {
@@ -694,11 +693,11 @@ class EcommerceFirestoreSetup {
 
     try {
       const docRef = await addDoc(collection(this.db, 'orders_ecommerce'), sampleOrder);
-      console.log(`✅ Created orders_ecommerce collection structure (Sample ID: ${docRef.id})`);
+      console.log(`Created orders_ecommerce collection structure (Sample ID: ${docRef.id})`);
       this.results.success.push('orders_ecommerce: Collection structure created');
       this.results.collections.push('orders_ecommerce');
     } catch (error) {
-      console.error('❌ Error creating orders_ecommerce:', error);
+      console.error('Error creating orders_ecommerce:', error);
       this.results.errors.push(`orders_ecommerce: ${error.message}`);
     }
   }
@@ -708,7 +707,7 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   async createShoppingCartsCollection() {
-    console.log('🛒 Creating shopping_carts collection...');
+    console.log('Creating shopping_carts collection...');
 
     const sampleCart = {
       // Cart Owner
@@ -802,11 +801,11 @@ class EcommerceFirestoreSetup {
 
     try {
       const docRef = await addDoc(collection(this.db, 'shopping_carts'), sampleCart);
-      console.log(`✅ Created shopping_carts collection structure (Sample ID: ${docRef.id})`);
+      console.log(`Created shopping_carts collection structure (Sample ID: ${docRef.id})`);
       this.results.success.push('shopping_carts: Collection structure created');
       this.results.collections.push('shopping_carts');
     } catch (error) {
-      console.error('❌ Error creating shopping_carts:', error);
+      console.error('Error creating shopping_carts:', error);
       this.results.errors.push(`shopping_carts: ${error.message}`);
     }
   }
@@ -816,7 +815,7 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   async createMarketplaceSuppliersCollection() {
-    console.log('🤝 Creating suppliers_marketplace collection...');
+    console.log('Creating suppliers_marketplace collection...');
 
     const sampleSupplier = {
       // Basic Company Profile
@@ -946,7 +945,7 @@ class EcommerceFirestoreSetup {
         leadTimeVariations: {
           peak: '+2 days',
           normal: 'standard',
-            slow: '-1 day'
+          slow: '-1 day'
         }
       },
       
@@ -1026,11 +1025,11 @@ class EcommerceFirestoreSetup {
 
     try {
       const docRef = await addDoc(collection(this.db, 'suppliers_marketplace'), sampleSupplier);
-      console.log(`✅ Created: ${sampleSupplier.profile.companyName} (ID: ${docRef.id})`);
+      console.log(`Created: ${sampleSupplier.profile.companyName} (ID: ${docRef.id})`);
       this.results.success.push(`suppliers_marketplace: ${sampleSupplier.profile.companyName}`);
       this.results.collections.push('suppliers_marketplace');
     } catch (error) {
-      console.error('❌ Error creating suppliers_marketplace:', error);
+      console.error('Error creating suppliers_marketplace:', error);
       this.results.errors.push(`suppliers_marketplace: ${error.message}`);
     }
   }
@@ -1040,7 +1039,7 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   async createSyncLogCollections() {
-    console.log('🔄 Creating sync log collections...');
+    console.log('Creating sync log collections...');
 
     // Product Sync Log
     const sampleProductSync = {
@@ -1127,11 +1126,11 @@ class EcommerceFirestoreSetup {
     try {
       // Create product sync log
       const productSyncRef = await addDoc(collection(this.db, 'product_sync_log'), sampleProductSync);
-      console.log(`✅ Created product_sync_log collection (Sample ID: ${productSyncRef.id})`);
+      console.log(`Created product_sync_log collection (Sample ID: ${productSyncRef.id})`);
       
       // Create order sync log
       const orderSyncRef = await addDoc(collection(this.db, 'order_sync_log'), sampleOrderSync);
-      console.log(`✅ Created order_sync_log collection (Sample ID: ${orderSyncRef.id})`);
+      console.log(`Created order_sync_log collection (Sample ID: ${orderSyncRef.id})`);
       
       this.results.success.push('product_sync_log: Collection created');
       this.results.success.push('order_sync_log: Collection created');
@@ -1139,7 +1138,7 @@ class EcommerceFirestoreSetup {
       this.results.collections.push('order_sync_log');
       
     } catch (error) {
-      console.error('❌ Error creating sync logs:', error);
+      console.error('Error creating sync logs:', error);
       this.results.errors.push(`sync_logs: ${error.message}`);
     }
   }
@@ -1149,7 +1148,7 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   async verifyExistingCollections() {
-    console.log('🔍 Verifying existing internal collections remain intact...');
+    console.log('Verifying existing internal collections remain intact...');
 
     const existingCollections = [
       'users', 'suppliers', 'products', 'proformaInvoices', 
@@ -1160,10 +1159,10 @@ class EcommerceFirestoreSetup {
       try {
         const snapshot = await getDocs(query(collection(this.db, collectionName), limit(1)));
         const count = snapshot.size > 0 ? 'Has data' : 'Empty';
-        console.log(`✅ ${collectionName}: ${count}`);
+        console.log(`${collectionName}: ${count}`);
         this.results.success.push(`Verified: ${collectionName}`);
       } catch (error) {
-        console.log(`⚠️  ${collectionName}: Could not verify (${error.message})`);
+        console.log(`${collectionName}: Could not verify (${error.message})`);
         this.results.errors.push(`Verification failed: ${collectionName}`);
       }
     }
@@ -1174,25 +1173,25 @@ class EcommerceFirestoreSetup {
   // ====================================================================
 
   displaySetupSummary() {
-    console.log('\n📊 E-COMMERCE SETUP SUMMARY');
-    console.log('=' .repeat(50));
+    console.log('\nE-COMMERCE SETUP SUMMARY');
+    console.log('='.repeat(50));
     
-    console.log('\n✅ COLLECTIONS CREATED:');
+    console.log('\nCOLLECTIONS CREATED:');
     this.results.collections.forEach(collection => {
       console.log(`   • ${collection}`);
     });
     
-    console.log('\n📈 SUCCESS COUNT:');
+    console.log('\nSUCCESS COUNT:');
     console.log(`   • Successfully created: ${this.results.success.length} items`);
     
     if (this.results.errors.length > 0) {
-      console.log('\n❌ ERRORS:');
+      console.log('\nERRORS:');
       this.results.errors.forEach(error => {
         console.log(`   • ${error}`);
       });
     }
     
-    console.log('\n🔗 NEXT STEPS:');
+    console.log('\nNEXT STEPS:');
     console.log('   1. Create Firestore composite indexes (see instructions below)');
     console.log('   2. Update security rules (provided separately)');
     console.log('   3. Test e-commerce functionality');
@@ -1204,7 +1203,7 @@ class EcommerceFirestoreSetup {
   }
 
   displayIndexInstructions() {
-    console.log('\n📊 REQUIRED FIRESTORE COMPOSITE INDEXES:');
+    console.log('\nREQUIRED FIRESTORE COMPOSITE INDEXES:');
     console.log('Go to: https://console.firebase.google.com/project/YOUR_PROJECT/firestore/indexes\n');
     
     const indexes = [
@@ -1261,7 +1260,7 @@ class EcommerceFirestoreSetup {
   }
 
   displaySecurityRulesNote() {
-    console.log('🔒 SECURITY RULES UPDATE REQUIRED:');
+    console.log('SECURITY RULES UPDATE REQUIRED:');
     console.log('Update your Firestore security rules to include e-commerce collections.');
     console.log('Rules will be provided in a separate file.\n');
   }
@@ -1285,11 +1284,9 @@ export const setupEcommerceCollections = async () => {
 };
 
 // Browser-friendly setup (for running in console)
-window.setupEcommerceCollections = setupEcommerceCollections;
-
-// For direct execution
 if (typeof window !== 'undefined') {
-  console.log('🚀 E-commerce setup ready!');
+  window.setupEcommerceCollections = setupEcommerceCollections;
+  console.log('E-commerce setup ready!');
   console.log('Run: setupEcommerceCollections()');
 }
 
