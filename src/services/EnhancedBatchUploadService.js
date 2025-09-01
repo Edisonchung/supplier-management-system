@@ -20,9 +20,6 @@ class EnhancedBatchUploadService {
     this.init();
   }
 
-  /**
-   * Get current user from localStorage or context
-   */
   getCurrentUser() {
     try {
       const userStr = localStorage.getItem('currentUser');
@@ -36,9 +33,6 @@ class EnhancedBatchUploadService {
     }
   }
   
-  /**
-   * Initialize document storage service
-   */
   async initializeDocumentStorage() {
     if (!this.documentStorageService && typeof window !== 'undefined') {
       try {
@@ -75,16 +69,10 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * Set notification function from component
-   */
   setNotificationFunction(notificationFn) {
     this.showNotification = notificationFn;
   }
 
-  /**
-   * Show notification if function is available
-   */
   notify(message, type = 'info') {
     if (this.showNotification) {
       this.showNotification(message, type);
@@ -93,9 +81,6 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * Initialize the service
-   */
   init() {
     if (this.isInitialized) return;
     
@@ -109,9 +94,6 @@ class EnhancedBatchUploadService {
     console.log('EnhancedBatchUploadService initialized');
   }
 
-  /**
-   * Load processed files tracking from localStorage
-   */
   loadProcessedFiles() {
     try {
       const processedFiles = JSON.parse(localStorage.getItem('processed_files') || '[]');
@@ -123,9 +105,6 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * Save processed files tracking to localStorage
-   */
   saveProcessedFiles() {
     try {
       const processedFilesArray = Array.from(this.processedFiles);
@@ -135,42 +114,27 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * Generate a unique file identifier based on name and size
-   */
   generateFileId(fileName, fileSize) {
     return `${fileName}_${fileSize}`;
   }
 
-  /**
-   * Check if a file has already been processed
-   */
   isFileAlreadyProcessed(fileName, fileSize) {
     const fileId = this.generateFileId(fileName, fileSize);
     return this.processedFiles.has(fileId);
   }
 
-  /**
-   * Mark a file as processed
-   */
   markFileAsProcessed(fileName, fileSize) {
     const fileId = this.generateFileId(fileName, fileSize);
     this.processedFiles.add(fileId);
     this.saveProcessedFiles();
   }
 
-  /**
-   * COMPATIBILITY METHOD: Alias for addBatch to match component expectations
-   */
   async startBatch(files, options = {}) {
     console.log('startBatch called with:', files.length, 'files');
     const result = await this.addBatch(files, options.type || 'proforma_invoice', options);
     return result.batchId;
   }
 
-  /**
-   * Add multiple files to batch processing with Web Worker support
-   */
   async addBatch(files, documentType = 'proforma_invoice', options = {}) {
     const batchId = this.generateBatchId();
     const queueKey = `${documentType}_${batchId}`;
@@ -270,9 +234,6 @@ class EnhancedBatchUploadService {
     };
   }
 
-  /**
-   * Process batch using Web Worker (true background processing)
-   */
   async processWithWebWorker(queueKey, batch) {
     try {
       console.log(`Starting Web Worker for batch ${batch.id}`);
@@ -372,9 +333,6 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * Convert File to base64 string
-   */
   async fileToBase64(file) {
     return new Promise((resolve, reject) => {
       if (!file || !(file instanceof File)) {
@@ -412,9 +370,6 @@ class EnhancedBatchUploadService {
     });
   }
 
-  /**
-   * Process batch in main thread with user context
-   */
   async processWithMainThread(queueKey, batch) {
     console.log(`Processing batch ${batch.id} in main thread`);
     
@@ -507,9 +462,6 @@ class EnhancedBatchUploadService {
     await this.handleBatchCompletion(queueKey, batch);
   }
 
-  /**
-   * Handle messages from Web Worker with proper document storage preservation
-   */
   handleWorkerMessage(queueKey, message) {
     const { type, payload } = message;
     const batch = this.queues.get(queueKey);
@@ -604,9 +556,6 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * Handle Web Worker errors
-   */
   handleWorkerError(queueKey, error) {
     const batch = this.queues.get(queueKey);
     if (!batch) return;
@@ -625,9 +574,6 @@ class EnhancedBatchUploadService {
     this.processWithMainThread(queueKey, batch);
   }
 
-  /**
-   * Terminate Web Worker
-   */
   terminateWorker(queueKey) {
     const worker = this.workers.get(queueKey);
     if (worker) {
@@ -637,16 +583,10 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * Check if Web Workers are supported
-   */
   canUseWebWorkers() {
     return typeof Worker !== 'undefined';
   }
 
-  /**
-   * Auto-save extracted data WITH document storage
-   */
   async autoSaveExtractedDataWithDocuments(data, documentType, fileName = null, originalFile = null, storeDocuments = true) {
     try {
       console.log('Auto-saving extracted data with documents:', documentType, fileName);
@@ -738,16 +678,10 @@ class EnhancedBatchUploadService {
     }
   }
 
-  /**
-   * LEGACY: Keep original method for backward compatibility
-   */
   async autoSaveExtractedData(data, documentType, fileName = null) {
     return this.autoSaveExtractedDataWithDocuments(data, documentType, fileName, null, false);
   }
 
-  /**
-   * Map extracted data to PI format WITH document storage
-   */
   async mapExtractedDataToPIWithDocuments(data, fileName = null, originalFile = null, storeDocuments = true) {
     const baseId = fileName ? fileName.replace(/\.[^/.]+$/, "") : `pi-${Date.now()}`;
     const piNumber = `PI-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -824,16 +758,10 @@ class EnhancedBatchUploadService {
     };
   }
 
-  /**
-   * LEGACY: Keep original method for backward compatibility
-   */
   mapExtractedDataToPI(data, fileName = null) {
     return this.mapExtractedDataToPIWithDocuments(data, fileName, null, false);
   }
 
-  /**
-   * Map extracted data to PO format
-   */
   mapExtractedDataToPO(data, fileName = null) {
     const poNumber = `PO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
@@ -859,9 +787,6 @@ class EnhancedBatchUploadService {
     };
   }
 
-  /**
-   * Handle batch completion
-   */
   async handleBatchCompletion(queueKey, batch) {
     console.log(`Batch ${batch.id} completed!`);
     
@@ -901,18 +826,12 @@ class EnhancedBatchUploadService {
     setTimeout(() => this.cleanupCompletedBatch(queueKey), 24 * 60 * 60 * 1000);
   }
 
-  /**
-   * Clear processed files tracking (for fresh start)
-   */
   clearProcessedFiles() {
     this.processedFiles.clear();
     localStorage.removeItem('processed_files');
     console.log('Cleared processed files tracking');
   }
 
-  /**
-   * Cancel a batch by ID
-   */
   cancelBatch(batchId) {
     console.log(`Cancelling batch: ${batchId}`);
     
@@ -942,9 +861,6 @@ class EnhancedBatchUploadService {
     return false;
   }
 
-  /**
-   * Get batch status by ID
-   */
   getBatchStatus(batchId) {
     for (const batch of this.queues.values()) {
       if (batch.id === batchId) {
@@ -975,9 +891,6 @@ class EnhancedBatchUploadService {
     return null;
   }
 
-  /**
-   * Get all active batches with proper document storage information
-   */
   getActiveBatches() {
     const batches = [];
     
@@ -1015,9 +928,6 @@ class EnhancedBatchUploadService {
     return batches.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
 
-  /**
-   * Get service statistics
-   */
   getStatistics() {
     const stats = {
       totalBatches: this.queues.size,
@@ -1048,9 +958,6 @@ class EnhancedBatchUploadService {
     return stats;
   }
 
-  /**
-   * Utility methods
-   */
   generateBatchId() {
     return `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -1071,9 +978,6 @@ class EnhancedBatchUploadService {
     return `${minutes}m ${seconds}s`;
   }
 
-  /**
-   * Persistence and offline handling
-   */
   persistQueue(queueKey, batch) {
     try {
       const persistBatch = {
@@ -1182,6 +1086,5 @@ class EnhancedBatchUploadService {
   }
 }
 
-// Export singleton instance
 const enhancedBatchUploadService = new EnhancedBatchUploadService();
 export default enhancedBatchUploadService;
