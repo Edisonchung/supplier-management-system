@@ -217,46 +217,42 @@ export const safeUpdateDocument = async (collectionName, docId, updates) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
     
-    // 🔧 CRITICAL: Special handling for payment updates
     let cleanUpdates;
     
     if (updates.payments !== undefined) {
-      console.log(`💰 FIRESTORE: Processing payment update for ${collectionName}/${docId}`);
-      console.log(`📊 Payment data: ${Array.isArray(updates.payments) ? updates.payments.length : 'not array'} payments`);
+      console.log('Payment update detected');
+      const paymentsLength = Array.isArray(updates.payments) ? updates.payments.length : 'not array';
+      console.log(`Payment data: ${paymentsLength} payments`);
       
-      // Clean everything EXCEPT payments
       const { payments, ...otherFields } = updates;
       const cleanedOthers = cleanFirestoreData({
         ...otherFields,
         updatedAt: serverTimestamp()
       });
       
-      // Combine with protected payments
       cleanUpdates = {
         ...cleanedOthers,
         payments: Array.isArray(payments) ? payments : []
       };
       
-      console.log(`✅ Payment protection applied - preserved ${cleanUpdates.payments.length} payments`);
+      console.log(`Payment protection applied - preserved ${cleanUpdates.payments.length} payments`);
     } else {
-      // Normal cleaning for non-payment updates
       cleanUpdates = cleanFirestoreData({
         ...updates,
         updatedAt: serverTimestamp()
       });
     }
     
-    console.log(`💾 FIRESTORE: Updating ${collectionName}/${docId}`, {
+    console.log(`FIRESTORE: Updating ${collectionName}/${docId}`, {
       originalFieldCount: Object.keys(updates).length,
       cleanedFieldCount: Object.keys(cleanUpdates).length,
       removedFields: Object.keys(updates).filter(key => !(key in cleanUpdates))
     });
     
-    // 🔧 CRITICAL: Final safety check - ensure no undefined values
     Object.keys(cleanUpdates).forEach(key => {
       if (cleanUpdates[key] === undefined) {
         delete cleanUpdates[key];
-        console.warn(`🚨 EMERGENCY: Removed undefined field at final check: ${key}`);
+        console.warn(`EMERGENCY: Removed undefined field at final check: ${key}`);
       }
     });
     
