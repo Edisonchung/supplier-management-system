@@ -1,5 +1,5 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// Updated to connect to real Firebase data and Railway backend
+// Updated to integrate with ProductSyncService and real Firebase data
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -25,10 +25,14 @@ import {
   Search
 } from 'lucide-react';
 
+// Import the ProductSyncService
+import { productSyncService } from '../../services/sync/ProductSyncService';
+
 const ImageGenerationDashboard = () => {
   const [stats, setStats] = useState(null);
+  const [productsNeedingImages, setProductsNeedingImages] = useState([]);
+  const [selectedProducts, setSelectedProducts] = useState([]);
   const [recentGenerations, setRecentGenerations] = useState([]);
-  const [syncLogs, setSyncLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -37,7 +41,7 @@ const ImageGenerationDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState(null);
 
-  // Direct API integration with Railway backend
+  // Use the same MCP server URL as ProductSyncService
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
   useEffect(() => {
@@ -55,19 +59,37 @@ const ImageGenerationDashboard = () => {
     try {
       setIsLoading(true);
       
-      // Load real data from Railway backend and Firebase
-      const [healthData, logsData] = await Promise.all([
+      // Load real data from ProductSyncService and Firebase
+      const [healthData, productsData, syncStats] = await Promise.all([
         fetchSystemHealth(),
-        fetchRealImageGenerationLogs()
+        productSyncService.getProductsNeedingImages(),
+        productSyncService.getSyncStatistics()
       ]);
       
       setSystemHealth(healthData);
-      setRecentGenerations(logsData);
-      setSyncLogs(logsData);
+      setProductsNeedingImages(productsData);
       
-      // Calculate stats from real data
-      const statsData = calculateRealStats(logsData);
+      // Calculate stats from real sync data
+      const statsData = calculateRealStats(syncStats.data || {});
       setStats(statsData);
+      
+      // Convert products to generation history format for display
+      const generationHistory = productsData.map(product => ({
+        id: product.id,
+        productId: product.id,
+        productName: product.name,
+        category: product.category || 'general',
+        imagesGenerated: product.hasRealImage ? ['primary'] : [],
+        status: product.imageGenerationStatus || 'needed',
+        provider: 'openai',
+        processingTime: '15.2s',
+        timestamp: product.lastImageError || new Date(),
+        prompt: `Professional industrial ${product.category || 'component'} photography of ${product.name}`,
+        imageUrls: product.imageUrl ? [product.imageUrl] : [],
+        error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null
+      }));
+      
+      setRecentGenerations(generationHistory);
       
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -88,7 +110,7 @@ const ImageGenerationDashboard = () => {
         promptsLoaded: result.prompts?.total || 0,
         queueProcessing: false,
         lastCheck: new Date(),
-        queueLength: 0,
+        queueLength: productsNeedingImages.length,
         processingRate: 0
       };
     } catch (error) {
@@ -105,180 +127,82 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  const fetchRealImageGenerationLogs = async () => {
-    try {
-      // Try to get generation history from server first
-      try {
-        const historyResponse = await fetch(`${mcpServerUrl}/api/ai/generation-history`);
-        if (historyResponse.ok) {
-          const historyData = await historyResponse.json();
-          if (historyData.success && historyData.generations) {
-            return historyData.generations.map(gen => ({
-              id: gen.productId,
-              productId: gen.productId,
-              productName: gen.productName,
-              category: gen.category || 'general',
-              imagesGenerated: gen.imageUrls && gen.imageUrls.length > 0 ? ['primary'] : [],
-              status: gen.savedToFirebase ? 'completed' : 'pending',
-              provider: 'openai',
-              processingTime: gen.processingTime || '15.2s',
-              timestamp: new Date(gen.timestamp),
-              prompt: gen.imagePrompt || `Professional industrial product photography of ${gen.productName}`,
-              imageUrls: gen.imageUrls || [],
-              error: gen.error || null
-            }));
-          }
-        }
-      } catch (historyError) {
-        console.log('Generation history endpoint not available, using fallback');
-      }
-
-      // Fallback: Create sample data but mark it clearly as demo data
-      const sampleData = [
-        {
-          id: 'test-catalog-product-001',
-          productId: 'test-catalog-product-001', 
-          productName: 'Professional Industrial Automation Component',
-          category: 'automation',
-          imagesGenerated: ['primary'],
-          status: 'completed',
-          provider: 'openai',
-          processingTime: '17.7s',
-          timestamp: new Date(Date.now() - 300000), // 5 minutes ago
-          prompt: 'Professional industrial automation component in clean facility',
-          imageUrls: ['https://oaidalleapiprodscus.blob.core.windows.net/private/org-YUVVEYOpsZ171dlpzn871qOR/user-K8mQNtyEj9uIRdINXMmNeht1/img-0KApBojPtRqCAb52GFW...']
-        },
-        {
-          id: 'your-actual-product-id-here',
-          productId: 'your-actual-product-id-here',
-          productName: 'Professional Hydraulic Valve Component',
-          category: 'hydraulics',
-          imagesGenerated: ['primary'],
-          status: 'completed', 
-          provider: 'openai',
-          processingTime: '16.9s',
-          timestamp: new Date(Date.now() - 600000), // 10 minutes ago
-          prompt: 'Professional hydraulic valve component in industrial setting',
-          imageUrls: ['https://oaidalleapiprodscus.blob.core.windows.net/private/org-example/user-example/img-hydraulic-valve.jpg']
-        },
-        {
-          id: 'PROD-003',
-          productId: 'PROD-003',
-          productName: 'Variable Frequency Drive VFD Industrial Motor Control',
-          category: 'automation',
-          imagesGenerated: [],
-          status: 'pending',
-          provider: 'openai',
-          processingTime: null,
-          timestamp: new Date(Date.now() - 900000), // 15 minutes ago
-          prompt: 'Professional VFD motor control component in industrial setting',
-          imageUrls: [],
-          error: null
-        }
-      ];
-
-      return sampleData;
-
-    } catch (error) {
-      console.error('Failed to fetch image generation logs:', error);
-      return [];
-    }
-  };
-
-  const calculateRealStats = (generations) => {
-    const completed = generations.filter(g => g.status === 'completed');
-    const today = new Date().toDateString();
-    const completedToday = completed.filter(g => new Date(g.timestamp).toDateString() === today);
+  const calculateRealStats = (syncData) => {
+    const totalProducts = syncData.totalPublic || 0;
+    const productsWithImages = syncData.productsWithRealImages || 0;
+    const productsNeedingImages = syncData.productsNeedingImages || 0;
+    const totalGenerated = syncData.totalImagesGenerated || 0;
     
-    // Calculate category distribution
+    // Calculate category distribution from current products
     const categoryCount = {};
-    generations.forEach(g => {
-      categoryCount[g.category] = (categoryCount[g.category] || 0) + 1;
+    productsNeedingImages.forEach(p => {
+      categoryCount[p.category || 'general'] = (categoryCount[p.category || 'general'] || 0) + 1;
     });
     
     const topCategories = Object.entries(categoryCount)
       .map(([category, count]) => ({
         category,
         count,
-        percentage: Math.round((count / generations.length) * 100)
+        percentage: totalProducts > 0 ? Math.round((count / totalProducts) * 100) : 0
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 4);
 
     return {
-      totalGenerated: completed.length,
-      generatedToday: completedToday.length,
-      pendingQueue: generations.filter(g => g.status === 'pending' || g.status === 'processing').length,
-      successRate: generations.length > 0 ? 
-        ((completed.length / generations.length) * 100).toFixed(1) : 0,
-      averageTime: 15.8, // Based on your actual logs
+      totalGenerated: totalGenerated,
+      generatedToday: 0, // Would need to track daily generations
+      pendingQueue: productsNeedingImages,
+      successRate: syncData.imageGenerationRate || 0,
+      averageTime: syncData.averageImageTime || 15.8,
       topCategories,
       providerStats: {
         openai: {
-          count: completed.length,
+          count: totalGenerated,
           percentage: 100,
-          avgTime: 15.8,
-          totalTime: completed.length * 15.8,
-          times: completed.map(() => 15.8)
+          avgTime: syncData.averageImageTime || 15.8,
+          totalTime: totalGenerated * (syncData.averageImageTime || 15.8),
+          times: Array(totalGenerated).fill(syncData.averageImageTime || 15.8)
         }
       }
     };
   };
 
   const handleStartImageGeneration = async () => {
+    if (selectedProducts.length === 0) {
+      showNotification('Please select products to generate images for', 'error');
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      console.log('🎨 Starting real image generation for catalog products...');
-      showNotification('Starting image generation for your catalog products...', 'info');
+      console.log(`Starting image generation for ${selectedProducts.length} products...`);
+      showNotification(`Starting image generation for ${selectedProducts.length} products...`, 'info');
       
-      // Step 1: Test API connection
-      const healthResponse = await fetch(`${mcpServerUrl}/api/ai/health`);
-      if (!healthResponse.ok) {
-        throw new Error('API not available');
-      }
-      const healthData = await healthResponse.json();
+      // Use ProductSyncService manual image generation
+      const result = await productSyncService.manualImageGeneration(selectedProducts);
       
-      if (!healthData.success) {
-        throw new Error('AI service not ready');
-      }
-
-      showNotification('✅ API connection verified, starting image generation...', 'success');
-
-      // Step 2: Use your working bulk generation endpoint
-      const bulkResponse = await fetch(`${mcpServerUrl}/api/ai/generate-catalog-images`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (bulkResponse.ok) {
-        const result = await bulkResponse.json();
-        if (result.success) {
-          if (result.processed > 0) {
-            showNotification(`✅ Generated ${result.processed} images successfully!`, 'success');
-            
-            // Update UI to show completed generations
-            result.results?.forEach(res => {
-              if (res.success) {
-                setRecentGenerations(prev => prev.map(gen => 
-                  gen.productId === res.productId ? {
-                    ...gen,
-                    status: 'completed',
-                    imageUrls: [res.imageUrl],
-                    imagesGenerated: ['primary'],
-                    processingTime: '15.2s',
-                    timestamp: new Date()
-                  } : gen
-                ));
-              }
-            });
-          } else {
-            showNotification(result.message || 'All products already have images', 'info');
-          }
-        } else {
-          throw new Error(result.error || 'Bulk generation failed');
+      if (result.success) {
+        const { successful, failed, total } = result.summary;
+        
+        if (successful > 0) {
+          showNotification(`Successfully generated images for ${successful}/${total} products!`, 'success');
         }
+        
+        if (failed > 0) {
+          showNotification(`Failed to generate images for ${failed} products`, 'error', 8000);
+          console.error('Failed generations:', result.errors);
+        }
+        
+        // Clear selected products
+        setSelectedProducts([]);
+        
+        // Refresh data
+        setTimeout(() => {
+          loadDashboardData();
+        }, 2000);
+        
       } else {
-        throw new Error('Bulk generation endpoint failed');
+        throw new Error('Manual image generation failed');
       }
       
     } catch (error) {
@@ -287,7 +211,6 @@ const ImageGenerationDashboard = () => {
     } finally {
       setTimeout(() => {
         setIsGenerating(false);
-        loadDashboardData(); // Refresh data
       }, 3000);
     }
   };
@@ -296,10 +219,6 @@ const ImageGenerationDashboard = () => {
     try {
       showNotification(`Retrying image generation for product ${productId}`, 'info');
       
-      // Find the product and retry generation
-      const product = recentGenerations.find(gen => gen.productId === productId);
-      if (!product) return;
-
       // Update status to processing
       setRecentGenerations(prev => prev.map(gen => 
         gen.productId === productId ? { 
@@ -310,37 +229,29 @@ const ImageGenerationDashboard = () => {
         } : gen
       ));
 
-      // Use your working individual generation endpoint
-      const response = await fetch(`${mcpServerUrl}/api/ai/generate-image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: product.prompt,
-          productId: productId
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.imageUrl) {
+      // Use ProductSyncService for retry
+      const result = await productSyncService.manualImageGeneration([productId]);
+      
+      if (result.success && result.results.length > 0) {
+        const generationResult = result.results[0];
+        if (generationResult.success) {
           setRecentGenerations(prev => prev.map(gen => 
             gen.productId === productId ? { 
               ...gen, 
               status: 'completed',
               processingTime: '15.2s',
-              imageUrls: [result.data.imageUrl],
+              imageUrls: [generationResult.imageUrl],
               imagesGenerated: ['primary'],
               error: null,
               timestamp: new Date()
             } : gen
           ));
-          showNotification('✅ Retry successful!', 'success');
+          showNotification('Retry successful!', 'success');
         } else {
-          throw new Error(result.error || 'Image generation failed');
+          throw new Error('Retry generation failed');
         }
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        throw new Error('Retry failed');
       }
       
     } catch (error) {
@@ -355,6 +266,14 @@ const ImageGenerationDashboard = () => {
     }
   };
 
+  const toggleProductSelection = (productId) => {
+    setSelectedProducts(prev => 
+      prev.includes(productId) 
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
   const getStatusIcon = (status) => {
     switch (status) {
       case 'completed':
@@ -367,6 +286,8 @@ const ImageGenerationDashboard = () => {
       case 'failed':
       case 'error':
         return <AlertCircle className="w-4 h-4 text-red-600" />;
+      case 'needed':
+        return <Clock className="w-4 h-4 text-yellow-600" />;
       default:
         return <Clock className="w-4 h-4 text-gray-600" />;
     }
@@ -384,6 +305,8 @@ const ImageGenerationDashboard = () => {
       case 'failed':
       case 'error':
         return 'text-red-700 bg-red-50 border-red-200';
+      case 'needed':
+        return 'text-yellow-700 bg-yellow-50 border-yellow-200';
       default:
         return 'text-gray-700 bg-gray-50 border-gray-200';
     }
@@ -440,7 +363,7 @@ const ImageGenerationDashboard = () => {
             <FileImage className="w-8 h-8 text-blue-600" />
             AI Image Generation Dashboard
           </h1>
-          <p className="text-gray-600 mt-1">Monitor and manage OpenAI-powered product image generation via Railway backend</p>
+          <p className="text-gray-600 mt-1">Monitor and manage OpenAI-powered product image generation via Firebase and ProductSyncService</p>
         </div>
         
         <div className="flex items-center gap-3">
@@ -455,7 +378,7 @@ const ImageGenerationDashboard = () => {
           
           <button
             onClick={handleStartImageGeneration}
-            disabled={isGenerating || !systemHealth?.mcpApiHealthy}
+            disabled={isGenerating || !systemHealth?.mcpApiHealthy || selectedProducts.length === 0}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {isGenerating ? (
@@ -466,7 +389,7 @@ const ImageGenerationDashboard = () => {
             ) : (
               <>
                 <Play className="w-4 h-4 mr-2" />
-                Start Generation
+                Generate Images ({selectedProducts.length})
               </>
             )}
           </button>
@@ -499,12 +422,12 @@ const ImageGenerationDashboard = () => {
             <span className="text-sm text-gray-700">{systemHealth?.promptsLoaded || 0} Prompts</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${recentGenerations.filter(g => g.status === 'processing').length > 0 ? 'bg-green-500' : 'bg-yellow-500'}`} />
-            <span className="text-sm text-gray-700">Queue ({recentGenerations.filter(g => g.status === 'pending').length || 0})</span>
+            <div className={`w-2 h-2 rounded-full ${productsNeedingImages.length > 0 ? 'bg-yellow-500' : 'bg-green-500'}`} />
+            <span className="text-sm text-gray-700">Queue ({productsNeedingImages.length || 0})</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="text-sm text-gray-700">Real Data</span>
+            <span className="text-sm text-gray-700">Firebase Data</span>
           </div>
         </div>
       </div>
@@ -524,10 +447,10 @@ const ImageGenerationDashboard = () => {
         <div className="bg-white p-6 rounded-lg shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Generated Today</p>
-              <p className="text-2xl font-bold text-green-600">{stats?.generatedToday || 0}</p>
+              <p className="text-sm text-gray-600">Needs Images</p>
+              <p className="text-2xl font-bold text-yellow-600">{productsNeedingImages.length || 0}</p>
             </div>
-            <TrendingUp className="w-8 h-8 text-green-600" />
+            <Clock className="w-8 h-8 text-yellow-600" />
           </div>
         </div>
 
@@ -552,88 +475,76 @@ const ImageGenerationDashboard = () => {
         </div>
       </div>
 
-      {/* Categories and Provider Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Category Distribution */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
-            <Palette className="w-5 h-5 text-blue-600" />
-            Generation by Category (Real Data)
-          </h3>
-          <div className="space-y-3">
-            {stats?.topCategories?.length > 0 ? (
-              stats.topCategories.map((category, index) => (
-                <div key={category.category} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${
-                      index === 0 ? 'bg-blue-500' :
-                      index === 1 ? 'bg-green-500' :
-                      index === 2 ? 'bg-purple-500' : 'bg-orange-500'
-                    }`} />
-                    <span className="text-sm font-medium text-gray-700 capitalize">
-                      {category.category.replace('_', ' ')}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${
-                          index === 0 ? 'bg-blue-500' :
-                          index === 1 ? 'bg-green-500' :
-                          index === 2 ? 'bg-purple-500' : 'bg-orange-500'
-                        }`}
-                        style={{ width: `${category.percentage}%` }}
-                      />
-                    </div>
-                    <span className="text-sm text-gray-600 w-12 text-right">
-                      {category.count}
-                    </span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-gray-500 text-sm">No image generation data available yet</p>
-            )}
+      {/* Products Needing Images */}
+      {productsNeedingImages.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="p-6 border-b">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Products Needing Images ({productsNeedingImages.length})
+              </h3>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setSelectedProducts(productsNeedingImages.map(p => p.id))}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={isGenerating}
+                >
+                  Select All
+                </button>
+                
+                <button
+                  onClick={() => setSelectedProducts([])}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={isGenerating}
+                >
+                  Clear Selection
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Provider Performance */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <h3 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
-            <Settings className="w-5 h-5 text-green-600" />
-            Provider Performance (Real Data)
-          </h3>
-          <div className="space-y-4">
-            {Object.keys(stats?.providerStats || {}).length > 0 ? (
-              Object.entries(stats.providerStats).map(([provider, data]) => (
-                <div key={provider} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700 capitalize">
-                      {provider === 'openai' ? 'OpenAI DALL-E 3' : provider}
-                    </span>
-                    <span className="text-sm text-gray-600">
-                      {data.count} images ({data.percentage}%)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="h-2 rounded-full bg-green-500"
-                        style={{ width: `${data.percentage}%` }}
-                      />
+          <div className="divide-y">
+            {productsNeedingImages.map(product => (
+              <div key={product.id} className="p-4 hover:bg-gray-50">
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="checkbox"
+                    checked={selectedProducts.includes(product.id)}
+                    onChange={() => toggleProductSelection(product.id)}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                    disabled={isGenerating}
+                  />
+                  
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">{product.name}</h4>
+                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                      <span>Category: {product.category}</span>
+                      <span className={`px-2 py-1 rounded text-xs ${getStatusColor(product.imageGenerationStatus)}`}>
+                        {product.imageGenerationStatus || 'needed'}
+                      </span>
                     </div>
-                    <span className="text-xs text-gray-500">
-                      {formatTime(data.avgTime)} avg
-                    </span>
+                  </div>
+                  
+                  <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
+                    {product.imageUrl ? (
+                      <img 
+                        src={product.imageUrl} 
+                        alt={product.name}
+                        className="w-16 h-16 object-cover rounded-lg"
+                      />
+                    ) : (
+                      <div className="text-gray-400 text-xs text-center">
+                        No Image
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))
-            ) : (
-              <p className="text-gray-500 text-sm">No provider data available yet</p>
-            )}
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Generation History Table */}
       <div className="bg-white rounded-lg shadow-sm border">
@@ -641,7 +552,7 @@ const ImageGenerationDashboard = () => {
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-gray-900 flex items-center gap-2">
               <Clock className="w-5 h-5 text-purple-600" />
-              Image Generation History (Live Data from Railway)
+              Image Generation History (Firebase + ProductSyncService)
             </h3>
             
             {/* Filters */}
@@ -665,7 +576,7 @@ const ImageGenerationDashboard = () => {
                 <option value="all">All Status</option>
                 <option value="completed">Completed</option>
                 <option value="processing">Processing</option>
-                <option value="pending">Pending</option>
+                <option value="needed">Needs Images</option>
                 <option value="failed">Failed</option>
               </select>
             </div>
@@ -682,7 +593,7 @@ const ImageGenerationDashboard = () => {
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Status</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Provider</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Time</th>
-                <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Generated</th>
+                <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Updated</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Actions</th>
               </tr>
             </thead>
@@ -701,24 +612,21 @@ const ImageGenerationDashboard = () => {
                   </td>
                   <td className="py-4 px-6">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
-                      {generation.category.replace('_', ' ')}
+                      {(generation.category || 'general').replace('_', ' ')}
                     </span>
                   </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-1">
-                      {['primary', 'technical', 'application'].map((type) => (
-                        <div
-                          key={type}
-                          className={`w-2 h-2 rounded-full ${
-                            generation.imagesGenerated?.includes(type) 
-                              ? 'bg-green-500' 
-                              : 'bg-gray-300'
-                          }`}
-                          title={`${type} image ${generation.imagesGenerated?.includes(type) ? 'generated' : 'not generated'}`}
-                        />
-                      ))}
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          generation.imagesGenerated?.includes('primary') 
+                            ? 'bg-green-500' 
+                            : 'bg-gray-300'
+                        }`}
+                        title="Primary image"
+                      />
                       <span className="ml-2 text-xs text-gray-600">
-                        {generation.imagesGenerated?.length || 0}/3
+                        {generation.imagesGenerated?.length || 0}/1
                       </span>
                     </div>
                   </td>
@@ -768,11 +676,11 @@ const ImageGenerationDashboard = () => {
                           <Download className="w-4 h-4" />
                         </button>
                       )}
-                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'pending') && (
+                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'needed') && (
                         <button 
                           className="text-orange-600 hover:text-orange-800 transition-colors"
                           onClick={() => handleRetryGeneration(generation.productId)}
-                          title="Retry generation"
+                          title="Generate image"
                         >
                           <RefreshCw className="w-4 h-4" />
                         </button>
@@ -788,22 +696,12 @@ const ImageGenerationDashboard = () => {
         {filteredGenerations.length === 0 && (
           <div className="text-center py-12">
             <Image className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No image generations found</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
             <p className="text-gray-600 mb-4">
               {searchTerm || filter !== 'all' 
                 ? 'Try adjusting your search or filter criteria.'
-                : 'Start generating images for your catalog products.'}
+                : 'All products have images or no products need image generation.'}
             </p>
-            {!searchTerm && filter === 'all' && (
-              <button
-                onClick={handleStartImageGeneration}
-                disabled={isGenerating || !systemHealth?.mcpApiHealthy}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                Start Generation
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -815,7 +713,7 @@ const ImageGenerationDashboard = () => {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-semibold flex items-center gap-2">
                 <FileImage className="w-6 h-6 text-blue-600" />
-                Image Generation Details
+                Product Image Details
               </h3>
               <button
                 onClick={() => setSelectedProduct(null)}
@@ -829,7 +727,7 @@ const ImageGenerationDashboard = () => {
               <div>
                 <h4 className="font-medium text-gray-900">{selectedProduct.productName}</h4>
                 <p className="text-sm text-gray-600">Product ID: {selectedProduct.productId}</p>
-                <p className="text-sm text-gray-600 capitalize">Category: {selectedProduct.category.replace('_', ' ')}</p>
+                <p className="text-sm text-gray-600 capitalize">Category: {(selectedProduct.category || 'general').replace('_', ' ')}</p>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -854,7 +752,7 @@ const ImageGenerationDashboard = () => {
                 </div>
                 
                 <div>
-                  <span className="text-sm text-gray-600">Generated:</span>
+                  <span className="text-sm text-gray-600">Last Updated:</span>
                   <span className="ml-2 text-sm text-gray-900">
                     {formatTimestamp(selectedProduct.timestamp)}
                   </span>
@@ -881,8 +779,7 @@ const ImageGenerationDashboard = () => {
                           className="w-full h-32 object-cover rounded-lg border cursor-pointer hover:opacity-80"
                           onClick={() => window.open(url, '_blank')}
                           onError={(e) => {
-                            // Replace with placeholder if image fails to load
-                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNmM2Y0ZjYiLz4KPHR4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjOWNhM2FmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+R2VuZXJhdGVkIEltYWdlPC90ZXQ+Cjwvc3ZnPg==';
+                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNmM2Y0ZjYiLz4KPHR4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjOWNhM2FmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+R2VuZXJhdGVkIEltYWdlPC90ZXh0Pjwvc3ZnPg==';
                           }}
                         />
                         <div className="absolute top-2 right-2 bg-white rounded-full p-1 shadow-sm">
@@ -911,7 +808,7 @@ const ImageGenerationDashboard = () => {
               >
                 Close
               </button>
-              {(selectedProduct.status === 'failed' || selectedProduct.status === 'error' || selectedProduct.status === 'pending') && (
+              {(selectedProduct.status === 'failed' || selectedProduct.status === 'error' || selectedProduct.status === 'needed') && (
                 <button 
                   onClick={() => {
                     handleRetryGeneration(selectedProduct.productId);
@@ -919,7 +816,7 @@ const ImageGenerationDashboard = () => {
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  Retry Generation
+                  Generate Image
                 </button>
               )}
             </div>
