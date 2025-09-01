@@ -1,11 +1,11 @@
 // src/utils/performance.js
-// Performance monitoring utilities - Build Safe Version
+// Minimal build-safe performance utilities
 
 export const preloadCriticalComponents = () => {
-  if ('requestIdleCallback' in window) {
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
     requestIdleCallback(() => {
-      import('../components/suppliers/Suppliers.jsx').catch(err => console.warn('Preload failed:', err));
-      import('../components/products/Products.jsx').catch(err => console.warn('Preload failed:', err));
+      import('../components/suppliers/Suppliers.jsx').catch(() => {});
+      import('../components/products/Products.jsx').catch(() => {});
     });
   }
 };
@@ -15,51 +15,41 @@ export const measureComponentLoad = (componentName, loadPromise) => {
   
   return loadPromise.then(component => {
     const end = performance.now();
-    const duration = (end - start).toFixed(2);
-    console.log(`Component ${componentName} loaded in ${duration}ms`);
+    const duration = end - start;
+    console.log('Component ' + componentName + ' loaded in ' + duration.toFixed(2) + 'ms');
     return component;
   });
 };
 
 export const monitorBundleLoading = () => {
-  if (process.env.NODE_ENV === 'development') {
+  if (typeof window === 'undefined' || process.env.NODE_ENV !== 'development') {
+    return () => {};
+  }
+
+  try {
     const observer = new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
+      const entries = list.getEntries();
+      for (const entry of entries) {
         if (entry.entryType === 'navigation') {
-          const domTime = (entry.domContentLoadedEventEnd - entry.fetchStart).toFixed(0);
-          const loadTime = (entry.loadEventEnd - entry.fetchStart).toFixed(0);
+          const domTime = entry.domContentLoadedEventEnd - entry.fetchStart;
+          const loadTime = entry.loadEventEnd - entry.fetchStart;
           
-          console.log('Bundle Performance Metrics:', {
-            'DOM Content Loaded': domTime + 'ms',
-            'Page Load Complete': loadTime + 'ms',
-            'Time to Interactive': loadTime + 'ms'
+          console.log('Bundle Performance:', {
+            'DOM': Math.round(domTime) + 'ms',
+            'Load': Math.round(loadTime) + 'ms'
           });
         }
-      });
+      }
     });
     
     observer.observe({ entryTypes: ['navigation'] });
     
-    const resourceObserver = new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
-        if (entry.name.includes('chunk') || (entry.name.includes('.js') && entry.transferSize > 1000)) {
-          const size = (entry.transferSize / 1024).toFixed(2);
-          const duration = entry.duration.toFixed(2);
-          
-          console.log(`Chunk: ${entry.name.split('/').pop()}`, {
-            'Size': size + 'KB',
-            'Load Time': duration + 'ms'
-          });
-        }
-      });
-    });
-    
-    resourceObserver.observe({ entryTypes: ['resource'] });
-    
     return () => {
       observer.disconnect();
-      resourceObserver.disconnect();
     };
+  } catch (error) {
+    console.warn('Performance monitoring not available');
+    return () => {};
   }
 };
 
@@ -71,14 +61,9 @@ export const trackBundleImprovement = () => {
       const reduction = originalSize - newSize;
       const percentage = (reduction / originalSize * 100).toFixed(1);
       
-      const origSizeKB = (originalSize / 1024).toFixed(2);
-      const newSizeKB = (newSize / 1024).toFixed(2);
-      const reductionKB = (reduction / 1024).toFixed(2);
-      
-      console.log('Bundle Optimization Results:', {
-        'Original Size': origSizeKB + 'KB',
-        'New Size': newSizeKB + 'KB',
-        'Reduction': reductionKB + 'KB',
+      console.log('Bundle Results:', {
+        'Original': Math.round(originalSize / 1024) + 'KB',
+        'New': Math.round(newSize / 1024) + 'KB',
         'Improvement': percentage + '%'
       });
       
