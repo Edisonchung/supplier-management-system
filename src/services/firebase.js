@@ -213,27 +213,23 @@ export const safeAddDocument = async (collectionName, data) => {
   }, `addDocument(${collectionName})`);
 };
 
-// FIXED: Enhanced safe update document with PAYMENT PROTECTION - proper syntax
+// FIXED: Enhanced safe update document with PAYMENT PROTECTION - completely rebuilt
 export const safeUpdateDocument = async (collectionName, docId, updates) => {
   return handleFirestoreOperation(async function() {
     const docRef = doc(db, collectionName, docId);
     
-    // Special handling for payment updates
     let cleanUpdates;
     
-    // CHECK: Does the update contain payments?
     if (updates.payments !== undefined) {
       console.log(`FIRESTORE: Processing payment update for ${collectionName}/${docId}`);
       console.log(`Payment data: ${Array.isArray(updates.payments) ? updates.payments.length : 'not array'} payments`);
       
-      // Clean everything EXCEPT payments
       const { payments, ...otherFields } = updates;
       const cleanedOthers = cleanFirestoreData({
         ...otherFields,
         updatedAt: serverTimestamp()
       });
       
-      // Combine with protected payments
       cleanUpdates = {
         ...cleanedOthers,
         payments: Array.isArray(payments) ? payments : []
@@ -241,7 +237,6 @@ export const safeUpdateDocument = async (collectionName, docId, updates) => {
       
       console.log(`Payment protection applied - preserved ${cleanUpdates.payments.length} payments`);
     } else {
-      // Normal cleaning for non-payment updates - FIXED SYNTAX HERE
       cleanUpdates = cleanFirestoreData({
         ...updates,
         updatedAt: serverTimestamp()
@@ -254,7 +249,6 @@ export const safeUpdateDocument = async (collectionName, docId, updates) => {
       removedFields: Object.keys(updates).filter(key => !(key in cleanUpdates))
     });
     
-    // Final safety check - ensure no undefined values
     Object.keys(cleanUpdates).forEach(key => {
       if (cleanUpdates[key] === undefined) {
         delete cleanUpdates[key];
