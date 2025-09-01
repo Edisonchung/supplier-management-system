@@ -1,119 +1,41 @@
-// src/services/EnhancedBatchUploadService.js - Simplified for build fix
-import { ExtractionService } from './ai/ExtractionService'
-
+// src/services/EnhancedBatchUploadService.js - Minimal stub for build
 class EnhancedBatchUploadService {
   constructor() {
-    this.queues = new Map()
-    this.workers = new Map()
-    this.isInitialized = false
-    this.notifications = []
-    this.showNotification = null
-    this.processedFiles = new Set()
-    this.extractionService = ExtractionService
-    
-    this.init()
+    this.isInitialized = false;
   }
 
   init() {
-    if (this.isInitialized) return
-    this.isInitialized = true
-    console.log('EnhancedBatchUploadService initialized')
+    this.isInitialized = true;
+    console.log('EnhancedBatchUploadService initialized');
   }
 
-  setNotificationFunction(notificationFn) {
-    this.showNotification = notificationFn
+  setNotificationFunction(fn) {
+    // stub
   }
 
-  notify(message, type = 'info') {
-    if (this.showNotification) {
-      this.showNotification(message, type)
-    } else {
-      console.log(`[${type.toUpperCase()}] ${message}`)
-    }
+  notify(message, type) {
+    console.log(message);
   }
 
-  async processBatch(files, documentType = 'pi', options = {}) {
-    console.log('Processing batch:', files.length, 'files')
-    
-    const batchId = `batch_${Date.now()}`
-    
-    try {
-      const results = []
-      
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        console.log(`Processing file ${i + 1}/${files.length}: ${file.name}`)
-        
-        try {
-          const result = await this.extractionService.extractFromFile(file)
-          results.push({
-            success: true,
-            data: result,
-            filename: file.name
-          })
-        } catch (error) {
-          console.error(`Failed to process ${file.name}:`, error)
-          results.push({
-            success: false,
-            error: error.message,
-            filename: file.name
-          })
-        }
-      }
-      
-      const successful = results.filter(r => r.success).length
-      const failed = results.filter(r => !r.success).length
-      
-      this.notify(`Batch completed: ${successful} successful, ${failed} failed`, 'info')
-      
-      return {
-        batchId,
-        totalFiles: files.length,
-        successful,
-        failed,
-        results
-      }
-      
-    } catch (error) {
-      console.error('Batch processing failed:', error)
-      this.notify('Batch processing failed', 'error')
-      throw error
-    }
+  async processBatch() {
+    return { success: false, error: 'Service temporarily disabled' };
   }
 
-  async processFile(file, documentType = 'pi', options = {}) {
-    try {
-      const result = await this.extractionService.extractFromFile(file)
-      return {
-        success: true,
-        data: result
-      }
-    } catch (error) {
-      console.error('File processing failed:', error)
-      return {
-        success: false,
-        error: error.message
-      }
-    }
+  async processFile() {
+    return { success: false, error: 'Service temporarily disabled' };
   }
 
-  getBatchStatus(batchId) {
-    return {
-      status: 'completed',
-      progress: 100,
-      results: []
-    }
+  getBatchStatus() {
+    return { status: 'disabled' };
   }
 
   getAllBatches() {
-    return []
+    return [];
   }
 
   clearProcessedFiles() {
-    this.processedFiles.clear()
-    console.log('Processed files cleared')
+    // stub
   }
 }
 
-const enhancedBatchUploadService = new EnhancedBatchUploadService()
-export default enhancedBatchUploadService
+export default new EnhancedBatchUploadService();
