@@ -556,28 +556,3 @@ export {
   SessionService,
   UserTypeService
 };
-
-export {
-  collection,
-  doc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  getDoc,
-  getDocs,
-  setDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  serverTimestamp,
-  onSnapshot,
-  enableNetwork,
-  disableNetwork,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-  listAll,
-  getMetadata
-};
