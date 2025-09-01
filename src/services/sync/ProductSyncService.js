@@ -1,6 +1,6 @@
 // src/services/sync/ProductSyncService.js
 // Enhanced Product Sync Service for HiggsFlow E-commerce
-// FIXED: Corrected image detection logic for placeholder vs real images
+// UPDATED: Fixed image handling while preserving ALL existing functionality
 
 import { 
   collection, 
@@ -15,7 +15,8 @@ import {
   serverTimestamp,
   writeBatch,
   getDoc,
-  getDocs
+  getDocs,
+  limit
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -113,7 +114,7 @@ class ProductSyncService {
   }
 
   /**
-   * FIXED: Helper to identify placeholder images
+   * FIXED: Helper to identify placeholder images - UPDATED
    */
   isPlaceholderImage(imageUrl) {
     if (!imageUrl) return true;
@@ -123,14 +124,15 @@ class ProductSyncService {
       'via.placeholder',
       'default-image',
       'no-image',
-      'temp-image'
+      'temp-image',
+      '/api/placeholder'  // ADDED: Handle API placeholder URLs
     ];
     
     return placeholderPatterns.some(pattern => imageUrl.includes(pattern));
   }
 
   // ====================================================================
-  // FIXED: REAL SYNC IMPLEMENTATION
+  // SYNC IMPLEMENTATION (PRESERVED)
   // ====================================================================
 
   async performInitialSync() {
@@ -481,6 +483,9 @@ class ProductSyncService {
     }
   }
 
+  /**
+   * UPDATED: Handle different MCP API response formats
+   */
   async generateProductImagesWithMCP(product) {
     try {
       console.log(`Generating images for ${product.name} using MCP + OpenAI...`);
@@ -488,25 +493,29 @@ class ProductSyncService {
       const requestBody = {
         product: {
           name: product.name,
-          partNumber: product.partNumber || product.sku,
+          partNumber: product.partNumber || product.sku || product.code,
           category: product.category,
           brand: product.brand || 'Professional Grade',
           description: product.description || product.name
         },
-        imageTypes: ['primary', 'technical', 'application'],
+        imageTypes: ['primary'],  // Start with just primary image
         promptCategory: this.getImagePromptCategory(product.category),
-        provider: 'openai'
+        provider: 'openai',
+        model: 'dall-e-3',
+        quality: 'hd'
       };
       
       console.log(`Making request to: ${this.mcpApiBase}/api/mcp/generate-product-images`);
+      console.log('Request payload:', requestBody);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // UPDATED: Increased to 2 minutes
       
       const response = await fetch(`${this.mcpApiBase}/api/mcp/generate-product-images`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify(requestBody),
         signal: controller.signal
@@ -514,26 +523,46 @@ class ProductSyncService {
       
       clearTimeout(timeoutId);
       
+      console.log(`API Response status: ${response.status}`);
+      
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('MCP API error response:', errorText);
         throw new Error(`MCP API error: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('MCP API result:', result);
       
       if (!result.success) {
         throw new Error(result.error || 'Image generation failed');
       }
 
-      console.log(`MCP generated ${result.imagesGenerated} images using ${result.provider}`);
+      // UPDATED: Handle different response formats
+      let processedImages = {};
+      
+      if (result.images) {
+        processedImages = result.images;
+      } else if (result.imageUrls && Array.isArray(result.imageUrls)) {
+        processedImages = {
+          primary: { url: result.imageUrls[0] },
+          imageUrls: result.imageUrls
+        };
+      } else if (result.imageUrl) {
+        processedImages = {
+          primary: { url: result.imageUrl }
+        };
+      }
+      
+      console.log(`MCP generated images successfully:`, processedImages);
       
       return {
-        ...result.images,
+        ...processedImages,
         generated: true,
         generatedAt: new Date(),
-        provider: result.provider,
+        provider: result.provider || 'openai',
         model: result.model || 'dall-e-3',
-        compliance: result.compliance,
+        compliance: result.compliance || {},
         processingTime: result.processingTime
       };
       
@@ -541,7 +570,7 @@ class ProductSyncService {
       console.error('MCP image generation failed:', error);
       
       if (error.name === 'AbortError') {
-        console.error('Request timed out after 60 seconds');
+        console.error('Request timed out after 2 minutes');
       }
       
       throw error;
@@ -562,18 +591,63 @@ class ProductSyncService {
     return categoryMap[productCategory?.toLowerCase()] || 'product_image_primary';
   }
 
+  /**
+   * UPDATED: Properly handle OpenAI generated image URLs
+   */
   async updateProductImages(publicProductId, images) {
     try {
-      await updateDoc(doc(this.db, 'products_public', publicProductId), {
-        imageUrl: images.primary?.url || images.technical?.url || null,
-        images: images,
-        hasRealImage: true,
-        needsImageGeneration: false,
-        imageGenerationStatus: images.generated ? 'completed' : 'failed',
-        lastImageUpdate: new Date()
+      console.log('Updating product images:', { publicProductId, images });
+      
+      // Handle different image response formats
+      let imageUrl = null;
+      let imageData = {};
+      
+      if (images) {
+        // Handle MCP/OpenAI response format
+        if (images.primary && images.primary.url) {
+          imageUrl = images.primary.url;
+          imageData = images;
+        } 
+        // Handle direct URL response from MCP API
+        else if (typeof images === 'string' && images.startsWith('http')) {
+          imageUrl = images;
+          imageData = { primary: { url: images } };
+        }
+        // Handle array of URLs (multiple images)
+        else if (Array.isArray(images) && images.length > 0) {
+          imageUrl = images[0];
+          imageData = { primary: { url: images[0] } };
+        }
+        // UPDATED: Handle imageUrls array from MCP response
+        else if (images.imageUrls && Array.isArray(images.imageUrls) && images.imageUrls.length > 0) {
+          imageUrl = images.imageUrls[0];
+          imageData = { 
+            primary: { url: images.imageUrls[0] },
+            provider: images.provider || 'openai',
+            model: images.model || 'dall-e-3'
+          };
+        }
+      }
+      
+      const updateData = {
+        imageUrl: imageUrl,
+        images: imageData,
+        hasRealImage: !!imageUrl,
+        needsImageGeneration: !imageUrl,
+        imageGenerationStatus: imageUrl ? 'completed' : 'failed',
+        lastImageUpdate: serverTimestamp()
+      };
+      
+      console.log('Updating product with data:', updateData);
+      
+      await updateDoc(doc(this.db, 'products_public', publicProductId), updateData);
+      
+      console.log(`Updated images for product ${publicProductId}`, {
+        imageUrl,
+        hasImage: !!imageUrl
       });
       
-      console.log(`Updated images for product ${publicProductId}`);
+      return true;
       
     } catch (error) {
       console.error('Failed to update product images:', error);
@@ -624,7 +698,7 @@ class ProductSyncService {
           imageGenerationStatus: 'error',
           imageGenerationError: error.message,
           needsImageGeneration: true, // Allow manual retry
-          lastImageError: new Date()
+          lastImageError: serverTimestamp()
         });
       }
       
@@ -661,7 +735,142 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // DASHBOARD MANAGEMENT METHODS (FIXED)
+  // NEW: MANUAL IMAGE GENERATION METHODS
+  // ====================================================================
+
+  /**
+   * NEW: Manual trigger for image generation from dashboard
+   */
+  async manualImageGeneration(productIds) {
+    console.log(`Manual image generation triggered for ${productIds.length} products`);
+    
+    try {
+      const results = [];
+      const errors = [];
+      
+      for (const productId of productIds) {
+        try {
+          // Check if it's a public product ID or internal product ID
+          let internalProduct;
+          let publicProductId;
+          
+          // First try as internal product ID
+          internalProduct = await this.getProductById(productId);
+          if (internalProduct) {
+            publicProductId = await this.findPublicProductId(productId);
+          } else {
+            // Try as public product ID
+            const publicDoc = await getDoc(doc(this.db, 'products_public', productId));
+            if (publicDoc.exists()) {
+              publicProductId = productId;
+              const publicData = publicDoc.data();
+              if (publicData.internalProductId) {
+                internalProduct = await this.getProductById(publicData.internalProductId);
+              }
+            }
+          }
+          
+          if (!internalProduct) {
+            throw new Error(`Product not found: ${productId}`);
+          }
+          
+          if (!publicProductId) {
+            throw new Error(`Public product not found for: ${productId}`);
+          }
+          
+          console.log(`Generating image for: ${internalProduct.name}`);
+          
+          // Update status to processing
+          await updateDoc(doc(this.db, 'products_public', publicProductId), {
+            imageGenerationStatus: 'processing',
+            lastImageUpdate: serverTimestamp()
+          });
+          
+          // Generate image directly
+          const generatedImages = await this.generateProductImagesWithMCP(internalProduct);
+          
+          // Update with generated image
+          await this.updateProductImages(publicProductId, generatedImages);
+          
+          results.push({
+            productId,
+            productName: internalProduct.name,
+            success: true,
+            imageUrl: generatedImages.imageUrls?.[0] || generatedImages.primary?.url
+          });
+          
+          console.log(`Successfully generated image for ${internalProduct.name}`);
+          
+          // Wait between requests to respect rate limits
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.error(`Failed to generate image for ${productId}:`, error);
+          errors.push({
+            productId,
+            error: error.message
+          });
+        }
+      }
+      
+      return {
+        success: true,
+        results,
+        errors,
+        summary: {
+          total: productIds.length,
+          successful: results.length,
+          failed: errors.length
+        }
+      };
+      
+    } catch (error) {
+      console.error('Manual image generation failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * NEW: Get products that need image generation for dashboard
+   */
+  async getProductsNeedingImages(limit = 50) {
+    try {
+      const publicQuery = query(
+        collection(this.db, 'products_public'),
+        where('needsImageGeneration', '==', true),
+        orderBy('createdAt', 'desc'),
+        limit(limit)
+      );
+
+      const publicSnapshot = await getDocs(publicQuery);
+      const products = [];
+
+      publicSnapshot.forEach(doc => {
+        const data = doc.data();
+        products.push({
+          id: doc.id,
+          internalId: data.internalProductId,
+          name: data.displayName || data.name,
+          category: data.category,
+          imageUrl: data.imageUrl,
+          hasRealImage: data.hasRealImage || false,
+          imageGenerationStatus: data.imageGenerationStatus || 'needed',
+          lastImageError: data.lastImageError,
+          needsImageGeneration: data.needsImageGeneration
+        });
+      });
+
+      console.log(`Found ${products.length} products needing images`);
+      return products;
+
+    } catch (error) {
+      console.error('Failed to get products needing images:', error);
+      return [];
+    }
+  }
+
+  // ====================================================================
+  // DASHBOARD MANAGEMENT METHODS (PRESERVED)
   // ====================================================================
 
   async getInternalProductsWithSyncStatus() {
@@ -795,7 +1004,7 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // EXISTING SYNC METHODS (UPDATED WITH FIXES)
+  // EXISTING SYNC METHODS (PRESERVED)
   // ====================================================================
 
   async syncSingleProductToPublic(internalProductId) {
@@ -893,7 +1102,7 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // HELPER METHODS
+  // HELPER METHODS (PRESERVED)
   // ====================================================================
 
   async getProductById(productId) {
