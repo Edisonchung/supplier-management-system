@@ -25,6 +25,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
+// Import the ProductImage component for proper image handling
+import { ProductCardImage } from '../services/ProductImageService';
+
 // Conditional imports to avoid build errors
 let EcommerceProductCard = null;
 let EcommerceDataService = null;
@@ -587,7 +590,7 @@ const analyzeEmailDomain = (email) => {
   return { companyType: 'General Business', industry: 'General' };
 };
 
-// Optimized Product Card Component with better image handling
+// Optimized Product Card Component with fixed image handling
 const OptimizedProductCard = ({ 
   product, 
   viewMode = 'grid', 
@@ -599,9 +602,6 @@ const OptimizedProductCard = ({
   isInComparison, 
   onClick 
 }) => {
-  const [imageError, setImageError] = useState(false);
-  const [imageLoading, setImageLoading] = useState(true);
-  
   const safeProduct = useMemo(() => {
     if (!product) return {};
     
@@ -622,15 +622,6 @@ const OptimizedProductCard = ({
       urgency: typeof product.urgency === 'string' ? product.urgency : 'normal'
     };
   }, [product]);
-
-  const handleImageLoad = useCallback(() => {
-    setImageLoading(false);
-  }, []);
-
-  const handleImageError = useCallback(() => {
-    setImageError(true);
-    setImageLoading(false);
-  }, []);
 
   const handleClick = useCallback(() => {
     if (onClick) onClick(safeProduct);
@@ -664,17 +655,9 @@ const OptimizedProductCard = ({
       >
         <div className="p-4 flex items-center space-x-4">
           <div className="relative w-20 h-20 flex-shrink-0">
-            {imageLoading && (
-              <div className="absolute inset-0 bg-gray-200 rounded-lg animate-pulse flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-              </div>
-            )}
-            <img
-              src={imageError ? '/api/placeholder/80/80' : safeProduct.image}
-              alt={safeProduct.name}
-              className={`w-20 h-20 object-cover rounded-lg ${imageLoading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
+            <ProductCardImage 
+              product={safeProduct}
+              className="w-20 h-20 object-cover rounded-lg"
             />
           </div>
           
@@ -743,17 +726,9 @@ const OptimizedProductCard = ({
     >
       <div className="relative">
         <div className="relative w-full h-48 bg-gray-200 rounded-t-lg overflow-hidden">
-          {imageLoading && (
-            <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
-            </div>
-          )}
-          <img
-            src={imageError ? '/api/placeholder/300/300' : safeProduct.image}
-            alt={safeProduct.name}
-            className={`w-full h-48 object-cover rounded-t-lg ${imageLoading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
-            onLoad={handleImageLoad}
-            onError={handleImageError}
+          <ProductCardImage 
+            product={safeProduct}
+            className="w-full h-48 object-cover rounded-t-lg"
           />
         </div>
         
@@ -1633,13 +1608,9 @@ const SmartPublicCatalog = () => {
               {/* Product Summary */}
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <div className="flex items-center space-x-4">
-                  <img
-                    src={selectedProduct.image}
-                    alt={selectedProduct.name}
+                  <ProductCardImage 
+                    product={selectedProduct}
                     className="w-20 h-20 object-cover rounded-lg"
-                    onError={(e) => {
-                      e.target.src = '/api/placeholder/80/80';
-                    }}
                   />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900">{selectedProduct.name}</h3>
@@ -1818,13 +1789,9 @@ const SmartPublicCatalog = () => {
                   {getFavoriteProducts().map((product) => (
                     <div key={product.id} className="bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow">
                       <div className="relative">
-                        <img
-                          src={product.image}
-                          alt={product.name}
+                        <ProductCardImage 
+                          product={product}
                           className="w-full h-32 object-cover rounded-t-lg"
-                          onError={(e) => {
-                            e.target.src = '/api/placeholder/300/200';
-                          }}
                         />
                         <button
                           onClick={(e) => handleFavoriteToggle(product, e)}
@@ -1938,13 +1905,9 @@ const SmartPublicCatalog = () => {
                   {guestCart.map((item) => (
                     <div key={item.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="flex items-center space-x-4">
-                        <img
-                          src={item.image}
-                          alt={item.name}
+                        <ProductCardImage 
+                          product={item}
                           className="w-16 h-16 object-cover rounded-lg"
-                          onError={(e) => {
-                            e.target.src = '/api/placeholder/64/64';
-                          }}
                         />
                         <div className="flex-1 min-w-0">
                           <h4 className="font-medium text-gray-900 truncate">
@@ -2064,13 +2027,9 @@ const SmartPublicCatalog = () => {
                   return (
                     <div key={product.id} className="border rounded-lg p-4">
                       <div className="relative mb-4">
-                        <img
-                          src={product.image}
-                          alt={product.name}
+                        <ProductCardImage 
+                          product={product}
                           className="w-full h-32 object-cover rounded-lg"
-                          onError={(e) => {
-                            e.target.src = '/api/placeholder/300/200';
-                          }}
                         />
                         <button
                           onClick={() => setComparisonList(prev => prev.filter(id => id !== product.id))}
