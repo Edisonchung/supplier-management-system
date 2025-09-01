@@ -520,7 +520,7 @@ const runInitialization = async () => {
   if (initializationStarted) return;
   initializationStarted = true;
   
-  console.log('🔄 Running startup initialization...');
+  console.log('🔥 Running startup initialization...');
   
   // Reduced wait time since Firebase is already initialized from config
   await new Promise(resolve => setTimeout(resolve, 1000));
