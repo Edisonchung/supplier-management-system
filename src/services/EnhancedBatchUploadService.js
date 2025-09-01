@@ -2,7 +2,7 @@
 // Enhanced batch upload service with Web Worker support, duplicate prevention, and DOCUMENT STORAGE
 
 import { AIExtractionService } from './ai/AIExtractionService';
-import { ExtractionService } from './ai/ExtractionService'; // ✅ NEW: Import for dual prompt system
+import { ExtractionService } from './ai/ExtractionService';
 
 class EnhancedBatchUploadService {
   constructor() {
@@ -12,17 +12,16 @@ class EnhancedBatchUploadService {
     this.maxFilesPerWorker = 10;
     this.isInitialized = false;
     this.notifications = [];
-    this.showNotification = null; // Will be set by component
-    this.processedFiles = new Set(); // Track processed files to prevent duplicates
-    this.documentStorageService = null; // Document storage service
-    this.extractionService = ExtractionService; // ✅ NEW: Reference to extraction service
-
+    this.showNotification = null;
+    this.processedFiles = new Set();
+    this.documentStorageService = null;
+    this.extractionService = ExtractionService;
     
     this.init();
   }
 
   /**
-   * ✅ NEW: Get current user from localStorage or context
+   * Get current user from localStorage or context
    */
   getCurrentUser() {
     try {
@@ -38,52 +37,43 @@ class EnhancedBatchUploadService {
   }
   
   /**
-   * ✅ NEW: Initialize document storage service
+   * Initialize document storage service
    */
   async initializeDocumentStorage() {
-  if (!this.documentStorageService && typeof window !== 'undefined') {
-    try {
-      // ✅ UPDATED: Import from the correct path and handle new export structure
-      const module = await import('./DocumentStorageService.js');
-      
-      // Try different export patterns
-      let DocumentStorageService;
-      
-      if (module.DocumentStorageService) {
-        // Named export
-        DocumentStorageService = module.DocumentStorageService;
-      } else if (module.default) {
-        // Default export
-        DocumentStorageService = module.default;
+    if (!this.documentStorageService && typeof window !== 'undefined') {
+      try {
+        const module = await import('./DocumentStorageService.js');
         
-        // Check if default export is an instance, not a class
-        if (typeof DocumentStorageService === 'object' && DocumentStorageService.constructor) {
-          // It's already an instance, use it directly
-          this.documentStorageService = DocumentStorageService;
-          console.log('📁 DocumentStorageService instance imported for batch uploads');
-          return;
+        let DocumentStorageService;
+        
+        if (module.DocumentStorageService) {
+          DocumentStorageService = module.DocumentStorageService;
+        } else if (module.default) {
+          DocumentStorageService = module.default;
+          
+          if (typeof DocumentStorageService === 'object' && DocumentStorageService.constructor) {
+            this.documentStorageService = DocumentStorageService;
+            console.log('DocumentStorageService instance imported for batch uploads');
+            return;
+          }
         }
-      }
-      
-      // If we have a constructor, create new instance
-      if (DocumentStorageService && typeof DocumentStorageService === 'function') {
-        this.documentStorageService = new DocumentStorageService();
-        console.log('📁 DocumentStorageService initialized for batch uploads');
-      } else if (DocumentStorageService && typeof DocumentStorageService === 'object') {
-        // It's already an instance
-        this.documentStorageService = DocumentStorageService;
-        console.log('📁 DocumentStorageService instance loaded for batch uploads');
-      } else {
-        console.warn('⚠️ DocumentStorageService not found or not a constructor');
+        
+        if (DocumentStorageService && typeof DocumentStorageService === 'function') {
+          this.documentStorageService = new DocumentStorageService();
+          console.log('DocumentStorageService initialized for batch uploads');
+        } else if (DocumentStorageService && typeof DocumentStorageService === 'object') {
+          this.documentStorageService = DocumentStorageService;
+          console.log('DocumentStorageService instance loaded for batch uploads');
+        } else {
+          console.warn('DocumentStorageService not found or not a constructor');
+          this.documentStorageService = null;
+        }
+      } catch (error) {
+        console.warn('Could not initialize DocumentStorageService:', error.message);
         this.documentStorageService = null;
       }
-    } catch (error) {
-      console.warn('⚠️ Could not initialize DocumentStorageService:', error.message);
-      // Fallback: disable document storage for batch uploads
-      this.documentStorageService = null;
     }
   }
-}
 
   /**
    * Set notification function from component
@@ -109,19 +99,10 @@ class EnhancedBatchUploadService {
   init() {
     if (this.isInitialized) return;
     
-    // Restore queues from localStorage
     this.restoreQueues();
-    
-    // Load processed files tracking
     this.loadProcessedFiles();
-    
-    // Set up offline handling
     this.setupOfflineHandler();
-    
-    // Set up periodic cleanup
     this.setupCleanup();
-    
-    // ✅ NEW: Initialize document storage
     this.initializeDocumentStorage();
     
     this.isInitialized = true;
@@ -182,10 +163,8 @@ class EnhancedBatchUploadService {
    * COMPATIBILITY METHOD: Alias for addBatch to match component expectations
    */
   async startBatch(files, options = {}) {
-    console.log('🚀 startBatch called with:', files.length, 'files');
+    console.log('startBatch called with:', files.length, 'files');
     const result = await this.addBatch(files, options.type || 'proforma_invoice', options);
-    
-    // Return batch ID for compatibility
     return result.batchId;
   }
 
@@ -196,14 +175,13 @@ class EnhancedBatchUploadService {
     const batchId = this.generateBatchId();
     const queueKey = `${documentType}_${batchId}`;
     
-    // Filter out already processed files
     const newFiles = [];
     const skippedFiles = [];
     
     for (const file of files) {
       if (this.isFileAlreadyProcessed(file.name, file.size)) {
         skippedFiles.push(file.name);
-        console.log(`⚠️ Skipping already processed file: ${file.name}`);
+        console.log(`Skipping already processed file: ${file.name}`);
       } else {
         newFiles.push(file);
       }
@@ -245,12 +223,11 @@ class EnhancedBatchUploadService {
         notifyWhenComplete: options.notifyWhenComplete !== false,
         autoSave: options.autoSave !== false,
         useWebWorker: options.useWebWorker !== false,
-        storeDocuments: options.storeDocuments !== false, // ✅ NEW: Enable document storage
+        storeDocuments: options.storeDocuments !== false,
         ...options
       }
     };
 
-    // Process each new file and add to batch
     for (let i = 0; i < newFiles.length; i++) {
       const file = newFiles[i];
       const fileItem = {
@@ -261,8 +238,8 @@ class EnhancedBatchUploadService {
         status: 'queued',
         progress: 0,
         attempts: 0,
-        file: file, // ✅ PRESERVE: Keep original file for document storage
-        originalFile: file, // ✅ NEW: Explicit reference to original file
+        file: file,
+        originalFile: file,
         result: null,
         error: null,
         startedAt: null,
@@ -272,13 +249,11 @@ class EnhancedBatchUploadService {
       batch.files.push(fileItem);
     }
 
-    // Store batch
     this.queues.set(queueKey, batch);
     this.persistQueue(queueKey, batch);
 
     console.log(`Batch ${batchId} created with ${newFiles.length} new files (${skippedFiles.length} skipped)`);
     
-    // Start processing
     if (batch.options.useWebWorker && this.canUseWebWorkers()) {
       await this.processWithWebWorker(queueKey, batch);
     } else {
@@ -300,16 +275,14 @@ class EnhancedBatchUploadService {
    */
   async processWithWebWorker(queueKey, batch) {
     try {
-      console.log(`🚀 Starting Web Worker for batch ${batch.id}`);
+      console.log(`Starting Web Worker for batch ${batch.id}`);
       
-      // Create new Web Worker with enhanced error handling
       const worker = new Worker('/workers/extraction-worker.js');
       this.workers.set(queueKey, worker);
       
-      // Set up worker message handlers
       worker.onmessage = (event) => {
         try {
-          console.log('📨 Worker message received:', event.data.type);
+          console.log('Worker message received:', event.data.type);
           this.handleWorkerMessage(queueKey, event.data);
         } catch (error) {
           console.error('Error handling worker message:', error);
@@ -318,7 +291,7 @@ class EnhancedBatchUploadService {
       };
       
       worker.onerror = (error) => {
-        console.error('❌ Worker error event:', error);
+        console.error('Worker error event:', error);
         this.handleWorkerError(queueKey, {
           message: error.message,
           filename: error.filename,
@@ -327,29 +300,25 @@ class EnhancedBatchUploadService {
         });
       };
       
-      // Update batch status
       batch.status = 'processing';
       batch.processingMethod = 'web-worker';
       batch.startedAt = new Date().toISOString();
       this.persistQueue(queueKey, batch);
       
-// ✅ NEW: Get current user context for dual prompt system
       const userContext = this.getCurrentUser();
-      console.log('🔧 User context for batch processing:', {
+      console.log('User context for batch processing:', {
         hasUser: !!userContext,
         email: userContext?.email,
         role: userContext?.role
       });
       
-      // Convert files to base64 strings (safer for Web Worker transfer)
       const processableFiles = [];      
       for (let i = 0; i < batch.files.length; i++) {
         const fileItem = batch.files[i];
         
         try {
-          console.log(`📄 Converting file ${fileItem.name} to base64...`);
+          console.log(`Converting file ${fileItem.name} to base64...`);
           
-          // Convert File to base64 string directly
           const base64Data = await this.fileToBase64(fileItem.file);
           
           processableFiles.push({
@@ -360,11 +329,10 @@ class EnhancedBatchUploadService {
             originalIndex: i
           });
           
-          console.log(`✅ Converted file ${fileItem.name} to base64 (${base64Data.length} chars)`);
+          console.log(`Converted file ${fileItem.name} to base64 (${base64Data.length} chars)`);
           
         } catch (error) {
-          console.error(`❌ Failed to convert file ${fileItem.name}:`, error);
-          // Mark this file as failed
+          console.error(`Failed to convert file ${fileItem.name}:`, error);
           fileItem.status = 'failed';
           fileItem.error = `File conversion failed: ${error.message}`;
           fileItem.completedAt = new Date().toISOString();
@@ -378,23 +346,21 @@ class EnhancedBatchUploadService {
         throw new Error('No files could be converted for processing');
       }
       
-      // ✅ UPDATED: Send files to worker with user context for dual prompt system
       const workerPayload = {
         files: processableFiles,
         batchId: batch.id,
         options: batch.options,
-        userContext: userContext // ← ADD THIS LINE
+        userContext: userContext
       };
       
-      console.log(`📤 Sending START_BATCH to worker with ${processableFiles.length} files and user context`);
+      console.log(`Sending START_BATCH to worker with ${processableFiles.length} files and user context`);
       
-      // Send to worker with user context
       worker.postMessage({
         type: 'START_BATCH',
         payload: workerPayload
       });
       
-      console.log(`✅ Started Web Worker processing for batch ${batch.id} with dual prompt system support`);
+      console.log(`Started Web Worker processing for batch ${batch.id} with dual prompt system support`);
       
     } catch (error) {
       console.error('Failed to start Web Worker:', error);
@@ -402,12 +368,13 @@ class EnhancedBatchUploadService {
         `Failed to start background processing for batch ${batch.id}. Using main thread instead.`, 
         'warning'
       );
-      // Fallback to main thread processing
       await this.processWithMainThread(queueKey, batch);
     }
   }
 
-  // Add this helper method to convert File to base64 string
+  /**
+   * Convert File to base64 string
+   */
   async fileToBase64(file) {
     return new Promise((resolve, reject) => {
       if (!file || !(file instanceof File)) {
@@ -425,7 +392,6 @@ class EnhancedBatchUploadService {
             return;
           }
           
-          // Extract base64 data (remove data:mime/type;base64, prefix)
           const base64 = result.split(',')[1];
           if (!base64) {
             reject(new Error('Failed to extract base64 data from file'));
@@ -446,15 +412,14 @@ class EnhancedBatchUploadService {
     });
   }
 
- /**
-   * ✅ UPDATED: Process batch in main thread with user context
+  /**
+   * Process batch in main thread with user context
    */
   async processWithMainThread(queueKey, batch) {
-    console.log(`🔄 Processing batch ${batch.id} in main thread`);
+    console.log(`Processing batch ${batch.id} in main thread`);
     
-    // Get user context for dual prompt system
     const userContext = this.getCurrentUser();
-    console.log('🔧 User context for main thread processing:', {
+    console.log('User context for main thread processing:', {
       hasUser: !!userContext,
       email: userContext?.email,
       role: userContext?.role
@@ -467,7 +432,6 @@ class EnhancedBatchUploadService {
     
     console.log(`Started main thread processing for batch ${batch.id}`);
     
-    // Process files sequentially with delay to prevent blocking
     for (let i = 0; i < batch.files.length; i++) {
       const fileItem = batch.files[i];
       
@@ -480,33 +444,29 @@ class EnhancedBatchUploadService {
         
         console.log(`Processing file: ${fileItem.name}`);
         
-        // ✅ UPDATED: Use ExtractionService with user context for dual prompt system
         const result = await this.extractionService.callExtractionAPI(
           fileItem.file, 
-          userContext // ← ADD THIS PARAMETER
+          userContext
         );
         
-       if (result && result.success !== false) {
+        if (result && result.success !== false) {
           fileItem.status = 'completed';
           fileItem.result = result;
           fileItem.progress = 100;
           fileItem.completedAt = new Date().toISOString();
           
-          // ✅ UPDATED: Store extraction metadata including dual system info
           if (result.extraction_metadata) {
             fileItem.extractionMetadata = result.extraction_metadata;
-            console.log(`📊 Dual system metadata for ${fileItem.name}:`, {
+            console.log(`Dual system metadata for ${fileItem.name}:`, {
               system_used: result.extraction_metadata.system_used,
               user_email: result.extraction_metadata.user_email,
               prompt_name: result.extraction_metadata.prompt_name
             });
           }
           
-          // ✅ CRITICAL FIX: Store extracted data including document storage
           if (result.data) {
             fileItem.extractedData = result.data;
             
-            // Store document storage information if available
             if (result.data.documentStorage) {
               fileItem.documentStorage = result.data.documentStorage;
             }
@@ -515,16 +475,14 @@ class EnhancedBatchUploadService {
           batch.successfulFiles++;
           batch.results.push(result);
 
-          // Mark file as processed to prevent future duplicates
           this.markFileAsProcessed(fileItem.name, fileItem.size);
 
-          // ✅ ENHANCED: Auto-save with document storage
           if (batch.options.autoSave && result.data) {
             await this.autoSaveExtractedDataWithDocuments(
               result.data, 
               batch.type, 
               fileItem.name,
-              fileItem.originalFile || fileItem.file, // Pass original file
+              fileItem.originalFile || fileItem.file,
               batch.options.storeDocuments
             );
           }
@@ -543,16 +501,14 @@ class EnhancedBatchUploadService {
       batch.processedFiles++;
       this.persistQueue(queueKey, batch);
       
-      // Small delay to prevent blocking UI
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    // Mark batch as completed
     await this.handleBatchCompletion(queueKey, batch);
   }
 
   /**
-   * ✅ FIXED: Handle messages from Web Worker with proper document storage preservation
+   * Handle messages from Web Worker with proper document storage preservation
    */
   handleWorkerMessage(queueKey, message) {
     const { type, payload } = message;
@@ -585,15 +541,11 @@ class EnhancedBatchUploadService {
           completedFile.progress = 100;
           completedFile.completedAt = new Date().toISOString();
           
-          // ✅ CRITICAL FIX: Store the complete result including document storage info
           completedFile.result = payload.result;
           
-          // ✅ FIX: Ensure extracted data includes document storage information
           if (payload.result && payload.result.success && payload.result.data) {
-            // Store the raw extracted data for batch completion processing
             completedFile.extractedData = payload.result.data;
             
-            // ✅ CRITICAL: Preserve document storage metadata if it exists
             if (payload.result.data.documentStorage) {
               completedFile.documentStorage = payload.result.data.documentStorage;
             }
@@ -606,16 +558,14 @@ class EnhancedBatchUploadService {
           batch.successfulFiles++;
           batch.results.push(payload.result);
           
-          // Mark file as processed to prevent future duplicates
           this.markFileAsProcessed(completedFile.name, completedFile.size);
           
-          // ✅ ENHANCED: Auto-save with document storage (pass filename for duplicate prevention)
           if (batch.options.autoSave && payload.result?.data) {
             this.autoSaveExtractedDataWithDocuments(
               payload.result.data, 
               batch.type, 
               completedFile.name,
-              completedFile.originalFile || completedFile.file, // Pass original file
+              completedFile.originalFile || completedFile.file,
               batch.options.storeDocuments
             );
           }
@@ -663,10 +613,8 @@ class EnhancedBatchUploadService {
     
     console.error('Worker error for batch:', batch.id, error);
     
-    // Terminate worker and fallback to main thread
     this.terminateWorker(queueKey);
     
-    // Reset any processing files to queued
     batch.files.forEach(file => {
       if (file.status === 'processing') {
         file.status = 'queued';
@@ -674,7 +622,6 @@ class EnhancedBatchUploadService {
       }
     });
     
-    // Fallback to main thread processing
     this.processWithMainThread(queueKey, batch);
   }
 
@@ -698,99 +645,82 @@ class EnhancedBatchUploadService {
   }
 
   /**
-   * ✅ ENHANCED: Auto-save extracted data WITH document storage
+   * Auto-save extracted data WITH document storage
    */
   async autoSaveExtractedDataWithDocuments(data, documentType, fileName = null, originalFile = null, storeDocuments = true) {
     try {
-      console.log('🔄 Auto-saving extracted data with documents:', documentType, fileName);
+      console.log('Auto-saving extracted data with documents:', documentType, fileName);
       
       if (documentType === 'proforma_invoice') {
-        // ✅ NEW: Create PI data with document storage fields
         const piData = await this.mapExtractedDataToPIWithDocuments(
           data, 
           fileName, 
           originalFile, 
-          storeDocuments && this.documentStorageService // Only if service is available
+          storeDocuments && this.documentStorageService
         );
 
-        // ✅ CRITICAL FIX: Update the batch file object with document storage info
-if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentId.includes('fallback')) {
-  // Find the corresponding batch file and update it with document storage info
-  for (const [queueKey, batch] of this.queues.entries()) {
-    const fileIndex = batch.files.findIndex(f => f.name === fileName);
-    if (fileIndex !== -1) {
-      const file = batch.files[fileIndex];
-      
-      // Update the file's extracted data with document storage information
-      if (file.extractedData) {
-        console.log(`📋 Updating batch file ${fileName} with document storage info:`, piData.documentId);
+        if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentId.includes('fallback')) {
+          for (const [queueKey, batch] of this.queues.entries()) {
+            const fileIndex = batch.files.findIndex(f => f.name === fileName);
+            if (fileIndex !== -1) {
+              const file = batch.files[fileIndex];
+              
+              if (file.extractedData) {
+                console.log(`Updating batch file ${fileName} with document storage info:`, piData.documentId);
+                
+                file.extractedData.documentStorage = {
+                  documentId: piData.documentId,
+                  documentNumber: piData.documentNumber,
+                  originalFileName: piData.originalFileName,
+                  fileSize: piData.fileSize,
+                  contentType: piData.contentType,
+                  storedAt: piData.extractedAt,
+                  hasStoredDocuments: piData.hasStoredDocuments,
+                  storageInfo: piData.storageInfo
+                };
+                
+                file.documentStorage = file.extractedData.documentStorage;
+                this.persistQueue(queueKey, batch);
+                
+                console.log(`Updated batch file ${fileName} with document storage:`, file.extractedData.documentStorage.documentId);
+                break;
+              }
+            }
+          }
+        }
         
-        // Add document storage to extracted data
-        file.extractedData.documentStorage = {
-          documentId: piData.documentId,
-          documentNumber: piData.documentNumber,
-          originalFileName: piData.originalFileName,
-          fileSize: piData.fileSize,
-          contentType: piData.contentType,
-          storedAt: piData.extractedAt,
-          hasStoredDocuments: piData.hasStoredDocuments,
-          storageInfo: piData.storageInfo
-        };
-        
-        // Also set it at the file level for batch completion
-        file.documentStorage = file.extractedData.documentStorage;
-        
-        // Persist the updated batch
-        this.persistQueue(queueKey, batch);
-        
-        console.log(`✅ Updated batch file ${fileName} with document storage:`, file.extractedData.documentStorage.documentId);
-        break;
-      }
-    }
-  }
-}
-        
-        // Get existing PIs from localStorage
         const existingPIs = JSON.parse(localStorage.getItem('proforma_invoices') || '[]');
         
-        // Check for duplicates by filename and PI number
         const duplicate = existingPIs.find(pi => 
           pi.extractedFrom === fileName ||
           (pi.piNumber && pi.piNumber === piData.piNumber)
         );
         
         if (duplicate) {
-          console.log('⚠️ Duplicate PI detected - skipping save for:', fileName);
+          console.log('Duplicate PI detected - skipping save for:', fileName);
           return;
         }
         
-        // Add new PI to the beginning of the array (so it shows at top)
         existingPIs.unshift(piData);
-        
-        // Save back to localStorage
         localStorage.setItem('proforma_invoices', JSON.stringify(existingPIs));
         
-        console.log('✅ Auto-save with documents successful for:', fileName, 
+        console.log('Auto-save with documents successful for:', fileName, 
           piData.hasStoredDocuments ? '(with stored docs)' : '(no docs)');
         
-        // Trigger a storage event to refresh any components listening for changes
         window.dispatchEvent(new StorageEvent('storage', {
           key: 'proforma_invoices',
           newValue: JSON.stringify(existingPIs),
           url: window.location.href
         }));
         
-        // Also trigger a custom event that components can listen to
         window.dispatchEvent(new CustomEvent('proformaInvoiceAdded', {
           detail: { piData, fileName }
         }));
         
       } else if (documentType === 'purchase_order') {
-        // Handle PO auto-save if needed
         const poData = this.mapExtractedDataToPO(data, fileName);
         const existingPOs = JSON.parse(localStorage.getItem('purchase_orders') || '[]');
         
-        // Check for duplicates
         const duplicate = existingPOs.find(po => 
           po.extractedFrom === fileName ||
           (po.poNumber && po.poNumber === poData.poNumber)
@@ -799,41 +729,36 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
         if (!duplicate) {
           existingPOs.unshift(poData);
           localStorage.setItem('purchase_orders', JSON.stringify(existingPOs));
-          console.log('✅ Auto-save PO successful for:', fileName);
+          console.log('Auto-save PO successful for:', fileName);
         }
       }
       
     } catch (error) {
-      console.error('❌ Auto-save with documents failed:', error);
-      // Don't throw - let batch processing continue
+      console.error('Auto-save with documents failed:', error);
     }
   }
 
   /**
-   * ✅ LEGACY: Keep original method for backward compatibility
+   * LEGACY: Keep original method for backward compatibility
    */
   async autoSaveExtractedData(data, documentType, fileName = null) {
     return this.autoSaveExtractedDataWithDocuments(data, documentType, fileName, null, false);
   }
 
   /**
-   * ✅ ENHANCED: Map extracted data to PI format WITH document storage
+   * Map extracted data to PI format WITH document storage
    */
   async mapExtractedDataToPIWithDocuments(data, fileName = null, originalFile = null, storeDocuments = true) {
-    // Create a consistent PI number based on filename
     const baseId = fileName ? fileName.replace(/\.[^/.]+$/, "") : `pi-${Date.now()}`;
     const piNumber = `PI-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
-    // ✅ NEW: Generate document ID and prepare document storage
     const documentId = `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     let documentStorageFields = {};
     
-    // ✅ NEW: Store original file if available and document storage is enabled
     if (originalFile && storeDocuments && this.documentStorageService) {
       try {
-        console.log('📁 Storing document for batch upload:', fileName);
+        console.log('Storing document for batch upload:', fileName);
         
-        // Store both original file and extraction data
         const storageResult = await this.documentStorageService.storeDocumentWithExtraction(
           originalFile,
           data,
@@ -856,29 +781,27 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
             storedAt: new Date().toISOString()
           };
           
-          console.log('✅ Document stored successfully for batch upload:', documentId);
+          console.log('Document stored successfully for batch upload:', documentId);
         } else {
-          console.warn('⚠️ Document storage failed for batch upload:', storageResult?.error || 'Unknown error');
+          console.warn('Document storage failed for batch upload:', storageResult?.error || 'Unknown error');
         }
       } catch (error) {
-        console.error('❌ Error storing document for batch upload:', error);
-        // Continue without document storage
+        console.error('Error storing document for batch upload:', error);
       }
     }
     
-    // ✅ Fallback: Set basic document info even without file storage
     if (!documentStorageFields.documentId) {
       documentStorageFields = {
         extractedFrom: fileName,
         extractedAt: new Date().toISOString(),
         hasExtractedData: true,
-        hasStoredDocuments: false // Explicitly set to false when no documents stored
+        hasStoredDocuments: false
       };
     }
     
     return {
-      id: `pi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique ID for storage
-      piNumber: piNumber, // Consistent PI number
+      id: `pi-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      piNumber: piNumber,
       date: data.date || new Date().toISOString().split('T')[0],
       supplierName: data.supplier?.name || data.supplierName || `Supplier ${Math.floor(Math.random() * 100)}`,
       totalAmount: data.grandTotal || data.totalAmount || Math.floor(Math.random() * 50000) + 1000,
@@ -892,28 +815,55 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
         totalPrice: parseFloat(item.totalPrice) || 0
       })),
       status: 'draft',
-      purpose: 'Stock', // Default purpose
+      purpose: 'Stock',
       createdAt: new Date().toISOString(),
-      extractedFrom: fileName, // Track which file this came from
-      isAutoGenerated: true, // Mark as auto-generated for easy identification
+      extractedFrom: fileName,
+      isAutoGenerated: true,
       
-      // ✅ CRITICAL: Include document storage fields
       ...documentStorageFields
     };
   }
 
   /**
-   * ✅ LEGACY: Keep original method for backward compatibility
+   * LEGACY: Keep original method for backward compatibility
    */
   mapExtractedDataToPI(data, fileName = null) {
     return this.mapExtractedDataToPIWithDocuments(data, fileName, null, false);
   }
 
   /**
+   * Map extracted data to PO format
+   */
+  mapExtractedDataToPO(data, fileName = null) {
+    const poNumber = `PO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    
+    return {
+      id: `po-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      poNumber: poNumber,
+      date: data.date || new Date().toISOString().split('T')[0],
+      supplierName: data.supplier?.name || data.supplierName || `Supplier ${Math.floor(Math.random() * 100)}`,
+      totalAmount: data.grandTotal || data.totalAmount || Math.floor(Math.random() * 50000) + 1000,
+      currency: data.currency || 'USD',
+      items: (data.products || data.items || []).map((item, index) => ({
+        id: `item-${Date.now()}-${index}`,
+        productCode: item.productCode || '',
+        productName: item.productName || item.description || `Product ${Math.floor(Math.random() * 1000)}`,
+        quantity: parseInt(item.quantity) || Math.floor(Math.random() * 10) + 1,
+        unitPrice: parseFloat(item.unitPrice) || Math.floor(Math.random() * 1000) + 100,
+        totalPrice: parseFloat(item.totalPrice) || 0
+      })),
+      status: 'draft',
+      createdAt: new Date().toISOString(),
+      extractedFrom: fileName,
+      isAutoGenerated: true
+    };
+  }
+
+  /**
    * Handle batch completion
    */
   async handleBatchCompletion(queueKey, batch) {
-    console.log(`🎉 Batch ${batch.id} completed!`);
+    console.log(`Batch ${batch.id} completed!`);
     
     batch.status = 'completed';
     batch.completedAt = new Date().toISOString();
@@ -927,17 +877,14 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
       processingMethod: batch.processingMethod
     };
 
-    // Store notification for offline users
     this.storeNotification(batch.id, summary);
 
-    // Show notification if user is online
     if (batch.options.notifyWhenComplete) {
       if (document.visibilityState === 'visible') {
         let message = `Batch processing complete! ${summary.successful}/${summary.total} files processed successfully using ${summary.processingMethod}.`;
         if (summary.skipped > 0) {
           message += ` ${summary.skipped} files were skipped (already processed).`;
         }
-        // ✅ NEW: Mention document storage if enabled
         if (batch.options.storeDocuments) {
           message += ' Documents have been stored and linked to PIs.';
         }
@@ -948,13 +895,9 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
       }
     }
 
-    // Persist final state
     this.persistQueue(queueKey, batch);
-    
-    // Cleanup worker if exists
     this.terminateWorker(queueKey);
     
-    // Schedule cleanup
     setTimeout(() => this.cleanupCompletedBatch(queueKey), 24 * 60 * 60 * 1000);
   }
 
@@ -964,24 +907,22 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
   clearProcessedFiles() {
     this.processedFiles.clear();
     localStorage.removeItem('processed_files');
-    console.log('🧹 Cleared processed files tracking');
+    console.log('Cleared processed files tracking');
   }
 
   /**
    * Cancel a batch by ID
    */
   cancelBatch(batchId) {
-    console.log(`🛑 Cancelling batch: ${batchId}`);
+    console.log(`Cancelling batch: ${batchId}`);
     
     for (const [queueKey, batch] of this.queues.entries()) {
       if (batch.id === batchId) {
         const worker = this.workers.get(queueKey);
         
         if (worker) {
-          // Send cancel message to worker
           worker.postMessage({ type: 'CANCEL_BATCH' });
         } else {
-          // Cancel main thread processing
           batch.status = 'cancelled';
           batch.cancelledAt = new Date().toISOString();
           batch.files.forEach(file => {
@@ -1035,7 +976,7 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
   }
 
   /**
-   * ✅ FIXED: Get all active batches with proper document storage information
+   * Get all active batches with proper document storage information
    */
   getActiveBatches() {
     const batches = [];
@@ -1052,11 +993,10 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
         files: batch.files.map(f => ({
           id: f.id,
           name: f.name,
-          fileName: f.name, // For compatibility
+          fileName: f.name,
           status: f.status,
           progress: f.progress,
           error: f.error,
-          // ✅ CRITICAL FIX: Include complete extracted data with document storage
           extractedData: f.extractedData || f.result?.data,
           documentStorage: f.documentStorage,
           extractionMetadata: f.extractionMetadata,
@@ -1117,7 +1057,7 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
 
   calculateEstimatedTime(batch) {
     const remainingFiles = batch.totalFiles - batch.processedFiles;
-    return remainingFiles * 45; // 45 seconds average per file
+    return remainingFiles * 45;
   }
 
   calculateDuration(startTime, endTime) {
@@ -1140,8 +1080,8 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
         ...batch,
         files: batch.files.map(f => ({
           ...f,
-          file: null, // Remove file object for storage
-          originalFile: null // ✅ Also remove originalFile for storage
+          file: null,
+          originalFile: null
         }))
       };
       
@@ -1159,9 +1099,7 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
         const batch = JSON.parse(localStorage.getItem(key));
         const queueKey = key.replace('enhanced_batch_', '');
         
-        // Only restore non-completed batches
         if (batch.status !== 'completed') {
-          // Reset processing files to queued
           batch.files.forEach(file => {
             if (file.status === 'processing') {
               file.status = 'queued';
@@ -1186,27 +1124,24 @@ if (piData.documentId && piData.documentId.includes('doc-') && !piData.documentI
     });
 
     window.addEventListener('beforeunload', () => {
-      // Terminate all workers and persist state
       for (const [queueKey, batch] of this.queues.entries()) {
         this.terminateWorker(queueKey);
         this.persistQueue(queueKey, batch);
       }
-      // Save processed files tracking
       this.saveProcessedFiles();
     });
   }
 
   setupCleanup() {
-    // Clean up completed batches every hour
     setInterval(() => {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       
       for (const [queueKey, batch] of this.queues.entries()) {
         if (batch.status === 'completed' && new Date(batch.completedAt) < cutoff) {
           this.cleanupCompletedBatch(queueKey);
         }
       }
-    }, 60 * 60 * 1000); // Every hour
+    }, 60 * 60 * 1000);
   }
 
   storeNotification(batchId, summary) {
