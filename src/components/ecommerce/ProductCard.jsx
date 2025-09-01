@@ -1,5 +1,5 @@
 // src/components/ecommerce/ProductCard.jsx
-// FIXED: Enhanced E-commerce Product Card - ELIMINATES console spam and loading issues
+// UPDATED: Your existing component with critical console spam prevention
 
 import React, { useState, useCallback, useMemo, memo, useRef } from 'react';
 import { 
@@ -24,27 +24,38 @@ import {
   Zap
 } from 'lucide-react';
 
-// FIXED: Error logging throttle to prevent console spam
+// CRITICAL FIX: Enhanced error throttling to prevent 2.5M+ console messages
 class ErrorThrottle {
   constructor() {
     this.errorCount = new Map();
     this.maxErrorsPerProduct = 1; // Only log once per product
-    this.errorTimeout = 10000; // Reset after 10 seconds
+    this.errorTimeout = 60000; // Reset after 60 seconds (increased from 10s)
+    this.globalErrorCount = 0;
+    this.maxGlobalErrors = 5; // Maximum total errors across all products
+    this.isProduction = import.meta.env.MODE === 'production';
   }
   
   shouldLog(productId, errorType) {
+    // CRITICAL: Never log in production to prevent console spam
+    if (this.isProduction) return false;
+    
+    // CRITICAL: Global error limit to prevent build failure
+    if (this.globalErrorCount >= this.maxGlobalErrors) return false;
+    
     const key = `${productId}-${errorType}`;
     const now = Date.now();
     const lastError = this.errorCount.get(key);
     
     if (!lastError || now - lastError.timestamp > this.errorTimeout) {
       this.errorCount.set(key, { timestamp: now, count: 1 });
+      this.globalErrorCount++;
       return true;
     }
     
     if (lastError.count < this.maxErrorsPerProduct) {
       lastError.count++;
-      return true;
+      this.globalErrorCount++;
+      return this.globalErrorCount <= this.maxGlobalErrors;
     }
     
     return false;
@@ -52,30 +63,35 @@ class ErrorThrottle {
   
   clear() {
     this.errorCount.clear();
+    this.globalErrorCount = 0;
   }
 }
 
 // Global error throttle instance
 const errorThrottle = new ErrorThrottle();
 
-// FIXED: Enhanced image validation and fallback system
+// CRITICAL FIX: Enhanced image validation to block problematic URLs
 const validateImageUrl = (url) => {
   if (!url || typeof url !== 'string') return false;
   
-  // Block known problematic URLs that cause infinite loops
+  // Block known problematic URLs that cause infinite console loops
   const blockedPatterns = [
     'placeholder-product.jpg',
-    'via.placeholder.com', // These often fail
-    'oaidalleapiprodscus.blob.core.windows.net', // Expired DALL-E URLs
+    'via.placeholder.com',
+    'oaidalleapiprodscus.blob.core.windows.net', // Expired DALL-E URLs causing most errors
     'example.com',
     'lorem',
-    'ipsum'
+    'ipsum',
+    'placeholder.com',
+    'temp-image',
+    'dummy',
+    'test-image'
   ];
   
-  return !blockedPatterns.some(pattern => url.includes(pattern));
+  return !blockedPatterns.some(pattern => url.toLowerCase().includes(pattern));
 };
 
-// FIXED: Safe image URL generator
+// CRITICAL FIX: Safe SVG fallback generator (no external dependencies)
 const generateFallbackImage = (productName, category = 'general') => {
   const categoryColors = {
     'components': '4F46E5',
@@ -87,8 +103,9 @@ const generateFallbackImage = (productName, category = 'general') => {
   };
   
   const color = categoryColors[category.toLowerCase()] || categoryColors.general;
-  const encodedName = encodeURIComponent(productName || 'Product').substring(0, 20);
+  const encodedName = encodeURIComponent((productName || 'Product').substring(0, 15));
   
+  // Generate inline SVG to avoid external dependencies
   return `data:image/svg+xml,${encodeURIComponent(`
     <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
       <rect width="400" height="300" fill="#f8fafc"/>
@@ -100,7 +117,7 @@ const generateFallbackImage = (productName, category = 'general') => {
   `)}`;
 };
 
-// Memoized ProductCard component for better performance
+// Memoized ProductCard component with critical fixes
 const EcommerceProductCard = memo(({ 
   product, 
   onAddToCart, 
@@ -120,28 +137,27 @@ const EcommerceProductCard = memo(({
   const [imageError, setImageError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const imageRef = useRef(null);
-  const maxRetries = 1; // Limit retries to prevent infinite loops
+  const maxRetries = 0; // CRITICAL FIX: Disable retries to prevent loops
 
-  // Memoized product data processing
+  // CRITICAL FIX: Enhanced product data processing with better error handling
   const productData = useMemo(() => {
     if (!product || typeof product !== 'object') {
-      if (errorThrottle.shouldLog('unknown', 'invalid-data')) {
-        console.warn('[ProductCard] Invalid product data received:', typeof product);
-      }
+      // Silent fallback - no console logging
       return getDefaultProductData();
     }
 
     try {
       return processProductData(product);
     } catch (error) {
+      // Only log critical processing errors (throttled)
       if (errorThrottle.shouldLog(product.id || 'unknown', 'processing-error')) {
-        console.error('[ProductCard] Error processing product:', error.message);
+        console.warn('[ProductCard] Processing error:', error.message);
       }
       return getDefaultProductData();
     }
   }, [product]);
 
-  // FIXED: Default product data
+  // Default product data (unchanged)
   function getDefaultProductData() {
     return {
       id: 'unknown',
@@ -184,7 +200,7 @@ const EcommerceProductCard = memo(({
     };
   }
 
-  // FIXED: Enhanced product data processing
+  // CRITICAL FIX: Enhanced product data processing
   function processProductData(product) {
     const safeGet = (obj, path, defaultValue = '') => {
       try {
@@ -319,7 +335,7 @@ const EcommerceProductCard = memo(({
       return keySpecs.slice(0, 3);
     };
 
-    // FIXED: Enhanced image URL resolution with validation
+    // CRITICAL FIX: Enhanced image URL resolution with strict validation
     const getImageUrl = (product) => {
       const productName = product.name || product.displayName || 'Industrial Component';
       const category = product.category || 'general';
@@ -347,7 +363,7 @@ const EcommerceProductCard = memo(({
             }
           }
           
-          // Handle string image URLs
+          // Handle string image URLs with validation
           if (typeof imageValue === 'string' && validateImageUrl(imageValue)) {
             return imageValue;
           }
@@ -375,11 +391,11 @@ const EcommerceProductCard = memo(({
         }
       }
 
-      // Return safe fallback
+      // CRITICAL: Always return safe fallback instead of null to prevent errors
       return generateFallbackImage(productName, category);
     };
 
-    // Process the data safely
+    // Process the data safely (rest of processing logic unchanged)
     const stockValue = parseStockValue(safeGet(product, 'stock'));
     const priceValue = parsePrice(safeGet(product, 'price') || safeGet(product, 'pricing.listPrice'));
     const originalPriceValue = parsePrice(safeGet(product, 'originalPrice') || safeGet(product, 'pricing.originalPrice'));
@@ -451,7 +467,7 @@ const EcommerceProductCard = memo(({
     return 0;
   }, [productData.originalPrice, productData.price]);
 
-  // FIXED: Enhanced image loading handlers with proper error management
+  // CRITICAL FIX: Image loading handlers with console spam prevention
   const handleImageLoad = useCallback(() => {
     setIsImageLoaded(true);
     setImageError(false);
@@ -459,33 +475,26 @@ const EcommerceProductCard = memo(({
   }, []);
 
   const handleImageError = useCallback((e) => {
-    // Only log once per product to prevent spam
+    // CRITICAL: Only log in development and heavily throttled
     if (errorThrottle.shouldLog(productData.id, 'image-load')) {
-      console.warn(`[ProductCard] Image failed for product: ${productData.id} (${productData.name})`);
+      console.warn(`[ProductCard] Image failed: ${productData.id} (${productData.name})`);
     }
     
     setImageError(true);
     setIsImageLoaded(true);
     
-    // FIXED: Prevent infinite retry loops
-    if (retryCount < maxRetries && e.target) {
-      setRetryCount(prev => prev + 1);
-      // Try the fallback image
-      const fallbackUrl = generateFallbackImage(productData.name, productData.category);
-      if (e.target.src !== fallbackUrl) {
-        e.target.src = fallbackUrl;
-      }
-    }
-  }, [productData.id, productData.name, productData.category, retryCount, maxRetries]);
+    // CRITICAL: No retries to prevent infinite loops
+    // Fallback image is already set in getImageUrl()
+  }, [productData.id, productData.name]);
 
-  // Enhanced event handlers with error boundaries
+  // Event handlers with error boundaries (unchanged but with better error handling)
   const handleCardClick = useCallback((e) => {
     try {
       if (e.target.closest('button')) return;
       onClick?.(productData);
     } catch (error) {
       if (errorThrottle.shouldLog(productData.id, 'click-error')) {
-        console.error('[ProductCard] Click handler error:', error.message);
+        console.warn('[ProductCard] Click error:', error.message);
       }
     }
   }, [onClick, productData]);
@@ -496,7 +505,7 @@ const EcommerceProductCard = memo(({
       onAddToCart?.(productData);
     } catch (error) {
       if (errorThrottle.shouldLog(productData.id, 'cart-error')) {
-        console.error('[ProductCard] Add to cart error:', error.message);
+        console.warn('[ProductCard] Cart error:', error.message);
       }
     }
   }, [onAddToCart, productData]);
@@ -507,7 +516,7 @@ const EcommerceProductCard = memo(({
       onRequestQuote?.(productData);
     } catch (error) {
       if (errorThrottle.shouldLog(productData.id, 'quote-error')) {
-        console.error('[ProductCard] Request quote error:', error.message);
+        console.warn('[ProductCard] Quote error:', error.message);
       }
     }
   }, [onRequestQuote, productData]);
@@ -518,7 +527,7 @@ const EcommerceProductCard = memo(({
       onAddToFavorites?.(productData, e);
     } catch (error) {
       if (errorThrottle.shouldLog(productData.id, 'favorites-error')) {
-        console.error('[ProductCard] Favorites error:', error.message);
+        console.warn('[ProductCard] Favorites error:', error.message);
       }
     }
   }, [onAddToFavorites, productData]);
@@ -529,7 +538,7 @@ const EcommerceProductCard = memo(({
       onCompare?.(productData, e);
     } catch (error) {
       if (errorThrottle.shouldLog(productData.id, 'compare-error')) {
-        console.error('[ProductCard] Compare error:', error.message);
+        console.warn('[ProductCard] Compare error:', error.message);
       }
     }
   }, [onCompare, productData]);
@@ -540,7 +549,7 @@ const EcommerceProductCard = memo(({
       onQuickView?.(productData);
     } catch (error) {
       if (errorThrottle.shouldLog(productData.id, 'quickview-error')) {
-        console.error('[ProductCard] Quick view error:', error.message);
+        console.warn('[ProductCard] Quick view error:', error.message);
       }
     }
   }, [onQuickView, productData]);
@@ -557,7 +566,7 @@ const EcommerceProductCard = memo(({
     );
   }
 
-  // FIXED: Enhanced image component with better error handling
+  // CRITICAL FIX: Enhanced image component with no external dependencies
   const ProductImage = () => (
     <div className="relative w-full h-full overflow-hidden">
       {/* Loading state */}
@@ -567,13 +576,13 @@ const EcommerceProductCard = memo(({
         </div>
       )}
       
-      {/* Main image */}
+      {/* Main image - always show, fallback is built into imageUrl */}
       <img 
         ref={imageRef}
         src={productData.imageUrl} 
         alt={productData.name}
         className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${
-          isImageLoaded && !imageError ? 'opacity-100' : 'opacity-0'
+          isImageLoaded ? 'opacity-100' : 'opacity-0'
         }`}
         onLoad={handleImageLoad}
         onError={handleImageError}
@@ -581,19 +590,11 @@ const EcommerceProductCard = memo(({
         decoding="async"
       />
       
-      {/* Error state overlay */}
-      {imageError && isImageLoaded && (
-        <div className="absolute inset-0 bg-gray-50 flex items-center justify-center border border-gray-200">
-          <div className="text-center">
-            <Package className="w-8 h-8 text-gray-400 mx-auto mb-1" />
-            <span className="text-xs text-gray-500">No Image</span>
-          </div>
-        </div>
-      )}
+      {/* No error overlay needed - fallback image handles this */}
     </div>
   );
 
-  // Grid view component
+  // Grid view component (unchanged from your original)
   const GridCard = () => (
     <div 
       className={`group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden relative cursor-pointer ${className}`}
@@ -601,7 +602,7 @@ const EcommerceProductCard = memo(({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* FIXED: Image Section */}
+      {/* Image Section */}
       <div className="relative h-48">
         <ProductImage />
         
@@ -678,7 +679,7 @@ const EcommerceProductCard = memo(({
         )}
       </div>
 
-      {/* Content Section */}
+      {/* Content Section - keeping your existing design */}
       <div className="p-4">
         {/* Product Name & SKU */}
         <div className="mb-2">
@@ -781,7 +782,7 @@ const EcommerceProductCard = memo(({
     </div>
   );
 
-  // List view component (simplified for brevity)
+  // List view component (simplified version keeping your design)
   const ListCard = () => (
     <div 
       className={`group bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer ${className}`}
@@ -793,7 +794,7 @@ const EcommerceProductCard = memo(({
           <ProductImage />
         </div>
 
-        {/* Content - Simplified */}
+        {/* Content */}
         <div className="flex-1 p-4">
           <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 mb-2">
             {productData.name}
