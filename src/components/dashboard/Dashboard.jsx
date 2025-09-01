@@ -1,5 +1,5 @@
 // src/components/dashboard/Dashboard.jsx
-// Enhanced Dashboard with Dark Mode Support - All existing features preserved
+// FIXED: Enhanced Dashboard with Safe Timestamp Handling
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, Package, FileText, Users, TrendingUp, 
@@ -24,6 +24,70 @@ import { db } from '../../config/firebase';
 // Import the enhanced dark mode system
 import { useDarkMode } from '../../hooks/useDarkMode';
 import { themeClasses, useThemeClasses, getThemeClasses } from '../../utils/theme';
+
+// FIXED: Safe timestamp conversion helper
+const safeTimestampConversion = (timestamp) => {
+  if (!timestamp) return null;
+  
+  try {
+    // Handle Firestore Timestamp objects
+    if (timestamp && typeof timestamp.toDate === 'function') {
+      return timestamp.toDate();
+    }
+    
+    // Handle timestamp objects with seconds/nanoseconds
+    if (timestamp && typeof timestamp === 'object' && timestamp.seconds !== undefined) {
+      const seconds = typeof timestamp.seconds === 'string' ? 
+        parseInt(timestamp.seconds, 10) : timestamp.seconds;
+      const nanoseconds = timestamp.nanoseconds || 0;
+      
+      if (!isNaN(seconds)) {
+        return new Date(seconds * 1000 + Math.floor(nanoseconds / 1000000));
+      }
+    }
+    
+    // Handle Date objects
+    if (timestamp instanceof Date) {
+      return timestamp;
+    }
+    
+    // Handle ISO strings
+    if (typeof timestamp === 'string') {
+      const parsed = new Date(timestamp);
+      if (!isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    
+    // Handle Unix timestamps
+    if (typeof timestamp === 'number') {
+      const date = timestamp > 9999999999 ? 
+        new Date(timestamp) : new Date(timestamp * 1000);
+      
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+    
+    console.warn('Unknown timestamp format:', timestamp);
+    return new Date(); // Fallback to current date
+  } catch (error) {
+    console.error('Error converting timestamp:', error);
+    return new Date(); // Fallback to current date
+  }
+};
+
+// Helper function for formatting dates safely
+const formatDisplayDate = (timestamp) => {
+  const date = safeTimestampConversion(timestamp);
+  return date ? date.toLocaleDateString() : 'N/A';
+};
+
+// Helper function for formatting date/time safely
+const formatDisplayDateTime = (timestamp) => {
+  const date = safeTimestampConversion(timestamp);
+  return date ? date.toLocaleString() : 'N/A';
+};
 
 const Dashboard = ({ showNotification }) => {
   const { user } = useAuth();
@@ -52,7 +116,7 @@ const Dashboard = ({ showNotification }) => {
   const [timeRange, setTimeRange] = useState('30d');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
 
-  // Set up real-time Firestore listeners (preserved exactly as before)
+  // FIXED: Set up real-time Firestore listeners with safe timestamp handling
   useEffect(() => {
     if (!user) return;
 
@@ -60,14 +124,17 @@ const Dashboard = ({ showNotification }) => {
     setConnectionStatus('connecting');
 
     try {
-      // Suppliers listener
+      // FIXED: Suppliers listener with safe timestamp conversion
       const suppliersQuery = query(collection(db, 'suppliers'), orderBy('createdAt', 'desc'));
       const suppliersUnsub = onSnapshot(suppliersQuery, (snapshot) => {
-        const suppliers = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate()
-        }));
+        const suppliers = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: safeTimestampConversion(data.createdAt)
+          };
+        });
         setDashboardData(prev => ({ ...prev, suppliers }));
         setConnectionStatus('connected');
       }, (error) => {
@@ -76,45 +143,58 @@ const Dashboard = ({ showNotification }) => {
       });
       unsubscribes.push(suppliersUnsub);
 
-      // Products listener
+      // FIXED: Products listener with safe timestamp conversion
       const productsQuery = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
       const productsUnsub = onSnapshot(productsQuery, (snapshot) => {
-        const products = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate()
-        }));
+        const products = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: safeTimestampConversion(data.createdAt),
+            updatedAt: safeTimestampConversion(data.updatedAt)
+          };
+        });
         setDashboardData(prev => ({ ...prev, products }));
       });
       unsubscribes.push(productsUnsub);
 
-      // Proforma Invoices listener
+      // FIXED: Proforma Invoices listener with safe timestamp conversion
       const pisQuery = query(collection(db, 'proformaInvoices'), orderBy('createdAt', 'desc'));
       const pisUnsub = onSnapshot(pisQuery, (snapshot) => {
-        const proformaInvoices = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate(),
-          date: doc.data().date?.toDate()
-        }));
+        const proformaInvoices = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: safeTimestampConversion(data.createdAt),
+            date: safeTimestampConversion(data.date),
+            deliveryDate: safeTimestampConversion(data.deliveryDate),
+            updatedAt: safeTimestampConversion(data.updatedAt)
+          };
+        });
         setDashboardData(prev => ({ ...prev, proformaInvoices }));
       });
       unsubscribes.push(pisUnsub);
 
-      // Purchase Orders listener
+      // FIXED: Purchase Orders listener with safe timestamp conversion
       const posQuery = query(collection(db, 'purchaseOrders'), orderBy('createdAt', 'desc'));
       const posUnsub = onSnapshot(posQuery, (snapshot) => {
-        const purchaseOrders = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate(),
-          deliveryDate: doc.data().deliveryDate?.toDate()
-        }));
+        const purchaseOrders = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: safeTimestampConversion(data.createdAt),
+            deliveryDate: safeTimestampConversion(data.deliveryDate),
+            updatedAt: safeTimestampConversion(data.updatedAt)
+          };
+        });
         setDashboardData(prev => ({ ...prev, purchaseOrders }));
       });
       unsubscribes.push(posUnsub);
 
-      // Activity logs listener (recent 20) with user information
+      // FIXED: Activity logs listener with safe timestamp conversion
       const activityQuery = query(
         collection(db, 'activityLogs'), 
         orderBy('timestamp', 'desc'), 
@@ -152,7 +232,7 @@ const Dashboard = ({ showNotification }) => {
             return {
               id: doc.id,
               ...data,
-              timestamp: data.timestamp?.toDate(),
+              timestamp: safeTimestampConversion(data.timestamp), // FIXED: Safe conversion
               userName,
               userEmail
             };
@@ -176,7 +256,7 @@ const Dashboard = ({ showNotification }) => {
     };
   }, [user]);
 
-  // Calculate real-time metrics from Firestore data (preserved exactly as before)
+  // FIXED: Calculate real-time metrics with safe timestamp handling
   const dashboardMetrics = useMemo(() => {
     if (loading) return null;
 
@@ -187,15 +267,18 @@ const Dashboard = ({ showNotification }) => {
     const daysAgo = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
     const cutoffDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
 
-    // Helper function to calculate growth
+    // FIXED: Helper function to calculate growth with safe date handling
     const calculateGrowth = (items, dateField = 'createdAt') => {
       if (!items.length) return 0;
       const recentItems = items.filter(item => {
-        const itemDate = item[dateField] || new Date();
+        const itemDate = item[dateField];
+        if (!itemDate) return false;
+        // itemDate is already converted to Date object by safeTimestampConversion
         return itemDate >= cutoffDate;
       });
       const olderItems = items.filter(item => {
-        const itemDate = item[dateField] || new Date();
+        const itemDate = item[dateField];
+        if (!itemDate) return true; // Consider items without dates as older
         return itemDate < cutoffDate;
       });
       
@@ -479,7 +562,7 @@ const Dashboard = ({ showNotification }) => {
     return `${prefix}${(value || 0).toLocaleString()}${suffix}`;
   };
 
-  // Get recent activities with proper formatting and user names (preserved exactly as before)
+  // FIXED: Get recent activities with safe timestamp handling
   const recentActivities = dashboardData.activityLogs.slice(0, 6).map(activity => {
     // Extract user information
     const userName = activity.userName || activity.userEmail?.split('@')[0] || 'Unknown User';
@@ -530,17 +613,22 @@ const Dashboard = ({ showNotification }) => {
       id: activity.id,
       message,
       userName,
-      time: getTimeAgo(activity.timestamp),
+      time: getTimeAgo(activity.timestamp), // FIXED: Safe timestamp passed
       type: getActivityType(activity.action),
       priority: getActivityPriority(activity.action)
     };
   });
 
-  // Helper functions (preserved exactly as before)
+  // FIXED: Helper functions with safe date handling
   function getTimeAgo(date) {
     if (!date) return 'Just now';
+    
+    // Ensure date is a Date object
+    const dateObj = date instanceof Date ? date : safeTimestampConversion(date);
+    if (!dateObj) return 'Just now';
+    
     const now = new Date();
-    const diff = now - date;
+    const diff = now - dateObj;
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
