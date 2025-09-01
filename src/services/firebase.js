@@ -1,7 +1,4 @@
-// src/services/firebase.js - Updated to use centralized Firebase configuration
-// ✅ FIXED: Import from centralized config instead of initializing Firebase again
-
-// Import from the centralized Firebase configuration
+// src/services/firebase.js - Clean minimal version
 import { 
   db, 
   auth, 
@@ -13,7 +10,6 @@ import {
   UserTypeService 
 } from '../config/firebase.js';
 
-// Import Firestore functions
 import { 
   collection, 
   doc, 
@@ -42,10 +38,8 @@ import {
   getMetadata 
 } from 'firebase/storage';
 
-// ✅ NO MORE FIREBASE INITIALIZATION - Use existing instance from config
-console.log('🔗 Using centralized Firebase configuration from services layer');
+console.log('Using centralized Firebase configuration from services layer');
 
-// 🔧 CRITICAL FIX: Enhanced clean data helper function with PAYMENT PROTECTION
 const cleanFirestoreData = (obj) => {
   if (typeof obj !== 'object' || obj === null) return obj;
   
@@ -53,51 +47,41 @@ const cleanFirestoreData = (obj) => {
   const removedFields = [];
   
   for (const [key, value] of Object.entries(obj)) {
-    // 🔧 CRITICAL: Preserve important arrays even if empty or undefined
     const importantArrayFields = ['payments', 'items', 'attachments', 'allocations', 'products'];
     
     if (importantArrayFields.includes(key)) {
-      // Keep arrays even if empty, but ensure they're valid arrays
       if (Array.isArray(value)) {
-        // Clean the array contents but preserve the array structure
         cleaned[key] = value
           .map(item => typeof item === 'object' && item !== null ? cleanFirestoreData(item) : item)
           .filter(item => item !== undefined);
       } else if (value === undefined || value === null) {
-        // Convert undefined/null to empty array for important fields
         cleaned[key] = [];
-        console.log(`🔧 FIRESTORE: Converting ${key} from ${value} to empty array`);
+        console.log(`Converting ${key} from ${value} to empty array`);
       } else {
-        // Keep the value as-is if it's not an array but not undefined/null
         cleaned[key] = value;
       }
-      continue; // Skip the normal undefined check for important fields
-    }
-    
-    // 🔧 CRITICAL: Skip undefined values entirely (FIRESTORE REQUIREMENT)
-    if (value === undefined) {
-      removedFields.push(key);
-      console.log(`🧹 FIRESTORE: Removed undefined field: ${key}`);
       continue;
     }
     
-    // Handle null values (keep them as they're valid in Firestore)
+    if (value === undefined) {
+      removedFields.push(key);
+      console.log(`Removed undefined field: ${key}`);
+      continue;
+    }
+    
     if (value === null) {
       cleaned[key] = null;
       continue;
     }
     
-    // 🔧 CRITICAL: Recursively clean nested objects
     if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
       const nestedCleaned = cleanFirestoreData(value);
-      // Only include non-empty objects
       if (Object.keys(nestedCleaned).length > 0) {
         cleaned[key] = nestedCleaned;
       } else {
         removedFields.push(key);
       }
     } else if (Array.isArray(value)) {
-      // 🔧 CRITICAL: Clean arrays by filtering out undefined values
       const cleanedArray = value
         .map(item => typeof item === 'object' && item !== null ? cleanFirestoreData(item) : item)
         .filter(item => item !== undefined);
@@ -105,23 +89,20 @@ const cleanFirestoreData = (obj) => {
       if (cleanedArray.length > 0) {
         cleaned[key] = cleanedArray;
       } else {
-        // Keep empty arrays for non-important fields, remove only if not important
         cleaned[key] = cleanedArray;
       }
     } else {
-      // Keep primitive values (string, number, boolean, Date)
       cleaned[key] = value;
     }
   }
   
   if (removedFields.length > 0) {
-    console.log(`💾 FIRESTORE: Data cleaning completed - removed ${removedFields.length} fields: [${removedFields.join(', ')}]`);
+    console.log(`Data cleaning completed - removed ${removedFields.length} fields: [${removedFields.join(', ')}]`);
   }
   
   return cleaned;
 };
 
-// ✅ CORS FIX: Helper function to handle Firestore operations safely
 const handleFirestoreOperation = async (operation, operationName) => {
   try {
     const result = await operation();
@@ -129,11 +110,10 @@ const handleFirestoreOperation = async (operation, operationName) => {
   } catch (error) {
     console.error(`${operationName} failed:`, error);
     
-    // Handle CORS-specific errors
     if (error.message?.includes('CORS') || 
         error.message?.includes('access control') ||
         error.code === 'unavailable') {
-      console.warn(`🌐 Network/CORS error in ${operationName} - operation failed`);
+      console.warn(`Network/CORS error in ${operationName} - operation failed`);
       return { success: false, error: 'NETWORK_ERROR', corsIssue: true };
     }
     
@@ -141,7 +121,6 @@ const handleFirestoreOperation = async (operation, operationName) => {
   }
 };
 
-// ✅ FIXED: Safe document existence check
 export const documentExists = async (collectionName, docId) => {
   try {
     const docRef = doc(db, collectionName, docId);
@@ -153,7 +132,6 @@ export const documentExists = async (collectionName, docId) => {
   }
 };
 
-// ✅ FIXED: Safe document getter with proper error handling
 export const safeGetDocument = async (collectionName, docId) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
@@ -167,18 +145,16 @@ export const safeGetDocument = async (collectionName, docId) => {
   }, `getDocument(${collectionName}/${docId})`);
 };
 
-// ✅ CORS FIX: Enhanced safe set document
 export const safeSetDocument = async (collectionName, docId, data) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
     
-    // 🔧 CRITICAL: Clean data before sending to Firestore
     const cleanData = cleanFirestoreData({
       ...data,
       updatedAt: serverTimestamp()
     });
     
-    console.log(`💾 FIRESTORE: Setting ${collectionName}/${docId}`, {
+    console.log(`FIRESTORE: Setting ${collectionName}/${docId}`, {
       originalFieldCount: Object.keys(data).length,
       cleanedFieldCount: Object.keys(cleanData).length,
       removedFields: Object.keys(data).filter(key => !(key in cleanData))
@@ -189,19 +165,17 @@ export const safeSetDocument = async (collectionName, docId, data) => {
   }, `setDocument(${collectionName}/${docId})`);
 };
 
-// 🔧 CRITICAL FIX: Enhanced safe add document with comprehensive cleaning
 export const safeAddDocument = async (collectionName, data) => {
   return handleFirestoreOperation(async () => {
     const collectionRef = collection(db, collectionName);
     
-    // 🔧 CRITICAL: Clean data before sending to Firestore
     const cleanData = cleanFirestoreData({
       ...data,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
     
-    console.log(`💾 FIRESTORE: Adding to ${collectionName}`, {
+    console.log(`FIRESTORE: Adding to ${collectionName}`, {
       originalFieldCount: Object.keys(data).length,
       cleanedFieldCount: Object.keys(cleanData).length,
       removedFields: Object.keys(data).filter(key => !(key in cleanData))
@@ -212,7 +186,6 @@ export const safeAddDocument = async (collectionName, data) => {
   }, `addDocument(${collectionName})`);
 };
 
-// 🔧 CRITICAL FIX: Enhanced safe update document with PAYMENT PROTECTION
 export const safeUpdateDocument = async (collectionName, docId, updates) => {
   return handleFirestoreOperation(async () => {
     const docRef = doc(db, collectionName, docId);
@@ -261,7 +234,6 @@ export const safeUpdateDocument = async (collectionName, docId, updates) => {
   }, `updateDocument(${collectionName}/${docId})`);
 };
 
-// ✅ CORS FIX: Enhanced safe get collection
 export const safeGetCollection = async (collectionName, queryConstraints = []) => {
   return handleFirestoreOperation(async () => {
     const collectionRef = collection(db, collectionName);
@@ -275,266 +247,6 @@ export const safeGetCollection = async (collectionName, queryConstraints = []) =
   }, `getCollection(${collectionName})`);
 };
 
-// ✅ CORS FIX: Safe connection test without real-time listeners
-const testFirestoreConnection = async (retryCount = 0) => {
-  try {
-    const testRef = doc(db, 'test', 'connection');
-    await getDoc(testRef);
-    console.log('✅ Firestore connection successful');
-    return true;
-  } catch (error) {
-    console.warn(`⚠️ Connection test ${retryCount + 1} failed:`, error.code || error.message);
-    
-    if (retryCount < 2) {
-      setTimeout(() => testFirestoreConnection(retryCount + 1), 3000);
-    }
-    return false;
-  }
-};
-
-// ✅ COMPANY DATA FIX: Initialize company structure data
-const initializeCompanyStructure = async () => {
-  try {
-    console.log('🏢 Initializing company structure...');
-    
-    // Real companies data
-    const companies = [
-      {
-        id: 'flow-solution',
-        name: 'Flow Solution Sdn. Bhd.',
-        code: 'FS',
-        category: 'core_solutions',
-        description: 'Main trading and solution provider',
-        isActive: true
-      },
-      {
-        id: 'flow-solution-engineering',
-        name: 'Flow Solution Engineering Sdn. Bhd.',
-        code: 'FSE',
-        category: 'engineering_services',
-        description: 'Engineering and technical services',
-        isActive: true
-      },
-      {
-        id: 'flow-solution-penang',
-        name: 'Flow Solution Penang Sdn. Bhd.',
-        code: 'FSP',
-        category: 'regional_operations',
-        description: 'Northern Malaysia operations',
-        isActive: true
-      }
-    ];
-    
-    // Real branches data
-    const branches = [
-      {
-        id: 'flow-solution-kl-hq',
-        companyId: 'flow-solution',
-        name: 'FS KL Headquarters',
-        address: 'Kuala Lumpur, Malaysia',
-        type: 'headquarters',
-        isActive: true
-      },
-      {
-        id: 'flow-solution-engineering-office',
-        companyId: 'flow-solution-engineering',
-        name: 'FSE Engineering Office',
-        address: 'Selangor, Malaysia', 
-        type: 'office',
-        isActive: true
-      },
-      {
-        id: 'flow-solution-penang-office',
-        companyId: 'flow-solution-penang',
-        name: 'FSP Penang Office',
-        address: 'Penang, Malaysia',
-        type: 'office',
-        isActive: true
-      }
-    ];
-    
-    // Check if companies already exist
-    const companiesResult = await safeGetCollection('companies');
-    
-    if (companiesResult.success && companiesResult.data.length === 0) {
-      console.log('➕ Creating companies...');
-      
-      for (const company of companies) {
-        const result = await safeSetDocument('companies', company.id, company);
-        if (result.success) {
-          console.log(`✅ Company created: ${company.name}`);
-        }
-      }
-    } else {
-      console.log('✅ Companies already exist');
-    }
-    
-    // Check if branches already exist
-    const branchesResult = await safeGetCollection('branches');
-    
-    if (branchesResult.success && branchesResult.data.length === 0) {
-      console.log('➕ Creating branches...');
-      
-      for (const branch of branches) {
-        const result = await safeSetDocument('branches', branch.id, branch);
-        if (result.success) {
-          console.log(`✅ Branch created: ${branch.name}`);
-        }
-      }
-    } else {
-      console.log('✅ Branches already exist');
-    }
-    
-    return { success: true };
-  } catch (error) {
-    console.error('❌ Company structure initialization failed:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-// ✅ ADMIN FIX: Create Edison's admin assignment if it doesn't exist
-export const ensureEdisonAdminAccess = async () => {
-  const email = 'edisonchung@flowsolution.net';
-  
-  try {
-    console.log('🔍 Checking Edison admin assignment...');
-    
-    // Check if assignment already exists
-    const result = await safeGetDocument('adminAssignments', email);
-    
-    if (result.success && result.data?.exists) {
-      console.log('✅ Edison admin assignment already exists');
-      return { success: true, existed: true };
-    }
-    
-    console.log('➕ Creating Edison admin assignment...');
-    
-    // Create the admin assignment
-    const adminData = {
-      role: 'group_admin',
-      companyIds: ['*'],
-      branchIds: ['*'],
-      permissions: [
-        'view_all', 
-        'edit_all', 
-        'manage_users', 
-        'manage_companies', 
-        'financial_oversight',
-        'system_admin'
-      ],
-      assignedDate: new Date().toISOString(),
-      assignedBy: 'system',
-      badge: '👑 Group CEO - All Companies',
-      title: 'Group Chief Executive Officer',
-      level: 1,
-      email: email,
-      isSystemAdmin: true,
-      isSuperAdmin: true
-    };
-    
-    const setResult = await safeSetDocument('adminAssignments', email, adminData);
-    
-    if (setResult.success) {
-      console.log('✅ Edison admin assignment created successfully');
-      return { success: true, created: true };
-    } else {
-      console.error('❌ Failed to create Edison admin assignment:', setResult.error);
-      return { success: false, error: setResult.error };
-    }
-    
-  } catch (error) {
-    console.error('❌ Error ensuring Edison admin access:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-// ✅ SYSTEM INITIALIZATION: Complete setup (reduced timeout to prevent conflicts)
-export const initializeSystemData = async () => {
-  try {
-    console.log('🚀 Initializing system data...');
-    
-    // 1. Ensure Edison's admin access
-    const adminResult = await ensureEdisonAdminAccess();
-    
-    // 2. Initialize company structure
-    const companyResult = await initializeCompanyStructure();
-    
-    // 3. Create system configuration
-    const configResult = await safeGetDocument('systemConfig', 'appSettings');
-    
-    if (!configResult.success || !configResult.data?.exists) {
-      console.log('➕ Creating system configuration...');
-      
-      const systemConfig = {
-        appName: 'HiggsFlow Supplier Management',
-        version: '1.0.0',
-        initialized: true,
-        initializationDate: new Date().toISOString(),
-        superAdmin: 'edisonchung@flowsolution.net',
-        defaultRole: 'viewer',
-        features: {
-          multiCompany: true,
-          paymentProcessing: true,
-          aiExtraction: true,
-          batchUpload: true
-        }
-      };
-      
-      await safeSetDocument('systemConfig', 'appSettings', systemConfig);
-      console.log('✅ System configuration created');
-    }
-    
-    // 4. Test write permissions
-    const testResult = await safeSetDocument('test', 'initialization', {
-      message: 'System initialization test',
-      timestamp: new Date().toISOString(),
-      success: true
-    });
-    
-    if (testResult.success) {
-      console.log('✅ System initialization completed successfully');
-      return { 
-        success: true, 
-        adminSetup: adminResult,
-        companySetup: companyResult
-      };
-    } else {
-      console.error('❌ Test write failed:', testResult.error);
-      return { success: false, error: 'Write test failed' };
-    }
-    
-  } catch (error) {
-    console.error('❌ System initialization failed:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-// ✅ STARTUP: Initialize after Firebase is ready (reduced timing to prevent double runs)
-let initializationStarted = false;
-
-const runInitialization = async () => {
-  if (initializationStarted) return;
-  initializationStarted = true;
-  
-  console.log('🔥 Running startup initialization...');
-  
-  // Reduced wait time since Firebase is already initialized from config
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  const result = await initializeSystemData();
-  
-  if (result.success) {
-    console.log('🎉 All systems initialized successfully');
-  } else {
-    console.error('❌ System initialization failed:', result.error);
-  }
-};
-
-// Reduced startup delay to prevent conflicts with config initialization
-setTimeout(runInitialization, 500);
-setTimeout(testFirestoreConnection, 300);
-
-// ✅ ENHANCED: Proforma Invoices with better error handling
 export const getProformaInvoices = async () => {
   const result = await safeGetCollection('proformaInvoices');
   return {
@@ -544,21 +256,17 @@ export const getProformaInvoices = async () => {
   };
 };
 
-// 🔧 CRITICAL FIX: Enhanced Add PI with comprehensive data cleaning
 export const addProformaInvoice = async (invoice) => {
   try {
-    console.log('💾 FIRESTORE: Adding PI with data:', invoice);
+    console.log('FIRESTORE: Adding PI with data:', invoice);
     
-    // 🔧 CRITICAL: Build clean document data structure
     const docData = {
       ...invoice,
-      // Core document storage fields (always include these)
       documentId: invoice.documentId,
       documentNumber: invoice.documentNumber,
       documentType: invoice.documentType || 'pi',
       hasStoredDocuments: !!invoice.hasStoredDocuments,
       
-      // Optional storage metadata (only if they have values)
       ...(invoice.storageInfo && { storageInfo: invoice.storageInfo }),
       ...(invoice.originalFileName && { originalFileName: invoice.originalFileName }),
       ...(invoice.fileSize && { fileSize: invoice.fileSize }),
@@ -567,7 +275,6 @@ export const addProformaInvoice = async (invoice) => {
       ...(invoice.storedAt && { storedAt: invoice.storedAt }),
     };
 
-    // 🔧 CRITICAL: Use safeAddDocument which automatically cleans data
     const result = await safeAddDocument('proformaInvoices', docData);
     
     if (result.success) {
@@ -584,22 +291,20 @@ export const addProformaInvoice = async (invoice) => {
   }
 };
 
-// 🔧 CRITICAL FIX: Enhanced Update PI with PAYMENT PROTECTION
 export const updateProformaInvoice = async (id, updates) => {
   try {
-    console.log('💾 FIRESTORE: Updating PI:', { id, updates });
+    console.log('FIRESTORE: Updating PI:', { id, updates });
     
-    // 🔧 CRITICAL: Use safeUpdateDocument which has payment protection
     const result = await safeUpdateDocument('proformaInvoices', id, updates);
     
     if (result.success) {
-      console.log('✅ PI updated successfully:', result.data);
+      console.log('PI updated successfully:', result.data);
       return {
         success: true,
         data: { id, ...result.data, updatedAt: new Date() }
       };
     } else {
-      console.error('❌ PI update failed:', result.error);
+      console.error('PI update failed:', result.error);
       return { success: false, error: result.error };
     }
   } catch (error) {
@@ -608,11 +313,10 @@ export const updateProformaInvoice = async (id, updates) => {
   }
 };
 
-// 🔧 NEW: Payment-specific update function for enhanced payment operations
 export const updateProformaInvoicePayments = async (id, payments, paymentTotals = {}) => {
   try {
-    console.log(`💰 FIRESTORE: Updating payments for PI ${id}`);
-    console.log(`📊 Payment data:`, {
+    console.log(`FIRESTORE: Updating payments for PI ${id}`);
+    console.log(`Payment data:`, {
       paymentsCount: Array.isArray(payments) ? payments.length : 'not array',
       totalPaid: paymentTotals.totalPaid,
       paymentStatus: paymentTotals.paymentStatus
@@ -625,16 +329,15 @@ export const updateProformaInvoicePayments = async (id, payments, paymentTotals 
       ...(paymentTotals.paymentPercentage !== undefined && { paymentPercentage: paymentTotals.paymentPercentage })
     };
 
-    // Use the regular updateProformaInvoice which now has payment protection
     const result = await updateProformaInvoice(id, updates);
     
     if (result.success) {
-      console.log(`✅ PI payments updated successfully: ${payments.length} payments`);
+      console.log(`PI payments updated successfully: ${payments.length} payments`);
     }
     
     return result;
   } catch (error) {
-    console.error(`❌ Error updating PI payments:`, error);
+    console.error(`Error updating PI payments:`, error);
     return { 
       success: false, 
       error: error.message 
@@ -653,7 +356,6 @@ export const updateDeliveryStatus = async (id, status) => {
   return updateProformaInvoice(id, { deliveryStatus: status });
 };
 
-// ✅ ENHANCED: Other entity functions (keeping your existing implementations)
 export const getSuppliers = async () => {
   const result = await safeGetCollection('suppliers');
   return {
@@ -842,94 +544,8 @@ export const updateInvoicePaymentStatus = async (id, paymentData) => {
   return updateClientInvoice(id, updateData);
 };
 
-// ✅ FIXED: Enhanced compatibility layer with proper error handling
-export const mockFirebase = {
-  firestore: {
-    collection: (collectionName) => ({
-      get: async () => {
-        const result = await safeGetCollection(collectionName);
-        
-        if (result.success) {
-          return {
-            docs: result.data.map(item => ({
-              id: item.id,
-              data: () => {
-                const { id, ...data } = item;
-                return data;
-              },
-              exists: () => true
-            }))
-          };
-        } else {
-          console.warn(`Collection ${collectionName} get failed:`, result.error);
-          return { docs: [] };
-        }
-      },
-      
-      doc: (docId) => ({
-        get: async () => {
-          const result = await safeGetDocument(collectionName, docId);
-          
-          return {
-            exists: () => result.success && result.data?.exists,
-            data: () => result.success ? result.data?.data : null,
-            id: result.success ? result.data?.id : null
-          };
-        },
-        
-        set: async (data, options = {}) => {
-          if (options.merge) {
-            return await safeUpdateDocument(collectionName, docId, data);
-          } else {
-            return await safeSetDocument(collectionName, docId, data);
-          }
-        },
-        
-        update: async (updates) => {
-          return await safeUpdateDocument(collectionName, docId, updates);
-        },
-        
-        delete: async () => {
-          return handleFirestoreOperation(async () => {
-            await deleteDoc(doc(db, collectionName, docId));
-            return { success: true };
-          }, `deleteDocument(${collectionName}/${docId})`);
-        }
-      }),
-      
-      add: async (data) => {
-        return await safeAddDocument(collectionName, data);
-      },
-      
-      where: (field, operator, value) => ({
-        get: async () => {
-          const result = await safeGetCollection(collectionName, [where(field, operator, value)]);
-          
-          if (result.success) {
-            return {
-              empty: result.data.length === 0,
-              docs: result.data.map(item => ({
-                id: item.id,
-                data: () => {
-                  const { id, ...data } = item;
-                  return data;
-                },
-                exists: () => true
-              }))
-            };
-          } else {
-            return { empty: true, docs: [] };
-          }
-        }
-      })
-    })
-  }
-};
-
-// 🔧 CRITICAL: Export the cleaning function for use in other components
 export { cleanFirestoreData };
 
-// Export the centralized Firebase services (no double initialization)
 export { 
   db, 
   auth, 
@@ -941,7 +557,6 @@ export {
   UserTypeService
 };
 
-// Export Firebase functions from existing config
 export {
   collection,
   doc,
