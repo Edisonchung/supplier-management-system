@@ -1,4 +1,4 @@
-// src/utils/performance.js (CREATE THIS FILE)
+// src/utils/performance.js - Fixed version
 // Preload critical components during idle time
 export const preloadCriticalComponents = () => {
   if ('requestIdleCallback' in window) {
@@ -16,7 +16,8 @@ export const measureComponentLoad = (componentName, loadPromise) => {
   
   return loadPromise.then(component => {
     const end = performance.now()
-    console.log(`📦 ${componentName} loaded in ${(end - start).toFixed(2)}ms`)
+    const loadTime = (end - start).toFixed(2)
+    console.log(`📦 ${componentName} loaded in ${loadTime}ms`)
     return component
   })
 }
@@ -27,10 +28,14 @@ export const monitorBundleLoading = () => {
     const observer = new PerformanceObserver((list) => {
       list.getEntries().forEach((entry) => {
         if (entry.entryType === 'navigation') {
+          const domContentTime = (entry.domContentLoadedEventEnd - entry.fetchStart).toFixed(0)
+          const pageLoadTime = (entry.loadEventEnd - entry.fetchStart).toFixed(0)
+          const interactiveTime = (entry.loadEventEnd - entry.fetchStart).toFixed(0)
+          
           console.log('📊 Bundle Performance Metrics:', {
-            'DOM Content Loaded': `${(entry.domContentLoadedEventEnd - entry.fetchStart).toFixed(0)}ms`,
-            'Page Load Complete': `${(entry.loadEventEnd - entry.fetchStart).toFixed(0)}ms`,
-            'Time to Interactive': `${(entry.loadEventEnd - entry.fetchStart).toFixed(0)}ms`
+            'DOM Content Loaded': `${domContentTime}ms`,
+            'Page Load Complete': `${pageLoadTime}ms`,
+            'Time to Interactive': `${interactiveTime}ms`
           })
         }
       })
@@ -42,9 +47,13 @@ export const monitorBundleLoading = () => {
     const resourceObserver = new PerformanceObserver((list) => {
       list.getEntries().forEach((entry) => {
         if (entry.name.includes('chunk') || (entry.name.includes('.js') && entry.transferSize > 1000)) {
-          console.log(`📦 Chunk: ${entry.name.split('/').pop()}`, {
-            'Size': `${(entry.transferSize / 1024).toFixed(2)}KB`,
-            'Load Time': `${entry.duration.toFixed(2)}ms`
+          const size = (entry.transferSize / 1024).toFixed(2)
+          const loadTime = entry.duration.toFixed(2)
+          const fileName = entry.name.split('/').pop()
+          
+          console.log(`📦 Chunk: ${fileName}`, {
+            'Size': `${size}KB`,
+            'Load Time': `${loadTime}ms`
           })
         }
       })
@@ -68,11 +77,14 @@ export const trackBundleImprovement = () => {
     calculateImprovement: (newSize) => {
       const reduction = originalSize - newSize
       const percentage = (reduction / originalSize * 100).toFixed(1)
+      const originalSizeKB = (originalSize / 1024).toFixed(2)
+      const newSizeKB = (newSize / 1024).toFixed(2)
+      const reductionKB = (reduction / 1024).toFixed(2)
       
-      console.log(`🎯 Bundle Optimization Results:`, {
-        'Original Size': `${(originalSize / 1024).toFixed(2)}KB`,
-        'New Size': `${(newSize / 1024).toFixed(2)}KB`,
-        'Reduction': `${(reduction / 1024).toFixed(2)}KB`,
+      console.log('🎯 Bundle Optimization Results:', {
+        'Original Size': `${originalSizeKB}KB`,
+        'New Size': `${newSizeKB}KB`,
+        'Reduction': `${reductionKB}KB`,
         'Improvement': `${percentage}%`
       })
       
