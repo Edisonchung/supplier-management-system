@@ -890,6 +890,81 @@ class ProductSyncService {
   }
 
   /**
+   * FIX: Update existing products_public with image generation fields
+   */
+  async updateProductsWithImageFields() {
+    try {
+      console.log('🔄 Updating products_public with image generation fields...');
+      
+      const publicSnapshot = await getDocs(collection(this.db, 'products_public'));
+      
+      if (publicSnapshot.size === 0) {
+        console.log('❌ No products found in products_public');
+        return { success: false, message: 'No products to update' };
+      }
+      
+      let updatedCount = 0;
+      let errorCount = 0;
+      const batch = writeBatch(this.db);
+      
+      publicSnapshot.forEach((doc) => {
+        const data = doc.data();
+        
+        // Check if product needs image generation fields
+        const needsUpdate = !data.hasOwnProperty('needsImageGeneration') || 
+                           !data.hasOwnProperty('hasRealImage') ||
+                           !data.hasOwnProperty('imageGenerationStatus');
+        
+        if (needsUpdate) {
+          const imageUrl = this.getProductImageUrl(data);
+          const hasRealImage = this.hasRealImage(data);
+          const needsImageGeneration = this.needsImageGeneration(data);
+          
+          const updates = {
+            imageUrl: imageUrl,
+            hasRealImage: hasRealImage,
+            needsImageGeneration: needsImageGeneration,
+            imageGenerationStatus: needsImageGeneration ? 'pending' : 'not_needed',
+            lastImageUpdate: serverTimestamp()
+          };
+          
+          batch.update(doc.ref, updates);
+          updatedCount++;
+        }
+      });
+      
+      if (updatedCount > 0) {
+        await batch.commit();
+        console.log(`✅ Updated ${updatedCount} products with image generation fields`);
+        
+        return {
+          success: true,
+          message: `Updated ${updatedCount} products`,
+          updatedCount,
+          errorCount
+        };
+      } else {
+        console.log('ℹ️ All products already have image generation fields');
+        return {
+          success: true,
+          message: 'All products already updated',
+          updatedCount: 0,
+          errorCount: 0
+        };
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to update products with image fields:', error);
+      return {
+        success: false,
+        message: error.message,
+        updatedCount: 0,
+        errorCount: 1
+      };
+    }
+  }
+
+  /**
    * DIAGNOSTIC: Check what products exist in products_public collection
    */
   async diagnoseProductsPublic() {
