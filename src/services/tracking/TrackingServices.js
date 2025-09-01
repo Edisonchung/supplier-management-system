@@ -1,710 +1,1093 @@
 // src/services/tracking/TrackingServices.js
-// HiggsFlow Enhanced Tracking Services - Build-Safe Implementation
-// Fixed: JavaScript syntax errors, build failures, and performance issues
+// ðŸ”¥ ENHANCED VERSION: Your existing business logic + Firestore capabilities
 
 import { 
   collection, 
+  doc, 
   addDoc, 
+  updateDoc, 
+  deleteDoc, 
   getDocs, 
   query, 
   where, 
-  orderBy, 
-  limit, 
+  orderBy,
   serverTimestamp,
-  onSnapshot,
-  doc,
-  updateDoc,
-  increment
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import toast from 'react-hot-toast';
 
-// Build-safe toast implementation
-const safeToast = {
-  success: function(message) {
-    console.log('SUCCESS:', message);
-  },
-  error: function(message) {
-    console.error('ERROR:', message);
-  },
-  info: function(message) {
-    console.info('INFO:', message);
-  },
-  warning: function(message) {
-    console.warn('WARNING:', message);
+// ðŸ”¥ NEW: Storage abstraction layer
+class TrackingStorage {
+  static getDataSource() {
+    return localStorage.getItem('dataSource') || 'localStorage';
   }
-};
-
-// Try to import toast but fall back gracefully
-let toast = safeToast;
-try {
-  // Attempt to import react-hot-toast if available
-  const toastModule = require('react-hot-toast');
-  if (toastModule && toastModule.toast) {
-    toast = toastModule.toast;
+  
+  static async saveDeliveryTracking(poId, data) {
+    if (this.getDataSource() === 'firestore') {
+      try {
+        // Check if document exists
+        const q = query(collection(db, 'deliveryTracking'), where('poId', '==', poId));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          // Update existing document
+          const docRef = querySnapshot.docs[0].ref;
+          await updateDoc(docRef, {
+            ...data,
+            updatedAt: serverTimestamp()
+          });
+          return { success: true, id: docRef.id };
+        } else {
+          // Create new document
+          const docRef = await addDoc(collection(db, 'deliveryTracking'), {
+            poId,
+            ...data,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          return { success: true, id: docRef.id };
+        }
+      } catch (error) {
+        console.error('Firestore delivery tracking save error:', error);
+        return { success: false, error: error.message };
+      }
+    } else {
+      // localStorage fallback
+      try {
+        const existing = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
+        existing[poId] = {
+          ...data,
+          lastUpdated: new Date().toISOString()
+        };
+        localStorage.setItem('higgsflow_deliveryTracking', JSON.stringify(existing));
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
   }
-} catch (error) {
-  console.warn('Toast library not available, using console fallback');
+  
+  static async savePaymentTracking(supplierId, data) {
+    if (this.getDataSource() === 'firestore') {
+      try {
+        // Check if document exists
+        const q = query(collection(db, 'paymentTracking'), where('supplierId', '==', supplierId));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          // Update existing document
+          const docRef = querySnapshot.docs[0].ref;
+          await updateDoc(docRef, {
+            ...data,
+            updatedAt: serverTimestamp()
+          });
+          return { success: true, id: docRef.id };
+        } else {
+          // Create new document
+          const docRef = await addDoc(collection(db, 'paymentTracking'), {
+            supplierId,
+            ...data,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          return { success: true, id: docRef.id };
+        }
+      } catch (error) {
+        console.error('Firestore payment tracking save error:', error);
+        return { success: false, error: error.message };
+      }
+    } else {
+      // localStorage fallback
+      try {
+        const existing = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
+        existing[supplierId] = {
+          ...data,
+          lastUpdated: new Date().toISOString()
+        };
+        localStorage.setItem('higgsflow_paymentTracking', JSON.stringify(existing));
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
+  }
 }
 
 /**
- * Enhanced Tracking Services for HiggsFlow
- * Provides comprehensive tracking, analytics, and monitoring capabilities
+ * Delivery Tracking Service
+ * ðŸ”¥ ENHANCED: Your existing business logic + Firestore capabilities
  */
-class TrackingServices {
-  constructor() {
-    this.initialized = false;
-    this.sessionId = this.generateSessionId();
-    this.userId = this.generateUserId();
-    this.isOnline = navigator.onLine;
-    this.eventQueue = [];
-    this.batchSize = 10;
-    this.flushInterval = 30000; // 30 seconds
-    this.maxRetries = 3;
-    
-    this.init();
-  }
-
+export class DeliveryTrackingService {
+  
+  static DELIVERY_STATUSES = {
+    preparing: 'preparing',
+    shipped: 'shipped',
+    in_transit: 'in_transit',
+    delivered: 'delivered',
+    completed: 'completed'
+  };
+  
+  static STATUS_FLOW = [
+    'preparing',
+    'shipped', 
+    'in_transit',
+    'delivered',
+    'completed'
+  ];
+  
   /**
-   * Initialize tracking services
+   * Create initial delivery tracking for a PO with selected suppliers
+   * ðŸ”¥ ENHANCED: Now saves to Firestore or localStorage automatically
    */
-  async init() {
+  static async initializeDeliveryTracking(purchaseOrder, updateDeliveryStatusFn) {
     try {
-      console.log('Initializing TrackingServices...');
+      if (!purchaseOrder.supplierSelections) {
+        throw new Error('No suppliers selected for this PO');
+      }
       
-      // Setup online/offline listeners
-      if (typeof window !== 'undefined') {
-        window.addEventListener('online', () => {
-          this.isOnline = true;
-          this.flushEventQueue();
-        });
+      // Group items by supplier (keeping your existing logic)
+      const supplierGroups = this.groupItemsBySupplier(purchaseOrder);
+      
+      // Calculate estimated delivery dates based on suppliers (keeping your existing logic)
+      const estimatedDelivery = this.calculateEstimatedDelivery(supplierGroups);
+      
+      const deliveryTrackingData = {
+        poId: purchaseOrder.id,
+        poNumber: purchaseOrder.poNumber,
+        clientName: purchaseOrder.clientName,
+        status: this.DELIVERY_STATUSES.preparing,
         
-        window.addEventListener('offline', () => {
-          this.isOnline = false;
-        });
-      }
-      
-      // Start periodic flush
-      setInterval(() => {
-        if (this.isOnline) {
-          this.flushEventQueue();
-        }
-      }, this.flushInterval);
-      
-      this.initialized = true;
-      console.log('TrackingServices initialized successfully');
-      toast.success('Tracking services initialized');
-      
-    } catch (error) {
-      console.error('Failed to initialize TrackingServices:', error);
-      toast.error('Failed to initialize tracking services');
-    }
-  }
-
-  /**
-   * Generate unique session ID
-   */
-  generateSessionId() {
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Generate or retrieve user ID
-   */
-  generateUserId() {
-    try {
-      const stored = localStorage.getItem('higgsflow_user_id');
-      if (stored) return stored;
-      
-      const newId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('higgsflow_user_id', newId);
-      return newId;
-    } catch (error) {
-      console.warn('localStorage not available:', error);
-      return `temp_user_${Date.now()}`;
-    }
-  }
-
-  /**
-   * Sanitize event data for safe storage
-   */
-  sanitizeEventData(data) {
-    if (!data || typeof data !== 'object') return data;
-    
-    const sanitized = {};
-    const maxStringLength = 1000;
-    
-    for (const [key, value] of Object.entries(data)) {
-      if (value === null || value === undefined) {
-        sanitized[key] = null;
-      } else if (typeof value === 'string') {
-        sanitized[key] = value.substring(0, maxStringLength);
-      } else if (typeof value === 'number') {
-        sanitized[key] = isFinite(value) ? value : null;
-      } else if (typeof value === 'boolean') {
-        sanitized[key] = value;
-      } else if (typeof value === 'object') {
-        try {
-          sanitized[key] = JSON.stringify(value).substring(0, maxStringLength);
-        } catch (err) {
-          sanitized[key] = '[Object]';
-        }
-      } else if (typeof value === 'function') {
-        sanitized[key] = '[Function]';
-      } else {
-        sanitized[key] = String(value).substring(0, maxStringLength);
-      }
-    }
-    
-    return sanitized;
-  }
-
-  /**
-   * Track user interaction events
-   */
-  async trackUserInteraction(eventType, eventData = {}) {
-    try {
-      if (!this.initialized) {
-        console.warn('TrackingServices not initialized');
-        return false;
-      }
-
-      const sanitizedData = this.sanitizeEventData(eventData);
-      
-      const event = {
-        eventType,
-        eventData: sanitizedData,
-        sessionId: this.sessionId,
-        userId: this.userId,
-        timestamp: new Date().toISOString(),
-        url: window?.location?.href || 'unknown',
-        userAgent: navigator?.userAgent?.substring(0, 200) || 'unknown',
-        source: 'higgsflow_catalog'
-      };
-
-      // Add to queue
-      this.eventQueue.push(event);
-      
-      // Flush if queue is full or critical event
-      if (this.eventQueue.length >= this.batchSize || this.isCriticalEvent(eventType)) {
-        await this.flushEventQueue();
-      }
-
-      console.log(`Tracked: ${eventType}`, sanitizedData);
-      return true;
-
-    } catch (error) {
-      console.error('Error tracking user interaction:', error);
-      this.storeEventLocally({ eventType, eventData, error: error.message });
-      return false;
-    }
-  }
-
-  /**
-   * Track product interactions
-   */
-  async trackProductInteraction(productData) {
-    try {
-      const eventData = {
-        ...productData,
-        trackingType: 'product_interaction'
-      };
-      
-      return await this.trackUserInteraction('product_interaction', eventData);
-    } catch (error) {
-      console.error('Error tracking product interaction:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Track search events
-   */
-  async trackSearchEvent(searchQuery, resultCount = 0, filters = {}) {
-    try {
-      const eventData = {
-        searchQuery: String(searchQuery).substring(0, 200),
-        resultCount: Number(resultCount) || 0,
-        filters: this.sanitizeEventData(filters),
-        trackingType: 'search_event'
-      };
-      
-      return await this.trackUserInteraction('search_performed', eventData);
-    } catch (error) {
-      console.error('Error tracking search event:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Track quote requests
-   */
-  async trackQuoteRequest(quoteData) {
-    try {
-      const eventData = {
-        ...this.sanitizeEventData(quoteData),
-        trackingType: 'quote_request'
-      };
-      
-      return await this.trackUserInteraction('quote_request', eventData);
-    } catch (error) {
-      console.error('Error tracking quote request:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Track cart interactions
-   */
-  async trackCartInteraction(action, productData) {
-    try {
-      const eventData = {
-        action: String(action),
-        product: this.sanitizeEventData(productData),
-        trackingType: 'cart_interaction'
-      };
-      
-      return await this.trackUserInteraction('cart_interaction', eventData);
-    } catch (error) {
-      console.error('Error tracking cart interaction:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Track page views
-   */
-  async trackPageView(pageData = {}) {
-    try {
-      const eventData = {
-        page: window?.location?.pathname || 'unknown',
-        title: document?.title || 'unknown',
-        referrer: document?.referrer || 'direct',
-        ...this.sanitizeEventData(pageData),
-        trackingType: 'page_view'
-      };
-      
-      return await this.trackUserInteraction('page_view', eventData);
-    } catch (error) {
-      console.error('Error tracking page view:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Check if event is critical and should be flushed immediately
-   */
-  isCriticalEvent(eventType) {
-    const criticalEvents = [
-      'quote_request',
-      'purchase_complete',
-      'error_occurred',
-      'user_registration'
-    ];
-    return criticalEvents.includes(eventType);
-  }
-
-  /**
-   * Flush event queue to Firestore
-   */
-  async flushEventQueue() {
-    if (!this.isOnline || this.eventQueue.length === 0) {
-      return;
-    }
-
-    const eventsToFlush = [...this.eventQueue];
-    this.eventQueue = [];
-
-    try {
-      const promises = eventsToFlush.map(async (event) => {
-        try {
-          const firestoreEvent = {
-            ...event,
-            timestamp: serverTimestamp(),
-            originalTimestamp: event.timestamp
-          };
-          
-          const analyticsCollection = collection(db, 'user_interactions');
-          return await addDoc(analyticsCollection, firestoreEvent);
-        } catch (error) {
-          console.warn('Failed to save individual event:', error);
-          this.storeEventLocally(event);
-          return null;
-        }
-      });
-
-      const results = await Promise.allSettled(promises);
-      const successful = results.filter(r => r.status === 'fulfilled').length;
-      
-      console.log(`Flushed ${successful}/${eventsToFlush.length} events to Firestore`);
-      
-    } catch (error) {
-      console.error('Error flushing event queue:', error);
-      // Put events back in queue for retry
-      this.eventQueue.unshift(...eventsToFlush);
-    }
-  }
-
-  /**
-   * Store event locally when Firestore fails
-   */
-  storeEventLocally(event) {
-    try {
-      const stored = JSON.parse(localStorage.getItem('higgsflow_offline_events') || '[]');
-      stored.push({
-        ...event,
-        storedAt: new Date().toISOString()
-      });
-      
-      // Limit stored events to prevent memory issues
-      if (stored.length > 50) {
-        stored.splice(0, stored.length - 50);
-      }
-      
-      localStorage.setItem('higgsflow_offline_events', JSON.stringify(stored));
-    } catch (error) {
-      console.warn('Failed to store event locally:', error);
-    }
-  }
-
-  /**
-   * Get analytics data for dashboard
-   */
-  async getAnalytics(timeRange = '24h') {
-    try {
-      const timeRanges = {
-        '1h': 1 * 60 * 60 * 1000,
-        '24h': 24 * 60 * 60 * 1000,
-        '7d': 7 * 24 * 60 * 60 * 1000,
-        '30d': 30 * 24 * 60 * 60 * 1000
-      };
-
-      const startTime = new Date(Date.now() - (timeRanges[timeRange] || timeRanges['24h']));
-      
-      const analyticsQuery = query(
-        collection(db, 'user_interactions'),
-        where('timestamp', '>=', startTime),
-        orderBy('timestamp', 'desc'),
-        limit(500)
-      );
-
-      const snapshot = await getDocs(analyticsQuery);
-      const events = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        timestamp: doc.data().timestamp?.toDate?.() || new Date(doc.data().originalTimestamp)
-      }));
-
-      return this.processAnalyticsData(events);
-      
-    } catch (error) {
-      console.error('Error getting analytics:', error);
-      return this.getLocalAnalytics();
-    }
-  }
-
-  /**
-   * Process analytics data into useful metrics
-   */
-  processAnalyticsData(events) {
-    const metrics = {
-      totalEvents: events.length,
-      uniqueSessions: new Set(events.map(e => e.sessionId)).size,
-      uniqueUsers: new Set(events.map(e => e.userId)).size,
-      pageViews: events.filter(e => e.eventType === 'page_view').length,
-      productViews: events.filter(e => e.eventType === 'product_interaction').length,
-      searchEvents: events.filter(e => e.eventType === 'search_performed').length,
-      quoteRequests: events.filter(e => e.eventType === 'quote_request').length,
-      cartEvents: events.filter(e => e.eventType === 'cart_interaction').length,
-      topPages: this.getTopItems(events.filter(e => e.eventType === 'page_view'), 'eventData.page'),
-      topProducts: this.getTopItems(events.filter(e => e.eventType === 'product_interaction'), 'eventData.productName'),
-      topSearches: this.getTopItems(events.filter(e => e.eventType === 'search_performed'), 'eventData.searchQuery'),
-      timeline: this.createTimeline(events)
-    };
-
-    // Calculate conversion rates
-    if (metrics.productViews > 0) {
-      metrics.quoteConversionRate = (metrics.quoteRequests / metrics.productViews * 100).toFixed(2);
-    } else {
-      metrics.quoteConversionRate = 0;
-    }
-
-    return metrics;
-  }
-
-  /**
-   * Get top items from analytics data
-   */
-  getTopItems(events, field) {
-    const counts = {};
-    
-    events.forEach(event => {
-      const value = this.getNestedValue(event, field);
-      if (value && typeof value === 'string') {
-        counts[value] = (counts[value] || 0) + 1;
-      }
-    });
-    
-    return Object.entries(counts)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
-  }
-
-  /**
-   * Get nested value from object
-   */
-  getNestedValue(obj, path) {
-    return path.split('.').reduce((curr, key) => curr && curr[key], obj);
-  }
-
-  /**
-   * Create timeline data for charts
-   */
-  createTimeline(events) {
-    const timeline = {};
-    
-    events.forEach(event => {
-      const date = event.timestamp.toDateString();
-      if (!timeline[date]) {
-        timeline[date] = { date, events: 0, pageViews: 0, productViews: 0, quotes: 0 };
-      }
-      
-      timeline[date].events++;
-      if (event.eventType === 'page_view') timeline[date].pageViews++;
-      if (event.eventType === 'product_interaction') timeline[date].productViews++;
-      if (event.eventType === 'quote_request') timeline[date].quotes++;
-    });
-    
-    return Object.values(timeline).sort((a, b) => new Date(a.date) - new Date(b.date));
-  }
-
-  /**
-   * Get analytics from localStorage when Firestore fails
-   */
-  getLocalAnalytics() {
-    try {
-      const stored = JSON.parse(localStorage.getItem('higgsflow_offline_events') || '[]');
-      const events = stored.map(event => ({
-        ...event,
-        timestamp: new Date(event.storedAt || event.timestamp)
-      }));
-      
-      return this.processAnalyticsData(events);
-    } catch (error) {
-      console.error('Error getting local analytics:', error);
-      return {
-        totalEvents: 0,
-        uniqueSessions: 0,
-        uniqueUsers: 0,
-        pageViews: 0,
-        productViews: 0,
-        searchEvents: 0,
-        quoteRequests: 0,
-        cartEvents: 0,
-        quoteConversionRate: 0,
-        topPages: [],
-        topProducts: [],
-        topSearches: [],
-        timeline: []
-      };
-    }
-  }
-
-  /**
-   * Subscribe to real-time analytics updates
-   */
-  subscribeToAnalytics(callback) {
-    try {
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      
-      const unsubscribe = onSnapshot(
-        query(
-          collection(db, 'user_interactions'),
-          where('timestamp', '>=', twentyFourHoursAgo),
-          orderBy('timestamp', 'desc'),
-          limit(100)
-        ),
-        (snapshot) => {
-          const events = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            timestamp: doc.data().timestamp?.toDate?.() || new Date(doc.data().originalTimestamp)
-          }));
-          
-          const analytics = this.processAnalyticsData(events);
-          callback(analytics);
-        },
-        (error) => {
-          console.error('Real-time analytics error:', error);
-          callback(this.getLocalAnalytics());
-        }
-      );
-      
-      return unsubscribe;
-    } catch (error) {
-      console.error('Error setting up analytics subscription:', error);
-      return () => {};
-    }
-  }
-
-  /**
-   * Track factory engagement
-   */
-  async trackFactoryEngagement(factoryData) {
-    try {
-      const eventData = {
-        ...this.sanitizeEventData(factoryData),
-        trackingType: 'factory_engagement'
-      };
-      
-      return await this.trackUserInteraction('factory_engagement', eventData);
-    } catch (error) {
-      console.error('Error tracking factory engagement:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Track delivery events
-   */
-  async trackDeliveryEvent(deliveryData) {
-    try {
-      const eventData = {
-        ...this.sanitizeEventData(deliveryData),
-        trackingType: 'delivery_event'
-      };
-      
-      return await this.trackUserInteraction('delivery_event', eventData);
-    } catch (error) {
-      console.error('Error tracking delivery event:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Initialize complete tracking system
-   */
-  static async initializeCompleteTracking() {
-    try {
-      console.log('Initializing complete tracking system...');
-      
-      const trackingService = new TrackingServices();
-      
-      // Wait for initialization
-      await new Promise(resolve => {
-        const checkInit = () => {
-          if (trackingService.initialized) {
-            resolve();
-          } else {
-            setTimeout(checkInit, 100);
+        // Supplier breakdown
+        supplierGroups,
+        totalSuppliers: Object.keys(supplierGroups).length,
+        
+        // Timeline
+        createdAt: new Date().toISOString(),
+        estimatedDelivery,
+        actualDelivery: null,
+        
+        // Progress tracking
+        milestones: [
+          {
+            status: 'preparing',
+            timestamp: new Date().toISOString(),
+            note: 'Order received, preparing for shipment'
           }
+        ],
+        
+        // Shipment details
+        trackingNumbers: {},
+        carriers: {},
+        
+        // Consolidation status
+        consolidationRequired: Object.keys(supplierGroups).length > 1,
+        consolidationStatus: Object.keys(supplierGroups).length > 1 ? 'pending' : 'not_required',
+        
+        // Metrics
+        metrics: {
+          totalItems: purchaseOrder.items?.length || 0,
+          totalValue: purchaseOrder.totalAmount || 0,
+          leadTime: null,
+          onTimeDelivery: null
+        },
+        
+        // ðŸ”¥ NEW: Real-time collaboration metadata
+        lastUpdatedBy: 'system',
+        dataSource: TrackingStorage.getDataSource(),
+        version: 1
+      };
+      
+      // ðŸ”¥ ENHANCED: Save to Firestore or localStorage
+      const saveResult = await TrackingStorage.saveDeliveryTracking(purchaseOrder.id, deliveryTrackingData);
+      
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save delivery tracking');
+      }
+      
+      // Call the update function for real-time UI updates
+      if (updateDeliveryStatusFn) {
+        await updateDeliveryStatusFn(purchaseOrder.id, deliveryTrackingData);
+      }
+      
+      console.log('âœ… Delivery tracking initialized:', saveResult);
+      
+      return { success: true, data: deliveryTrackingData, firestoreId: saveResult.id };
+      
+    } catch (error) {
+      console.error('Error initializing delivery tracking:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Update delivery status with validation and business logic
+   * ðŸ”¥ ENHANCED: Now supports real-time Firestore updates
+   */
+  static async updateDeliveryStatus(poId, currentData, newStatus, additionalData, updateFn) {
+    try {
+      // Validate status transition (keeping your existing logic)
+      const canTransition = this.validateStatusTransition(currentData?.status, newStatus);
+      if (!canTransition) {
+        throw new Error(`Cannot transition from ${currentData?.status} to ${newStatus}`);
+      }
+      
+      // Prepare update data (keeping your existing logic)
+      const updates = {
+        status: newStatus,
+        lastUpdated: new Date().toISOString(),
+        lastUpdatedBy: additionalData?.updatedBy || 'system',
+        version: (currentData?.version || 1) + 1,
+        ...additionalData
+      };
+      
+      // Add milestone (keeping your existing logic)
+      const newMilestone = {
+        status: newStatus,
+        timestamp: new Date().toISOString(),
+        note: this.getStatusNote(newStatus),
+        updatedBy: additionalData?.updatedBy || 'system',
+        ...additionalData
+      };
+      
+      updates.milestones = [
+        ...(currentData?.milestones || []),
+        newMilestone
+      ];
+      
+      // Handle status-specific logic (keeping your existing logic)
+      switch (newStatus) {
+        case this.DELIVERY_STATUSES.shipped:
+          if (additionalData.trackingNumber && additionalData.carrier) {
+            updates.trackingNumbers = {
+              ...currentData?.trackingNumbers,
+              [additionalData.supplierId || 'default']: additionalData.trackingNumber
+            };
+            updates.carriers = {
+              ...currentData?.carriers,
+              [additionalData.supplierId || 'default']: additionalData.carrier
+            };
+          }
+          updates.shippedAt = new Date().toISOString();
+          break;
+          
+        case this.DELIVERY_STATUSES.delivered:
+          updates.actualDelivery = new Date().toISOString();
+          updates.metrics = {
+            ...currentData?.metrics,
+            leadTime: this.calculateLeadTime(currentData?.createdAt, new Date().toISOString()),
+            onTimeDelivery: this.isOnTimeDelivery(currentData?.estimatedDelivery, new Date().toISOString())
+          };
+          break;
+          
+        case this.DELIVERY_STATUSES.completed:
+          updates.completedAt = new Date().toISOString();
+          break;
+      }
+      
+      // ðŸ”¥ ENHANCED: Save to Firestore or localStorage
+      const saveResult = await TrackingStorage.saveDeliveryTracking(poId, {
+        ...currentData,
+        ...updates
+      });
+      
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save delivery update');
+      }
+      
+      // Call the update function for real-time UI updates
+      if (updateFn) {
+        await updateFn(poId, updates);
+      }
+      
+      // Send notifications (keeping your existing logic)
+      this.sendDeliveryNotification(newStatus, updates);
+      
+      console.log('âœ… Delivery status updated:', { poId, newStatus, firestoreId: saveResult.id });
+      
+      return { success: true, data: updates };
+      
+    } catch (error) {
+      console.error('Error updating delivery status:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Handle multi-supplier consolidation logic
+   * ðŸ”¥ ENHANCED: Now supports real-time updates across devices
+   */
+  static async updateSupplierDeliveryStatus(poId, supplierId, status, currentData, updateFn) {
+    try {
+      const supplierGroups = currentData?.supplierGroups || {};
+      
+      if (!supplierGroups[supplierId]) {
+        throw new Error('Supplier not found in this PO');
+      }
+      
+      // Update individual supplier status (keeping your existing logic)
+      supplierGroups[supplierId].deliveryStatus = status;
+      supplierGroups[supplierId].lastUpdated = new Date().toISOString();
+      
+      // Check if all suppliers have delivered (keeping your existing logic)
+      const allDelivered = Object.values(supplierGroups).every(
+        supplier => supplier.deliveryStatus === 'delivered'
+      );
+      
+      // Determine overall status (keeping your existing logic)
+      let overallStatus = currentData.status;
+      if (allDelivered && currentData.consolidationRequired) {
+        overallStatus = this.DELIVERY_STATUSES.delivered;
+      } else if (status === 'shipped' && overallStatus === 'preparing') {
+        overallStatus = this.DELIVERY_STATUSES.shipped;
+      }
+      
+      const updates = {
+        supplierGroups,
+        status: overallStatus,
+        consolidationStatus: allDelivered ? 'completed' : 'in_progress',
+        lastUpdated: new Date().toISOString(),
+        version: (currentData?.version || 1) + 1
+      };
+      
+      // ðŸ”¥ ENHANCED: Save to Firestore or localStorage
+      const saveResult = await TrackingStorage.saveDeliveryTracking(poId, {
+        ...currentData,
+        ...updates
+      });
+      
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save supplier delivery update');
+      }
+      
+      // Call the update function for real-time UI updates
+      if (updateFn) {
+        await updateFn(poId, updates);
+      }
+      
+      console.log('âœ… Supplier delivery status updated:', { poId, supplierId, status });
+      
+      return { success: true, data: updates };
+      
+    } catch (error) {
+      console.error('Error updating supplier delivery status:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  // Keep all your existing utility methods unchanged
+  static calculateEstimatedDelivery(supplierGroups) {
+    const leadTimes = Object.values(supplierGroups).map(group => group.leadTime || 7);
+    const maxLeadTime = Math.max(...leadTimes);
+    
+    const estimatedDate = new Date();
+    estimatedDate.setDate(estimatedDate.getDate() + maxLeadTime);
+    
+    return estimatedDate.toISOString();
+  }
+  
+  static groupItemsBySupplier(purchaseOrder) {
+    const groups = {};
+    
+    if (!purchaseOrder.supplierSelections || !purchaseOrder.items) {
+      return groups;
+    }
+    
+    Object.entries(purchaseOrder.supplierSelections).forEach(([itemNumber, supplierId]) => {
+      const item = purchaseOrder.items.find(i => i.itemNumber === parseInt(itemNumber));
+      
+      if (item) {
+        if (!groups[supplierId]) {
+          groups[supplierId] = {
+            supplierId,
+            items: [],
+            totalValue: 0,
+            deliveryStatus: 'preparing',
+            leadTime: 7 // Default lead time
+          };
+        }
+        
+        groups[supplierId].items.push(item);
+        groups[supplierId].totalValue += (item.price || 0) * (item.quantity || 1);
+      }
+    });
+    
+    return groups;
+  }
+  
+  static validateStatusTransition(currentStatus, newStatus) {
+    if (!currentStatus) return true; // Initial status
+    
+    const currentIndex = this.STATUS_FLOW.indexOf(currentStatus);
+    const newIndex = this.STATUS_FLOW.indexOf(newStatus);
+    
+    // Allow moving forward or staying the same
+    return newIndex >= currentIndex;
+  }
+  
+  static getStatusNote(status) {
+    const notes = {
+      preparing: 'Order received, preparing for shipment',
+      shipped: 'Package has been shipped',
+      in_transit: 'Package is in transit',
+      delivered: 'Package has been delivered',
+      completed: 'Delivery completed and confirmed'
+    };
+    
+    return notes[status] || 'Status updated';
+  }
+  
+  static calculateLeadTime(startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end - start);
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+  
+  static isOnTimeDelivery(estimatedDate, actualDate) {
+    if (!estimatedDate || !actualDate) return null;
+    
+    return new Date(actualDate) <= new Date(estimatedDate);
+  }
+  
+  static sendDeliveryNotification(status, data) {
+    const messages = {
+      shipped: `ðŸ“¦ Order ${data.poNumber || ''} has been shipped`,
+      delivered: `âœ… Order ${data.poNumber || ''} has been delivered`,
+      completed: `ðŸŽ‰ Order ${data.poNumber || ''} is complete`
+    };
+    
+    if (messages[status]) {
+      toast.success(messages[status]);
+    }
+  }
+}
+
+/**
+ * Payment Tracking Service
+ * ðŸ”¥ ENHANCED: Your existing business logic + Firestore capabilities
+ */
+export class PaymentTrackingService {
+  
+  static PAYMENT_STATUSES = {
+    pending: 'pending',
+    processing: 'processing',
+    paid: 'paid',
+    overdue: 'overdue',
+    partial: 'partial'
+  };
+  
+  /**
+   * Initialize payment tracking for selected suppliers
+   * ðŸ”¥ ENHANCED: Now saves to Firestore or localStorage automatically
+   */
+  static async initializePaymentTracking(purchaseOrder, updatePaymentStatusFn) {
+    try {
+      if (!purchaseOrder.supplierSelections) {
+        throw new Error('No suppliers selected for this PO');
+      }
+      
+      const supplierGroups = DeliveryTrackingService.groupItemsBySupplier(purchaseOrder);
+      
+      const paymentPromises = Object.entries(supplierGroups).map(async ([supplierId, group]) => {
+        const paymentData = {
+          poId: purchaseOrder.id,
+          poNumber: purchaseOrder.poNumber,
+          supplierId,
+          
+          // Financial details
+          amount: group.totalValue,
+          paidAmount: 0,
+          remainingAmount: group.totalValue,
+          currency: 'USD', // Default currency
+          
+          // Status tracking
+          status: this.PAYMENT_STATUSES.pending,
+          
+          // Timeline
+          createdAt: new Date().toISOString(),
+          dueDate: this.calculateDueDate(purchaseOrder.paymentTerms),
+          lastPaymentDate: null,
+          
+          // Payment details
+          paymentMethod: null,
+          bankReference: null,
+          invoiceReference: null,
+          
+          // Items covered by this payment
+          items: group.items.map(item => ({
+            itemNumber: item.itemNumber,
+            productName: item.productName,
+            quantity: item.quantity,
+            price: item.price,
+            total: (item.price || 0) * (item.quantity || 1)
+          })),
+          
+          // Payment history
+          paymentHistory: [],
+          
+          // Profit calculation
+          clientPayment: this.calculateClientPayment(group.items, purchaseOrder),
+          profitMargin: 0,
+          profitAmount: 0,
+          
+          // ðŸ”¥ NEW: Real-time collaboration metadata
+          lastUpdatedBy: 'system',
+          dataSource: TrackingStorage.getDataSource(),
+          version: 1
         };
-        checkInit();
+        
+        // Calculate profit margins (keeping your existing logic)
+        this.calculateProfitMetrics(paymentData);
+        
+        // ðŸ”¥ ENHANCED: Save to Firestore or localStorage
+        const saveResult = await TrackingStorage.savePaymentTracking(supplierId, paymentData);
+        
+        if (!saveResult.success) {
+          throw new Error(saveResult.error || 'Failed to save payment tracking');
+        }
+        
+        // Call the update function for real-time UI updates
+        if (updatePaymentStatusFn) {
+          await updatePaymentStatusFn(supplierId, paymentData);
+        }
+        
+        console.log('âœ… Payment tracking initialized for supplier:', supplierId);
+        
+        return { ...paymentData, firestoreId: saveResult.id };
       });
       
-      // Track initial page load
-      await trackingService.trackPageView({
-        initialLoad: true,
-        loadTime: performance.now()
+      const results = await Promise.all(paymentPromises);
+      
+      return { success: true, data: results };
+      
+    } catch (error) {
+      console.error('Error initializing payment tracking:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Record a payment for a supplier
+   * ðŸ”¥ ENHANCED: Now supports real-time Firestore updates
+   */
+  static async recordPayment(supplierId, paymentAmount, paymentDetails, currentData, updateFn) {
+    try {
+      const amount = parseFloat(paymentAmount);
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Invalid payment amount');
+      }
+      
+      if (amount > currentData.remainingAmount) {
+        throw new Error('Payment amount exceeds remaining balance');
+      }
+      
+      const newPaidAmount = currentData.paidAmount + amount;
+      const newRemainingAmount = currentData.amount - newPaidAmount;
+      
+      // Determine new status (keeping your existing logic)
+      let newStatus;
+      if (newRemainingAmount === 0) {
+        newStatus = this.PAYMENT_STATUSES.paid;
+      } else if (newPaidAmount > 0) {
+        newStatus = this.PAYMENT_STATUSES.partial;
+      } else {
+        newStatus = this.PAYMENT_STATUSES.pending;
+      }
+      
+      // Check for overdue status (keeping your existing logic)
+      if (newStatus !== this.PAYMENT_STATUSES.paid && this.isOverdue(currentData.dueDate)) {
+        newStatus = this.PAYMENT_STATUSES.overdue;
+      }
+      
+      // Create payment record (keeping your existing logic)
+      const paymentRecord = {
+        id: `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        amount,
+        date: new Date().toISOString(),
+        method: paymentDetails.method || 'bank_transfer',
+        reference: paymentDetails.reference || '',
+        bankReference: paymentDetails.bankReference || '',
+        notes: paymentDetails.notes || '',
+        recordedBy: paymentDetails.recordedBy || 'system'
+      };
+      
+      const updates = {
+        paidAmount: newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        status: newStatus,
+        lastPaymentDate: new Date().toISOString(),
+        paymentHistory: [
+          ...currentData.paymentHistory,
+          paymentRecord
+        ],
+        lastUpdated: new Date().toISOString(),
+        lastUpdatedBy: paymentDetails.recordedBy || 'system',
+        version: (currentData?.version || 1) + 1
+      };
+      
+      // Update profit calculations (keeping your existing logic)
+      this.calculateProfitMetrics({ ...currentData, ...updates });
+      
+      // ðŸ”¥ ENHANCED: Save to Firestore or localStorage
+      const saveResult = await TrackingStorage.savePaymentTracking(supplierId, {
+        ...currentData,
+        ...updates
       });
       
-      console.log('Complete tracking system initialized successfully');
-      toast.success('Tracking system ready');
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save payment record');
+      }
       
-      return trackingService;
+      // Call the update function for real-time UI updates
+      if (updateFn) {
+        await updateFn(supplierId, updates);
+      }
+      
+      // Send notification (keeping your existing logic)
+      this.sendPaymentNotification(newStatus, updates, currentData);
+      
+      console.log('âœ… Payment recorded:', { supplierId, amount, newStatus });
+      
+      return { success: true, data: updates, paymentRecord };
+      
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  /**
+   * Update payment status manually
+   * ðŸ”¥ ENHANCED: Now supports real-time Firestore updates
+   */
+  static async updatePaymentStatus(supplierId, newStatus, currentData, updateFn) {
+    try {
+      // Validate status change (keeping your existing logic)
+      if (!Object.values(this.PAYMENT_STATUSES).includes(newStatus)) {
+        throw new Error('Invalid payment status');
+      }
+      
+      const updates = {
+        status: newStatus,
+        lastUpdated: new Date().toISOString(),
+        lastUpdatedBy: 'system',
+        version: (currentData?.version || 1) + 1
+      };
+      
+      // Handle status-specific logic (keeping your existing logic)
+      switch (newStatus) {
+        case this.PAYMENT_STATUSES.processing:
+          updates.processingStarted = new Date().toISOString();
+          break;
+          
+        case this.PAYMENT_STATUSES.paid:
+          if (currentData.remainingAmount > 0) {
+            // Mark as fully paid
+            updates.paidAmount = currentData.amount;
+            updates.remainingAmount = 0;
+            updates.lastPaymentDate = new Date().toISOString();
+            
+            // Add automatic payment record
+            const autoPaymentRecord = {
+              id: `auto_payment_${Date.now()}`,
+              amount: currentData.remainingAmount,
+              date: new Date().toISOString(),
+              method: 'manual_entry',
+              reference: 'Manual status update to paid',
+              notes: 'Automatically recorded when status set to paid',
+              recordedBy: 'system'
+            };
+            
+            updates.paymentHistory = [
+              ...currentData.paymentHistory,
+              autoPaymentRecord
+            ];
+          }
+          break;
+      }
+      
+      // ðŸ”¥ ENHANCED: Save to Firestore or localStorage
+      const saveResult = await TrackingStorage.savePaymentTracking(supplierId, {
+        ...currentData,
+        ...updates
+      });
+      
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save payment status update');
+      }
+      
+      // Call the update function for real-time UI updates
+      if (updateFn) {
+        await updateFn(supplierId, updates);
+      }
+      
+      console.log('âœ… Payment status updated:', { supplierId, newStatus });
+      
+      return { success: true, data: updates };
+      
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  // Keep all your existing utility methods unchanged
+  static calculateDueDate(paymentTerms) {
+    const dueDate = new Date();
+    
+    if (paymentTerms) {
+      // Parse payment terms (e.g., "NET 30", "15 days", etc.)
+      const terms = paymentTerms.toLowerCase();
+      let days = 30; // Default
+      
+      if (terms.includes('net')) {
+        const match = terms.match(/net\s*(\d+)/);
+        if (match) days = parseInt(match[1]);
+      } else if (terms.includes('day')) {
+        const match = terms.match(/(\d+)\s*day/);
+        if (match) days = parseInt(match[1]);
+      }
+      
+      dueDate.setDate(dueDate.getDate() + days);
+    } else {
+      dueDate.setDate(dueDate.getDate() + 30); // Default 30 days
+    }
+    
+    return dueDate.toISOString();
+  }
+  
+  static calculateClientPayment(items, purchaseOrder) {
+    // This would typically come from the client invoice
+    // For now, estimate based on markup
+    const supplierTotal = items.reduce((sum, item) => 
+      sum + ((item.price || 0) * (item.quantity || 1)), 0
+    );
+    
+    // Assume 20% markup as default
+    const markup = 1.2;
+    return supplierTotal * markup;
+  }
+  
+  static calculateProfitMetrics(paymentData) {
+    const supplierCost = paymentData.amount;
+    const clientRevenue = paymentData.clientPayment || 0;
+    
+    paymentData.profitAmount = clientRevenue - supplierCost;
+    paymentData.profitMargin = clientRevenue > 0 ? 
+      ((paymentData.profitAmount / clientRevenue) * 100) : 0;
+  }
+  
+  static isOverdue(dueDate) {
+    if (!dueDate) return false;
+    return new Date(dueDate) < new Date();
+  }
+  
+  static getPaymentsRequiringAttention(paymentTrackingData) {
+    const now = new Date();
+    const in3Days = new Date(now.getTime() + (3 * 24 * 60 * 60 * 1000));
+    
+    return Object.entries(paymentTrackingData)
+      .map(([supplierId, data]) => ({ supplierId, ...data }))
+      .filter(payment => {
+        if (payment.status === this.PAYMENT_STATUSES.paid) return false;
+        
+        const dueDate = new Date(payment.dueDate);
+        return dueDate < now || // Overdue
+               (dueDate < in3Days && payment.status === this.PAYMENT_STATUSES.pending); // Due soon
+      })
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+  }
+  
+  static calculatePaymentStatistics(paymentTrackingData) {
+    const payments = Object.values(paymentTrackingData);
+    
+    const stats = {
+      total: payments.length,
+      totalAmount: 0,
+      paidAmount: 0,
+      outstandingAmount: 0,
+      profitAmount: 0,
+      
+      byStatus: {
+        pending: 0,
+        processing: 0,
+        paid: 0,
+        overdue: 0,
+        partial: 0
+      },
+      
+      averagePaymentTime: 0,
+      onTimePaymentRate: 0,
+      
+      overduePayments: [],
+      dueSoonPayments: []
+    };
+    
+    let totalPaymentDays = 0;
+    let completedPayments = 0;
+    let onTimePayments = 0;
+    
+    payments.forEach(payment => {
+      stats.totalAmount += payment.amount || 0;
+      stats.paidAmount += payment.paidAmount || 0;
+      stats.outstandingAmount += payment.remainingAmount || 0;
+      stats.profitAmount += payment.profitAmount || 0;
+      
+      stats.byStatus[payment.status]++;
+      
+      if (payment.status === this.PAYMENT_STATUSES.paid) {
+        completedPayments++;
+        
+        if (payment.lastPaymentDate && payment.dueDate) {
+          const paymentDate = new Date(payment.lastPaymentDate);
+          const dueDate = new Date(payment.dueDate);
+          const daysTaken = Math.ceil((paymentDate - new Date(payment.createdAt)) / (1000 * 60 * 60 * 24));
+          
+          totalPaymentDays += daysTaken;
+          
+          if (paymentDate <= dueDate) {
+            onTimePayments++;
+          }
+        }
+      }
+      
+      if (this.isOverdue(payment.dueDate) && payment.status !== this.PAYMENT_STATUSES.paid) {
+        stats.overduePayments.push(payment);
+      }
+      
+      // Due in next 7 days
+      const weekFromNow = new Date();
+      weekFromNow.setDate(weekFromNow.getDate() + 7);
+      if (new Date(payment.dueDate) <= weekFromNow && payment.status === this.PAYMENT_STATUSES.pending) {
+        stats.dueSoonPayments.push(payment);
+      }
+    });
+    
+    stats.averagePaymentTime = completedPayments > 0 ? 
+      Math.round(totalPaymentDays / completedPayments) : 0;
+      
+    stats.onTimePaymentRate = completedPayments > 0 ? 
+      Math.round((onTimePayments / completedPayments) * 100) : 0;
+    
+    return stats;
+  }
+  
+  static sendPaymentNotification(status, updates, originalData) {
+    const messages = {
+      paid: `ðŸ’° Payment completed for supplier ${originalData.supplierId}`,
+      partial: `ðŸ“ Partial payment recorded for supplier ${originalData.supplierId}`,
+      overdue: `âš ï¸ Payment overdue for supplier ${originalData.supplierId}`,
+      processing: `ðŸ”„ Payment processing for supplier ${originalData.supplierId}`
+    };
+    
+    if (messages[status]) {
+      toast.success(messages[status]);
+    }
+  }
+  
+  static generatePaymentReport(paymentTrackingData) {
+    const stats = this.calculatePaymentStatistics(paymentTrackingData);
+    const payments = Object.entries(paymentTrackingData).map(([supplierId, data]) => ({
+      supplierId,
+      ...data
+    }));
+    
+    return {
+      summary: {
+        totalSuppliers: stats.total,
+        totalAmount: stats.totalAmount,
+        paidAmount: stats.paidAmount,
+        outstandingAmount: stats.outstandingAmount,
+        profitAmount: stats.profitAmount,
+        averagePaymentTime: stats.averagePaymentTime,
+        onTimePaymentRate: stats.onTimePaymentRate
+      },
+      
+      statusBreakdown: stats.byStatus,
+      
+      overduePayments: stats.overduePayments,
+      dueSoonPayments: stats.dueSoonPayments,
+      
+      detailedPayments: payments,
+      
+      generatedAt: new Date().toISOString()
+    };
+  }
+}
+
+/**
+ * Consolidated Tracking Service
+ * ðŸ”¥ ENHANCED: Your existing coordination logic + Firestore capabilities
+ */
+export class ConsolidatedTrackingService {
+  
+  /**
+   * Initialize complete tracking for a PO after supplier selection
+   * ðŸ”¥ ENHANCED: Now supports real-time Firestore updates
+   */
+  static async initializeCompleteTracking(purchaseOrder, updateDeliveryFn, updatePaymentFn) {
+    try {
+      console.log('ðŸš€ Initializing complete tracking for PO:', purchaseOrder.poNumber);
+      console.log('ðŸ“Š Data source:', TrackingStorage.getDataSource());
+      
+      const results = await Promise.all([
+        DeliveryTrackingService.initializeDeliveryTracking(purchaseOrder, updateDeliveryFn),
+        PaymentTrackingService.initializePaymentTracking(purchaseOrder, updatePaymentFn)
+      ]);
+      
+      const [deliveryResult, paymentResult] = results;
+      
+      if (!deliveryResult.success || !paymentResult.success) {
+        throw new Error('Failed to initialize tracking systems');
+      }
+      
+      // ðŸ”¥ NEW: Enhanced success message with data source info
+      const dataSource = TrackingStorage.getDataSource();
+      const message = dataSource === 'firestore' 
+        ? 'ðŸ”¥ Real-time tracking system initialized!' 
+        : 'ðŸ’¾ Tracking system initialized locally!';
+      
+      toast.success(message);
+      
+      console.log('âœ… Complete tracking initialized:', {
+        delivery: deliveryResult.success,
+        payment: paymentResult.success,
+        dataSource,
+        deliverySuppliers: Object.keys(deliveryResult.data?.supplierGroups || {}).length,
+        paymentSuppliers: paymentResult.data?.length || 0
+      });
+      
+      return {
+        success: true,
+        data: {
+          delivery: deliveryResult.data,
+          payment: paymentResult.data
+        },
+        message: `Tracking initialized with ${dataSource} - ${Object.keys(deliveryResult.data?.supplierGroups || {}).length} suppliers`
+      };
       
     } catch (error) {
       console.error('Error initializing complete tracking:', error);
       toast.error('Failed to initialize tracking system');
-      
-      // Return a mock service for graceful degradation
-      return {
-        trackUserInteraction: () => Promise.resolve(false),
-        trackProductInteraction: () => Promise.resolve(false),
-        trackSearchEvent: () => Promise.resolve(false),
-        trackQuoteRequest: () => Promise.resolve(false),
-        trackCartInteraction: () => Promise.resolve(false),
-        trackPageView: () => Promise.resolve(false),
-        trackFactoryEngagement: () => Promise.resolve(false),
-        trackDeliveryEvent: () => Promise.resolve(false),
-        getAnalytics: () => Promise.resolve({}),
-        subscribeToAnalytics: () => () => {}
-      };
+      return { success: false, error: error.message };
     }
   }
-
-  /**
-   * Initialize delivery tracking
-   */
-  static async initializeDeliveryTracking(purchaseOrder, updateDeliveryStatusFn) {
-    try {
-      console.log('Initializing delivery tracking for PO:', purchaseOrder?.id);
+  
+  // Keep all your existing methods unchanged
+  static getDashboardData(purchaseOrders, deliveryTracking, paymentTracking) {
+    const activeOrders = purchaseOrders.filter(po => po.supplierSelections);
+    
+    const deliveryStats = {
+      total: activeOrders.length,
+      preparing: 0,
+      shipped: 0,
+      in_transit: 0,
+      delivered: 0,
+      completed: 0,
+      overdue: 0
+    };
+    
+    const paymentStats = PaymentTrackingService.calculatePaymentStatistics(paymentTracking);
+    
+    // Calculate delivery stats
+    activeOrders.forEach(po => {
+      const delivery = deliveryTracking[po.id];
+      const status = delivery?.status || 'preparing';
+      deliveryStats[status]++;
       
-      const trackingService = new TrackingServices();
+      if (delivery?.estimatedDelivery) {
+        const isOverdue = new Date(delivery.estimatedDelivery) < new Date() && status !== 'completed';
+        if (isOverdue) deliveryStats.overdue++;
+      }
+    });
+    
+    // Calculate efficiency metrics
+    const completionRate = deliveryStats.total > 0 ? 
+      (deliveryStats.completed / deliveryStats.total) * 100 : 0;
       
-      // Set up delivery status monitoring
-      const deliveryData = {
-        purchaseOrderId: purchaseOrder?.id,
-        status: 'initialized',
-        timestamp: new Date().toISOString()
-      };
+    const paymentCompletionRate = paymentStats.total > 0 ?
+      (paymentStats.byStatus.paid / paymentStats.total) * 100 : 0;
+    
+    return {
+      summary: {
+        totalActiveOrders: activeOrders.length,
+        deliveryCompletionRate: Math.round(completionRate),
+        paymentCompletionRate: Math.round(paymentCompletionRate),
+        totalValue: paymentStats.totalAmount,
+        profitAmount: paymentStats.profitAmount,
+        overdueItems: deliveryStats.overdue + paymentStats.byStatus.overdue,
+        // ðŸ”¥ NEW: Real-time status
+        dataSource: TrackingStorage.getDataSource(),
+        lastSync: new Date().toISOString()
+      },
       
-      await trackingService.trackDeliveryEvent(deliveryData);
+      delivery: deliveryStats,
+      payment: paymentStats,
       
-      // Mock delivery updates for demo
-      if (typeof updateDeliveryStatusFn === 'function') {
-        setTimeout(() => {
-          updateDeliveryStatusFn('processing');
-          trackingService.trackDeliveryEvent({
-            ...deliveryData,
-            status: 'processing'
-          });
-        }, 5000);
+      urgentItems: {
+        overdueDeliveries: activeOrders.filter(po => {
+          const delivery = deliveryTracking[po.id];
+          return delivery?.estimatedDelivery && 
+                 new Date(delivery.estimatedDelivery) < new Date() && 
+                 delivery.status !== 'completed';
+        }),
         
-        setTimeout(() => {
-          updateDeliveryStatusFn('shipped');
-          trackingService.trackDeliveryEvent({
-            ...deliveryData,
-            status: 'shipped'
-          });
-        }, 15000);
+        overduePayments: paymentStats.overduePayments,
+        dueSoonPayments: paymentStats.dueSoonPayments
       }
-      
-      console.log('Delivery tracking initialized successfully');
-      return { 
-        success: true, 
-        trackingService,
-        trackingId: `TRK_${Date.now()}`
-      };
-      
-    } catch (error) {
-      console.error('Error initializing delivery tracking:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        trackingService: null
-      };
-    }
+    };
   }
-
-  /**
-   * Cleanup resources
-   */
-  cleanup() {
-    try {
-      if (this.eventQueue.length > 0) {
-        this.flushEventQueue();
-      }
+  
+  static generateComprehensiveReport(purchaseOrders, deliveryTracking, paymentTracking) {
+    const dashboardData = this.getDashboardData(purchaseOrders, deliveryTracking, paymentTracking);
+    const paymentReport = PaymentTrackingService.generatePaymentReport(paymentTracking);
+    
+    return {
+      reportMetadata: {
+        title: 'HiggsFlow Comprehensive Tracking Report',
+        generatedAt: new Date().toISOString(),
+        dataSource: TrackingStorage.getDataSource(),
+        period: {
+          from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // Last 30 days
+          to: new Date().toISOString()
+        }
+      },
       
-      console.log('TrackingServices cleaned up');
-    } catch (error) {
-      console.error('Error during cleanup:', error);
-    }
+      executive_summary: dashboardData.summary,
+      
+      delivery_tracking: {
+        overview: dashboardData.delivery,
+        active_orders: purchaseOrders.filter(po => po.supplierSelections).map(po => ({
+          poNumber: po.poNumber,
+          client: po.clientName,
+          status: deliveryTracking[po.id]?.status || 'preparing',
+          estimatedDelivery: deliveryTracking[po.id]?.estimatedDelivery,
+          value: po.totalAmount
+        }))
+      },
+      
+      payment_tracking: paymentReport,
+      
+      performance_metrics: {
+        delivery_performance: {
+          completion_rate: dashboardData.summary.deliveryCompletionRate,
+          average_lead_time: 'TBD', // Would calculate from completed deliveries
+          on_time_delivery_rate: 'TBD'
+        },
+        
+        payment_performance: {
+          completion_rate: dashboardData.summary.paymentCompletionRate,
+          average_payment_time: paymentReport.summary.averagePaymentTime,
+          on_time_payment_rate: paymentReport.summary.onTimePaymentRate
+        }
+      },
+      
+      urgent_actions: {
+        overdue_deliveries: dashboardData.urgentItems.overdueDeliveries.length,
+        overdue_payments: dashboardData.urgentItems.overduePayments.length,
+        due_soon_payments: dashboardData.urgentItems.dueSoonPayments.length
+      }
+    };
   }
 }
-
-// Export singleton instance
-const trackingServices = new TrackingServices();
-
-export default trackingServices;
-export { TrackingServices };
