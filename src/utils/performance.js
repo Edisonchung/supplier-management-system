@@ -1,82 +1,88 @@
-// src/utils/performance.js (CREATE THIS FILE)
-// Preload critical components during idle time
+// src/utils/performance.js
+// Performance monitoring utilities - Build Safe Version
+
 export const preloadCriticalComponents = () => {
   if ('requestIdleCallback' in window) {
     requestIdleCallback(() => {
-      // Preload commonly accessed components
-      import('../components/suppliers/Suppliers.jsx')
-      import('../components/products/Products.jsx')
-    })
+      import('../components/suppliers/Suppliers.jsx').catch(err => console.warn('Preload failed:', err));
+      import('../components/products/Products.jsx').catch(err => console.warn('Preload failed:', err));
+    });
   }
-}
+};
 
-// Measure component load times
 export const measureComponentLoad = (componentName, loadPromise) => {
-  const start = performance.now()
+  const start = performance.now();
   
   return loadPromise.then(component => {
-    const end = performance.now()
-    console.log(`📦 ${componentName} loaded in ${(end - start).toFixed(2)}ms`)
-    return component
-  })
-}
+    const end = performance.now();
+    const duration = (end - start).toFixed(2);
+    console.log(`Component ${componentName} loaded in ${duration}ms`);
+    return component;
+  });
+};
 
-// Monitor bundle loading performance
 export const monitorBundleLoading = () => {
   if (process.env.NODE_ENV === 'development') {
     const observer = new PerformanceObserver((list) => {
       list.getEntries().forEach((entry) => {
         if (entry.entryType === 'navigation') {
-          console.log('📊 Bundle Performance Metrics:', {
-            'DOM Content Loaded': `${(entry.domContentLoadedEventEnd - entry.fetchStart).toFixed(0)}ms`,
-            'Page Load Complete': `${(entry.loadEventEnd - entry.fetchStart).toFixed(0)}ms`,
-            'Time to Interactive': `${(entry.loadEventEnd - entry.fetchStart).toFixed(0)}ms`
-          })
+          const domTime = (entry.domContentLoadedEventEnd - entry.fetchStart).toFixed(0);
+          const loadTime = (entry.loadEventEnd - entry.fetchStart).toFixed(0);
+          
+          console.log('Bundle Performance Metrics:', {
+            'DOM Content Loaded': domTime + 'ms',
+            'Page Load Complete': loadTime + 'ms',
+            'Time to Interactive': loadTime + 'ms'
+          });
         }
-      })
-    })
+      });
+    });
     
-    observer.observe({ entryTypes: ['navigation'] })
+    observer.observe({ entryTypes: ['navigation'] });
     
-    // Monitor chunk loading
     const resourceObserver = new PerformanceObserver((list) => {
       list.getEntries().forEach((entry) => {
         if (entry.name.includes('chunk') || (entry.name.includes('.js') && entry.transferSize > 1000)) {
-          console.log(`📦 Chunk: ${entry.name.split('/').pop()}`, {
-            'Size': `${(entry.transferSize / 1024).toFixed(2)}KB`,
-            'Load Time': `${entry.duration.toFixed(2)}ms`
-          })
+          const size = (entry.transferSize / 1024).toFixed(2);
+          const duration = entry.duration.toFixed(2);
+          
+          console.log(`Chunk: ${entry.name.split('/').pop()}`, {
+            'Size': size + 'KB',
+            'Load Time': duration + 'ms'
+          });
         }
-      })
-    })
+      });
+    });
     
-    resourceObserver.observe({ entryTypes: ['resource'] })
+    resourceObserver.observe({ entryTypes: ['resource'] });
     
     return () => {
-      observer.disconnect()
-      resourceObserver.disconnect()
-    }
+      observer.disconnect();
+      resourceObserver.disconnect();
+    };
   }
-}
+};
 
-// Track bundle size improvement
 export const trackBundleImprovement = () => {
-  const originalSize = 292 * 1024 // 292KB baseline
+  const originalSize = 292 * 1024;
   
-  // This would be called after measuring actual bundle size
   return {
     calculateImprovement: (newSize) => {
-      const reduction = originalSize - newSize
-      const percentage = (reduction / originalSize * 100).toFixed(1)
+      const reduction = originalSize - newSize;
+      const percentage = (reduction / originalSize * 100).toFixed(1);
       
-      console.log(`🎯 Bundle Optimization Results:`, {
-        'Original Size': `${(originalSize / 1024).toFixed(2)}KB`,
-        'New Size': `${(newSize / 1024).toFixed(2)}KB`,
-        'Reduction': `${(reduction / 1024).toFixed(2)}KB`,
-        'Improvement': `${percentage}%`
-      })
+      const origSizeKB = (originalSize / 1024).toFixed(2);
+      const newSizeKB = (newSize / 1024).toFixed(2);
+      const reductionKB = (reduction / 1024).toFixed(2);
       
-      return { reduction, percentage, newSize, originalSize }
+      console.log('Bundle Optimization Results:', {
+        'Original Size': origSizeKB + 'KB',
+        'New Size': newSizeKB + 'KB',
+        'Reduction': reductionKB + 'KB',
+        'Improvement': percentage + '%'
+      });
+      
+      return { reduction, percentage, newSize, originalSize };
     }
-  }
-}
+  };
+};
