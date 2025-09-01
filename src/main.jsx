@@ -1,152 +1,138 @@
-// src/main.jsx - ENHANCED CONSOLE MANAGEMENT + PERFORMANCE MONITORING
-
-// Enhanced console management with better error handling
-if (import.meta.env.PROD) {
-  const originalError = console.error;
-  const originalWarn = console.warn;
-  const originalInfo = console.info;
-  
-  let errorCount = 0;
-  const maxErrors = 20;
-  const throttle = new Map();
-  const imageErrorSet = new Set(); // Track unique image errors
-
-  console.log = () => {}; // Disable logs in production
-  console.debug = () => {}; // Disable debug in production
-  
-  console.error = (...args) => {
-    if (errorCount++ < maxErrors && !isThrottled(args[0])) {
-      originalError(...args);
-    }
-  };
-
-  console.warn = (...args) => {
-    if (errorCount++ < maxErrors && !isThrottled(args[0])) {
-      originalWarn(...args);
-    }
-  };
-
-  console.info = (...args) => {
-    // Allow critical info messages through
-    const message = String(args[0] || '');
-    if (message.includes('Firebase') || message.includes('Auth') || message.includes('Error')) {
-      if (!isThrottled(args[0])) {
-        originalInfo(...args);
-      }
-    }
-  };
-
-  function isThrottled(msg) {
-    const key = String(msg).substring(0, 30);
-    const now = Date.now();
-    if (!throttle.get(key) || now - throttle.get(key) > 5000) {
-      throttle.set(key, now);
-      return false;
-    }
-    return true;
-  }
-
-  // ENHANCED: Image error suppression with better tracking
-  document.addEventListener('error', (e) => {
-    if (e.target?.tagName === 'IMG') {
-      const imgSrc = e.target.src;
-      
-      // Only log unique image errors once to prevent spam
-      if (!imageErrorSet.has(imgSrc)) {
-        imageErrorSet.add(imgSrc);
-        
-        // Log only the first few unique image errors
-        if (imageErrorSet.size <= 5) {
-          originalWarn(`Image failed to load: ${imgSrc.substring(0, 50)}...`);
-        }
-      }
-      
-      // CRITICAL: Prevent error propagation that causes console spam
-      e.stopPropagation();
-      e.preventDefault();
-      return false;
-    }
-  }, true);
-
-  // Enhanced global error handler
-  window.addEventListener('error', (event) => {
-    // Skip image errors (handled above)
-    if (event.target?.tagName === 'IMG') return;
-    
-    if (errorCount < maxErrors) {
-      const errorInfo = {
-        message: event.error?.message || event.message,
-        filename: event.filename,
-        line: event.lineno
-      };
-      originalError('Global error:', errorInfo);
-    }
-  });
-
-  window.addEventListener('unhandledrejection', (event) => {
-    if (errorCount < maxErrors) {
-      originalError('Unhandled promise rejection:', event.reason);
-    }
-    event.preventDefault();
-  });
-
-  // Expose debug functions for production troubleshooting
-  window.restoreConsole = () => {
-    console.log = originalError; // Restore as error level for visibility
-    console.warn = originalWarn;
-    console.error = originalError;
-    console.info = originalInfo;
-    console.log('Console restored for debugging');
-  };
-
-  window.getErrorStats = () => ({
-    errorCount,
-    throttledMessages: throttle.size,
-    uniqueImageErrors: imageErrorSet.size,
-    maxErrors
-  });
-}
+// src/main.jsx - FIXED VERSION: Simplified console management for build stability
 
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 
-// Enhanced performance utilities with error handling
+// Simplified console management for production
+const isProduction = import.meta.env.MODE === 'production'
+
+if (isProduction) {
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  
+  let errorCount = 0;
+  const maxErrors = 20;
+  const throttleMap = new Map();
+  const imageErrors = new Set();
+
+  // Disable logs in production
+  console.log = () => {}
+  console.debug = () => {}
+  
+  // Throttled error logging
+  console.error = (...args) => {
+    if (errorCount < maxErrors) {
+      const key = String(args[0] || '').substring(0, 30);
+      const now = Date.now();
+      if (!throttleMap.get(key) || now - throttleMap.get(key) > 5000) {
+        throttleMap.set(key, now);
+        originalError(...args);
+        errorCount++;
+      }
+    }
+  };
+
+  console.warn = (...args) => {
+    if (errorCount < maxErrors) {
+      const key = String(args[0] || '').substring(0, 30);
+      const now = Date.now();
+      if (!throttleMap.get(key) || now - throttleMap.get(key) > 5000) {
+        throttleMap.set(key, now);
+        originalWarn(...args);
+        errorCount++;
+      }
+    }
+  };
+
+  // Image error suppression
+  document.addEventListener('error', (e) => {
+    if (e.target?.tagName === 'IMG') {
+      const imgSrc = e.target.src;
+      if (!imageErrors.has(imgSrc) && imageErrors.size < 5) {
+        imageErrors.add(imgSrc);
+        originalWarn(`Image failed: ${imgSrc.substring(0, 50)}...`);
+      }
+      e.stopPropagation();
+      e.preventDefault();
+      return false;
+    }
+  }, true);
+
+  // Global error handlers
+  window.addEventListener('error', (event) => {
+    if (event.target?.tagName === 'IMG') return;
+    if (errorCount < maxErrors) {
+      originalError('Global error:', {
+        message: event.error?.message || event.message,
+        filename: event.filename,
+        line: event.lineno
+      });
+      errorCount++;
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    if (errorCount < maxErrors) {
+      originalError('Unhandled rejection:', event.reason);
+      errorCount++;
+    }
+    event.preventDefault();
+  });
+
+  // Debug functions
+  window.restoreConsole = () => {
+    console.log = originalError;
+    console.warn = originalWarn;
+    console.error = originalError;
+    console.log('Console restored for debugging');
+  };
+
+  window.getErrorStats = () => ({
+    errorCount,
+    throttledMessages: throttleMap.size,
+    uniqueImageErrors: imageErrors.size,
+    maxErrors
+  });
+}
+
+// Performance utilities
 const performanceUtils = {
   preloadCriticalComponents: async () => {
+    if (typeof window === 'undefined') return;
+    
     try {
-      // Preload critical components for faster navigation
       const criticalComponents = [
         () => import('./components/ecommerce/ProductCard.jsx'),
         () => import('./components/suppliers/Suppliers.jsx'),
         () => import('./components/products/Products.jsx')
       ];
 
-      // Preload components with delay to not block initial render
-      for (const [index, loader] of criticalComponents.entries()) {
+      criticalComponents.forEach((loader, index) => {
         setTimeout(() => {
           loader().catch(err => {
-            if (!import.meta.env.PROD) {
+            if (!isProduction) {
               console.warn(`Failed to preload component ${index}:`, err);
             }
           });
         }, 1000 * (index + 1));
-      }
+      });
     } catch (error) {
-      if (!import.meta.env.PROD) {
-        console.warn('Preload components error:', error);
+      if (!isProduction) {
+        console.warn('Preload error:', error);
       }
     }
   },
 
   monitorBundleLoading: () => {
-    if (!import.meta.env.PROD) {
-      // Monitor bundle loading performance
+    if (isProduction || typeof window === 'undefined') return;
+
+    try {
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
           if (entry.entryType === 'navigation') {
-            console.log(`Navigation timing:`, {
+            console.log('Navigation timing:', {
               domContentLoaded: entry.domContentLoadedEventEnd - entry.domContentLoadedEventStart,
               loadComplete: entry.loadEventEnd - entry.loadEventStart,
               totalTime: entry.loadEventEnd - entry.fetchStart
@@ -155,34 +141,26 @@ const performanceUtils = {
         }
       });
       
-      try {
-        observer.observe({ entryTypes: ['navigation'] });
-      } catch (error) {
-        console.warn('Performance observer not supported:', error);
-      }
-
-      // Monitor resource loading
-      window.addEventListener('load', () => {
-        const resources = performance.getEntriesByType('resource');
-        const failedResources = resources.filter(resource => 
-          resource.transferSize === 0 && resource.decodedBodySize === 0
-        );
-        
-        if (failedResources.length > 0) {
-          console.warn(`Failed to load ${failedResources.length} resources:`, 
-            failedResources.map(r => r.name));
-        }
-      });
+      observer.observe({ entryTypes: ['navigation'] });
+    } catch (error) {
+      console.warn('Performance observer not supported:', error);
     }
+
+    window.addEventListener('load', () => {
+      const resources = performance.getEntriesByType('resource');
+      const failedResources = resources.filter(resource => 
+        resource.transferSize === 0 && resource.decodedBodySize === 0
+      );
+      
+      if (failedResources.length > 0) {
+        console.warn(`Failed to load ${failedResources.length} resources:`, 
+          failedResources.map(r => r.name));
+      }
+    });
   }
 };
 
-// Monitor performance in development
-if (import.meta.env.DEV) {
-  performanceUtils.monitorBundleLoading();
-}
-
-// Enhanced error boundary component
+// Enhanced error boundary
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -194,10 +172,9 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('React Error Boundary caught:', error, errorInfo);
+    console.error('React Error Boundary:', error, errorInfo);
     
-    // In production, try to recover after a delay
-    if (import.meta.env.PROD) {
+    if (isProduction) {
       setTimeout(() => {
         this.setState({ hasError: false, error: null });
       }, 5000);
@@ -222,7 +199,7 @@ class ErrorBoundary extends React.Component {
             HiggsFlow Application Error
           </h1>
           <p style={{ marginBottom: '20px', maxWidth: '500px' }}>
-            The catalog encountered an error. This may be due to network issues or temporary server problems.
+            The application encountered an error. This may be due to network issues or temporary server problems.
           </p>
           <div>
             <button 
@@ -255,7 +232,7 @@ class ErrorBoundary extends React.Component {
               Try Again
             </button>
           </div>
-          {import.meta.env.DEV && this.state.error && (
+          {!isProduction && this.state.error && (
             <details style={{ 
               marginTop: '30px', 
               textAlign: 'left',
@@ -287,15 +264,13 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// App wrapper with enhanced error handling
+// App wrapper
 const AppWithEnhancements = () => {
   React.useEffect(() => {
-    // Preload critical components after initial render
     const timer = setTimeout(() => {
       performanceUtils.preloadCriticalComponents();
     }, 2000);
 
-    // Cleanup
     return () => clearTimeout(timer);
   }, []);
 
@@ -307,7 +282,8 @@ const AppWithEnhancements = () => {
 };
 
 // Performance monitoring
-if (import.meta.env.DEV) {
+if (!isProduction) {
+  performanceUtils.monitorBundleLoading();
   performance.mark('higgsflow-init-start');
 }
 
@@ -317,7 +293,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 );
 
-if (import.meta.env.DEV) {
+if (!isProduction) {
   performance.mark('higgsflow-init-end');
   performance.measure('higgsflow-init', 'higgsflow-init-start', 'higgsflow-init-end');
 }
