@@ -652,6 +652,7 @@ class ProductSyncService {
 
   /**
    * FIXED: Enhanced product image update with better format handling
+   * Addresses the issue where MCP returns nested images object but URLs aren't extracted
    */
   async updateProductImages(publicProductId, images) {
     try {
@@ -662,8 +663,35 @@ class ProductSyncService {
       let imageData = {};
       
       if (images) {
-        // Handle MCP/OpenAI response format
-        if (images.primary && images.primary.url) {
+        // FIXED: Handle nested images object from MCP response
+        if (images.images && typeof images.images === 'object') {
+          // Extract from nested images object (your current MCP format)
+          const nestedImages = images.images;
+          if (nestedImages.primary) {
+            imageUrl = nestedImages.primary;
+            imageData = {
+              primary: { url: nestedImages.primary },
+              technical: nestedImages.technical ? { url: nestedImages.technical } : undefined,
+              application: nestedImages.application ? { url: nestedImages.application } : undefined,
+              provider: images.provider || 'openai',
+              model: images.model || 'dall-e-3',
+              generated: true,
+              generatedAt: images.generatedAt || new Date(),
+              compliance: images.compliance || {}
+            };
+          }
+        }
+        // Handle direct images object (alternative format)
+        else if (images.primary && typeof images.primary === 'string') {
+          imageUrl = images.primary;
+          imageData = {
+            primary: { url: images.primary },
+            provider: images.provider || 'openai',
+            model: images.model || 'dall-e-3'
+          };
+        }
+        // Handle MCP/OpenAI response format with primary.url
+        else if (images.primary && images.primary.url) {
           imageUrl = images.primary.url;
           imageData = images;
         } 
@@ -677,7 +705,7 @@ class ProductSyncService {
           imageUrl = images[0];
           imageData = { primary: { url: images[0] } };
         }
-        // FIXED: Handle imageUrls array from MCP response
+        // Handle imageUrls array from MCP response
         else if (images.imageUrls && Array.isArray(images.imageUrls) && images.imageUrls.length > 0) {
           imageUrl = images.imageUrls[0];
           imageData = { 
@@ -688,22 +716,24 @@ class ProductSyncService {
         }
       }
       
+      // FIXED: Ensure we have a valid image URL before marking as successful
       const updateData = {
         imageUrl: imageUrl,
         images: imageData,
-        hasRealImage: !!imageUrl,
-        needsImageGeneration: !imageUrl,
-        imageGenerationStatus: imageUrl ? 'completed' : 'failed',
+        hasRealImage: !!imageUrl && imageUrl.length > 0,
+        needsImageGeneration: !imageUrl || imageUrl.length === 0,
+        imageGenerationStatus: (imageUrl && imageUrl.length > 0) ? 'completed' : 'failed',
         lastImageUpdate: serverTimestamp()
       };
       
-      console.log('Updating product with data:', updateData);
+      console.log('FIXED: Updating product with data:', updateData);
       
       await updateDoc(doc(this.db, 'products_public', publicProductId), updateData);
       
       console.log(`✅ Successfully updated images for product ${publicProductId}`, {
         imageUrl,
-        hasImage: !!imageUrl
+        hasImage: !!imageUrl,
+        imageLength: imageUrl ? imageUrl.length : 0
       });
       
       return true;
