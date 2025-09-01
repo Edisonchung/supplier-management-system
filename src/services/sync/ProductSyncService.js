@@ -890,12 +890,107 @@ class ProductSyncService {
   }
 
   /**
+   * DIAGNOSTIC: Check what products exist in products_public collection
+   */
+  async diagnoseProductsPublic() {
+    try {
+      console.log('🔍 DIAGNOSING products_public collection...');
+      
+      // Get all products_public documents
+      const publicSnapshot = await getDocs(collection(this.db, 'products_public'));
+      
+      console.log(`📊 Total products in products_public: ${publicSnapshot.size}`);
+      
+      if (publicSnapshot.size === 0) {
+        console.log('❌ No products found in products_public collection');
+        console.log('💡 You may need to run initial sync to populate products_public from products collection');
+        return {
+          totalProducts: 0,
+          productsNeedingImages: 0,
+          hasNeedsImageGenerationField: 0,
+          summary: 'No products in products_public collection'
+        };
+      }
+      
+      let productsNeedingImages = 0;
+      let hasNeedsImageGenerationField = 0;
+      let productsWithImages = 0;
+      let productsWithoutImages = 0;
+      
+      const sampleProducts = [];
+      
+      publicSnapshot.forEach((doc, index) => {
+        const data = doc.data();
+        
+        // Count products with needsImageGeneration field
+        if (data.hasOwnProperty('needsImageGeneration')) {
+          hasNeedsImageGenerationField++;
+          if (data.needsImageGeneration === true) {
+            productsNeedingImages++;
+          }
+        }
+        
+        // Count products with/without images
+        if (data.imageUrl && !this.isPlaceholderImage(data.imageUrl)) {
+          productsWithImages++;
+        } else {
+          productsWithoutImages++;
+        }
+        
+        // Collect sample data for first 3 products
+        if (index < 3) {
+          sampleProducts.push({
+            id: doc.id,
+            name: data.name || data.displayName,
+            imageUrl: data.imageUrl,
+            hasRealImage: data.hasRealImage,
+            needsImageGeneration: data.needsImageGeneration,
+            imageGenerationStatus: data.imageGenerationStatus,
+            internalProductId: data.internalProductId
+          });
+        }
+      });
+      
+      const diagnosis = {
+        totalProducts: publicSnapshot.size,
+        productsNeedingImages,
+        hasNeedsImageGenerationField,
+        productsWithImages,
+        productsWithoutImages,
+        sampleProducts,
+        summary: `${publicSnapshot.size} products found, ${productsNeedingImages} need images`
+      };
+      
+      console.log('📋 DIAGNOSIS RESULTS:', diagnosis);
+      
+      return diagnosis;
+      
+    } catch (error) {
+      console.error('❌ Failed to diagnose products_public:', error);
+      return {
+        error: error.message,
+        summary: 'Diagnosis failed'
+      };
+    }
+  }
+
+  /**
    * FIXED: Get products that need image generation for dashboard
    * Using simple query to avoid Firestore index requirements
    */
   async getProductsNeedingImages(limitCount = 50) {
     try {
       console.log('Loading products needing images...');
+      
+      // First run diagnosis to understand the data
+      const diagnosis = await this.diagnoseProductsPublic();
+      console.log('📊 Diagnosis complete:', diagnosis.summary);
+      
+      // If no products in products_public, suggest running sync
+      if (diagnosis.totalProducts === 0) {
+        console.log('💡 No products in products_public - returning demo data and suggesting sync');
+        return this.getDemoProductsNeedingImages();
+      }
       
       // Try simple query first (without orderBy to avoid index requirement)
       let publicQuery;
@@ -952,6 +1047,16 @@ class ProductSyncService {
       products = products.slice(0, limitCount);
 
       console.log(`Found ${products.length} products needing images`);
+      
+      // If no products found but diagnosis shows products exist, there might be a field issue
+      if (products.length === 0 && diagnosis.totalProducts > 0) {
+        console.log('⚠️ No products with needsImageGeneration=true found, but products exist');
+        console.log('💡 This might indicate that products need to be updated with image generation fields');
+        
+        // Return products that don't have real images as potential candidates
+        return this.getProductsWithoutRealImages(limitCount);
+      }
+
       return products;
 
     } catch (error) {
@@ -959,42 +1064,89 @@ class ProductSyncService {
       
       // Return demo data if Firestore query fails
       console.log('Returning demo data due to Firestore error');
-      return [
-        {
-          id: 'demo-1',
-          internalId: 'PROD-001',
-          name: 'Hydraulic Pump Demo',
-          category: 'hydraulics',
-          imageUrl: null,
-          hasRealImage: false,
-          imageGenerationStatus: 'needed',
-          needsImageGeneration: true,
-          createdAt: new Date()
-        },
-        {
-          id: 'demo-2', 
-          internalId: 'PROD-002',
-          name: 'Pneumatic Valve Demo',
-          category: 'pneumatics',
-          imageUrl: 'https://via.placeholder.com/400x400',
-          hasRealImage: false,
-          imageGenerationStatus: 'needed',
-          needsImageGeneration: true,
-          createdAt: new Date()
-        },
-        {
-          id: 'demo-3',
-          internalId: 'PROD-003', 
-          name: 'Industrial Sensor Module',
-          category: 'sensors',
-          imageUrl: null,
-          hasRealImage: false,
-          imageGenerationStatus: 'needed',
-          needsImageGeneration: true,
-          createdAt: new Date()
-        }
-      ];
+      return this.getDemoProductsNeedingImages();
     }
+  }
+
+  /**
+   * Helper: Get products without real images as candidates for image generation
+   */
+  async getProductsWithoutRealImages(limitCount = 50) {
+    try {
+      console.log('🔄 Looking for products without real images...');
+      
+      const publicSnapshot = await getDocs(collection(this.db, 'products_public'));
+      let products = [];
+
+      publicSnapshot.forEach(doc => {
+        const data = doc.data();
+        
+        // Check if product needs image generation based on our logic
+        const needsImages = this.needsImageGeneration(data);
+        
+        if (needsImages && products.length < limitCount) {
+          products.push({
+            id: doc.id,
+            internalId: data.internalProductId,
+            name: data.displayName || data.name,
+            category: data.category,
+            imageUrl: data.imageUrl,
+            hasRealImage: this.hasRealImage(data),
+            imageGenerationStatus: 'candidate',
+            needsImageGeneration: true,
+            createdAt: data.createdAt || new Date()
+          });
+        }
+      });
+
+      console.log(`Found ${products.length} products without real images`);
+      return products;
+      
+    } catch (error) {
+      console.error('Failed to get products without real images:', error);
+      return this.getDemoProductsNeedingImages();
+    }
+  }
+
+  /**
+   * Helper: Get demo products for fallback
+   */
+  getDemoProductsNeedingImages() {
+    return [
+      {
+        id: 'demo-1',
+        internalId: 'PROD-001',
+        name: 'Hydraulic Pump Demo',
+        category: 'hydraulics',
+        imageUrl: null,
+        hasRealImage: false,
+        imageGenerationStatus: 'needed',
+        needsImageGeneration: true,
+        createdAt: new Date()
+      },
+      {
+        id: 'demo-2', 
+        internalId: 'PROD-002',
+        name: 'Pneumatic Valve Demo',
+        category: 'pneumatics',
+        imageUrl: 'https://via.placeholder.com/400x400',
+        hasRealImage: false,
+        imageGenerationStatus: 'needed',
+        needsImageGeneration: true,
+        createdAt: new Date()
+      },
+      {
+        id: 'demo-3',
+        internalId: 'PROD-003', 
+        name: 'Industrial Sensor Module',
+        category: 'sensors',
+        imageUrl: null,
+        hasRealImage: false,
+        imageGenerationStatus: 'needed',
+        needsImageGeneration: true,
+        createdAt: new Date()
+      }
+    ];
   }
 
   // ====================================================================
