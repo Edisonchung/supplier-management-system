@@ -627,18 +627,54 @@ const OptimizedProductCard = ({
 
   const handleImageLoad = useCallback(() => {
     setImageLoading(false);
+    setImageError(false);
   }, []);
 
-  const handleImageError = useCallback(() => {
+  const handleImageError = useCallback((e) => {
+    console.warn(`[SmartCatalog] Image load failed for ${safeProduct.name}:`, e.target.src);
     setImageError(true);
     setImageLoading(false);
-  }, []);
+    
+    // Set fallback image immediately to prevent broken image icons
+    e.target.src = `/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
+  }, [safeProduct.name]);
 
-  // Safe image URL with fallback
+  // Enhanced image URL resolution - prioritizes OpenAI-generated images
   const getImageUrl = useCallback(() => {
-    if (imageError) return '/api/placeholder/300/300';
-    return safeProduct.image || '/api/placeholder/300/300';
-  }, [imageError, safeProduct.image]);
+    if (imageError) return `/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
+    
+    // Priority order: imageUrl, image_url, image, photo, pictures, thumbnail
+    const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail'];
+    
+    for (const field of imageFields) {
+      const imageValue = product?.[field];
+      
+      if (imageValue) {
+        // Handle arrays of images
+        if (Array.isArray(imageValue)) {
+          const validImage = imageValue.find(img => 
+            typeof img === 'string' && 
+            img.trim() !== '' && 
+            !img.includes('placeholder-product.jpg')
+          );
+          if (validImage) return validImage;
+        } 
+        // Handle string URLs
+        else if (typeof imageValue === 'string' && 
+                 imageValue.trim() !== '' && 
+                 !imageValue.includes('placeholder-product.jpg')) {
+          return imageValue;
+        }
+        // Handle images object structure from AI generation
+        else if (typeof imageValue === 'object' && imageValue.primary) {
+          return imageValue.primary.url || imageValue.primary;
+        }
+      }
+    }
+    
+    // Fallback to proper API placeholder with product name
+    return `/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
+  }, [imageError, safeProduct.name, product]);
 
   const handleClick = useCallback(() => {
     if (onClick) onClick(safeProduct);
@@ -674,16 +710,24 @@ const OptimizedProductCard = ({
           <div className="relative w-20 h-20 flex-shrink-0">
             {imageLoading && (
               <div className="absolute inset-0 bg-gray-200 rounded-lg animate-pulse flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
               </div>
             )}
             <img
               src={getImageUrl()}
               alt={safeProduct.name}
-              className={`w-20 h-20 object-cover rounded-lg ${imageLoading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
+              className={`w-20 h-20 object-cover rounded-lg transition-all duration-300 ${
+                imageLoading ? 'opacity-0' : 'opacity-100'
+              }`}
               onLoad={handleImageLoad}
               onError={handleImageError}
+              loading="lazy"
             />
+            {process.env.NODE_ENV === 'development' && (
+              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-75 text-white text-xs p-1 truncate">
+                {getImageUrl().substring(0, 30)}...
+              </div>
+            )}
           </div>
           
           <div className="flex-1 min-w-0">
@@ -752,17 +796,26 @@ const OptimizedProductCard = ({
       <div className="relative">
         <div className="relative w-full h-48 bg-gray-200 rounded-t-lg overflow-hidden">
           {imageLoading && (
-            <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
+            <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse flex items-center justify-center">
               <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
             </div>
           )}
           <img
             src={getImageUrl()}
             alt={safeProduct.name}
-            className={`w-full h-48 object-cover rounded-t-lg ${imageLoading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
+            className={`w-full h-48 object-cover rounded-t-lg transition-all duration-500 ${
+              imageLoading ? 'opacity-0 scale-105' : 'opacity-100 scale-100 group-hover:scale-105'
+            }`}
             onLoad={handleImageLoad}
             onError={handleImageError}
+            loading="lazy"
           />
+          {process.env.NODE_ENV === 'development' && (
+            <div className="absolute top-0 left-0 right-0 bg-black bg-opacity-75 text-white text-xs p-2">
+              <div className="truncate">URL: {getImageUrl()}</div>
+              <div>Loading: {imageLoading.toString()}, Error: {imageError.toString()}</div>
+            </div>
+          )}
         </div>
         
         <div className="absolute top-2 left-2 flex flex-wrap gap-1">
@@ -1642,12 +1695,13 @@ const SmartPublicCatalog = () => {
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <div className="flex items-center space-x-4">
                   <img
-                    src={selectedProduct.image || '/api/placeholder/80/80'}
+                    src={selectedProduct.image || selectedProduct.imageUrl || `/api/placeholder/80x80?text=${encodeURIComponent(selectedProduct.name || 'Product')}`}
                     alt={selectedProduct.name}
                     className="w-20 h-20 object-cover rounded-lg"
                     onError={(e) => {
-                      e.target.src = '/api/placeholder/80/80';
+                      e.target.src = `/api/placeholder/80x80?text=${encodeURIComponent(selectedProduct.name || 'Product')}`;
                     }}
+                    loading="lazy"
                   />
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900">{selectedProduct.name}</h3>
@@ -1827,12 +1881,13 @@ const SmartPublicCatalog = () => {
                     <div key={product.id} className="bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow">
                       <div className="relative">
                         <img
-                          src={product.image || '/api/placeholder/300/200'}
+                          src={product.image || product.imageUrl || `/api/placeholder/300x200?text=${encodeURIComponent(product.name || 'Product')}`}
                           alt={product.name}
                           className="w-full h-32 object-cover rounded-t-lg"
                           onError={(e) => {
-                            e.target.src = '/api/placeholder/300/200';
+                            e.target.src = `/api/placeholder/300x200?text=${encodeURIComponent(product.name || 'Product')}`;
                           }}
+                          loading="lazy"
                         />
                         <button
                           onClick={(e) => handleFavoriteToggle(product, e)}
@@ -1947,12 +2002,13 @@ const SmartPublicCatalog = () => {
                     <div key={item.id} className="bg-gray-50 rounded-lg p-4">
                       <div className="flex items-center space-x-4">
                         <img
-                          src={item.image || '/api/placeholder/64/64'}
+                          src={item.image || item.imageUrl || `/api/placeholder/64x64?text=${encodeURIComponent(item.name || 'Item')}`}
                           alt={item.name}
                           className="w-16 h-16 object-cover rounded-lg"
                           onError={(e) => {
-                            e.target.src = '/api/placeholder/64/64';
+                            e.target.src = `/api/placeholder/64x64?text=${encodeURIComponent(item.name || 'Item')}`;
                           }}
+                          loading="lazy"
                         />
                         <div className="flex-1 min-w-0">
                           <h4 className="font-medium text-gray-900 truncate">
@@ -2073,12 +2129,13 @@ const SmartPublicCatalog = () => {
                     <div key={product.id} className="border rounded-lg p-4">
                       <div className="relative mb-4">
                         <img
-                          src={product.image || '/api/placeholder/300/200'}
+                          src={product.image || product.imageUrl || `/api/placeholder/300x200?text=${encodeURIComponent(product.name || 'Product')}`}
                           alt={product.name}
                           className="w-full h-32 object-cover rounded-lg"
                           onError={(e) => {
-                            e.target.src = '/api/placeholder/300/200';
+                            e.target.src = `/api/placeholder/300x200?text=${encodeURIComponent(product.name || 'Product')}`;
                           }}
+                          loading="lazy"
                         />
                         <button
                           onClick={() => setComparisonList(prev => prev.filter(id => id !== product.id))}
