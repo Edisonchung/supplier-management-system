@@ -20,10 +20,18 @@ import { db } from '../../config/firebase';
 
 // Build-safe toast implementation
 const safeToast = {
-  success: (message) => console.log('SUCCESS:', message),
-  error: (message) => console.error('ERROR:', message),
-  info: (message) => console.info('INFO:', message),
-  warning: (message) => console.warn('WARNING:', message)
+  success: function(message) {
+    console.log('SUCCESS:', message);
+  },
+  error: function(message) {
+    console.error('ERROR:', message);
+  },
+  info: function(message) {
+    console.info('INFO:', message);
+  },
+  warning: function(message) {
+    console.warn('WARNING:', message);
+  }
 };
 
 // Try to import toast but fall back gracefully
