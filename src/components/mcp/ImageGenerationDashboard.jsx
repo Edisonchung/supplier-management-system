@@ -1,5 +1,5 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// FIXED: Error handling for TypeError and Firestore issues
+// FIXED: Removed require() and implemented proper ES6 imports for browser compatibility
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -25,16 +25,44 @@ import {
   Search
 } from 'lucide-react';
 
-// Import the ProductSyncService with error handling
+// FIXED: Import ProductSyncService properly for browser environment
+// This will prevent the "require is not defined" error
 let productSyncService = null;
-try {
-  const syncServiceModule = require('../../services/sync/ProductSyncService');
-  productSyncService = syncServiceModule.productSyncService || syncServiceModule.default;
-} catch (error) {
-  console.warn('ProductSyncService not available:', error);
-}
+
+// Try to import the service dynamically and safely
+const initializeProductSyncService = async () => {
+  try {
+    // Check if we're in browser environment
+    if (typeof window !== 'undefined') {
+      // Dynamic import for browser compatibility
+      const syncModule = await import('../../services/sync/ProductSyncService.js');
+      
+      // Handle different export patterns
+      if (syncModule.ProductSyncService) {
+        productSyncService = new syncModule.ProductSyncService();
+      } else if (syncModule.default) {
+        productSyncService = new syncModule.default();
+      } else {
+        console.warn('ProductSyncService not found in module');
+      }
+      
+      // Initialize the service if it has an init method
+      if (productSyncService && typeof productSyncService.initialize === 'function') {
+        await productSyncService.initialize();
+      }
+      
+      console.log('✅ ProductSyncService initialized successfully');
+      return true;
+    }
+  } catch (error) {
+    console.warn('ProductSyncService not available:', error.message);
+    productSyncService = null;
+    return false;
+  }
+};
 
 const ImageGenerationDashboard = () => {
+  const [serviceInitialized, setServiceInitialized] = useState(false);
   const [stats, setStats] = useState({
     totalGenerated: 0,
     generatedToday: 0,
@@ -65,8 +93,20 @@ const ImageGenerationDashboard = () => {
 
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
+  // Initialize service on component mount
   useEffect(() => {
-    loadDashboardData();
+    const initialize = async () => {
+      console.log('🔄 Initializing ProductSyncService...');
+      const initialized = await initializeProductSyncService();
+      setServiceInitialized(initialized);
+      
+      // Load data regardless of service availability
+      await loadDashboardData();
+    };
+    
+    initialize();
+    
+    // Set up periodic refresh
     const interval = setInterval(loadDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -80,7 +120,7 @@ const ImageGenerationDashboard = () => {
     try {
       setIsLoading(true);
       
-      // FIXED: Load data with proper error handling
+      // Load data with proper error handling
       const [healthData, productsData, syncStats] = await Promise.allSettled([
         fetchSystemHealth(),
         loadProductsNeedingImages(),
@@ -92,10 +132,15 @@ const ImageGenerationDashboard = () => {
         setSystemHealth(healthData.value);
       } else {
         console.warn('Failed to fetch system health:', healthData.reason);
-        setSystemHealth(prev => ({ ...prev, mcpApiHealthy: false, openaiAvailable: false }));
+        setSystemHealth(prev => ({ 
+          ...prev, 
+          mcpApiHealthy: false, 
+          openaiAvailable: false,
+          lastCheck: new Date()
+        }));
       }
       
-      // FIXED: Handle products data with proper error checking
+      // Handle products data with proper error checking
       if (productsData.status === 'fulfilled' && Array.isArray(productsData.value)) {
         setProductsNeedingImages(productsData.value);
         
@@ -122,7 +167,7 @@ const ImageGenerationDashboard = () => {
         setRecentGenerations([]);
       }
       
-      // FIXED: Handle sync stats with proper error checking
+      // Handle sync stats with proper error checking
       if (syncStats.status === 'fulfilled' && syncStats.value && typeof syncStats.value === 'object') {
         const statsData = calculateRealStats(syncStats.value, productsData.value || []);
         setStats(statsData);
@@ -150,12 +195,12 @@ const ImageGenerationDashboard = () => {
   // FIXED: Safe method to load products needing images
   const loadProductsNeedingImages = async () => {
     try {
-      if (!productSyncService) {
+      if (!productSyncService || !serviceInitialized) {
         console.warn('ProductSyncService not available, using fallback');
         return getDemoProducts();
       }
       
-      // FIXED: Check if method exists and is a function
+      // Check if method exists and is a function
       if (typeof productSyncService.getProductsNeedingImages !== 'function') {
         console.warn('getProductsNeedingImages method not available');
         return getDemoProducts();
@@ -163,7 +208,7 @@ const ImageGenerationDashboard = () => {
       
       const products = await productSyncService.getProductsNeedingImages(50);
       
-      // FIXED: Ensure we return an array
+      // Ensure we return an array
       return Array.isArray(products) ? products : [];
       
     } catch (error) {
@@ -172,15 +217,15 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Safe method to load sync statistics
+  // FIXED: Safe method to load sync statistics  
   const loadSyncStatistics = async () => {
     try {
-      if (!productSyncService) {
+      if (!productSyncService || !serviceInitialized) {
         console.warn('ProductSyncService not available');
         return getDemoStats();
       }
       
-      // FIXED: Check if method exists and is a function
+      // Check if method exists and is a function
       if (typeof productSyncService.getSyncStatistics !== 'function') {
         console.warn('getSyncStatistics method not available');
         return getDemoStats();
@@ -188,7 +233,7 @@ const ImageGenerationDashboard = () => {
       
       const result = await productSyncService.getSyncStatistics();
       
-      // FIXED: Return the data property or fallback
+      // Return the data property or fallback
       return result && result.data ? result.data : getDemoStats();
       
     } catch (error) {
@@ -197,7 +242,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Demo data fallbacks
+  // Demo data fallbacks
   const getDemoProducts = () => [
     {
       id: 'demo-1',
@@ -205,7 +250,10 @@ const ImageGenerationDashboard = () => {
       category: 'hydraulics',
       imageGenerationStatus: 'needed',
       hasRealImage: false,
-      imageUrl: null
+      imageUrl: null,
+      sku: 'IHP-001',
+      brand: 'HydroTech',
+      description: 'High-pressure hydraulic pump for industrial applications'
     },
     {
       id: 'demo-2', 
@@ -213,7 +261,21 @@ const ImageGenerationDashboard = () => {
       category: 'pneumatics',
       imageGenerationStatus: 'needed',
       hasRealImage: false,
-      imageUrl: null
+      imageUrl: null,
+      sku: 'PCV-002',
+      brand: 'AirPro',
+      description: 'Precision pneumatic control valve with manual override'
+    },
+    {
+      id: 'demo-3',
+      name: 'Proximity Sensor M18',
+      category: 'sensors', 
+      imageGenerationStatus: 'needed',
+      hasRealImage: false,
+      imageUrl: null,
+      sku: 'PS-M18-003',
+      brand: 'SensorTech',
+      description: 'Inductive proximity sensor, M18 thread, PNP output'
     }
   ];
 
@@ -230,9 +292,9 @@ const ImageGenerationDashboard = () => {
 
   const fetchSystemHealth = async () => {
     try {
-      // FIXED: Add timeout to prevent hanging
+      // Add timeout to prevent hanging
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(`${mcpServerUrl}/api/ai/health`, {
         signal: controller.signal,
@@ -281,7 +343,7 @@ const ImageGenerationDashboard = () => {
       const productsNeedingImagesCount = syncData.productsNeedingImages || 0;
       const totalGenerated = syncData.totalImagesGenerated || 0;
       
-      // FIXED: Safe category calculation
+      // Safe category calculation
       const categoryCount = {};
       if (Array.isArray(productsArray)) {
         productsArray.forEach(p => {
@@ -306,7 +368,7 @@ const ImageGenerationDashboard = () => {
         generatedToday: 0,
         pendingQueue: productsNeedingImagesCount,
         successRate: syncData.imageGenerationRate || 0,
-        averageTime: (syncData.averageImageTime || 15800) / 1000, // Convert to seconds
+        averageTime: (syncData.averageImageTime || 15800) / 1000,
         topCategories,
         providerStats: {
           openai: {
@@ -338,7 +400,7 @@ const ImageGenerationDashboard = () => {
       return;
     }
 
-    if (!productSyncService) {
+    if (!productSyncService || !serviceInitialized) {
       showNotification('ProductSyncService not available', 'error');
       return;
     }
@@ -348,7 +410,7 @@ const ImageGenerationDashboard = () => {
       console.log(`Starting image generation for ${selectedProducts.length} products...`);
       showNotification(`Starting image generation for ${selectedProducts.length} products...`, 'info');
       
-      // FIXED: Check if method exists
+      // Check if method exists
       if (typeof productSyncService.manualImageGeneration !== 'function') {
         throw new Error('Manual image generation not available');
       }
@@ -396,7 +458,7 @@ const ImageGenerationDashboard = () => {
         } : gen
       ));
 
-      if (!productSyncService || typeof productSyncService.manualImageGeneration !== 'function') {
+      if (!productSyncService || !serviceInitialized || typeof productSyncService.manualImageGeneration !== 'function') {
         throw new Error('Image generation service not available');
       }
 
@@ -497,7 +559,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Safe filtering with proper error handling
+  // Safe filtering with proper error handling
   const filteredGenerations = React.useMemo(() => {
     try {
       if (!Array.isArray(recentGenerations)) return [];
@@ -554,7 +616,7 @@ const ImageGenerationDashboard = () => {
           </h1>
           <p className="text-gray-600 mt-1">
             Monitor and manage OpenAI-powered product image generation 
-            {!productSyncService && <span className="text-orange-600"> (Demo Mode - ProductSyncService not available)</span>}
+            {!serviceInitialized && <span className="text-orange-600"> (Demo Mode - ProductSyncService unavailable)</span>}
           </p>
         </div>
         
@@ -570,7 +632,7 @@ const ImageGenerationDashboard = () => {
           
           <button
             onClick={handleStartImageGeneration}
-            disabled={isGenerating || selectedProducts.length === 0 || !productSyncService}
+            disabled={isGenerating || selectedProducts.length === 0 || !serviceInitialized}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {isGenerating ? (
@@ -610,7 +672,7 @@ const ImageGenerationDashboard = () => {
             <span className="text-sm text-gray-700">OpenAI DALL-E</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${productSyncService ? 'bg-green-500' : 'bg-red-500'}`} />
+            <div className={`w-2 h-2 rounded-full ${serviceInitialized ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-sm text-gray-700">Sync Service</span>
           </div>
           <div className="flex items-center gap-2">
@@ -619,7 +681,9 @@ const ImageGenerationDashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="text-sm text-gray-700">Live Data</span>
+            <span className="text-sm text-gray-700">
+              {serviceInitialized ? 'Live Data' : 'Demo Data'}
+            </span>
           </div>
         </div>
       </div>
@@ -674,6 +738,7 @@ const ImageGenerationDashboard = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
                 Products Needing Images ({productsNeedingImages.length})
+                {!serviceInitialized && <span className="text-sm text-orange-600 ml-2">(Demo Data)</span>}
               </h3>
               
               <div className="flex space-x-3">
@@ -712,10 +777,14 @@ const ImageGenerationDashboard = () => {
                     <h4 className="font-medium text-gray-900">{product.name}</h4>
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
                       <span>Category: {product.category}</span>
+                      {product.sku && <span>SKU: {product.sku}</span>}
                       <span className={`px-2 py-1 rounded text-xs ${getStatusColor(product.imageGenerationStatus)}`}>
                         {product.imageGenerationStatus || 'needed'}
                       </span>
                     </div>
+                    {product.description && (
+                      <p className="text-sm text-gray-600 mt-1 line-clamp-1">{product.description}</p>
+                    )}
                   </div>
                   
                   <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
@@ -749,7 +818,7 @@ const ImageGenerationDashboard = () => {
             <h3 className="font-medium text-gray-900 flex items-center gap-2">
               <Clock className="w-5 h-5 text-purple-600" />
               Image Generation History 
-              {!productSyncService && <span className="text-sm text-orange-600">(Demo Data)</span>}
+              {!serviceInitialized && <span className="text-sm text-orange-600">(Demo Data)</span>}
             </h3>
             
             {/* Filters */}
@@ -849,7 +918,7 @@ const ImageGenerationDashboard = () => {
                           <Download className="w-4 h-4" />
                         </button>
                       )}
-                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'needed') && productSyncService && (
+                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'needed') && serviceInitialized && (
                         <button 
                           className="text-orange-600 hover:text-orange-800 transition-colors"
                           onClick={() => handleRetryGeneration(generation.productId)}
@@ -965,7 +1034,7 @@ const ImageGenerationDashboard = () => {
               >
                 Close
               </button>
-              {(selectedProduct.status === 'failed' || selectedProduct.status === 'error' || selectedProduct.status === 'needed') && productSyncService && (
+              {(selectedProduct.status === 'failed' || selectedProduct.status === 'error' || selectedProduct.status === 'needed') && serviceInitialized && (
                 <button 
                   onClick={() => {
                     handleRetryGeneration(selectedProduct.productId);
