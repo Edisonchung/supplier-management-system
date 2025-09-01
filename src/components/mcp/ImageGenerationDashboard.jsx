@@ -25,35 +25,72 @@ import {
   Search
 } from 'lucide-react';
 
-// FIXED: Import ProductSyncService properly for browser environment
-// This will prevent the "require is not defined" error
+// FIXED: Import ProductSyncService properly for browser environment with better detection
 let productSyncService = null;
 
-// Try to import the service dynamically and safely
+// FIXED: Better service initialization with multiple fallback methods
 const initializeProductSyncService = async () => {
   try {
+    console.log('🔄 Initializing ProductSyncService...');
+    
     // Check if we're in browser environment
     if (typeof window !== 'undefined') {
-      // Dynamic import for browser compatibility
-      const syncModule = await import('../../services/sync/ProductSyncService.js');
-      
-      // Handle different export patterns
-      if (syncModule.ProductSyncService) {
-        productSyncService = new syncModule.ProductSyncService();
-      } else if (syncModule.default) {
-        productSyncService = new syncModule.default();
-      } else {
-        console.warn('ProductSyncService not found in module');
+      // Try to get existing service from window (already initialized)
+      if (window.ProductSyncService) {
+        productSyncService = window.ProductSyncService;
+        console.log('✅ Using existing ProductSyncService from window');
+        return true;
       }
       
-      // Initialize the service if it has an init method
-      if (productSyncService && typeof productSyncService.initialize === 'function') {
-        await productSyncService.initialize();
+      // Try dynamic import
+      try {
+        const syncModule = await import('../../services/sync/ProductSyncService.js');
+        
+        // Handle different export patterns
+        if (syncModule.ProductSyncService) {
+          productSyncService = new syncModule.ProductSyncService();
+        } else if (syncModule.default) {
+          productSyncService = new syncModule.default();
+        } else {
+          throw new Error('ProductSyncService class not found in module');
+        }
+        
+        // Initialize the service
+        if (productSyncService && typeof productSyncService.initialize === 'function') {
+          await productSyncService.initialize();
+        }
+        
+        console.log('✅ ProductSyncService initialized successfully');
+        return true;
+        
+      } catch (importError) {
+        console.warn('Dynamic import failed:', importError.message);
+        
+        // FIXED: Try alternative access methods
+        try {
+          // Check if service is available globally
+          if (typeof window !== 'undefined' && window.firebase && window.firebase.ProductSyncService) {
+            productSyncService = window.firebase.ProductSyncService;
+            console.log('✅ Using ProductSyncService from window.firebase');
+            return true;
+          }
+          
+          // Check for service in development tools
+          if (import.meta.env.DEV && window.productSyncService) {
+            productSyncService = window.productSyncService;
+            console.log('✅ Using ProductSyncService from dev environment');
+            return true;
+          }
+          
+        } catch (fallbackError) {
+          console.warn('Fallback access failed:', fallbackError.message);
+        }
+        
+        throw importError;
       }
-      
-      console.log('✅ ProductSyncService initialized successfully');
-      return true;
     }
+    
+    return false;
   } catch (error) {
     console.warn('ProductSyncService not available:', error.message);
     productSyncService = null;
@@ -93,12 +130,22 @@ const ImageGenerationDashboard = () => {
 
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
-  // Initialize service on component mount
+  // Initialize service on component mount with better error handling
   useEffect(() => {
     const initialize = async () => {
-      console.log('🔄 Initializing ProductSyncService...');
+      console.log('🔄 Starting ProductSyncService initialization...');
+      
+      // Wait a bit for other services to initialize
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       const initialized = await initializeProductSyncService();
       setServiceInitialized(initialized);
+      
+      if (initialized && isProductSyncServiceAvailable()) {
+        console.log('✅ ProductSyncService is fully available');
+      } else {
+        console.warn('⚠️ ProductSyncService not available, using demo mode');
+      }
       
       // Load data regardless of service availability
       await loadDashboardData();
@@ -192,24 +239,48 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Safe method to load products needing images
+// FIXED: Better service availability checking
+const isProductSyncServiceAvailable = () => {
+  if (!productSyncService) return false;
+  
+  // Check if service has required methods
+  const requiredMethods = [
+    'getProductsNeedingImages',
+    'getSyncStatistics',
+    'manualImageGeneration'
+  ];
+  
+  for (const method of requiredMethods) {
+    if (typeof productSyncService[method] !== 'function') {
+      console.warn(`ProductSyncService missing method: ${method}`);
+      return false;
+    }
+  }
+  
+  return true;
+};
+
+  // FIXED: Safe method to load products needing images with better error handling
   const loadProductsNeedingImages = async () => {
     try {
-      if (!productSyncService || !serviceInitialized) {
+      if (!isProductSyncServiceAvailable()) {
         console.warn('ProductSyncService not available, using fallback');
-        return getDemoProducts();
-      }
-      
-      // Check if method exists and is a function
-      if (typeof productSyncService.getProductsNeedingImages !== 'function') {
-        console.warn('getProductsNeedingImages method not available');
         return getDemoProducts();
       }
       
       const products = await productSyncService.getProductsNeedingImages(50);
       
-      // Ensure we return an array
-      return Array.isArray(products) ? products : [];
+      // Ensure we return an array and handle different response formats
+      if (Array.isArray(products)) {
+        return products;
+      } else if (products && products.data && Array.isArray(products.data)) {
+        return products.data;
+      } else if (products && products.success && Array.isArray(products.results)) {
+        return products.results;
+      } else {
+        console.warn('Invalid products format returned:', typeof products);
+        return getDemoProducts();
+      }
       
     } catch (error) {
       console.error('Error loading products needing images:', error);
@@ -217,24 +288,30 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Safe method to load sync statistics  
+  // FIXED: Safe method to load sync statistics with better error handling  
   const loadSyncStatistics = async () => {
     try {
-      if (!productSyncService || !serviceInitialized) {
+      if (!isProductSyncServiceAvailable()) {
         console.warn('ProductSyncService not available');
-        return getDemoStats();
-      }
-      
-      // Check if method exists and is a function
-      if (typeof productSyncService.getSyncStatistics !== 'function') {
-        console.warn('getSyncStatistics method not available');
         return getDemoStats();
       }
       
       const result = await productSyncService.getSyncStatistics();
       
-      // Return the data property or fallback
-      return result && result.data ? result.data : getDemoStats();
+      // Handle different response formats
+      if (result && typeof result === 'object') {
+        if (result.data) {
+          return result.data;
+        } else if (result.success && result.data) {
+          return result.data;
+        } else if (result.success && result.statistics) {
+          return result.statistics;
+        } else {
+          return result;
+        }
+      }
+      
+      return getDemoStats();
       
     } catch (error) {
       console.error('Error loading sync statistics:', error);
@@ -400,7 +477,7 @@ const ImageGenerationDashboard = () => {
       return;
     }
 
-    if (!productSyncService || !serviceInitialized) {
+    if (!isProductSyncServiceAvailable()) {
       showNotification('ProductSyncService not available', 'error');
       return;
     }
@@ -458,7 +535,7 @@ const ImageGenerationDashboard = () => {
         } : gen
       ));
 
-      if (!productSyncService || !serviceInitialized || typeof productSyncService.manualImageGeneration !== 'function') {
+      if (!isProductSyncServiceAvailable() || typeof productSyncService.manualImageGeneration !== 'function') {
         throw new Error('Image generation service not available');
       }
 
@@ -616,7 +693,9 @@ const ImageGenerationDashboard = () => {
           </h1>
           <p className="text-gray-600 mt-1">
             Monitor and manage OpenAI-powered product image generation 
-            {!serviceInitialized && <span className="text-orange-600"> (Demo Mode - ProductSyncService unavailable)</span>}
+            {!serviceInitialized || !isProductSyncServiceAvailable() ? (
+              <span className="text-orange-600"> (Demo Mode - ProductSyncService unavailable)</span>
+            ) : null}
           </p>
         </div>
         
@@ -632,7 +711,7 @@ const ImageGenerationDashboard = () => {
           
           <button
             onClick={handleStartImageGeneration}
-            disabled={isGenerating || selectedProducts.length === 0 || !serviceInitialized}
+            disabled={isGenerating || selectedProducts.length === 0 || !isProductSyncServiceAvailable()}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {isGenerating ? (
@@ -672,7 +751,7 @@ const ImageGenerationDashboard = () => {
             <span className="text-sm text-gray-700">OpenAI DALL-E</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${serviceInitialized ? 'bg-green-500' : 'bg-red-500'}`} />
+            <div className={`w-2 h-2 rounded-full ${serviceInitialized && isProductSyncServiceAvailable() ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-sm text-gray-700">Sync Service</span>
           </div>
           <div className="flex items-center gap-2">
@@ -682,7 +761,7 @@ const ImageGenerationDashboard = () => {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500" />
             <span className="text-sm text-gray-700">
-              {serviceInitialized ? 'Live Data' : 'Demo Data'}
+              {serviceInitialized && isProductSyncServiceAvailable() ? 'Live Data' : 'Demo Data'}
             </span>
           </div>
         </div>
@@ -818,7 +897,9 @@ const ImageGenerationDashboard = () => {
             <h3 className="font-medium text-gray-900 flex items-center gap-2">
               <Clock className="w-5 h-5 text-purple-600" />
               Image Generation History 
-              {!serviceInitialized && <span className="text-sm text-orange-600">(Demo Data)</span>}
+              {!serviceInitialized || !isProductSyncServiceAvailable() ? (
+                <span className="text-sm text-orange-600">(Demo Data)</span>
+              ) : null}
             </h3>
             
             {/* Filters */}
@@ -918,7 +999,7 @@ const ImageGenerationDashboard = () => {
                           <Download className="w-4 h-4" />
                         </button>
                       )}
-                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'needed') && serviceInitialized && (
+                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'needed') && serviceInitialized && isProductSyncServiceAvailable() && (
                         <button 
                           className="text-orange-600 hover:text-orange-800 transition-colors"
                           onClick={() => handleRetryGeneration(generation.productId)}
