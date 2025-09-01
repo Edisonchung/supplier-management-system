@@ -1,551 +1,799 @@
-// src/hooks/usePurchaseOrders.js
-// HiggsFlow Purchase Orders Hook - Build-Safe Implementation
-// Fixed: React useEffect syntax errors and build failures
-
+// src/hooks/usePurchaseOrders.js - Updated with Multi-Company Support and Document Storage Fix
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
-  addDoc, 
-  getDocs, 
-  deleteDoc,
-  updateDoc,
-  doc, 
   query, 
-  where, 
   orderBy, 
-  serverTimestamp,
-  onSnapshot
+  onSnapshot, 
+  doc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  serverTimestamp, 
+  where,
+  getDocs 
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { useAuth } from '../context/AuthContext';
+import { usePermissions } from './usePermissions';
+import { toast } from 'react-hot-toast';
+import companyManagementService from '../services/companyManagementService';
 
-/**
- * Custom hook for managing purchase orders
- * Provides CRUD operations and real-time updates for purchase orders
- */
-const usePurchaseOrders = (user) => {
+export const usePurchaseOrders = () => {
+  const { user } = useAuth();
+  const permissions = usePermissions();
+  
+  // Enhanced state for multi-company support
   const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [filteredPurchaseOrders, setFilteredPurchaseOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  
+  // Multi-company state
+  const [companies, setCompanies] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [selectedCompany, setSelectedCompany] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState('all');
 
-  // Calculate subtotal for an order
+  // Load companies and branches on mount
+  useEffect(() => {
+    const loadCompanyData = async () => {
+      if (!permissions.loading) {
+        try {
+          const accessibleCompanies = permissions.getAccessibleCompanies();
+          const accessibleBranches = permissions.getAccessibleBranches();
+          
+          setCompanies(accessibleCompanies);
+          setBranches(accessibleBranches);
+        } catch (error) {
+          console.error('Error loading company data:', error);
+        }
+      }
+    };
+
+    loadCompanyData();
+  }, [permissions.loading]);
+
+  // Generate unique PO number with company prefix
+  const generatePONumber = useCallback((companyId = 'flow-solution') => {
+    const company = companies.find(c => c.id === companyId);
+    const companyCode = company?.code || 'FS';
+    
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const random = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+    
+    return `${companyCode}-PO-${year}${month}${day}-${random}`;
+  }, [companies]);
+
+  // Calculate subtotal from items
   const calculateSubtotal = useCallback((items) => {
     if (!Array.isArray(items)) return 0;
-    
-    return items.reduce((total, item) => {
-      const price = typeof item.price === 'number' ? item.price : 0;
-      const quantity = typeof item.quantity === 'number' ? item.quantity : 0;
-      return total + (price * quantity);
+    return items.reduce((sum, item) => {
+      const itemTotal = Number(item.totalPrice) || (Number(item.quantity || 0) * Number(item.unitPrice || 0));
+      return sum + itemTotal;
     }, 0);
   }, []);
 
-  // Calculate tax amount
-  const calculateTax = useCallback((subtotal, taxRate = 0.06) => {
-    const amount = typeof subtotal === 'number' ? subtotal : 0;
-    const rate = typeof taxRate === 'number' ? taxRate : 0.06;
-    return amount * rate;
-  }, []);
+  // Calculate total with tax
+  const calculateTotal = useCallback((items, taxRate = 0.1) => {
+    const subtotal = calculateSubtotal(items);
+    const tax = subtotal * taxRate;
+    return subtotal + tax;
+  }, [calculateSubtotal]);
 
-  // Calculate total amount
-  const calculateTotal = useCallback((subtotal, tax = 0, shipping = 0) => {
-    const sub = typeof subtotal === 'number' ? subtotal : 0;
-    const taxAmount = typeof tax === 'number' ? tax : 0;
-    const shippingAmount = typeof shipping === 'number' ? shipping : 0;
-    return sub + taxAmount + shippingAmount;
-  }, []);
+  // Validate and normalize PO data with company information
+  const validatePOData = useCallback((poData) => {
+    const items = Array.isArray(poData.items) ? poData.items.map(item => ({
+      id: item.id || `item-${Date.now()}-${Math.random()}`,
+      productName: item.productName || '',
+      productCode: item.productCode || '',
+      quantity: Number(item.quantity) || 1,
+      unitPrice: Number(item.unitPrice) || 0,
+      totalPrice: Number(item.totalPrice) || (Number(item.quantity || 1) * Number(item.unitPrice || 0)),
+      stockAvailable: Number(item.stockAvailable) || 0,
+      category: item.category || ''
+    })) : [];
 
-  // Validate purchase order data
-  const validatePurchaseOrder = useCallback((orderData) => {
-    const errors = [];
+    // Determine company/branch assignment
+    const companyId = poData.companyId || selectedCompany !== 'all' ? selectedCompany : 'flow-solution';
+    const branchId = poData.branchId || selectedBranch !== 'all' ? selectedBranch : 'flow-solution-kl-hq';
 
-    if (!orderData) {
-      errors.push('Order data is required');
-      return errors;
-    }
-
-    if (!orderData.supplier || typeof orderData.supplier !== 'object') {
-      errors.push('Valid supplier information is required');
-    }
-
-    if (!Array.isArray(orderData.items) || orderData.items.length === 0) {
-      errors.push('At least one item is required');
-    }
-
-    if (Array.isArray(orderData.items)) {
-      orderData.items.forEach((item, index) => {
-        if (!item.name || typeof item.name !== 'string') {
-          errors.push(`Item ${index + 1}: Name is required`);
-        }
-        if (typeof item.price !== 'number' || item.price < 0) {
-          errors.push(`Item ${index + 1}: Valid price is required`);
-        }
-        if (typeof item.quantity !== 'number' || item.quantity <= 0) {
-          errors.push(`Item ${index + 1}: Valid quantity is required`);
-        }
-      });
-    }
-
-    return errors;
-  }, []);
-
-  // Create new purchase order
-  const createPurchaseOrder = useCallback(async (orderData) => {
-    if (!user || !user.uid) {
-      throw new Error('User authentication required');
-    }
-
-    setCreating(true);
-    setError(null);
-
-    try {
-      // Validate order data
-      const validationErrors = validatePurchaseOrder(orderData);
-      if (validationErrors.length > 0) {
-        throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
-      }
-
-      // Calculate amounts
-      const subtotal = calculateSubtotal(orderData.items || []);
-      const tax = calculateTax(subtotal, orderData.taxRate);
-      const total = calculateTotal(subtotal, tax, orderData.shipping || 0);
-
-      // Prepare order document
-      const orderDocument = {
-        userId: user.uid,
-        userEmail: user.email || 'unknown',
-        supplier: {
-          name: orderData.supplier.name || 'Unknown Supplier',
-          email: orderData.supplier.email || '',
-          address: orderData.supplier.address || '',
-          phone: orderData.supplier.phone || '',
-          contactPerson: orderData.supplier.contactPerson || ''
-        },
-        items: (orderData.items || []).map(item => ({
-          id: item.id || `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          name: String(item.name || 'Unknown Item'),
-          description: String(item.description || ''),
-          quantity: Number(item.quantity) || 1,
-          price: Number(item.price) || 0,
-          unit: String(item.unit || 'pcs'),
-          category: String(item.category || 'General'),
-          sku: String(item.sku || ''),
-          specifications: item.specifications || {}
-        })),
-        financial: {
-          subtotal: Number(subtotal),
-          taxRate: Number(orderData.taxRate || 0.06),
-          tax: Number(tax),
-          shipping: Number(orderData.shipping || 0),
-          total: Number(total),
-          currency: String(orderData.currency || 'MYR')
-        },
-        delivery: {
-          address: String(orderData.deliveryAddress || ''),
-          requestedDate: orderData.requestedDeliveryDate || null,
-          instructions: String(orderData.deliveryInstructions || ''),
-          method: String(orderData.deliveryMethod || 'standard')
-        },
-        status: 'draft',
-        priority: String(orderData.priority || 'normal'),
-        notes: String(orderData.notes || ''),
-        attachments: Array.isArray(orderData.attachments) ? orderData.attachments : [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: {
-          uid: user.uid,
-          email: user.email || 'unknown',
-          name: user.displayName || user.email || 'Unknown User'
-        },
-        orderNumber: `PO-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
-        version: 1,
-        workflow: {
-          currentStep: 'created',
-          history: [{
-            step: 'created',
-            timestamp: new Date().toISOString(),
-            user: user.uid,
-            notes: 'Purchase order created'
-          }]
-        }
-      };
-
-      // Add to Firestore
-      const purchaseOrdersCollection = collection(db, 'purchase_orders');
-      const docRef = await addDoc(purchaseOrdersCollection, orderDocument);
-
-      console.log('Purchase order created successfully:', docRef.id);
+    return {
+      // Core fields
+      poNumber: poData.poNumber || generatePONumber(companyId),
       
-      return {
-        id: docRef.id,
-        ...orderDocument
-      };
+      // Multi-company fields (NEW)
+      companyId: companyId,
+      branchId: branchId,
+      
+      // Client information
+      clientPoNumber: poData.clientPoNumber || '',
+      projectCode: poData.projectCode || '',
+      clientName: poData.clientName || '',
+      clientContact: poData.clientContact || '',
+      clientEmail: poData.clientEmail || '',
+      clientPhone: poData.clientPhone || '',
+      
+      // Dates
+      orderDate: poData.orderDate || new Date().toISOString().split('T')[0],
+      requiredDate: poData.requiredDate || '',
+      
+      // Items
+      items: items,
+      
+      // Financial
+      subtotal: calculateSubtotal(items),
+      tax: poData.tax || calculateSubtotal(items) * 0.1,
+      totalAmount: poData.totalAmount || calculateTotal(items),
+      
+      // Terms and status
+      paymentTerms: poData.paymentTerms || 'Net 30',
+      deliveryTerms: poData.deliveryTerms || 'FOB',
+      status: poData.status || 'draft',
+      fulfillmentProgress: Number(poData.fulfillmentProgress) || 0,
+      
+      // Additional fields
+      notes: poData.notes || '',
+      piAllocations: poData.piAllocations || [],
+      
+      // AI extraction metadata (if applicable)
+      extractionConfidence: poData.extractionConfidence || null,
+      extractionModel: poData.extractionModel || null,
+      warnings: poData.warnings || [],
+      recommendations: poData.recommendations || []
+    };
+  }, [generatePONumber, calculateSubtotal, calculateTotal, selectedCompany, selectedBranch]);
 
-    } catch (error) {
-      console.error('Error creating purchase order:', error);
-      setError(error.message);
-      throw error;
-    } finally {
-      setCreating(false);
-    }
-  }, [user, calculateSubtotal, calculateTax, calculateTotal, validatePurchaseOrder]);
-
-  // Update existing purchase order
-  const updatePurchaseOrder = useCallback(async (orderId, updateData) => {
-    if (!user || !user.uid) {
-      throw new Error('User authentication required');
-    }
-
-    if (!orderId || typeof orderId !== 'string') {
-      throw new Error('Valid order ID is required');
-    }
-
-    setUpdating(true);
-    setError(null);
-
-    try {
-      // Prepare update document
-      const updateDocument = {
-        ...updateData,
-        updatedAt: serverTimestamp(),
-        updatedBy: {
-          uid: user.uid,
-          email: user.email || 'unknown',
-          name: user.displayName || user.email || 'Unknown User'
-        }
-      };
-
-      // Recalculate financial amounts if items were updated
-      if (updateData.items) {
-        const subtotal = calculateSubtotal(updateData.items);
-        const tax = calculateTax(subtotal, updateData.taxRate);
-        const total = calculateTotal(subtotal, tax, updateData.shipping || 0);
-
-        updateDocument.financial = {
-          ...updateDocument.financial,
-          subtotal: Number(subtotal),
-          tax: Number(tax),
-          total: Number(total)
-        };
-      }
-
-      // Update workflow history if status changed
-      if (updateData.status) {
-        const currentOrder = purchaseOrders.find(order => order.id === orderId);
-        if (currentOrder && currentOrder.status !== updateData.status) {
-          updateDocument.workflow = {
-            ...currentOrder.workflow,
-            currentStep: updateData.status,
-            history: [
-              ...(currentOrder.workflow?.history || []),
-              {
-                step: updateData.status,
-                timestamp: new Date().toISOString(),
-                user: user.uid,
-                notes: `Status changed to ${updateData.status}`
-              }
-            ]
+  // Enrich POs with company and branch names
+  const enrichPOsWithCompanyData = useCallback(async (pos) => {
+    const enriched = await Promise.all(
+      pos.map(async (po) => {
+        try {
+          // Get company name
+          const company = companies.find(c => c.id === po.companyId);
+          const branch = branches.find(b => b.id === po.branchId);
+          
+          return {
+            ...po,
+            companyName: company?.name || 'Unknown Company',
+            companyCode: company?.code || 'UK',
+            branchName: branch?.name || 'Unknown Branch',
+            branchType: branch?.type || 'office'
+          };
+        } catch (error) {
+          console.error('Error enriching PO with company data:', error);
+          return {
+            ...po,
+            companyName: 'Unknown Company',
+            companyCode: 'UK',
+            branchName: 'Unknown Branch',
+            branchType: 'office'
           };
         }
-      }
+      })
+    );
+    
+    return enriched;
+  }, [companies, branches]);
 
-      // Update in Firestore
-      const orderDoc = doc(db, 'purchase_orders', orderId);
-      await updateDoc(orderDoc, updateDocument);
-
-      console.log('Purchase order updated successfully:', orderId);
-      
-      return {
-        id: orderId,
-        ...updateDocument
-      };
-
-    } catch (error) {
-      console.error('Error updating purchase order:', error);
-      setError(error.message);
-      throw error;
-    } finally {
-      setUpdating(false);
-    }
-  }, [user, purchaseOrders, calculateSubtotal, calculateTax, calculateTotal]);
-
-  // Delete purchase order
-  const deletePurchaseOrder = useCallback(async (orderId) => {
-    if (!user || !user.uid) {
-      throw new Error('User authentication required');
-    }
-
-    if (!orderId || typeof orderId !== 'string') {
-      throw new Error('Valid order ID is required');
-    }
-
-    setDeleting(true);
-    setError(null);
-
-    try {
-      // Check if order can be deleted (only draft orders should be deletable)
-      const currentOrder = purchaseOrders.find(order => order.id === orderId);
-      if (currentOrder && currentOrder.status !== 'draft' && currentOrder.status !== 'cancelled') {
-        throw new Error('Only draft or cancelled orders can be deleted');
-      }
-
-      // Delete from Firestore
-      const orderDoc = doc(db, 'purchase_orders', orderId);
-      await deleteDoc(orderDoc);
-
-      console.log('Purchase order deleted successfully:', orderId);
-      
-      return true;
-
-    } catch (error) {
-      console.error('Error deleting purchase order:', error);
-      setError(error.message);
-      throw error;
-    } finally {
-      setDeleting(false);
-    }
-  }, [user, purchaseOrders]);
-
-  // Approve purchase order
-  const approvePurchaseOrder = useCallback(async (orderId, approvalData = {}) => {
-    return await updatePurchaseOrder(orderId, {
-      status: 'approved',
-      approvedAt: serverTimestamp(),
-      approvedBy: {
-        uid: user.uid,
-        email: user.email || 'unknown',
-        name: user.displayName || user.email || 'Unknown User'
-      },
-      approvalNotes: String(approvalData.notes || ''),
-      ...approvalData
-    });
-  }, [updatePurchaseOrder, user]);
-
-  // Reject purchase order
-  const rejectPurchaseOrder = useCallback(async (orderId, rejectionData = {}) => {
-    return await updatePurchaseOrder(orderId, {
-      status: 'rejected',
-      rejectedAt: serverTimestamp(),
-      rejectedBy: {
-        uid: user.uid,
-        email: user.email || 'unknown',
-        name: user.displayName || user.email || 'Unknown User'
-      },
-      rejectionReason: String(rejectionData.reason || ''),
-      rejectionNotes: String(rejectionData.notes || ''),
-      ...rejectionData
-    });
-  }, [updatePurchaseOrder, user]);
-
-  // Cancel purchase order
-  const cancelPurchaseOrder = useCallback(async (orderId, cancellationData = {}) => {
-    return await updatePurchaseOrder(orderId, {
-      status: 'cancelled',
-      cancelledAt: serverTimestamp(),
-      cancelledBy: {
-        uid: user.uid,
-        email: user.email || 'unknown',
-        name: user.displayName || user.email || 'Unknown User'
-      },
-      cancellationReason: String(cancellationData.reason || ''),
-      cancellationNotes: String(cancellationData.notes || ''),
-      ...cancellationData
-    });
-  }, [updatePurchaseOrder, user]);
-
-  // Get purchase orders with filtering
-  const getPurchaseOrders = useCallback(async (filters = {}) => {
-    if (!user || !user.uid) {
-      return [];
+  // Set up real-time listener for Firestore with company filtering
+  useEffect(() => {
+    if (!user || permissions.loading) {
+      setPurchaseOrders([]);
+      setLoading(false);
+      return;
     }
 
     setLoading(true);
     setError(null);
-
-    try {
-      let purchaseOrdersQuery = query(
-        collection(db, 'purchase_orders'),
-        where('userId', '==', user.uid),
+    
+    // Build query based on user permissions
+    let q;
+    
+    if (permissions.isGroupAdmin) {
+      // Group admin sees all POs
+      q = query(
+        collection(db, 'purchaseOrders'),
         orderBy('createdAt', 'desc')
       );
+    } else if (permissions.accessibleCompanies.length > 0) {
+      // Multi-company user - filter by accessible companies
+      const companyIds = permissions.accessibleCompanies.map(c => c.id);
+      q = query(
+        collection(db, 'purchaseOrders'),
+        where('companyId', 'in', companyIds),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      // Regular user - filter by creator
+      q = query(
+        collection(db, 'purchaseOrders'),
+        where('createdBy', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      );
+    }
 
-      // Apply filters
-      if (filters.status && filters.status !== 'all') {
-        purchaseOrdersQuery = query(
-          purchaseOrdersQuery,
-          where('status', '==', filters.status)
-        );
+    const unsubscribe = onSnapshot(q, 
+      async (snapshot) => {
+        console.log('Firestore snapshot received:', {
+          docsCount: snapshot.docs.length,
+          currentUser: user?.uid,
+          userRole: permissions.userCompanyRole,
+          accessibleCompanies: permissions.accessibleCompanies.length
+        });
+
+        snapshot.docs.forEach((doc, index) => {
+          const data = doc.data();
+          console.log(`Firestore Doc ${index}:`, {
+            id: doc.id,
+            poNumber: data.poNumber,
+            clientPoNumber: data.clientPoNumber,
+            companyId: data.companyId,
+            branchId: data.branchId,
+            createdBy: data.createdBy,
+            status: data.status,
+            createdAt: data.createdAt
+          });
+        });
+
+        let orders = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            // Ensure company/branch data exists
+            companyId: data.companyId || 'flow-solution',
+            branchId: data.branchId || 'flow-solution-kl-hq',
+            createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
+          };
+        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        
+        // Enrich with company/branch names
+        const enrichedOrders = await enrichPOsWithCompanyData(orders);
+        
+        setPurchaseOrders(enrichedOrders);
+        setLoading(false);
+        console.log(`Loaded ${enrichedOrders.length} purchase orders from Firestore`);
+      },
+      (err) => {
+        console.error('Firestore subscription error:', err);
+        setError(err.message);
+        setLoading(false);
+        toast.error('Failed to sync with database');
       }
+    );
 
-      if (filters.supplier) {
-        purchaseOrdersQuery = query(
-          purchaseOrdersQuery,
-          where('supplier.name', '==', filters.supplier)
-        );
-      }
+    return () => unsubscribe();
+  }, [user, permissions.loading, permissions.isGroupAdmin, permissions.accessibleCompanies, enrichPOsWithCompanyData]);
 
-      // Execute query
-      const snapshot = await getDocs(purchaseOrdersQuery);
-      const orders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt),
-        updatedAt: doc.data().updatedAt?.toDate?.() || new Date(doc.data().updatedAt)
-      }));
+  // Filter POs based on selected company and branch
+  useEffect(() => {
+    let filtered = [...purchaseOrders];
 
-      console.log(`Retrieved ${orders.length} purchase orders`);
-      return orders;
+    // Filter by company
+    if (selectedCompany !== 'all') {
+      filtered = filtered.filter(po => po.companyId === selectedCompany);
+    }
 
-    } catch (error) {
-      console.error('Error getting purchase orders:', error);
-      setError(error.message);
-      return [];
+    // Filter by branch
+    if (selectedBranch !== 'all') {
+      filtered = filtered.filter(po => po.branchId === selectedBranch);
+    }
+
+    setFilteredPurchaseOrders(filtered);
+  }, [purchaseOrders, selectedCompany, selectedBranch]);
+
+  // Add new purchase order with company assignment
+  const addPurchaseOrder = useCallback(async (poData) => {
+    if (!user) {
+      toast.error('Please sign in to create purchase orders');
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    // Check if user can create PO for specified company/branch
+    const targetCompanyId = poData.companyId || selectedCompany !== 'all' ? selectedCompany : 'flow-solution';
+    const targetBranchId = poData.branchId || selectedBranch !== 'all' ? selectedBranch : 'flow-solution-kl-hq';
+    
+    if (!canCreatePOFor(targetCompanyId, targetBranchId)) {
+      toast.error('You do not have permission to create POs for this company/branch');
+      return { success: false, error: 'Insufficient permissions' };
+    }
+
+    try {
+      setLoading(true);
+      
+      // Validate and normalize data
+      const validatedData = validatePOData(poData);
+      
+      const docData = {
+        ...validatedData,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      
+      const docRef = await addDoc(collection(db, 'purchaseOrders'), docData);
+      
+      console.log(`Added purchase order to Firestore: ${validatedData.poNumber} for ${validatedData.companyId}`);
+      toast.success('Purchase order created successfully');
+      
+      return { 
+        success: true, 
+        data: {
+          id: docRef.id,
+          ...validatedData,
+          createdBy: user.uid,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      };
+    } catch (err) {
+      console.error('Error adding purchase order:', err);
+      setError('Failed to add purchase order');
+      toast.error(`Failed to create purchase order: ${err.message}`);
+      return { success: false, error: err.message };
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, validatePOData, selectedCompany, selectedBranch]);
 
-  // Load purchase orders on mount and user change
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadOrders = async () => {
-      if (!user || !user.uid) {
-        setPurchaseOrders([]);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const orders = await getPurchaseOrders();
-        if (isMounted) {
-          setPurchaseOrders(orders);
-        }
-      } catch (error) {
-        console.error('Error loading purchase orders:', error);
-        if (isMounted) {
-          setError(error.message);
-          setPurchaseOrders([]);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadOrders();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [user, getPurchaseOrders]);
-
-  // Real-time subscription to purchase orders
-  useEffect(() => {
-    if (!user || !user.uid) {
-      return;
+  // CRITICAL FIX: Update existing purchase order with document storage preservation
+  const updatePurchaseOrder = useCallback(async (id, updates) => {
+    if (!user) {
+      toast.error('Please sign in to update purchase orders');
+      return { success: false, error: 'Not authenticated' };
     }
 
-    console.log('Setting up real-time purchase orders subscription');
-
-    const purchaseOrdersQuery = query(
-      collection(db, 'purchase_orders'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(
-      purchaseOrdersQuery,
-      (snapshot) => {
-        const orders = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt),
-          updatedAt: doc.data().updatedAt?.toDate?.() || new Date(doc.data().updatedAt)
-        }));
-
-        console.log(`Real-time update: ${orders.length} purchase orders`);
-        setPurchaseOrders(orders);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Real-time subscription error:', error);
-        setError(error.message);
-        setLoading(false);
+    try {
+      setLoading(true);
+      
+      console.log('💾 Enhanced PO save with document validation:', {
+        poNumber: updates.poNumber,
+        companyId: updates.companyId,
+        branchId: updates.branchId,
+        documentId: updates.documentId,
+        hasStoredDocuments: updates.hasStoredDocuments,
+        originalFileName: updates.originalFileName,
+        tax: updates.tax,
+        totalAmount: updates.totalAmount
+      });
+      
+      // CRITICAL FIX: Preserve explicit tax values and only recalculate when needed
+      let processedUpdates = { ...updates };
+      
+      if (updates.items) {
+        // Calculate subtotal from items
+        processedUpdates.subtotal = calculateSubtotal(updates.items);
+        
+        // CRITICAL FIX: Only override tax if not explicitly provided
+        if (updates.tax === undefined || updates.tax === null) {
+          // Only apply automatic tax if no explicit tax was provided
+          processedUpdates.tax = processedUpdates.subtotal * 0.1;
+          console.log('[DEBUG] Applied automatic 10% tax:', processedUpdates.tax);
+        } else {
+          // Use the explicit tax value from the modal (including 0)
+          processedUpdates.tax = parseFloat(updates.tax) || 0;
+          console.log('[DEBUG] Using explicit tax value:', processedUpdates.tax);
+        }
+        
+        // Calculate total with the correct tax value
+        const shipping = parseFloat(updates.shipping) || 0;
+        const discount = parseFloat(updates.discount) || 0;
+        processedUpdates.totalAmount = processedUpdates.subtotal + processedUpdates.tax + shipping - discount;
+        
+        console.log('[DEBUG] PO UPDATE TOTALS:', {
+          subtotal: processedUpdates.subtotal,
+          tax: processedUpdates.tax,
+          taxWasExplicit: updates.tax !== undefined && updates.tax !== null,
+          shipping: shipping,
+          discount: discount,
+          totalAmount: processedUpdates.totalAmount
+        });
       }
-    );
-
-    return () => {
-      console.log('Cleaning up purchase orders subscription');
-      unsubscribe();
-    };
-  }, [user]);
-
-  // Get purchase order statistics
-  const getOrderStatistics = useCallback(() => {
-    if (!Array.isArray(purchaseOrders)) {
-      return {
-        total: 0,
-        byStatus: {},
-        totalValue: 0,
-        averageValue: 0
+      
+      // CRITICAL FIX: Explicitly preserve all document storage fields
+      const documentStorageFields = {};
+      
+      // Core document identification
+      if (updates.documentId !== undefined) documentStorageFields.documentId = updates.documentId;
+      if (updates.documentNumber !== undefined) documentStorageFields.documentNumber = updates.documentNumber;
+      if (updates.documentType !== undefined) documentStorageFields.documentType = updates.documentType;
+      
+      // Storage status and metadata
+      if (updates.hasStoredDocuments !== undefined) documentStorageFields.hasStoredDocuments = updates.hasStoredDocuments;
+      if (updates.originalFileName !== undefined) documentStorageFields.originalFileName = updates.originalFileName;
+      if (updates.fileSize !== undefined) documentStorageFields.fileSize = updates.fileSize;
+      if (updates.contentType !== undefined) documentStorageFields.contentType = updates.contentType;
+      if (updates.extractedAt !== undefined) documentStorageFields.extractedAt = updates.extractedAt;
+      
+      // Storage information and metadata
+      if (updates.storageInfo !== undefined) documentStorageFields.storageInfo = updates.storageInfo;
+      if (updates.documentMetadata !== undefined) documentStorageFields.documentMetadata = updates.documentMetadata;
+      
+      // Additional document fields
+      if (updates.downloadURL !== undefined) documentStorageFields.downloadURL = updates.downloadURL;
+      if (updates.storagePath !== undefined) documentStorageFields.storagePath = updates.storagePath;
+      if (updates.fileValidated !== undefined) documentStorageFields.fileValidated = updates.fileValidated;
+      if (updates.extractionStatus !== undefined) documentStorageFields.extractionStatus = updates.extractionStatus;
+      if (updates.processingStatus !== undefined) documentStorageFields.processingStatus = updates.processingStatus;
+      
+      const updateData = {
+        ...processedUpdates,
+        ...documentStorageFields, // CRITICAL: Include ALL document storage fields
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid
       };
-    }
-
-    const stats = {
-      total: purchaseOrders.length,
-      byStatus: {},
-      totalValue: 0,
-      averageValue: 0
-    };
-
-    purchaseOrders.forEach(order => {
-      // Count by status
-      const status = order.status || 'unknown';
-      stats.byStatus[status] = (stats.byStatus[status] || 0) + 1;
-
-      // Calculate total value
-      const orderTotal = order.financial?.total || 0;
-      if (typeof orderTotal === 'number' && orderTotal > 0) {
-        stats.totalValue += orderTotal;
+      
+      console.log('[DEBUG] POModal: Saving PO with complete document storage fields:', {
+        documentId: updateData.documentId,
+        hasStoredDocuments: updateData.hasStoredDocuments,
+        originalFileName: updateData.originalFileName,
+        documentType: updateData.documentType,
+        totalAmount: updateData.totalAmount,
+        tax: updateData.tax,
+        storageInfo: !!updateData.storageInfo,
+        downloadURL: !!updateData.downloadURL,
+        fileValidated: updateData.fileValidated,
+        allDocumentFields: Object.keys(documentStorageFields)
+      });
+      
+      await updateDoc(doc(db, 'purchaseOrders', id), updateData);
+      
+      console.log(`Updated purchase order in Firestore: ${id}`);
+      
+      // Trigger refresh if needed
+      if (updates.shouldRefresh) {
+        console.log('🔄 Refreshing PO list after save...');
       }
-    });
+      
+      toast.success('Purchase order updated successfully');
+      
+      return { success: true };
+    } catch (err) {
+      console.error('Error updating purchase order:', err);
+      setError('Failed to update purchase order');
+      toast.error(`Failed to update purchase order: ${err.message}`);
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  }, [user, calculateSubtotal]);
 
-    // Calculate average value
-    if (stats.total > 0) {
-      stats.averageValue = stats.totalValue / stats.total;
+  // Delete purchase order
+  const deletePurchaseOrder = useCallback(async (id) => {
+    if (!user) {
+      toast.error('Please sign in to delete purchase orders');
+      return { success: false, error: 'Not authenticated' };
     }
 
-    return stats;
+    if (!permissions.canDeletePurchaseOrders) {
+      toast.error('You do not have permission to delete purchase orders');
+      return { success: false, error: 'Insufficient permissions' };
+    }
+
+    if (!window.confirm('Are you sure you want to delete this purchase order?')) {
+      return { success: false };
+    }
+
+    try {
+      setLoading(true);
+      
+      await deleteDoc(doc(db, 'purchaseOrders', id));
+      
+      console.log(`Deleted purchase order from Firestore: ${id}`);
+      toast.success('Purchase order deleted successfully');
+      
+      return { success: true };
+    } catch (err) {
+      console.error('Error deleting purchase order:', err);
+      setError('Failed to delete purchase order');
+      toast.error(`Failed to delete purchase order: ${err.message}`);
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  }, [user, permissions.canDeletePurchaseOrders]);
+
+  // Check if user can create PO for specific company/branch
+  const canCreatePOFor = useCallback((companyId, branchId) => {
+    if (!permissions.canEditPurchaseOrders) return false;
+    if (permissions.isGroupAdmin) return true;
+    
+    return permissions.canAccessCompany(companyId) && 
+           permissions.canAccessBranch(branchId);
+  }, [permissions]);
+
+  // Get purchase order by ID
+  const getPurchaseOrderById = useCallback((id) => {
+    return filteredPurchaseOrders.find(po => po.id === id);
+  }, [filteredPurchaseOrders]);
+
+  // Get purchase orders by status
+  const getPurchaseOrdersByStatus = useCallback((status) => {
+    return filteredPurchaseOrders.filter(po => po.status === status);
+  }, [filteredPurchaseOrders]);
+
+  // Get purchase orders by client
+  const getPurchaseOrdersByClient = useCallback((clientName) => {
+    return filteredPurchaseOrders.filter(po => 
+      po.clientName && po.clientName.toLowerCase().includes(clientName.toLowerCase())
+    );
+  }, [filteredPurchaseOrders]);
+
+  // Get purchase orders by company
+  const getPurchaseOrdersByCompany = useCallback((companyId) => {
+    return purchaseOrders.filter(po => po.companyId === companyId);
   }, [purchaseOrders]);
 
+  // Get purchase orders by branch
+  const getPurchaseOrdersByBranch = useCallback((branchId) => {
+    return purchaseOrders.filter(po => po.branchId === branchId);
+  }, [purchaseOrders]);
+
+  // Update purchase order status
+  const updatePurchaseOrderStatus = useCallback(async (id, status) => {
+    return updatePurchaseOrder(id, { status });
+  }, [updatePurchaseOrder]);
+
+  // Update fulfillment progress
+  const updateFulfillmentProgress = useCallback(async (id, progress) => {
+    const clampedProgress = Math.min(100, Math.max(0, progress));
+    const status = clampedProgress >= 100 ? 'delivered' : 'processing';
+    
+    return updatePurchaseOrder(id, { 
+      fulfillmentProgress: clampedProgress,
+      status
+    });
+  }, [updatePurchaseOrder]);
+
+  // Search purchase orders
+  const searchPurchaseOrders = useCallback((searchTerm) => {
+    if (!searchTerm) return filteredPurchaseOrders;
+    
+    const term = searchTerm.toLowerCase();
+    return filteredPurchaseOrders.filter(po => 
+      po.poNumber?.toLowerCase().includes(term) ||
+      po.clientPoNumber?.toLowerCase().includes(term) ||
+      po.projectCode?.toLowerCase().includes(term) ||
+      po.clientName?.toLowerCase().includes(term) ||
+      po.companyName?.toLowerCase().includes(term) ||
+      po.branchName?.toLowerCase().includes(term) ||
+      po.items?.some(item => 
+        item.productName?.toLowerCase().includes(term) ||
+        item.productCode?.toLowerCase().includes(term)
+      )
+    );
+  }, [filteredPurchaseOrders]);
+
+  // Get enhanced statistics with company breakdown
+  const getStatistics = useCallback(() => {
+    const stats = {
+      total: filteredPurchaseOrders.length,
+      totalAll: purchaseOrders.length,
+      byStatus: {
+        draft: 0,
+        confirmed: 0,
+        processing: 0,
+        delivered: 0,
+        cancelled: 0,
+        pending: 0,
+        approved: 0,
+        in_progress: 0,
+        completed: 0
+      },
+      byCompany: {},
+      byBranch: {},
+      totalValue: 0,
+      averageValue: 0,
+      recentOrders: [],
+      topClients: {}
+    };
+    
+    filteredPurchaseOrders.forEach(po => {
+      // Count by status
+      if (stats.byStatus[po.status] !== undefined) {
+        stats.byStatus[po.status]++;
+      }
+      
+      // Count by company
+      const companyId = po.companyId || 'unknown';
+      stats.byCompany[companyId] = (stats.byCompany[companyId] || 0) + 1;
+      
+      // Count by branch
+      const branchId = po.branchId || 'unknown';
+      stats.byBranch[branchId] = (stats.byBranch[branchId] || 0) + 1;
+      
+      // Calculate total value
+      const value = po.totalAmount || po.grandTotal || po.total || 0;
+      stats.totalValue += Number(value);
+      
+      // Track top clients
+      const clientName = po.clientName || 'Unknown Client';
+      if (!stats.topClients[clientName]) {
+        stats.topClients[clientName] = {
+          name: clientName,
+          orderCount: 0,
+          totalValue: 0
+        };
+      }
+      stats.topClients[clientName].orderCount++;
+      stats.topClients[clientName].totalValue += Number(value);
+    });
+    
+    // Calculate average
+    stats.averageValue = stats.total > 0 ? stats.totalValue / stats.total : 0;
+    
+    // Get recent orders (last 5)
+    stats.recentOrders = [...filteredPurchaseOrders]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 5);
+    
+    // Convert top clients to array and sort
+    stats.topClients = Object.values(stats.topClients)
+      .sort((a, b) => b.totalValue - a.totalValue)
+      .slice(0, 5);
+    
+    return stats;
+  }, [filteredPurchaseOrders, purchaseOrders]);
+
+  // Get available branches for selected company
+  const getAvailableBranches = useCallback(() => {
+    if (selectedCompany === 'all') {
+      return branches;
+    }
+    return branches.filter(branch => branch.companyId === selectedCompany);
+  }, [branches, selectedCompany]);
+
+  // Multi-company helper functions
+  const getCompanyName = useCallback((companyId) => {
+    const company = companies.find(c => c.id === companyId);
+    return company?.name || 'Unknown Company';
+  }, [companies]);
+  
+  const getBranchName = useCallback((branchId) => {
+    const branch = branches.find(b => b.id === branchId);
+    return branch?.name || 'Unknown Branch';
+  }, [branches]);
+  
+  // Filtering helpers
+  const filterByCompany = useCallback((companyId) => {
+    setSelectedCompany(companyId);
+    setSelectedBranch('all'); // Reset branch filter when company changes
+  }, []);
+  
+  const filterByBranch = useCallback((branchId) => {
+    setSelectedBranch(branchId);
+  }, []);
+  
+  const resetFilters = useCallback(() => {
+    setSelectedCompany('all');
+    setSelectedBranch('all');
+  }, []);
+
+  // Refresh data (for manual refresh)
+  const refetch = useCallback(() => {
+    // Firestore real-time listener handles this automatically
+    // This is just for UI feedback
+    toast.success('Purchase orders refreshed');
+  }, []);
+
+  // Clear all purchase orders (for development/testing)
+  const clearAllPurchaseOrders = useCallback(async () => {
+    if (!user) {
+      toast.error('Please sign in to perform this action');
+      return { success: false };
+    }
+
+    if (!permissions.isGroupAdmin) {
+      toast.error('Only group administrators can perform this action');
+      return { success: false };
+    }
+
+    if (!window.confirm('Are you sure you want to clear all purchase orders? This cannot be undone.')) {
+      return { success: false };
+    }
+    
+    const confirmText = prompt('Type "DELETE ALL" to confirm:');
+    if (confirmText !== 'DELETE ALL') {
+      toast.info('Operation cancelled');
+      return { success: false };
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Delete all purchase orders (group admin only)
+      const q = query(collection(db, 'purchaseOrders'));
+      const snapshot = await getDocs(q);
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+      
+      console.log(`Deleted ${snapshot.docs.length} purchase orders`);
+      toast.success(`Deleted ${snapshot.docs.length} purchase orders`);
+      
+      return { success: true, deleted: snapshot.docs.length };
+    } catch (err) {
+      console.error('Error clearing purchase orders:', err);
+      setError('Failed to clear purchase orders');
+      toast.error('Failed to clear purchase orders');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  }, [user, permissions.isGroupAdmin]);
+
+  // Return enhanced interface with multi-company support
   return {
-    // State
-    purchaseOrders,
+    // Data
+    purchaseOrders: filteredPurchaseOrders,
+    allPurchaseOrders: purchaseOrders,
+    companies,
+    branches: getAvailableBranches(),
     loading,
     error,
-    creating,
-    updating,
-    deleting,
 
-    // Actions
-    createPurchaseOrder,
+    // Filters
+    selectedCompany,
+    selectedBranch,
+    setSelectedCompany,
+    setSelectedBranch,
+    
+    // CRUD operations
+    addPurchaseOrder,
     updatePurchaseOrder,
     deletePurchaseOrder,
-    approvePurchaseOrder,
-    rejectPurchaseOrder,
-    cancelPurchaseOrder,
-    getPurchaseOrders,
-
+    
+    // Queries
+    getPurchaseOrderById,
+    getPurchaseOrdersByStatus,
+    getPurchaseOrdersByClient,
+    getPurchaseOrdersByCompany,
+    getPurchaseOrdersByBranch,
+    searchPurchaseOrders,
+    
+    // Status management
+    updatePurchaseOrderStatus,
+    updateFulfillmentProgress,
+    
+    // Multi-company helpers
+    getCompanyName,
+    getBranchName,
+    canCreatePOFor,
+    
+    // Filtering helpers
+    filterByCompany,
+    filterByBranch,
+    resetFilters,
+    
     // Utilities
-    calculateSubtotal,
-    calculateTax,
-    calculateTotal,
-    validatePurchaseOrder,
-    getOrderStatistics
+    getStatistics,
+    generatePONumber,
+    refetch,
+    clearAllPurchaseOrders,
+    
+    // Permission checks
+    canView: permissions.canViewPurchaseOrders,
+    canEdit: permissions.canEditPurchaseOrders,
+    canDelete: permissions.canDeletePurchaseOrders,
+    canApprove: permissions.canApprovePurchaseOrders,
+    
+    // User role information
+    userRole: permissions.userCompanyRole,
+    userBadge: permissions.userBadge,
+    isMultiCompanyUser: permissions.totalAccessibleCompanies > 1,
+    
+    // Debug information
+    debug: {
+      totalPOs: purchaseOrders.length,
+      filteredPOs: filteredPurchaseOrders.length,
+      accessibleCompanies: permissions.totalAccessibleCompanies,
+      accessibleBranches: permissions.totalAccessibleBranches,
+      currentFilters: { selectedCompany, selectedBranch },
+      userPermissions: permissions.debug
+    }
   };
 };
-
-export default usePurchaseOrders;
