@@ -1,5 +1,5 @@
 // src/services/tracking/TrackingServices.js
-// FIXED VERSION: Syntax errors resolved, emojis removed for build compatibility
+// FIXED VERSION: All syntax errors resolved for build compatibility
 
 import { 
   collection, 
@@ -26,12 +26,10 @@ class TrackingStorage {
   static async saveDeliveryTracking(poId, data) {
     if (this.getDataSource() === 'firestore') {
       try {
-        // Check if document exists
         const q = query(collection(db, 'deliveryTracking'), where('poId', '==', poId));
         const querySnapshot = await getDocs(q);
         
         if (!querySnapshot.empty) {
-          // Update existing document
           const docRef = querySnapshot.docs[0].ref;
           await updateDoc(docRef, {
             ...data,
@@ -39,7 +37,6 @@ class TrackingStorage {
           });
           return { success: true, id: docRef.id };
         } else {
-          // Create new document
           const docRef = await addDoc(collection(db, 'deliveryTracking'), {
             poId,
             ...data,
@@ -53,7 +50,6 @@ class TrackingStorage {
         return { success: false, error: error.message };
       }
     } else {
-      // localStorage fallback
       try {
         const existing = JSON.parse(localStorage.getItem('higgsflow_deliveryTracking') || '{}');
         existing[poId] = {
@@ -71,12 +67,10 @@ class TrackingStorage {
   static async savePaymentTracking(supplierId, data) {
     if (this.getDataSource() === 'firestore') {
       try {
-        // Check if document exists
         const q = query(collection(db, 'paymentTracking'), where('supplierId', '==', supplierId));
         const querySnapshot = await getDocs(q);
         
         if (!querySnapshot.empty) {
-          // Update existing document
           const docRef = querySnapshot.docs[0].ref;
           await updateDoc(docRef, {
             ...data,
@@ -84,7 +78,6 @@ class TrackingStorage {
           });
           return { success: true, id: docRef.id };
         } else {
-          // Create new document
           const docRef = await addDoc(collection(db, 'paymentTracking'), {
             supplierId,
             ...data,
@@ -98,7 +91,6 @@ class TrackingStorage {
         return { success: false, error: error.message };
       }
     } else {
-      // localStorage fallback
       try {
         const existing = JSON.parse(localStorage.getItem('higgsflow_paymentTracking') || '{}');
         existing[supplierId] = {
@@ -116,7 +108,6 @@ class TrackingStorage {
 
 /**
  * Delivery Tracking Service
- * ENHANCED: Your existing business logic + Firestore capabilities
  */
 export class DeliveryTrackingService {
   
@@ -136,20 +127,13 @@ export class DeliveryTrackingService {
     'completed'
   ];
   
-  /**
-   * Create initial delivery tracking for a PO with selected suppliers
-   * ENHANCED: Now saves to Firestore or localStorage automatically
-   */
   static async initializeDeliveryTracking(purchaseOrder, updateDeliveryStatusFn) {
     try {
       if (!purchaseOrder.supplierSelections) {
         throw new Error('No suppliers selected for this PO');
       }
       
-      // Group items by supplier
       const supplierGroups = this.groupItemsBySupplier(purchaseOrder);
-      
-      // Calculate estimated delivery dates based on suppliers
       const estimatedDelivery = this.calculateEstimatedDelivery(supplierGroups);
       
       const deliveryTrackingData = {
@@ -157,17 +141,11 @@ export class DeliveryTrackingService {
         poNumber: purchaseOrder.poNumber,
         clientName: purchaseOrder.clientName,
         status: this.DELIVERY_STATUSES.preparing,
-        
-        // Supplier breakdown
         supplierGroups,
         totalSuppliers: Object.keys(supplierGroups).length,
-        
-        // Timeline
         createdAt: new Date().toISOString(),
         estimatedDelivery,
         actualDelivery: null,
-        
-        // Progress tracking
         milestones: [
           {
             status: 'preparing',
@@ -175,37 +153,27 @@ export class DeliveryTrackingService {
             note: 'Order received, preparing for shipment'
           }
         ],
-        
-        // Shipment details
         trackingNumbers: {},
         carriers: {},
-        
-        // Consolidation status
         consolidationRequired: Object.keys(supplierGroups).length > 1,
         consolidationStatus: Object.keys(supplierGroups).length > 1 ? 'pending' : 'not_required',
-        
-        // Metrics
         metrics: {
           totalItems: purchaseOrder.items?.length || 0,
           totalValue: purchaseOrder.totalAmount || 0,
           leadTime: null,
           onTimeDelivery: null
         },
-        
-        // Real-time collaboration metadata
         lastUpdatedBy: 'system',
         dataSource: TrackingStorage.getDataSource(),
         version: 1
       };
       
-      // Save to Firestore or localStorage
       const saveResult = await TrackingStorage.saveDeliveryTracking(purchaseOrder.id, deliveryTrackingData);
       
       if (!saveResult.success) {
         throw new Error(saveResult.error || 'Failed to save delivery tracking');
       }
       
-      // Call the update function for real-time UI updates
       if (updateDeliveryStatusFn) {
         await updateDeliveryStatusFn(purchaseOrder.id, deliveryTrackingData);
       }
@@ -220,19 +188,13 @@ export class DeliveryTrackingService {
     }
   }
   
-  /**
-   * Update delivery status with validation and business logic
-   * ENHANCED: Now supports real-time Firestore updates
-   */
   static async updateDeliveryStatus(poId, currentData, newStatus, additionalData, updateFn) {
     try {
-      // Validate status transition
       const canTransition = this.validateStatusTransition(currentData?.status, newStatus);
       if (!canTransition) {
         throw new Error(`Cannot transition from ${currentData?.status} to ${newStatus}`);
       }
       
-      // Prepare update data
       const updates = {
         status: newStatus,
         lastUpdated: new Date().toISOString(),
@@ -241,7 +203,6 @@ export class DeliveryTrackingService {
         ...additionalData
       };
       
-      // Add milestone
       const newMilestone = {
         status: newStatus,
         timestamp: new Date().toISOString(),
@@ -255,7 +216,6 @@ export class DeliveryTrackingService {
         newMilestone
       ];
       
-      // Handle status-specific logic
       switch (newStatus) {
         case this.DELIVERY_STATUSES.shipped:
           if (additionalData.trackingNumber && additionalData.carrier) {
@@ -285,7 +245,6 @@ export class DeliveryTrackingService {
           break;
       }
       
-      // Save to Firestore or localStorage
       const saveResult = await TrackingStorage.saveDeliveryTracking(poId, {
         ...currentData,
         ...updates
@@ -295,12 +254,10 @@ export class DeliveryTrackingService {
         throw new Error(saveResult.error || 'Failed to save delivery update');
       }
       
-      // Call the update function for real-time UI updates
       if (updateFn) {
         await updateFn(poId, updates);
       }
       
-      // Send notifications
       this.sendDeliveryNotification(newStatus, updates);
       
       console.log('Delivery status updated:', { poId, newStatus, firestoreId: saveResult.id });
@@ -313,10 +270,6 @@ export class DeliveryTrackingService {
     }
   }
   
-  /**
-   * Handle multi-supplier consolidation logic
-   * ENHANCED: Now supports real-time updates across devices
-   */
   static async updateSupplierDeliveryStatus(poId, supplierId, status, currentData, updateFn) {
     try {
       const supplierGroups = currentData?.supplierGroups || {};
@@ -325,16 +278,13 @@ export class DeliveryTrackingService {
         throw new Error('Supplier not found in this PO');
       }
       
-      // Update individual supplier status
       supplierGroups[supplierId].deliveryStatus = status;
       supplierGroups[supplierId].lastUpdated = new Date().toISOString();
       
-      // Check if all suppliers have delivered
       const allDelivered = Object.values(supplierGroups).every(
         supplier => supplier.deliveryStatus === 'delivered'
       );
       
-      // Determine overall status
       let overallStatus = currentData.status;
       if (allDelivered && currentData.consolidationRequired) {
         overallStatus = this.DELIVERY_STATUSES.delivered;
@@ -350,7 +300,6 @@ export class DeliveryTrackingService {
         version: (currentData?.version || 1) + 1
       };
       
-      // Save to Firestore or localStorage
       const saveResult = await TrackingStorage.saveDeliveryTracking(poId, {
         ...currentData,
         ...updates
@@ -360,7 +309,6 @@ export class DeliveryTrackingService {
         throw new Error(saveResult.error || 'Failed to save supplier delivery update');
       }
       
-      // Call the update function for real-time UI updates
       if (updateFn) {
         await updateFn(poId, updates);
       }
@@ -375,7 +323,6 @@ export class DeliveryTrackingService {
     }
   }
   
-  // Utility methods
   static calculateEstimatedDelivery(supplierGroups) {
     const leadTimes = Object.values(supplierGroups).map(group => group.leadTime || 7);
     const maxLeadTime = Math.max(...leadTimes);
@@ -403,7 +350,7 @@ export class DeliveryTrackingService {
             items: [],
             totalValue: 0,
             deliveryStatus: 'preparing',
-            leadTime: 7 // Default lead time
+            leadTime: 7
           };
         }
         
@@ -416,12 +363,11 @@ export class DeliveryTrackingService {
   }
   
   static validateStatusTransition(currentStatus, newStatus) {
-    if (!currentStatus) return true; // Initial status
+    if (!currentStatus) return true;
     
     const currentIndex = this.STATUS_FLOW.indexOf(currentStatus);
     const newIndex = this.STATUS_FLOW.indexOf(newStatus);
     
-    // Allow moving forward or staying the same
     return newIndex >= currentIndex;
   }
   
@@ -465,7 +411,6 @@ export class DeliveryTrackingService {
 
 /**
  * Payment Tracking Service
- * ENHANCED: Your existing business logic + Firestore capabilities
  */
 export class PaymentTrackingService {
   
@@ -477,10 +422,6 @@ export class PaymentTrackingService {
     partial: 'partial'
   };
   
-  /**
-   * Initialize payment tracking for selected suppliers
-   * ENHANCED: Now saves to Firestore or localStorage automatically
-   */
   static async initializePaymentTracking(purchaseOrder, updatePaymentStatusFn) {
     try {
       if (!purchaseOrder.supplierSelections) {
@@ -494,27 +435,17 @@ export class PaymentTrackingService {
           poId: purchaseOrder.id,
           poNumber: purchaseOrder.poNumber,
           supplierId,
-          
-          // Financial details
           amount: group.totalValue,
           paidAmount: 0,
           remainingAmount: group.totalValue,
-          currency: 'USD', // Default currency
-          
-          // Status tracking
+          currency: 'USD',
           status: this.PAYMENT_STATUSES.pending,
-          
-          // Timeline
           createdAt: new Date().toISOString(),
           dueDate: this.calculateDueDate(purchaseOrder.paymentTerms),
           lastPaymentDate: null,
-          
-          // Payment details
           paymentMethod: null,
           bankReference: null,
           invoiceReference: null,
-          
-          // Items covered by this payment
           items: group.items.map(item => ({
             itemNumber: item.itemNumber,
             productName: item.productName,
@@ -522,32 +453,23 @@ export class PaymentTrackingService {
             price: item.price,
             total: (item.price || 0) * (item.quantity || 1)
           })),
-          
-          // Payment history
           paymentHistory: [],
-          
-          // Profit calculation
           clientPayment: this.calculateClientPayment(group.items, purchaseOrder),
           profitMargin: 0,
           profitAmount: 0,
-          
-          // Real-time collaboration metadata
           lastUpdatedBy: 'system',
           dataSource: TrackingStorage.getDataSource(),
           version: 1
         };
         
-        // Calculate profit margins
         this.calculateProfitMetrics(paymentData);
         
-        // Save to Firestore or localStorage
         const saveResult = await TrackingStorage.savePaymentTracking(supplierId, paymentData);
         
         if (!saveResult.success) {
           throw new Error(saveResult.error || 'Failed to save payment tracking');
         }
         
-        // Call the update function for real-time UI updates
         if (updatePaymentStatusFn) {
           await updatePaymentStatusFn(supplierId, paymentData);
         }
@@ -567,10 +489,6 @@ export class PaymentTrackingService {
     }
   }
   
-  /**
-   * Record a payment for a supplier
-   * ENHANCED: Now supports real-time Firestore updates
-   */
   static async recordPayment(supplierId, paymentAmount, paymentDetails, currentData, updateFn) {
     try {
       const amount = parseFloat(paymentAmount);
@@ -585,7 +503,6 @@ export class PaymentTrackingService {
       const newPaidAmount = currentData.paidAmount + amount;
       const newRemainingAmount = currentData.amount - newPaidAmount;
       
-      // Determine new status
       let newStatus;
       if (newRemainingAmount === 0) {
         newStatus = this.PAYMENT_STATUSES.paid;
@@ -595,12 +512,10 @@ export class PaymentTrackingService {
         newStatus = this.PAYMENT_STATUSES.pending;
       }
       
-      // Check for overdue status
       if (newStatus !== this.PAYMENT_STATUSES.paid && this.isOverdue(currentData.dueDate)) {
         newStatus = this.PAYMENT_STATUSES.overdue;
       }
       
-      // Create payment record
       const paymentRecord = {
         id: `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         amount,
@@ -626,10 +541,8 @@ export class PaymentTrackingService {
         version: (currentData?.version || 1) + 1
       };
       
-      // Update profit calculations
       this.calculateProfitMetrics({ ...currentData, ...updates });
       
-      // Save to Firestore or localStorage
       const saveResult = await TrackingStorage.savePaymentTracking(supplierId, {
         ...currentData,
         ...updates
@@ -639,12 +552,10 @@ export class PaymentTrackingService {
         throw new Error(saveResult.error || 'Failed to save payment record');
       }
       
-      // Call the update function for real-time UI updates
       if (updateFn) {
         await updateFn(supplierId, updates);
       }
       
-      // Send notification
       this.sendPaymentNotification(newStatus, updates, currentData);
       
       console.log('Payment recorded:', { supplierId, amount, newStatus });
@@ -657,13 +568,8 @@ export class PaymentTrackingService {
     }
   }
   
-  /**
-   * Update payment status manually
-   * ENHANCED: Now supports real-time Firestore updates
-   */
   static async updatePaymentStatus(supplierId, newStatus, currentData, updateFn) {
     try {
-      // Validate status change
       if (!Object.values(this.PAYMENT_STATUSES).includes(newStatus)) {
         throw new Error('Invalid payment status');
       }
@@ -675,7 +581,6 @@ export class PaymentTrackingService {
         version: (currentData?.version || 1) + 1
       };
       
-      // Handle status-specific logic
       switch (newStatus) {
         case this.PAYMENT_STATUSES.processing:
           updates.processingStarted = new Date().toISOString();
@@ -683,12 +588,10 @@ export class PaymentTrackingService {
           
         case this.PAYMENT_STATUSES.paid:
           if (currentData.remainingAmount > 0) {
-            // Mark as fully paid
             updates.paidAmount = currentData.amount;
             updates.remainingAmount = 0;
             updates.lastPaymentDate = new Date().toISOString();
             
-            // Add automatic payment record
             const autoPaymentRecord = {
               id: `auto_payment_${Date.now()}`,
               amount: currentData.remainingAmount,
@@ -707,7 +610,6 @@ export class PaymentTrackingService {
           break;
       }
       
-      // Save to Firestore or localStorage
       const saveResult = await TrackingStorage.savePaymentTracking(supplierId, {
         ...currentData,
         ...updates
@@ -717,7 +619,6 @@ export class PaymentTrackingService {
         throw new Error(saveResult.error || 'Failed to save payment status update');
       }
       
-      // Call the update function for real-time UI updates
       if (updateFn) {
         await updateFn(supplierId, updates);
       }
@@ -732,14 +633,12 @@ export class PaymentTrackingService {
     }
   }
   
-  // Utility methods
   static calculateDueDate(paymentTerms) {
     const dueDate = new Date();
     
     if (paymentTerms) {
-      // Parse payment terms (e.g., "NET 30", "15 days", etc.)
       const terms = paymentTerms.toLowerCase();
-      let days = 30; // Default
+      let days = 30;
       
       if (terms.includes('net')) {
         const match = terms.match(/net\s*(\d+)/);
@@ -751,20 +650,17 @@ export class PaymentTrackingService {
       
       dueDate.setDate(dueDate.getDate() + days);
     } else {
-      dueDate.setDate(dueDate.getDate() + 30); // Default 30 days
+      dueDate.setDate(dueDate.getDate() + 30);
     }
     
     return dueDate.toISOString();
   }
   
   static calculateClientPayment(items, purchaseOrder) {
-    // This would typically come from the client invoice
-    // For now, estimate based on markup
     const supplierTotal = items.reduce((sum, item) => 
       sum + ((item.price || 0) * (item.quantity || 1)), 0
     );
     
-    // Assume 20% markup as default
     const markup = 1.2;
     return supplierTotal * markup;
   }
@@ -793,8 +689,8 @@ export class PaymentTrackingService {
         if (payment.status === this.PAYMENT_STATUSES.paid) return false;
         
         const dueDate = new Date(payment.dueDate);
-        return dueDate < now || // Overdue
-               (dueDate < in3Days && payment.status === this.PAYMENT_STATUSES.pending); // Due soon
+        return dueDate < now || 
+               (dueDate < in3Days && payment.status === this.PAYMENT_STATUSES.pending);
       })
       .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
   }
@@ -856,7 +752,6 @@ export class PaymentTrackingService {
         stats.overduePayments.push(payment);
       }
       
-      // Due in next 7 days
       const weekFromNow = new Date();
       weekFromNow.setDate(weekFromNow.getDate() + 7);
       if (new Date(payment.dueDate) <= weekFromNow && payment.status === this.PAYMENT_STATUSES.pending) {
@@ -918,14 +813,9 @@ export class PaymentTrackingService {
 
 /**
  * Consolidated Tracking Service
- * ENHANCED: Your existing coordination logic + Firestore capabilities
  */
 export class ConsolidatedTrackingService {
   
-  /**
-   * Initialize complete tracking for a PO after supplier selection
-   * ENHANCED: Now supports real-time Firestore updates
-   */
   static async initializeCompleteTracking(purchaseOrder, updateDeliveryFn, updatePaymentFn) {
     try {
       console.log('Initializing complete tracking for PO:', purchaseOrder.poNumber);
@@ -942,7 +832,6 @@ export class ConsolidatedTrackingService {
         throw new Error('Failed to initialize tracking systems');
       }
       
-      // Enhanced success message with data source info
       const dataSource = TrackingStorage.getDataSource();
       const message = dataSource === 'firestore' 
         ? 'Real-time tracking system initialized!' 
@@ -974,7 +863,6 @@ export class ConsolidatedTrackingService {
     }
   }
   
-  // Additional utility methods
   static getDashboardData(purchaseOrders, deliveryTracking, paymentTracking) {
     const activeOrders = purchaseOrders.filter(po => po.supplierSelections);
     
@@ -990,7 +878,6 @@ export class ConsolidatedTrackingService {
     
     const paymentStats = PaymentTrackingService.calculatePaymentStatistics(paymentTracking);
     
-    // Calculate delivery stats
     activeOrders.forEach(po => {
       const delivery = deliveryTracking[po.id];
       const status = delivery?.status || 'preparing';
@@ -1002,7 +889,6 @@ export class ConsolidatedTrackingService {
       }
     });
     
-    // Calculate efficiency metrics
     const completionRate = deliveryStats.total > 0 ? 
       (deliveryStats.completed / deliveryStats.total) * 100 : 0;
       
@@ -1017,7 +903,6 @@ export class ConsolidatedTrackingService {
         totalValue: paymentStats.totalAmount,
         profitAmount: paymentStats.profitAmount,
         overdueItems: deliveryStats.overdue + paymentStats.byStatus.overdue,
-        // Real-time status
         dataSource: TrackingStorage.getDataSource(),
         lastSync: new Date().toISOString()
       },
@@ -1049,7 +934,7 @@ export class ConsolidatedTrackingService {
         generatedAt: new Date().toISOString(),
         dataSource: TrackingStorage.getDataSource(),
         period: {
-          from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // Last 30 days
+          from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
           to: new Date().toISOString()
         }
       },
@@ -1072,7 +957,7 @@ export class ConsolidatedTrackingService {
       performance_metrics: {
         delivery_performance: {
           completion_rate: dashboardData.summary.deliveryCompletionRate,
-          average_lead_time: 'TBD', // Would calculate from completed deliveries
+          average_lead_time: 'TBD',
           on_time_delivery_rate: 'TBD'
         },
         
