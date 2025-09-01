@@ -891,39 +891,65 @@ class ProductSyncService {
 
   /**
    * FIXED: Get products that need image generation for dashboard
-   * Using manual limit to avoid Firestore limit function import issues
+   * Using simple query to avoid Firestore index requirements
    */
   async getProductsNeedingImages(limitCount = 50) {
     try {
-      // Use query without limit function to avoid import issues
-      const publicQuery = query(
-        collection(this.db, 'products_public'),
-        where('needsImageGeneration', '==', true),
-        orderBy('createdAt', 'desc')
-      );
+      console.log('Loading products needing images...');
+      
+      // Try simple query first (without orderBy to avoid index requirement)
+      let publicQuery;
+      let useOrderBy = false;
+      
+      try {
+        // First try with orderBy (requires composite index)
+        publicQuery = query(
+          collection(this.db, 'products_public'),
+          where('needsImageGeneration', '==', true),
+          orderBy('createdAt', 'desc')
+        );
+        useOrderBy = true;
+      } catch (indexError) {
+        // Fallback to simple query without orderBy
+        publicQuery = query(
+          collection(this.db, 'products_public'),
+          where('needsImageGeneration', '==', true)
+        );
+        useOrderBy = false;
+        console.log('Using simple query without orderBy due to missing index');
+      }
 
       const publicSnapshot = await getDocs(publicQuery);
-      const products = [];
-      let count = 0;
+      let products = [];
 
-      // Manual limit implementation to avoid the Firestore limit function issue
+      // Collect all matching products
       publicSnapshot.forEach(doc => {
-        if (count < limitCount) {
-          const data = doc.data();
-          products.push({
-            id: doc.id,
-            internalId: data.internalProductId,
-            name: data.displayName || data.name,
-            category: data.category,
-            imageUrl: data.imageUrl,
-            hasRealImage: data.hasRealImage || false,
-            imageGenerationStatus: data.imageGenerationStatus || 'needed',
-            lastImageError: data.lastImageError,
-            needsImageGeneration: data.needsImageGeneration
-          });
-          count++;
-        }
+        const data = doc.data();
+        products.push({
+          id: doc.id,
+          internalId: data.internalProductId,
+          name: data.displayName || data.name,
+          category: data.category,
+          imageUrl: data.imageUrl,
+          hasRealImage: data.hasRealImage || false,
+          imageGenerationStatus: data.imageGenerationStatus || 'needed',
+          lastImageError: data.lastImageError,
+          needsImageGeneration: data.needsImageGeneration,
+          createdAt: data.createdAt || new Date()
+        });
       });
+
+      // Sort manually if we couldn't use orderBy
+      if (!useOrderBy) {
+        products.sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+          return dateB - dateA; // Descending order (newest first)
+        });
+      }
+
+      // Apply manual limit
+      products = products.slice(0, limitCount);
 
       console.log(`Found ${products.length} products needing images`);
       return products;
@@ -931,7 +957,8 @@ class ProductSyncService {
     } catch (error) {
       console.error('Failed to get products needing images:', error);
       
-      // Return demo data if Firestore is unavailable
+      // Return demo data if Firestore query fails
+      console.log('Returning demo data due to Firestore error');
       return [
         {
           id: 'demo-1',
@@ -941,7 +968,8 @@ class ProductSyncService {
           imageUrl: null,
           hasRealImage: false,
           imageGenerationStatus: 'needed',
-          needsImageGeneration: true
+          needsImageGeneration: true,
+          createdAt: new Date()
         },
         {
           id: 'demo-2', 
@@ -951,7 +979,19 @@ class ProductSyncService {
           imageUrl: 'https://via.placeholder.com/400x400',
           hasRealImage: false,
           imageGenerationStatus: 'needed',
-          needsImageGeneration: true
+          needsImageGeneration: true,
+          createdAt: new Date()
+        },
+        {
+          id: 'demo-3',
+          internalId: 'PROD-003', 
+          name: 'Industrial Sensor Module',
+          category: 'sensors',
+          imageUrl: null,
+          hasRealImage: false,
+          imageGenerationStatus: 'needed',
+          needsImageGeneration: true,
+          createdAt: new Date()
         }
       ];
     }
