@@ -1,6 +1,6 @@
 // src/services/sync/ProductSyncService.js
 // Enhanced Product Sync Service for HiggsFlow E-commerce
-// UPDATED: Fixed image handling and method call issues from "Resolving Product Image Loading Error"
+// UPDATED: Added comprehensive manual image upload functionality
 
 import { 
   collection, 
@@ -18,20 +18,33 @@ import {
   getDocs,
   limit
 } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  deleteObject,
+  uploadBytesResumable,
+  getMetadata
+} from 'firebase/storage';
+import { db, storage } from '../../config/firebase';
 
 class ProductSyncService {
   constructor() {
     this.db = db;
+    this.storage = storage;
     this.isRunning = false;
     this.syncListeners = new Map();
     this.syncQueue = [];
     this.imageGenerationQueue = [];
+    this.uploadQueue = [];
     this.batchSize = 10;
     this.retryAttempts = 3;
     this.processingImages = false;
+    this.processingUploads = false;
     this.maxConcurrentImages = 2;
     this.imageRetryLimit = 3;
+    this.maxFileSize = 10 * 1024 * 1024; // 10MB
+    this.allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
     
     this.syncStats = {
       totalSynced: 0,
@@ -42,7 +55,11 @@ class ProductSyncService {
       // Image generation stats
       imagesGenerated: 0,
       imageErrors: 0,
-      imageGenerationTime: 0
+      imageGenerationTime: 0,
+      // Manual upload stats
+      manualUploads: 0,
+      uploadErrors: 0,
+      totalUploadSize: 0
     };
     
     // Sync rules for dashboard
@@ -59,12 +76,443 @@ class ProductSyncService {
                      (typeof process !== 'undefined' ? process.env.VITE_MCP_SERVER_URL : null) ||
                      'https://supplier-mcp-server-production.up.railway.app';
     
-    console.log('ProductSyncService initialized with FIXED image detection and loading logic');
+    console.log('ProductSyncService initialized with FIXED image detection, loading logic, and manual upload capabilities');
   }
 
   // ====================================================================
-  // FIXED: IMAGE DETECTION AND URL RESOLUTION LOGIC
+  // MANUAL IMAGE UPLOAD FUNCTIONALITY
   // ====================================================================
+
+  /**
+   * Validate image file before upload
+   */
+  validateImageFile(file) {
+    const errors = [];
+    
+    if (!file) {
+      errors.push('No file provided');
+      return { isValid: false, errors };
+    }
+    
+    // Check file type
+    if (!this.allowedImageTypes.includes(file.type)) {
+      errors.push(`Invalid file type. Allowed: ${this.allowedImageTypes.join(', ')}`);
+    }
+    
+    // Check file size
+    if (file.size > this.maxFileSize) {
+      errors.push(`File too large. Maximum size: ${this.maxFileSize / (1024 * 1024)}MB`);
+    }
+    
+    // Check if it's actually an image
+    if (!file.type.startsWith('image/')) {
+      errors.push('File must be an image');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+      fileInfo: {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified
+      }
+    };
+  }
+
+  /**
+   * Upload single product image manually
+   */
+  async uploadProductImage(productId, imageFile, options = {}) {
+    try {
+      console.log(`Starting manual upload for product ${productId}`);
+      
+      // Validate file
+      const validation = this.validateImageFile(imageFile);
+      if (!validation.isValid) {
+        throw new Error(`File validation failed: ${validation.errors.join(', ')}`);
+      }
+      
+      const {
+        imageType = 'primary',
+        replaceExisting = true,
+        compressionQuality = 0.8
+      } = options;
+      
+      // Create storage path
+      const timestamp = Date.now();
+      const fileExtension = imageFile.name.split('.').pop().toLowerCase();
+      const fileName = `${imageType}_${timestamp}.${fileExtension}`;
+      const storagePath = `products/${productId}/images/${fileName}`;
+      
+      // Create storage reference
+      const storageRef = ref(this.storage, storagePath);
+      
+      // Update upload stats
+      this.syncStats.totalUploadSize += imageFile.size;
+      
+      // Upload with progress tracking
+      console.log(`Uploading to Firebase Storage: ${storagePath}`);
+      const uploadTask = uploadBytesResumable(storageRef, imageFile, {
+        contentType: imageFile.type,
+        customMetadata: {
+          productId: productId,
+          imageType: imageType,
+          originalName: imageFile.name,
+          uploadedBy: 'manual_upload',
+          uploadedAt: new Date().toISOString()
+        }
+      });
+      
+      // Wait for upload completion
+      await uploadTask;
+      
+      // Get download URL
+      const downloadURL = await getDownloadURL(storageRef);
+      console.log(`Upload successful, URL: ${downloadURL}`);
+      
+      // Update product in Firestore
+      const updateResult = await this.updateProductWithManualImage(productId, {
+        imageUrl: downloadURL,
+        imageType: imageType,
+        fileName: fileName,
+        storagePath: storagePath,
+        originalFileName: imageFile.name,
+        fileSize: imageFile.size,
+        contentType: imageFile.type,
+        uploadedAt: new Date(),
+        imageSource: 'manual_upload'
+      });
+      
+      if (updateResult.success) {
+        this.syncStats.manualUploads++;
+        console.log(`Successfully uploaded and updated product ${productId}`);
+      }
+      
+      return {
+        success: true,
+        downloadURL,
+        fileName,
+        storagePath,
+        productId,
+        imageType,
+        fileSize: imageFile.size
+      };
+      
+    } catch (error) {
+      this.syncStats.uploadErrors++;
+      console.error(`Manual upload failed for product ${productId}:`, error);
+      
+      return {
+        success: false,
+        error: error.message,
+        productId
+      };
+    }
+  }
+
+  /**
+   * Update product with manual image data
+   */
+  async updateProductWithManualImage(productId, imageData) {
+    try {
+      // Find the public product
+      const publicProductId = await this.findPublicProductId(productId);
+      
+      if (!publicProductId) {
+        throw new Error(`Public product not found for internal ID: ${productId}`);
+      }
+      
+      // Prepare update data
+      const updateData = {
+        imageUrl: imageData.imageUrl,
+        hasRealImage: true,
+        needsImageGeneration: false,
+        imageGenerationStatus: 'manual_upload',
+        manualUpload: {
+          fileName: imageData.fileName,
+          storagePath: imageData.storagePath,
+          originalFileName: imageData.originalFileName,
+          fileSize: imageData.fileSize,
+          contentType: imageData.contentType,
+          uploadedAt: imageData.uploadedAt,
+          imageType: imageData.imageType
+        },
+        lastImageUpdate: serverTimestamp()
+      };
+      
+      // Update Firestore
+      await updateDoc(doc(this.db, 'products_public', publicProductId), updateData);
+      
+      console.log(`Updated product ${publicProductId} with manual image`);
+      
+      return { success: true, publicProductId };
+      
+    } catch (error) {
+      console.error(`Failed to update product with manual image:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Bulk upload images for multiple products
+   */
+  async bulkUploadImages(uploads) {
+    try {
+      console.log(`Starting bulk upload for ${uploads.length} products`);
+      
+      const results = [];
+      const errors = [];
+      let successCount = 0;
+      
+      // Process uploads in batches to avoid overwhelming the system
+      const batchSize = 3;
+      for (let i = 0; i < uploads.length; i += batchSize) {
+        const batch = uploads.slice(i, i + batchSize);
+        
+        console.log(`Processing batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(uploads.length / batchSize)}`);
+        
+        const batchPromises = batch.map(async (upload) => {
+          try {
+            const result = await this.uploadProductImage(
+              upload.productId, 
+              upload.imageFile, 
+              upload.options
+            );
+            
+            if (result.success) {
+              successCount++;
+              results.push(result);
+            } else {
+              errors.push({
+                productId: upload.productId,
+                error: result.error
+              });
+            }
+            
+            return result;
+            
+          } catch (error) {
+            errors.push({
+              productId: upload.productId,
+              error: error.message
+            });
+            return { success: false, productId: upload.productId, error: error.message };
+          }
+        });
+        
+        await Promise.allSettled(batchPromises);
+        
+        // Add delay between batches
+        if (i + batchSize < uploads.length) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+      
+      console.log(`Bulk upload complete: ${successCount} successful, ${errors.length} failed`);
+      
+      return {
+        success: true,
+        results,
+        errors,
+        summary: {
+          total: uploads.length,
+          successful: successCount,
+          failed: errors.length
+        }
+      };
+      
+    } catch (error) {
+      console.error('Bulk upload failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Replace existing product image
+   */
+  async replaceProductImage(productId, newImageFile, options = {}) {
+    try {
+      console.log(`Replacing image for product ${productId}`);
+      
+      // Get current product data to find existing image
+      const publicProductId = await this.findPublicProductId(productId);
+      if (!publicProductId) {
+        throw new Error(`Public product not found for internal ID: ${productId}`);
+      }
+      
+      const productDoc = await getDoc(doc(this.db, 'products_public', publicProductId));
+      const productData = productDoc.data();
+      
+      // Delete old image if it exists and is stored in Firebase Storage
+      if (productData?.manualUpload?.storagePath) {
+        try {
+          const oldImageRef = ref(this.storage, productData.manualUpload.storagePath);
+          await deleteObject(oldImageRef);
+          console.log(`Deleted old image: ${productData.manualUpload.storagePath}`);
+        } catch (deleteError) {
+          console.warn(`Could not delete old image:`, deleteError);
+        }
+      }
+      
+      // Upload new image
+      const uploadResult = await this.uploadProductImage(productId, newImageFile, {
+        ...options,
+        replaceExisting: true
+      });
+      
+      return uploadResult;
+      
+    } catch (error) {
+      console.error(`Failed to replace image for product ${productId}:`, error);
+      return {
+        success: false,
+        error: error.message,
+        productId
+      };
+    }
+  }
+
+  /**
+   * Delete product image
+   */
+  async deleteProductImage(productId) {
+    try {
+      console.log(`Deleting image for product ${productId}`);
+      
+      const publicProductId = await this.findPublicProductId(productId);
+      if (!publicProductId) {
+        throw new Error(`Public product not found for internal ID: ${productId}`);
+      }
+      
+      const productDoc = await getDoc(doc(this.db, 'products_public', publicProductId));
+      const productData = productDoc.data();
+      
+      // Delete from Firebase Storage if it's a manual upload
+      if (productData?.manualUpload?.storagePath) {
+        try {
+          const imageRef = ref(this.storage, productData.manualUpload.storagePath);
+          await deleteObject(imageRef);
+          console.log(`Deleted image from storage: ${productData.manualUpload.storagePath}`);
+        } catch (deleteError) {
+          console.warn(`Could not delete image from storage:`, deleteError);
+        }
+      }
+      
+      // Update Firestore to remove image references
+      const updateData = {
+        imageUrl: null,
+        hasRealImage: false,
+        needsImageGeneration: true,
+        imageGenerationStatus: 'needed',
+        manualUpload: null,
+        lastImageUpdate: serverTimestamp()
+      };
+      
+      await updateDoc(doc(this.db, 'products_public', publicProductId), updateData);
+      
+      console.log(`Deleted image for product ${productId}`);
+      
+      return {
+        success: true,
+        productId,
+        publicProductId
+      };
+      
+    } catch (error) {
+      console.error(`Failed to delete image for product ${productId}:`, error);
+      return {
+        success: false,
+        error: error.message,
+        productId
+      };
+    }
+  }
+
+  /**
+   * Get upload statistics
+   */
+  getUploadStats() {
+    return {
+      manualUploads: this.syncStats.manualUploads,
+      uploadErrors: this.syncStats.uploadErrors,
+      totalUploadSize: this.syncStats.totalUploadSize,
+      uploadSuccessRate: this.syncStats.manualUploads > 0 ? 
+        ((this.syncStats.manualUploads / (this.syncStats.manualUploads + this.syncStats.uploadErrors)) * 100).toFixed(1) : 0,
+      averageFileSize: this.syncStats.manualUploads > 0 ?
+        Math.round(this.syncStats.totalUploadSize / this.syncStats.manualUploads / 1024) : 0 // KB
+    };
+  }
+
+  /**
+   * Get products with manual uploads
+   */
+  async getProductsWithManualImages() {
+    try {
+      const publicQuery = query(
+        collection(this.db, 'products_public'),
+        where('imageGenerationStatus', '==', 'manual_upload')
+      );
+      
+      const publicSnapshot = await getDocs(publicQuery);
+      const products = [];
+      
+      publicSnapshot.forEach(doc => {
+        const data = doc.data();
+        products.push({
+          id: doc.id,
+          internalId: data.internalProductId,
+          name: data.displayName || data.name,
+          imageUrl: data.imageUrl,
+          manualUpload: data.manualUpload,
+          uploadedAt: data.manualUpload?.uploadedAt
+        });
+      });
+      
+      return products;
+      
+    } catch (error) {
+      console.error('Failed to get products with manual images:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Compress image before upload (optional)
+   */
+  async compressImage(file, quality = 0.8) {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate new dimensions (max 1920x1080)
+        const maxWidth = 1920;
+        const maxHeight = 1080;
+        let { width, height } = img;
+        
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width *= ratio;
+          height *= ratio;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(resolve, file.type, quality);
+      };
+      
+      img.src = URL.createObjectURL(file);
+    });
+  }
 
   /**
    * FIXED: Enhanced image URL resolution with priority order
@@ -1507,6 +1955,8 @@ class ProductSyncService {
   }
 
   getSyncStats() {
+    const uploadStats = this.getUploadStats();
+    
     return {
       ...this.syncStats,
       isRunning: this.isRunning,
@@ -1518,7 +1968,11 @@ class ProductSyncService {
         ((this.syncStats.imagesGenerated / (this.syncStats.imagesGenerated + this.syncStats.imageErrors)) * 100).toFixed(1) : 0,
       averageImageTime: this.syncStats.imagesGenerated > 0 ? 
         Math.round(this.syncStats.imageGenerationTime / this.syncStats.imagesGenerated) : 0,
-      activeListeners: this.syncListeners.size
+      activeListeners: this.syncListeners.size,
+      // Manual upload stats
+      ...uploadStats,
+      uploadQueueLength: this.uploadQueue.length,
+      processingUploads: this.processingUploads
     };
   }
 
