@@ -1,5 +1,6 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
 // ENHANCED: Added manual upload, image regeneration, and fixed image display issues
+// FIXED: Updated API endpoints to match server.js implementation
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -314,6 +315,7 @@ const ImageGenerationDashboard = () => {
     showNotification(`Selected ${imageFiles.length} image(s) for upload`, 'info');
   };
 
+  // FIXED: Updated manual upload function
   const uploadManualImages = async () => {
     if (!selectedProductForUpload || uploadingFiles.length === 0) return;
 
@@ -321,30 +323,31 @@ const ImageGenerationDashboard = () => {
     showNotification(`Uploading ${uploadingFiles.length} images to Firebase Storage...`, 'info');
 
     try {
-      // FIXED: Use direct API call to server.js endpoint
+      // FIXED: Use correct endpoint and proper FormData structure
       const formData = new FormData();
       formData.append('productId', selectedProductForUpload.id);
       formData.append('productName', selectedProductForUpload.name);
       formData.append('uploadType', 'manual');
+      formData.append('saveToFirebase', 'true');
       
       uploadingFiles.forEach((file, index) => {
         formData.append(`images`, file);
       });
 
-      const response = await fetch('/api/ai/upload-product-images', {
+      const response = await fetch('/api/storage/upload-images', {
         method: 'POST',
         body: formData
       });
 
       if (!response.ok) {
-        throw new Error('Failed to upload images');
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
       
       if (result.success) {
         showNotification(
-          `Successfully uploaded ${result.summary.successful} images to Firebase Storage for ${selectedProductForUpload.name}`, 
+          `Successfully uploaded ${result.summary?.successful || uploadingFiles.length} images to Firebase Storage for ${selectedProductForUpload.name}`, 
           'success'
         );
         
@@ -371,7 +374,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // NEW: Regenerate specific image
+  // FIXED: Updated regenerate function with correct endpoint
   const regenerateImage = async (productId) => {
     const product = productsNeedingImages.find(p => p.id === productId) || 
                    recentGenerations.find(g => g.productId === productId);
@@ -385,27 +388,36 @@ const ImageGenerationDashboard = () => {
     showNotification(`Regenerating image with Firebase Storage for ${product.productName || product.name}...`, 'info');
 
     try {
-      // FIXED: Use direct API call to server.js endpoint
-      const response = await fetch('/api/ai/regenerate-product-image', {
+      // FIXED: Use correct MCP endpoint with proper structure
+      const response = await fetch('/api/mcp/generate-product-images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: productId,
-          productName: product.productName || product.name,
-          productDescription: product.description,
-          category: product.category,
-          saveToFirebase: true,
-          collectionName: 'products_public'
+          products: [{
+            id: productId,
+            name: product.productName || product.name,
+            description: product.description || `${product.productName || product.name} - Industrial component`,
+            category: product.category || 'industrial'
+          }],
+          options: {
+            saveToFirebase: true,
+            collectionName: 'products_public',
+            imageSize: '1024x1024',
+            quality: 'hd',
+            forceRegenerate: true
+          }
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to regenerate image');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const result = await response.json();
       
-      if (result.success) {
+      if (result.success && result.results && result.results.length > 0) {
+        const imageData = result.results[0];
+        
         showNotification(
           `Successfully regenerated image for ${product.productName || product.name}. Stored in Firebase Storage.`, 
           'success'
@@ -418,8 +430,8 @@ const ImageGenerationDashboard = () => {
               ? { 
                   ...gen, 
                   status: 'completed',
-                  imageUrls: [result.imageUrl],
-                  firebaseStored: result.savedToFirebase,
+                  imageUrls: [imageData.imageUrl],
+                  firebaseStored: imageData.savedToFirebase || false,
                   timestamp: new Date()
                 }
               : gen
@@ -439,7 +451,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Enhanced image generation with proper Firebase saving
+  // FIXED: Enhanced image generation with proper Firebase saving and correct API endpoint
   const generateImagesForProducts = async (productIds) => {
     if (!productIds || productIds.length === 0) return;
 
@@ -455,60 +467,67 @@ const ImageGenerationDashboard = () => {
         if (!product) continue;
 
         try {
-          // FIXED: Use direct API call to server.js endpoint
-          const response = await fetch('/api/ai/generate-product-image', {
+          // FIXED: Use correct MCP endpoint with proper structure
+          const response = await fetch('/api/mcp/generate-product-images', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              productId: productId,
-              productName: product.name,
-              productDescription: product.description,
-              category: product.category,
-              saveToFirebase: true,
-              collectionName: 'products_public'
+              products: [{
+                id: productId,
+                name: product.name,
+                description: product.description || `${product.name} - Industrial component`,
+                category: product.category || 'industrial'
+              }],
+              options: {
+                saveToFirebase: true,
+                collectionName: 'products_public',
+                imageSize: '1024x1024',
+                quality: 'hd'
+              }
             })
           });
 
           if (!response.ok) {
-            throw new Error(`Failed to generate image for ${product.name}`);
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
 
           const result = await response.json();
           
-          if (result.success) {
+          if (result.success && result.results && result.results.length > 0) {
+            const imageData = result.results[0];
             successCount++;
-            console.log(`✅ Generated image for ${product.name}:`, result);
             
-            if (!result.savedToFirebase) {
-              console.warn(`⚠️ Image generated but not saved to Firebase for: ${product.name}`);
-            }
+            showNotification(`Generated image for ${product.name}`, 'success');
+            
+            // Update state immediately
+            setRecentGenerations(prev => [...prev, {
+              id: Date.now(),
+              productId: productId,
+              productName: product.name,
+              status: 'completed',
+              imageUrls: [imageData.imageUrl],
+              firebaseStored: imageData.savedToFirebase || false,
+              timestamp: new Date()
+            }]);
+            
           } else {
-            errorCount++;
-            console.error(`❌ Failed to generate image for ${product.name}:`, result);
+            throw new Error(result.error || 'Unknown generation error');
           }
           
         } catch (productError) {
           errorCount++;
           console.error(`Error generating image for product ${productId}:`, productError);
+          showNotification(`Failed to generate image for ${product.name}: ${productError.message}`, 'error');
         }
+        
+        // Small delay between generations
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      if (successCount > 0) {
-        showNotification(
-          `Successfully generated ${successCount} images with Firebase Storage!`, 
-          'success'
-        );
-      }
-      
-      if (errorCount > 0) {
-        showNotification(
-          `Failed to generate ${errorCount} images`, 
-          'error'
-        );
-      }
-
-      // Reload dashboard data
-      await loadDashboardData();
+      showNotification(
+        `Batch complete: ${successCount} successful, ${errorCount} failed`, 
+        successCount > 0 ? 'success' : 'error'
+      );
       
     } catch (error) {
       console.error('Batch generation error:', error);
@@ -516,6 +535,7 @@ const ImageGenerationDashboard = () => {
     } finally {
       setIsGenerating(false);
       setSelectedProducts([]);
+      await loadDashboardData(); // Refresh the dashboard
     }
   };
 
