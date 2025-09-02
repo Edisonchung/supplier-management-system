@@ -1306,12 +1306,105 @@ const ImageGenerationDashboard = () => {
         )}
       </div>
 
-      {/* Product Detail Modal - Using shared ImagePreview component */}
+      {/* Product Detail Modal - Inline version (ImagePreview import not working) */}
       {selectedProduct && (
-        <ImagePreview
-          product={selectedProduct}
-          onClose={() => setSelectedProduct(null)}
-        />
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold flex items-center gap-2">
+                <FileImage className="w-6 h-6 text-blue-600" />
+                Product Image Details
+              </h3>
+              <button
+                onClick={() => setSelectedProduct(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium text-gray-900">{selectedProduct.productName}</h4>
+                <p className="text-sm text-gray-600">Product ID: {selectedProduct.productId}</p>
+                <p className="text-sm text-gray-600 capitalize">Category: {(selectedProduct.category || 'general').replace('_', ' ')}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-sm text-gray-600">Status:</span>
+                  <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ml-2 ${getStatusColor(selectedProduct.status)}`}>
+                    {getStatusIcon(selectedProduct.status)}
+                    {selectedProduct.status}
+                  </div>
+                </div>
+                
+                <div>
+                  <span className="text-sm text-gray-600">Provider:</span>
+                  <span className="ml-2 text-sm text-gray-900">OpenAI DALL-E 3</span>
+                </div>
+              </div>
+              
+              <div>
+                <span className="text-sm text-gray-600">Prompt Used:</span>
+                <p className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
+                  {selectedProduct.prompt}
+                </p>
+              </div>
+              
+              {selectedProduct.imageUrls && selectedProduct.imageUrls.length > 0 && (
+                <div>
+                  <span className="text-sm text-gray-600">Generated Images:</span>
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {selectedProduct.imageUrls.map((url, index) => (
+                      <div key={index} className="relative">
+                        <img
+                          src={url}
+                          alt={`Generated image ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg border cursor-pointer hover:opacity-80"
+                          onClick={() => window.open(url, '_blank')}
+                          onError={(e) => {
+                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNmM2Y0ZjYiLz4KPHR4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjOWNhM2FmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+R2VuZXJhdGVkIEltYWdlPC90ZXQ+Cjwvc3ZnPg==';
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {selectedProduct.error && (
+                <div>
+                  <span className="text-sm text-gray-600">Error Details:</span>
+                  <p className="mt-1 text-sm text-red-700 bg-red-50 p-3 rounded-lg">
+                    {selectedProduct.error}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setSelectedProduct(null)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Close
+              </button>
+              {(selectedProduct.status === 'failed' || selectedProduct.status === 'error' || selectedProduct.status === 'needed') && serviceInitialized && (
+                <button 
+                  onClick={() => {
+                    handleRetryGeneration(selectedProduct.productId);
+                    setSelectedProduct(null);
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={isGenerating}
+                >
+                  Generate Image
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
