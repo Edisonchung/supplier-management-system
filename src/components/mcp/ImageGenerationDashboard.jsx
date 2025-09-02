@@ -374,7 +374,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Updated regenerate function with correct endpoint
+  // FIXED: Updated regenerate function with correct server structure
   const regenerateImage = async (productId) => {
     const product = productsNeedingImages.find(p => p.id === productId) || 
                    recentGenerations.find(g => g.productId === productId);
@@ -385,41 +385,42 @@ const ImageGenerationDashboard = () => {
     }
 
     setIsGenerating(true);
-    showNotification(`Regenerating image with Firebase Storage for ${product.productName || product.name}...`, 'info');
+    showNotification(`Regenerating image for ${product.productName || product.name}...`, 'info');
 
     try {
-      // FIXED: Use correct MCP endpoint with proper structure
+      // FIXED: Use correct server structure
       const response = await fetch('/api/mcp/generate-product-images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          products: [{
+          product: {
             id: productId,
             name: product.productName || product.name,
-            description: product.description || `${product.productName || product.name} - Industrial component`,
-            category: product.category || 'industrial'
-          }],
-          options: {
-            saveToFirebase: true,
-            collectionName: 'products_public',
-            imageSize: '1024x1024',
-            quality: 'hd',
-            forceRegenerate: true
-          }
+            partNumber: product.partNumber || product.sku || product.code || productId,
+            category: product.category || 'industrial',
+            brand: product.brand || 'Professional Grade',
+            description: product.description || (product.productName || product.name)
+          },
+          imageTypes: ['primary'],
+          promptCategory: product.category || 'industrial',
+          provider: 'openai',
+          model: 'dall-e-3',
+          quality: 'hd'
         })
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();
       
-      if (result.success && result.results && result.results.length > 0) {
-        const imageData = result.results[0];
+      if (result.success) {
+        const imageUrl = result.images?.primary || result.imageUrl || result.image;
         
         showNotification(
-          `Successfully regenerated image for ${product.productName || product.name}. Stored in Firebase Storage.`, 
+          `Successfully regenerated image for ${product.productName || product.name}`, 
           'success'
         );
         
@@ -430,8 +431,8 @@ const ImageGenerationDashboard = () => {
               ? { 
                   ...gen, 
                   status: 'completed',
-                  imageUrls: [imageData.imageUrl],
-                  firebaseStored: imageData.savedToFirebase || false,
+                  imageUrls: imageUrl ? [imageUrl] : [],
+                  firebaseStored: result.savedToFirebase || false,
                   timestamp: new Date()
                 }
               : gen
@@ -451,7 +452,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Enhanced image generation with proper Firebase saving and correct API endpoint
+  // CORRECTED: Enhanced image generation with server-matching request structure
   const generateImagesForProducts = async (productIds) => {
     if (!productIds || productIds.length === 0) return;
 
@@ -467,47 +468,53 @@ const ImageGenerationDashboard = () => {
         if (!product) continue;
 
         try {
-          // FIXED: Use correct MCP endpoint with proper structure
+          // FIXED: Match the server's expected request structure exactly
           const response = await fetch('/api/mcp/generate-product-images', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              products: [{
+              // Server expects 'product' (singular) not 'products' (array)
+              product: {
                 id: productId,
                 name: product.name,
-                description: product.description || `${product.name} - Industrial component`,
-                category: product.category || 'industrial'
-              }],
-              options: {
-                saveToFirebase: true,
-                collectionName: 'products_public',
-                imageSize: '1024x1024',
-                quality: 'hd'
-              }
+                partNumber: product.partNumber || product.sku || product.code || productId,
+                category: product.category || 'industrial',
+                brand: product.brand || 'Professional Grade',
+                description: product.description || product.name
+              },
+              imageTypes: ['primary'], // Match server expectation
+              promptCategory: product.category || 'industrial',
+              provider: 'openai',
+              model: 'dall-e-3',
+              quality: 'hd'
             })
           });
 
           if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
           }
 
           const result = await response.json();
+          console.log('API Response:', result);
           
-          if (result.success && result.results && result.results.length > 0) {
-            const imageData = result.results[0];
+          if (result.success) {
             successCount++;
             
             showNotification(`Generated image for ${product.name}`, 'success');
             
-            // Update state immediately
+            // Update state immediately - handle different response formats
+            const imageUrl = result.images?.primary || result.imageUrl || result.image;
+            
             setRecentGenerations(prev => [...prev, {
-              id: Date.now(),
+              id: Date.now() + Math.random(), // Ensure unique ID
               productId: productId,
               productName: product.name,
               status: 'completed',
-              imageUrls: [imageData.imageUrl],
-              firebaseStored: imageData.savedToFirebase || false,
-              timestamp: new Date()
+              imageUrls: imageUrl ? [imageUrl] : [],
+              firebaseStored: result.savedToFirebase || false,
+              timestamp: new Date(),
+              category: product.category || 'industrial'
             }]);
             
           } else {
