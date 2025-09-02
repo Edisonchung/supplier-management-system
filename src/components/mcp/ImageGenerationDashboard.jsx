@@ -374,7 +374,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // WORKING FIX: Use /api/ai/generate-catalog-images for regeneration too
+  // ALTERNATIVE FIX: Use ProductSyncService for regeneration too
   const regenerateImage = async (productId) => {
     const product = productsNeedingImages.find(p => p.id === productId) || 
                    recentGenerations.find(g => g.productId === productId);
@@ -384,35 +384,22 @@ const ImageGenerationDashboard = () => {
       return;
     }
 
+    if (!isProductSyncServiceAvailable()) {
+      showNotification('ProductSyncService not available - cannot regenerate image', 'error');
+      return;
+    }
+
     setIsGenerating(true);
-    showNotification(`Regenerating image for ${product.productName || product.name}...`, 'info');
+    showNotification(`Regenerating image for ${product.productName || product.name} via ProductSyncService...`, 'info');
 
     try {
-      // WORKING: Use catalog endpoint for regeneration too
-      const response = await fetch('/api/ai/generate-catalog-images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: productId,
-          productName: product.productName || product.name,
-          productDescription: product.description || (product.productName || product.name),
-          category: product.category || 'industrial',
-          saveToFirebase: true,
-          generateSecondary: false
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Regeneration API Error:', errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('Regeneration API Response:', result);
+      console.log(`Calling ProductSyncService.manualImageGeneration for regeneration: ${product.productName || product.name}`);
       
-      if (result.success) {
-        const imageUrl = result.images?.primary || result.primaryImage?.url || result.imageUrl || result.image;
+      const result = await productSyncService.manualImageGeneration(productId);
+      console.log('ProductSyncService regeneration result:', result);
+      
+      if (result && (result.success || result.imageUrl || result.images)) {
+        const imageUrl = result.imageUrl || result.images?.primary || result.primaryImage?.url;
         
         showNotification(
           `Successfully regenerated image for ${product.productName || product.name}`, 
@@ -427,7 +414,7 @@ const ImageGenerationDashboard = () => {
                   ...gen, 
                   status: 'completed',
                   imageUrls: imageUrl ? [imageUrl] : [],
-                  firebaseStored: result.images?.primary?.savedToFirebase || result.savedToFirebase || false,
+                  firebaseStored: result.savedToFirebase || result.firebaseStorageComplete || false,
                   timestamp: new Date()
                 }
               : gen
@@ -436,7 +423,7 @@ const ImageGenerationDashboard = () => {
         
         await loadDashboardData();
       } else {
-        throw new Error(result.error || 'Regeneration failed');
+        throw new Error(result?.error || 'Regeneration failed');
       }
       
     } catch (error) {
@@ -501,52 +488,41 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // WORKING FIX: Use /api/ai/generate-catalog-images which definitely accepts POST
+  // ALTERNATIVE FIX: Use ProductSyncService instead of direct API calls
   const generateImagesForProducts = async (productIds) => {
     if (!productIds || productIds.length === 0) return;
+
+    // Check if ProductSyncService is available
+    if (!isProductSyncServiceAvailable()) {
+      showNotification('ProductSyncService not available - cannot generate images', 'error');
+      return;
+    }
 
     setIsGenerating(true);
     let successCount = 0;
     let errorCount = 0;
 
     try {
-      showNotification(`Generating images for ${productIds.length} products with Firebase Storage...`, 'info');
+      showNotification(`Generating images for ${productIds.length} products via ProductSyncService...`, 'info');
 
       for (const productId of productIds) {
         const product = productsNeedingImages.find(p => p.id === productId);
         if (!product) continue;
 
         try {
-          // WORKING: Use /api/ai/generate-catalog-images which accepts POST and handles Firebase Storage
-          const response = await fetch('/api/ai/generate-catalog-images', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              productId: productId,
-              productName: product.name,
-              productDescription: product.description || product.name,
-              category: product.category || 'industrial',
-              saveToFirebase: true,
-              generateSecondary: false
-            })
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('API Error Response:', errorText);
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-          }
-
-          const result = await response.json();
-          console.log('API Response:', result);
+          // Use ProductSyncService directly instead of API calls
+          console.log(`Calling ProductSyncService.manualImageGeneration for ${product.name}`);
           
-          if (result.success) {
+          const result = await productSyncService.manualImageGeneration(productId);
+          console.log('ProductSyncService result:', result);
+          
+          if (result && (result.success || result.imageUrl || result.images)) {
             successCount++;
             
             showNotification(`Generated image for ${product.name}`, 'success');
             
-            // Handle the response format from catalog images endpoint
-            const imageUrl = result.images?.primary || result.primaryImage?.url || result.imageUrl || result.image;
+            // Handle different response formats from ProductSyncService
+            const imageUrl = result.imageUrl || result.images?.primary || result.primaryImage?.url;
             
             setRecentGenerations(prev => [...prev, {
               id: Date.now() + Math.random(),
@@ -554,13 +530,13 @@ const ImageGenerationDashboard = () => {
               productName: product.name,
               status: 'completed',
               imageUrls: imageUrl ? [imageUrl] : [],
-              firebaseStored: result.images?.primary?.savedToFirebase || result.savedToFirebase || false,
+              firebaseStored: result.savedToFirebase || result.firebaseStorageComplete || false,
               timestamp: new Date(),
               category: product.category || 'industrial'
             }]);
             
           } else {
-            throw new Error(result.error || 'Unknown generation error');
+            throw new Error(result?.error || 'Image generation failed');
           }
           
         } catch (productError) {
@@ -569,7 +545,7 @@ const ImageGenerationDashboard = () => {
           showNotification(`Failed to generate image for ${product.name}: ${productError.message}`, 'error');
         }
         
-        // Longer delay for catalog endpoint
+        // Delay between generations
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
