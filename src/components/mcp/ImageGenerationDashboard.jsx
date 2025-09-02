@@ -22,7 +22,8 @@ import {
   Palette,
   X,
   Filter,
-  Search
+  Search,
+  Upload
 } from 'lucide-react';
 
 // UPDATED: Better service initialization with fallback detection
