@@ -145,7 +145,7 @@ const ImageGenerationDashboard = () => {
     setTimeout(() => setNotification(null), duration);
   };
 
-  // UPDATED: Fix product image fields - enhanced with better method detection
+  // UPDATED: Fix product image fields - enhanced with better method detection and debugging
   const fixProductImageFields = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
@@ -154,7 +154,47 @@ const ImageGenerationDashboard = () => {
       }
 
       console.log('🔧 Running image field migration fix...');
+      console.log('ProductSyncService instance:', productSyncService);
       showNotification('Starting image field migration...', 'info');
+      
+      // Enhanced method detection - check multiple ways to find methods
+      const getAllMethods = (obj) => {
+        let methods = new Set();
+        
+        // Get own properties
+        Object.getOwnPropertyNames(obj).forEach(prop => {
+          if (typeof obj[prop] === 'function') {
+            methods.add(prop);
+          }
+        });
+        
+        // Get prototype methods
+        let proto = Object.getPrototypeOf(obj);
+        while (proto && proto !== Object.prototype) {
+          Object.getOwnPropertyNames(proto).forEach(prop => {
+            if (typeof obj[prop] === 'function') {
+              methods.add(prop);
+            }
+          });
+          proto = Object.getPrototypeOf(proto);
+        }
+        
+        // Check direct properties that might be functions
+        for (let key in obj) {
+          try {
+            if (typeof obj[key] === 'function') {
+              methods.add(key);
+            }
+          } catch (e) {
+            // Skip if property access throws
+          }
+        }
+        
+        return Array.from(methods);
+      };
+      
+      const allMethods = getAllMethods(productSyncService);
+      console.log('All available methods:', allMethods);
       
       // Try multiple possible method names for the fix function
       const possibleMethods = [
@@ -162,34 +202,67 @@ const ImageGenerationDashboard = () => {
         'updateProductImageFields', 
         'migrateImageFields',
         'repairProductFields',
-        'fixImageDetection'
+        'fixImageDetection',
+        'updateProductsWithImageFlags',
+        'syncProductImageData',
+        'refreshProductImageStatus'
       ];
       
       let fixMethod = null;
-      for (const methodName of possibleMethods) {
-        if (typeof productSyncService[methodName] === 'function') {
-          fixMethod = productSyncService[methodName];
-          console.log(`Found fix method: ${methodName}`);
+      let methodName = '';
+      
+      for (const name of possibleMethods) {
+        if (allMethods.includes(name) && typeof productSyncService[name] === 'function') {
+          fixMethod = productSyncService[name];
+          methodName = name;
+          console.log(`✅ Found fix method: ${methodName}`);
           break;
         }
       }
       
       if (!fixMethod) {
-        // Fallback: try to call a manual fix
-        console.log('No direct fix method found, attempting manual field update...');
+        console.log('No direct fix method found, attempting alternative approaches...');
         
-        if (typeof productSyncService.updateProductsWithImageFlags === 'function') {
-          const result = await productSyncService.updateProductsWithImageFlags();
-          if (result && result.success) {
-            const updated = result.updated || result.updatedCount || 0;
-            showNotification(`Successfully updated ${updated} products with image flags`, 'success');
-            setTimeout(() => loadDashboardData(), 1000);
-            return;
+        // Try to manually update products that need image generation flags
+        if (allMethods.includes('getProductsNeedingImages') && allMethods.includes('updateProduct')) {
+          showNotification('Using manual field update approach...', 'info');
+          
+          try {
+            // Get products without proper image flags
+            const products = await productSyncService.getProductsNeedingImages(100);
+            let updatedCount = 0;
+            
+            if (Array.isArray(products) && products.length > 0) {
+              for (const product of products) {
+                if (!product.needsImageGeneration) {
+                  try {
+                    await productSyncService.updateProduct(product.id, {
+                      needsImageGeneration: true,
+                      hasRealImage: false,
+                      imageGenerationStatus: 'needed'
+                    });
+                    updatedCount++;
+                  } catch (updateError) {
+                    console.warn(`Failed to update product ${product.id}:`, updateError);
+                  }
+                }
+              }
+              
+              if (updatedCount > 0) {
+                showNotification(`Manually updated ${updatedCount} products with image flags`, 'success');
+                setTimeout(() => loadDashboardData(), 1000);
+                return;
+              }
+            }
+          } catch (manualError) {
+            console.error('Manual update approach failed:', manualError);
           }
         }
         
-        showNotification('Image field migration not available in current ProductSyncService version', 'error');
-        console.error('Available methods:', Object.getOwnPropertyNames(productSyncService).filter(name => typeof productSyncService[name] === 'function'));
+        // Show available methods for debugging
+        showNotification('Image field migration not available. Check console for available methods.', 'error');
+        console.error('Available methods:', allMethods);
+        console.error('Tried methods:', possibleMethods);
         return;
       }
       
