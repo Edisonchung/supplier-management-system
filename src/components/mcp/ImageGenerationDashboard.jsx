@@ -198,6 +198,7 @@ const ImageGenerationDashboard = () => {
       
       // Try multiple possible method names for the fix function
       const possibleMethods = [
+        'updateProductsWithImageFields', // Found in method #30!
         'fixProductImageFields',
         'updateProductImageFields', 
         'migrateImageFields',
