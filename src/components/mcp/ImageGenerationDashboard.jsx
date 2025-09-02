@@ -145,7 +145,7 @@ const ImageGenerationDashboard = () => {
     setTimeout(() => setNotification(null), duration);
   };
 
-  // UPDATED: Fix product image fields - enhanced error handling
+  // UPDATED: Fix product image fields - enhanced with better method detection
   const fixProductImageFields = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
@@ -156,24 +156,58 @@ const ImageGenerationDashboard = () => {
       console.log('🔧 Running image field migration fix...');
       showNotification('Starting image field migration...', 'info');
       
-      // Check if the method exists
-      if (typeof productSyncService.fixProductImageFields === 'function') {
-        const result = await productSyncService.fixProductImageFields();
-        console.log('✅ Image field migration result:', result);
-        
-        if (result && result.success) {
-          const updated = result.updated || result.updatedCount || 0;
-          showNotification(`Successfully updated ${updated} products with proper image flags`, 'success');
-          
-          // Reload dashboard data to reflect changes
-          setTimeout(() => {
-            loadDashboardData();
-          }, 1000);
-        } else {
-          throw new Error(result?.message || 'Migration completed but with warnings');
+      // Try multiple possible method names for the fix function
+      const possibleMethods = [
+        'fixProductImageFields',
+        'updateProductImageFields', 
+        'migrateImageFields',
+        'repairProductFields',
+        'fixImageDetection'
+      ];
+      
+      let fixMethod = null;
+      for (const methodName of possibleMethods) {
+        if (typeof productSyncService[methodName] === 'function') {
+          fixMethod = productSyncService[methodName];
+          console.log(`Found fix method: ${methodName}`);
+          break;
         }
-      } else {
+      }
+      
+      if (!fixMethod) {
+        // Fallback: try to call a manual fix
+        console.log('No direct fix method found, attempting manual field update...');
+        
+        if (typeof productSyncService.updateProductsWithImageFlags === 'function') {
+          const result = await productSyncService.updateProductsWithImageFlags();
+          if (result && result.success) {
+            const updated = result.updated || result.updatedCount || 0;
+            showNotification(`Successfully updated ${updated} products with image flags`, 'success');
+            setTimeout(() => loadDashboardData(), 1000);
+            return;
+          }
+        }
+        
         showNotification('Image field migration not available in current ProductSyncService version', 'error');
+        console.error('Available methods:', Object.getOwnPropertyNames(productSyncService).filter(name => typeof productSyncService[name] === 'function'));
+        return;
+      }
+      
+      const result = await fixMethod.call(productSyncService);
+      console.log('✅ Image field migration result:', result);
+      
+      if (result && (result.success || result.updated !== undefined)) {
+        const updated = result.updated || result.updatedCount || result.modified || 0;
+        showNotification(`Successfully updated ${updated} products with proper image flags`, 'success');
+        
+        // Reload dashboard data to reflect changes
+        setTimeout(() => {
+          loadDashboardData();
+        }, 1000);
+      } else if (result && result.message) {
+        showNotification(`Migration completed: ${result.message}`, 'info');
+      } else {
+        showNotification('Migration completed but result format unknown', 'info');
       }
     } catch (error) {
       console.error('Error fixing product image fields:', error);
@@ -816,7 +850,15 @@ const ImageGenerationDashboard = () => {
         <div className="flex items-center gap-3">
           {/* Add navigation to Manual Upload component */}
           <button
-            onClick={() => window.location.href = '/manual-image-upload'}
+            onClick={() => {
+              // Use React Router navigation if available, or fallback to hash routing
+              if (window.history && window.history.pushState) {
+                window.history.pushState({}, '', '/manual-image-upload');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              } else {
+                window.location.hash = '#/manual-image-upload';
+              }
+            }}
             className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
           >
             <Upload className="w-4 h-4 mr-2" />
@@ -958,7 +1000,15 @@ const ImageGenerationDashboard = () => {
               
               <div className="flex space-x-3">
                 <button
-                  onClick={() => window.location.href = '/manual-image-upload'}
+                  onClick={() => {
+                    // Use React Router navigation if available, or fallback to hash routing
+                    if (window.history && window.history.pushState) {
+                      window.history.pushState({}, '', '/manual-image-upload');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    } else {
+                      window.location.hash = '#/manual-image-upload';
+                    }
+                  }}
                   className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                 >
                   Manual Upload
