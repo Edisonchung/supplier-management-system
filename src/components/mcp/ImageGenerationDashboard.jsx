@@ -374,7 +374,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FIXED: Updated regenerate function with correct server structure
+  // FALLBACK FIX: Use working /api/ai/generate-image endpoint for regeneration
   const regenerateImage = async (productId) => {
     const product = productsNeedingImages.find(p => p.id === productId) || 
                    recentGenerations.find(g => g.productId === productId);
@@ -388,36 +388,33 @@ const ImageGenerationDashboard = () => {
     showNotification(`Regenerating image for ${product.productName || product.name}...`, 'info');
 
     try {
-      // FIXED: Use correct server structure
-      const response = await fetch('/api/mcp/generate-product-images', {
+      // FIXED: Use working endpoint from server logs - /api/ai/generate-image
+      const response = await fetch('/api/ai/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          product: {
-            id: productId,
-            name: product.productName || product.name,
-            partNumber: product.partNumber || product.sku || product.code || productId,
-            category: product.category || 'industrial',
-            brand: product.brand || 'Professional Grade',
-            description: product.description || (product.productName || product.name)
-          },
-          imageTypes: ['primary'],
-          promptCategory: product.category || 'industrial',
-          provider: 'openai',
-          model: 'dall-e-3',
+          prompt: `Professional industrial ${product.category || 'component'} photography of ${product.productName || product.name}, high quality product shot, white background, commercial lighting`,
+          productId: productId,
+          productName: product.productName || product.name,
+          category: product.category || 'industrial',
+          saveToFirebase: true,
+          collectionName: 'products_public',
+          size: '1024x1024',
           quality: 'hd'
         })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('Regeneration API Error:', errorText);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('Regeneration API Response:', result);
       
       if (result.success) {
-        const imageUrl = result.images?.primary || result.imageUrl || result.image;
+        const imageUrl = result.imageUrl || result.image || result.url;
         
         showNotification(
           `Successfully regenerated image for ${product.productName || product.name}`, 
@@ -452,7 +449,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // CORRECTED: Enhanced image generation with server-matching request structure
+  // FALLBACK FIX: Use working /api/ai/generate-image endpoint from server logs
   const generateImagesForProducts = async (productIds) => {
     if (!productIds || productIds.length === 0) return;
 
@@ -468,30 +465,25 @@ const ImageGenerationDashboard = () => {
         if (!product) continue;
 
         try {
-          // FIXED: Match the server's expected request structure exactly
-          const response = await fetch('/api/mcp/generate-product-images', {
+          // FIXED: Use working endpoint from server logs - /api/ai/generate-image
+          const response = await fetch('/api/ai/generate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              // Server expects 'product' (singular) not 'products' (array)
-              product: {
-                id: productId,
-                name: product.name,
-                partNumber: product.partNumber || product.sku || product.code || productId,
-                category: product.category || 'industrial',
-                brand: product.brand || 'Professional Grade',
-                description: product.description || product.name
-              },
-              imageTypes: ['primary'], // Match server expectation
-              promptCategory: product.category || 'industrial',
-              provider: 'openai',
-              model: 'dall-e-3',
+              prompt: `Professional industrial ${product.category || 'component'} photography of ${product.name}, high quality product shot, white background, commercial lighting`,
+              productId: productId,
+              productName: product.name,
+              category: product.category || 'industrial',
+              saveToFirebase: true,
+              collectionName: 'products_public',
+              size: '1024x1024',
               quality: 'hd'
             })
           });
 
           if (!response.ok) {
             const errorText = await response.text();
+            console.error('API Error Response:', errorText);
             throw new Error(`HTTP ${response.status}: ${errorText}`);
           }
 
@@ -504,7 +496,7 @@ const ImageGenerationDashboard = () => {
             showNotification(`Generated image for ${product.name}`, 'success');
             
             // Update state immediately - handle different response formats
-            const imageUrl = result.images?.primary || result.imageUrl || result.image;
+            const imageUrl = result.imageUrl || result.image || result.url;
             
             setRecentGenerations(prev => [...prev, {
               id: Date.now() + Math.random(), // Ensure unique ID
@@ -528,7 +520,7 @@ const ImageGenerationDashboard = () => {
         }
         
         // Small delay between generations
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
 
       showNotification(
