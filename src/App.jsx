@@ -1,4 +1,4 @@
-// src/App.jsx - PHASE 2B ENHANCED VERSION - Real Data Integration + Business Registration + Image Generation Dashboard
+// src/App.jsx - PHASE 2B ENHANCED VERSION - Real Data Integration + Business Registration + Image Generation Dashboard + Manual Upload
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -54,9 +54,38 @@ const LazyDualSystemDashboard = lazy(() => import('./components/mcp/DualSystemDa
 const LazyPromptManagement = lazy(() => import('./components/mcp/PromptManagement'));
 const LazyCategoryManagementDashboard = lazy(() => import('./components/admin/CategoryManagementDashboard'));
 
-// Image Generation Dashboard - NEW COMPONENT
-//const LazyImageGenerationDashboard = lazy(() => import('./components/mcp/ImageGenerationDashboard'));
+// Image Generation Dashboard and Manual Upload - UPDATED IMPORTS
 import { LazyImageGenerationDashboard } from './components/LazyComponents';
+
+// NEW: Manual Image Upload Component
+const LazyManualImageUpload = lazy(() => 
+  import('./components/mcp/ManualImageUpload').catch((error) => {
+    console.warn('ManualImageUpload failed to load:', error);
+    return {
+      default: () => (
+        <div className="flex items-center justify-center h-64 bg-gradient-to-br from-green-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 rounded-lg shadow-md">
+          <div className="text-center p-8">
+            <div className="mx-auto h-16 w-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mb-4">
+              <Upload className="h-8 w-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Manual Image Upload
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Upload custom images for products manually
+            </p>
+            <div className="text-sm text-green-600 dark:text-green-400 font-medium">
+              Component will be available after installation
+            </div>
+            <div className="mt-4 text-xs text-gray-500 dark:text-gray-500">
+              Expected features: Drag & Drop Upload • Image Preview • Bulk Operations
+            </div>
+          </div>
+        </div>
+      )
+    };
+  })
+);
 
 // Phase 2A E-commerce Components - UPDATED WITH BUSINESS REGISTRATION
 const LazyPublicCatalog = lazy(() => import('./components/ecommerce/PublicCatalog'));
@@ -1107,6 +1136,44 @@ function AppContent() {
                   </ProtectedRoute>
                 } 
               />
+
+              {/* ========== MANUAL IMAGE UPLOAD ROUTES - NEW ========== */}
+              
+              {/* Manual Image Upload Route - PRIMARY ROUTE */}
+              <Route 
+                path="/admin/manual-image-upload" 
+                element={
+                  <ProtectedRoute permission="canManageUsers">
+                    <LazyWrapper componentName="Manual Image Upload">
+                      <LazyManualImageUpload realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+
+              {/* Alternative manual upload routes */}
+              <Route 
+                path="/manual-image-upload" 
+                element={
+                  <ProtectedRoute permission="canManageUsers">
+                    <LazyWrapper componentName="Manual Image Upload">
+                      <LazyManualImageUpload realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+
+              {/* MCP-specific manual upload route */}
+              <Route 
+                path="/mcp/manual-image-upload" 
+                element={
+                  <ProtectedRoute permission="canViewAI">
+                    <LazyWrapper componentName="Manual Image Upload">
+                      <LazyManualImageUpload realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
               
               {/* Other Admin Routes */}
               <Route 
@@ -1322,13 +1389,22 @@ function AppContent() {
                 Business Registration
               </button>
 
-              {/* NEW: Image Generation Dashboard Test Button */}
+              {/* Image Generation Dashboard Test Button */}
               <button
                 onClick={() => window.location.href = '/admin/image-generation'}
                 className="fixed bottom-16 left-4 bg-pink-600 text-white text-xs px-3 py-1 rounded-full hover:bg-pink-700 z-50 shadow-lg transition-colors"
                 title="Test Image Generation Dashboard"
               >
                 Image Generation
+              </button>
+
+              {/* NEW: Manual Image Upload Test Button */}
+              <button
+                onClick={() => window.location.href = '/admin/manual-image-upload'}
+                className="fixed bottom-16 left-32 bg-teal-600 text-white text-xs px-3 py-1 rounded-full hover:bg-teal-700 z-50 shadow-lg transition-colors"
+                title="Test Manual Image Upload"
+              >
+                Manual Upload
               </button>
             </>
           )}
