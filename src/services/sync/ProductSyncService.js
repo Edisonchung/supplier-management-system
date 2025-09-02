@@ -160,33 +160,33 @@ async saveImagesToFirebaseStorage(productId, openaiImages) {
    */
  async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
   try {
-    // 1. Download image from OpenAI with CORS handling
-    console.log(`⬇️ Downloading ${imageType} image from OpenAI...`);
+    console.log(`⬇️ Downloading ${imageType} image via proxy...`);
     
-    let response;
-    try {
-      response = await fetch(imageUrl, {
-        mode: 'cors',
-        credentials: 'omit'
-      });
-    } catch (corsError) {
-      // Handle CORS error specifically
-      throw new Error(`CORS error - cannot download directly from OpenAI: ${corsError.message}`);
+    // Use your server as a proxy to avoid CORS issues
+    const proxyResponse = await fetch(`${this.mcpApiBase}/api/proxy/download-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        imageUrl: imageUrl,
+        productId: productId,
+        imageType: imageType
+      })
+    });
+    
+    if (!proxyResponse.ok) {
+      throw new Error(`Proxy download failed: ${proxyResponse.status} ${proxyResponse.statusText}`);
     }
     
-    if (!response.ok) {
-      throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
-    }
+    const imageBlob = await proxyResponse.blob();
+    console.log(`📦 Downloaded ${imageType} image via proxy: ${imageBlob.size} bytes`);
     
-    const imageBlob = await response.blob();
-    console.log(`📦 Downloaded ${imageType} image: ${imageBlob.size} bytes`);
-    
-    // 2. Create Firebase Storage reference for AI-generated images
+    // Rest of your existing Firebase Storage upload code...
     const timestamp = Date.now();
     const fileName = `ai-generated/${productId}/${imageType}-${timestamp}.jpg`;
     const storageRef = ref(this.storage, fileName);
     
-    // 3. Upload to Firebase Storage
     console.log(`⬆️ Uploading ${imageType} to Firebase Storage: ${fileName}`);
     const uploadResult = await uploadBytes(storageRef, imageBlob, {
       contentType: imageBlob.type || 'image/jpeg',
@@ -200,15 +200,13 @@ async saveImagesToFirebaseStorage(productId, openaiImages) {
       }
     });
     
-    // 4. Get download URL
     const downloadURL = await getDownloadURL(uploadResult.ref);
     console.log(`🔗 Firebase Storage URL: ${downloadURL}`);
     return downloadURL;
     
   } catch (error) {
     console.error(`❌ Failed to upload ${imageType} image to Firebase:`, error);
-    
-    // Instead of throwing, return the original URL as fallback
+    // Return original URL as fallback instead of throwing
     console.log(`Using original OpenAI URL as fallback for ${imageType}`);
     return imageUrl;
   }
