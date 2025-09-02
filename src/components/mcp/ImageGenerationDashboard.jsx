@@ -374,7 +374,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FALLBACK FIX: Use working /api/ai/generate-image endpoint for regeneration
+  // WORKING FIX: Use /api/ai/generate-catalog-images for regeneration too
   const regenerateImage = async (productId) => {
     const product = productsNeedingImages.find(p => p.id === productId) || 
                    recentGenerations.find(g => g.productId === productId);
@@ -388,19 +388,17 @@ const ImageGenerationDashboard = () => {
     showNotification(`Regenerating image for ${product.productName || product.name}...`, 'info');
 
     try {
-      // FIXED: Use working endpoint from server logs - /api/ai/generate-image
-      const response = await fetch('/api/ai/generate-image', {
+      // WORKING: Use catalog endpoint for regeneration too
+      const response = await fetch('/api/ai/generate-catalog-images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `Professional industrial ${product.category || 'component'} photography of ${product.productName || product.name}, high quality product shot, white background, commercial lighting`,
           productId: productId,
           productName: product.productName || product.name,
+          productDescription: product.description || (product.productName || product.name),
           category: product.category || 'industrial',
           saveToFirebase: true,
-          collectionName: 'products_public',
-          size: '1024x1024',
-          quality: 'hd'
+          generateSecondary: false
         })
       });
 
@@ -414,7 +412,7 @@ const ImageGenerationDashboard = () => {
       console.log('Regeneration API Response:', result);
       
       if (result.success) {
-        const imageUrl = result.imageUrl || result.image || result.url;
+        const imageUrl = result.images?.primary || result.primaryImage?.url || result.imageUrl || result.image;
         
         showNotification(
           `Successfully regenerated image for ${product.productName || product.name}`, 
@@ -429,7 +427,7 @@ const ImageGenerationDashboard = () => {
                   ...gen, 
                   status: 'completed',
                   imageUrls: imageUrl ? [imageUrl] : [],
-                  firebaseStored: result.savedToFirebase || false,
+                  firebaseStored: result.images?.primary?.savedToFirebase || result.savedToFirebase || false,
                   timestamp: new Date()
                 }
               : gen
@@ -503,7 +501,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // FALLBACK FIX: Use working /api/ai/generate-image endpoint from server logs
+  // WORKING FIX: Use /api/ai/generate-catalog-images which definitely accepts POST
   const generateImagesForProducts = async (productIds) => {
     if (!productIds || productIds.length === 0) return;
 
@@ -519,19 +517,17 @@ const ImageGenerationDashboard = () => {
         if (!product) continue;
 
         try {
-          // FIXED: Use working endpoint from server logs - /api/ai/generate-image
-          const response = await fetch('/api/ai/generate-image', {
+          // WORKING: Use /api/ai/generate-catalog-images which accepts POST and handles Firebase Storage
+          const response = await fetch('/api/ai/generate-catalog-images', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              prompt: `Professional industrial ${product.category || 'component'} photography of ${product.name}, high quality product shot, white background, commercial lighting`,
               productId: productId,
               productName: product.name,
+              productDescription: product.description || product.name,
               category: product.category || 'industrial',
               saveToFirebase: true,
-              collectionName: 'products_public',
-              size: '1024x1024',
-              quality: 'hd'
+              generateSecondary: false
             })
           });
 
@@ -549,16 +545,16 @@ const ImageGenerationDashboard = () => {
             
             showNotification(`Generated image for ${product.name}`, 'success');
             
-            // Update state immediately - handle different response formats
-            const imageUrl = result.imageUrl || result.image || result.url;
+            // Handle the response format from catalog images endpoint
+            const imageUrl = result.images?.primary || result.primaryImage?.url || result.imageUrl || result.image;
             
             setRecentGenerations(prev => [...prev, {
-              id: Date.now() + Math.random(), // Ensure unique ID
+              id: Date.now() + Math.random(),
               productId: productId,
               productName: product.name,
               status: 'completed',
               imageUrls: imageUrl ? [imageUrl] : [],
-              firebaseStored: result.savedToFirebase || false,
+              firebaseStored: result.images?.primary?.savedToFirebase || result.savedToFirebase || false,
               timestamp: new Date(),
               category: product.category || 'industrial'
             }]);
@@ -573,8 +569,8 @@ const ImageGenerationDashboard = () => {
           showNotification(`Failed to generate image for ${product.name}: ${productError.message}`, 'error');
         }
         
-        // Small delay between generations
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Longer delay for catalog endpoint
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       showNotification(
@@ -588,7 +584,7 @@ const ImageGenerationDashboard = () => {
     } finally {
       setIsGenerating(false);
       setSelectedProducts([]);
-      await loadDashboardData(); // Refresh the dashboard
+      await loadDashboardData();
     }
   };
 
