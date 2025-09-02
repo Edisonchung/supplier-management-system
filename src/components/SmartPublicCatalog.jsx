@@ -695,10 +695,10 @@ const OptimizedProductCard = ({
     };
   }, [product]);
 
-  // CRITICAL FIX: Smart image URL resolution with maximum 2 attempts
+  // CRITICAL FIX: Smart image URL resolution - completely avoid problematic URLs
   const getImageUrl = useCallback(() => {
-    // Never attempt external placeholder URLs that cause 404s
-    if (imageState.error || imageState.attempts > 2) {
+    // Never attempt images that have failed or exceeded attempts
+    if (imageState.error || imageState.attempts > 1) {
       return null; // Return null to use fallback div
     }
     
@@ -715,32 +715,38 @@ const OptimizedProductCard = ({
             typeof img === 'string' && 
             img.trim() !== '' && 
             !img.includes('placeholder-product.jpg') &&
-            !img.includes('supplier-mcp-server') && // Avoid known failing URLs
-            img.startsWith('http')
+            !img.includes('supplier-mcp-server') &&
+            !img.includes('img-') && // Avoid AI-generated images with auth issues
+            img.startsWith('http') &&
+            !img.includes('oaidalleapiprodscus.blob.core.windows.net') // Avoid OpenAI DALL-E URLs that might have auth issues
           );
           if (validImage) return validImage;
         } 
-        // Handle string URLs - but avoid known failing placeholder URLs
+        // Handle string URLs - be very strict about what we allow
         else if (typeof imageValue === 'string' && 
                  imageValue.trim() !== '' && 
                  !imageValue.includes('placeholder-product.jpg') &&
                  !imageValue.includes('supplier-mcp-server') &&
+                 !imageValue.includes('img-') && // Avoid problematic AI-generated image URLs
+                 !imageValue.includes('oaidalleapiprodscus.blob.core.windows.net') &&
                  imageValue.startsWith('http')) {
           return imageValue;
         }
-        // Handle image objects from AI generation
+        // Handle image objects from AI generation - be cautious
         else if (typeof imageValue === 'object' && imageValue?.primary) {
           const primaryUrl = imageValue.primary.url || imageValue.primary;
           if (typeof primaryUrl === 'string' && 
               primaryUrl.startsWith('http') &&
-              !primaryUrl.includes('supplier-mcp-server')) {
+              !primaryUrl.includes('supplier-mcp-server') &&
+              !primaryUrl.includes('img-') &&
+              !primaryUrl.includes('oaidalleapiprodscus.blob.core.windows.net')) {
             return primaryUrl;
           }
         }
       }
     }
     
-    // Return null to use fallback div instead of external placeholder
+    // Return null to use fallback div instead of any external image
     return null;
   }, [product, imageState.error, imageState.attempts]);
 
