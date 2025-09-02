@@ -1,5 +1,5 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// FIXED: Removed require() and implemented proper ES6 imports for browser compatibility
+// UPDATED: Integrated fixes from ProductSyncService Image Loading Fix conversation
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -25,20 +25,24 @@ import {
   Search
 } from 'lucide-react';
 
-// FIXED: Import ProductSyncService properly for browser environment with better detection
+// UPDATED: Better service initialization with fallback detection
 let productSyncService = null;
 
-// FIXED: Better service initialization with multiple fallback methods
 const initializeProductSyncService = async () => {
   try {
     console.log('🔄 Initializing ProductSyncService...');
     
-    // Check if we're in browser environment
     if (typeof window !== 'undefined') {
-      // Try to get existing service from window (already initialized)
+      // Check if service is already available globally
       if (window.ProductSyncService) {
         productSyncService = window.ProductSyncService;
         console.log('✅ Using existing ProductSyncService from window');
+        return true;
+      }
+      
+      if (window.productSyncService) {
+        productSyncService = window.productSyncService;
+        console.log('✅ Using ProductSyncService from window.productSyncService');
         return true;
       }
       
@@ -46,7 +50,6 @@ const initializeProductSyncService = async () => {
       try {
         const syncModule = await import('../../services/sync/ProductSyncService.js');
         
-        // Handle different export patterns
         if (syncModule.ProductSyncService) {
           productSyncService = new syncModule.ProductSyncService();
         } else if (syncModule.default) {
@@ -65,27 +68,6 @@ const initializeProductSyncService = async () => {
         
       } catch (importError) {
         console.warn('Dynamic import failed:', importError.message);
-        
-        // FIXED: Try alternative access methods
-        try {
-          // Check if service is available globally
-          if (typeof window !== 'undefined' && window.firebase && window.firebase.ProductSyncService) {
-            productSyncService = window.firebase.ProductSyncService;
-            console.log('✅ Using ProductSyncService from window.firebase');
-            return true;
-          }
-          
-          // Check for service in development tools
-          if (import.meta.env.DEV && window.productSyncService) {
-            productSyncService = window.productSyncService;
-            console.log('✅ Using ProductSyncService from dev environment');
-            return true;
-          }
-          
-        } catch (fallbackError) {
-          console.warn('Fallback access failed:', fallbackError.message);
-        }
-        
         throw importError;
       }
     }
@@ -130,12 +112,11 @@ const ImageGenerationDashboard = () => {
 
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
-  // Initialize service on component mount with better error handling
+  // Initialize service on component mount
   useEffect(() => {
     const initialize = async () => {
       console.log('🔄 Starting ProductSyncService initialization...');
       
-      // Wait a bit for other services to initialize
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       const initialized = await initializeProductSyncService();
@@ -143,17 +124,17 @@ const ImageGenerationDashboard = () => {
       
       if (initialized && isProductSyncServiceAvailable()) {
         console.log('✅ ProductSyncService is fully available');
+        // UPDATED: Run the image field migration fix on initialization
+        await fixProductImageFields();
       } else {
         console.warn('⚠️ ProductSyncService not available, using demo mode');
       }
       
-      // Load data regardless of service availability
       await loadDashboardData();
     };
     
     initialize();
     
-    // Set up periodic refresh
     const interval = setInterval(loadDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -163,18 +144,52 @@ const ImageGenerationDashboard = () => {
     setTimeout(() => setNotification(null), duration);
   };
 
+  // UPDATED: Fix product image fields - enhanced error handling
+  const fixProductImageFields = async () => {
+    try {
+      if (!isProductSyncServiceAvailable()) {
+        showNotification('ProductSyncService not available for fixing image fields', 'error');
+        return;
+      }
+
+      console.log('🔧 Running image field migration fix...');
+      showNotification('Starting image field migration...', 'info');
+      
+      // Check if the method exists
+      if (typeof productSyncService.fixProductImageFields === 'function') {
+        const result = await productSyncService.fixProductImageFields();
+        console.log('✅ Image field migration result:', result);
+        
+        if (result && result.success) {
+          const updated = result.updated || result.updatedCount || 0;
+          showNotification(`Successfully updated ${updated} products with proper image flags`, 'success');
+          
+          // Reload dashboard data to reflect changes
+          setTimeout(() => {
+            loadDashboardData();
+          }, 1000);
+        } else {
+          throw new Error(result?.message || 'Migration completed but with warnings');
+        }
+      } else {
+        showNotification('Image field migration not available in current ProductSyncService version', 'error');
+      }
+    } catch (error) {
+      console.error('Error fixing product image fields:', error);
+      showNotification(`Failed to update product image fields: ${error.message}`, 'error');
+    }
+  };
+
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
       
-      // Load data with proper error handling
       const [healthData, productsData, syncStats] = await Promise.allSettled([
         fetchSystemHealth(),
         loadProductsNeedingImages(),
         loadSyncStatistics()
       ]);
       
-      // Handle health data
       if (healthData.status === 'fulfilled') {
         setSystemHealth(healthData.value);
       } else {
@@ -187,23 +202,21 @@ const ImageGenerationDashboard = () => {
         }));
       }
       
-      // Handle products data with proper error checking
       if (productsData.status === 'fulfilled' && Array.isArray(productsData.value)) {
         setProductsNeedingImages(productsData.value);
         
-        // Convert to generation history format
         const generationHistory = productsData.value.map(product => ({
           id: product.id,
           productId: product.id,
           productName: product.name || 'Unknown Product',
           category: product.category || 'general',
           imagesGenerated: product.hasRealImage ? ['primary'] : [],
-          status: product.imageGenerationStatus || 'needed',
+          status: getProductImageStatus(product), // UPDATED: Use improved status detection
           provider: 'openai',
           processingTime: '15.2s',
           timestamp: product.lastImageError || new Date(),
-          prompt: `Professional industrial ${product.category || 'component'} photography of ${product.name || 'product'}`,
-          imageUrls: product.imageUrl ? [product.imageUrl] : [],
+          prompt: generateImagePrompt(product), // UPDATED: Use proper prompt generation
+          imageUrls: getProductImageUrls(product), // UPDATED: Use improved URL detection
           error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null
         }));
         
@@ -214,7 +227,6 @@ const ImageGenerationDashboard = () => {
         setRecentGenerations([]);
       }
       
-      // Handle sync stats with proper error checking
       if (syncStats.status === 'fulfilled' && syncStats.value && typeof syncStats.value === 'object') {
         const statsData = calculateRealStats(syncStats.value, productsData.value || []);
         setStats(statsData);
@@ -239,28 +251,122 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-// FIXED: Better service availability checking
-const isProductSyncServiceAvailable = () => {
-  if (!productSyncService) return false;
-  
-  // Check if service has required methods
-  const requiredMethods = [
-    'getProductsNeedingImages',
-    'getSyncStatistics',
-    'manualImageGeneration'
-  ];
-  
-  for (const method of requiredMethods) {
-    if (typeof productSyncService[method] !== 'function') {
-      console.warn(`ProductSyncService missing method: ${method}`);
-      return false;
+  // UPDATED: Improved product image status detection
+  const getProductImageStatus = (product) => {
+    if (!product) return 'needed';
+    
+    // Check if has real image
+    if (hasRealImage(product)) {
+      return 'completed';
     }
-  }
-  
-  return true;
-};
+    
+    // Check if generation is in progress
+    if (product.imageGenerationStatus === 'processing') {
+      return 'processing';
+    }
+    
+    // Check if generation failed
+    if (product.imageGenerationStatus === 'error' || product.lastImageError) {
+      return 'failed';
+    }
+    
+    // Default to needs generation
+    return 'needed';
+  };
 
-  // FIXED: Safe method to load products needing images with better error handling
+  // UPDATED: Improved real image detection from fix conversation
+  const hasRealImage = (product) => {
+    const imageUrl = product.imageUrl || product.image_url || product.photo || '';
+    
+    if (!imageUrl) return false;
+    
+    // Real images are from generation services or uploaded files
+    return imageUrl.includes('oaidalleapi') || 
+           imageUrl.includes('blob.core.windows.net') ||
+           imageUrl.includes('generated') ||
+           imageUrl.includes('ai-image') ||
+           imageUrl.includes('firebasestorage') ||
+           (imageUrl.startsWith('https://') && !isPlaceholderImage(imageUrl));
+  };
+
+  // UPDATED: Helper to identify placeholder images
+  const isPlaceholderImage = (imageUrl) => {
+    if (!imageUrl) return true;
+    
+    const placeholderPatterns = [
+      'placeholder',
+      'via.placeholder',
+      'default-image',
+      'no-image',
+      'temp-image'
+    ];
+    
+    return placeholderPatterns.some(pattern => 
+      imageUrl.toLowerCase().includes(pattern.toLowerCase())
+    );
+  };
+
+  // UPDATED: Get product image URLs with priority order
+  const getProductImageUrls = (product) => {
+    const urls = [];
+    
+    // Priority order for image URL fields
+    const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail'];
+    
+    for (const field of imageFields) {
+      const value = product[field];
+      if (value) {
+        if (Array.isArray(value)) {
+          urls.push(...value.filter(url => url && !isPlaceholderImage(url)));
+        } else if (typeof value === 'string' && !isPlaceholderImage(value)) {
+          urls.push(value);
+        }
+      }
+    }
+    
+    // Check for images object structure
+    if (product.images && typeof product.images === 'object') {
+      Object.values(product.images).forEach(img => {
+        if (typeof img === 'string' && !isPlaceholderImage(img)) {
+          urls.push(img);
+        } else if (img && img.url && !isPlaceholderImage(img.url)) {
+          urls.push(img.url);
+        }
+      });
+    }
+    
+    return [...new Set(urls)]; // Remove duplicates
+  };
+
+  // UPDATED: Generate proper image prompts
+  const generateImagePrompt = (product) => {
+    const category = product.category || 'component';
+    const name = product.name || 'product';
+    const brand = product.brand || '';
+    
+    return `Professional industrial ${category} photography of ${name}${brand ? ` by ${brand}` : ''}, high quality product shot, white background, commercial lighting`;
+  };
+
+  const isProductSyncServiceAvailable = () => {
+    if (!productSyncService) return false;
+    
+    const requiredMethods = [
+      'getProductsNeedingImages',
+      'getSyncStatistics',
+      'manualImageGeneration'
+    ];
+    
+    for (const method of requiredMethods) {
+      if (typeof productSyncService[method] !== 'function') {
+        console.warn(`ProductSyncService missing method: ${method}`);
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  // UPDATED: Load products with better filtering for those actually needing images
   const loadProductsNeedingImages = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
@@ -270,17 +376,25 @@ const isProductSyncServiceAvailable = () => {
       
       const products = await productSyncService.getProductsNeedingImages(50);
       
-      // Ensure we return an array and handle different response formats
+      let productList = [];
       if (Array.isArray(products)) {
-        return products;
+        productList = products;
       } else if (products && products.data && Array.isArray(products.data)) {
-        return products.data;
+        productList = products.data;
       } else if (products && products.success && Array.isArray(products.results)) {
-        return products.results;
+        productList = products.results;
       } else {
         console.warn('Invalid products format returned:', typeof products);
         return getDemoProducts();
       }
+      
+      // UPDATED: Filter to only show products that actually need images
+      const filteredProducts = productList.filter(product => {
+        return !hasRealImage(product);
+      });
+      
+      console.log(`Found ${productList.length} total products, ${filteredProducts.length} need images`);
+      return filteredProducts;
       
     } catch (error) {
       console.error('Error loading products needing images:', error);
@@ -288,7 +402,6 @@ const isProductSyncServiceAvailable = () => {
     }
   };
 
-  // FIXED: Safe method to load sync statistics with better error handling  
   const loadSyncStatistics = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
@@ -298,7 +411,6 @@ const isProductSyncServiceAvailable = () => {
       
       const result = await productSyncService.getSyncStatistics();
       
-      // Handle different response formats
       if (result && typeof result === 'object') {
         if (result.data) {
           return result.data;
@@ -319,7 +431,6 @@ const isProductSyncServiceAvailable = () => {
     }
   };
 
-  // Demo data fallbacks
   const getDemoProducts = () => [
     {
       id: 'demo-1',
@@ -369,7 +480,6 @@ const isProductSyncServiceAvailable = () => {
 
   const fetchSystemHealth = async () => {
     try {
-      // Add timeout to prevent hanging
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
@@ -412,7 +522,6 @@ const isProductSyncServiceAvailable = () => {
     }
   };
 
-  // FIXED: Safe calculation of stats with proper error handling
   const calculateRealStats = (syncData, productsArray = []) => {
     try {
       const totalProducts = syncData.totalPublic || 0;
@@ -420,7 +529,6 @@ const isProductSyncServiceAvailable = () => {
       const productsNeedingImagesCount = syncData.productsNeedingImages || 0;
       const totalGenerated = syncData.totalImagesGenerated || 0;
       
-      // Safe category calculation
       const categoryCount = {};
       if (Array.isArray(productsArray)) {
         productsArray.forEach(p => {
@@ -471,6 +579,7 @@ const isProductSyncServiceAvailable = () => {
     }
   };
 
+  // UPDATED: Enhanced image generation with better error handling
   const handleStartImageGeneration = async () => {
     if (selectedProducts.length === 0) {
       showNotification('Please select products to generate images for', 'error');
@@ -487,7 +596,6 @@ const isProductSyncServiceAvailable = () => {
       console.log(`Starting image generation for ${selectedProducts.length} products...`);
       showNotification(`Starting image generation for ${selectedProducts.length} products...`, 'info');
       
-      // Check if method exists
       if (typeof productSyncService.manualImageGeneration !== 'function') {
         throw new Error('Manual image generation not available');
       }
@@ -507,7 +615,11 @@ const isProductSyncServiceAvailable = () => {
         }
         
         setSelectedProducts([]);
-        setTimeout(() => loadDashboardData(), 2000);
+        
+        // Reload data after generation
+        setTimeout(async () => {
+          await loadDashboardData();
+        }, 2000);
         
       } else {
         throw new Error(result?.message || 'Manual image generation failed');
@@ -525,7 +637,6 @@ const isProductSyncServiceAvailable = () => {
     try {
       showNotification(`Retrying image generation for product ${productId}`, 'info');
       
-      // Update UI immediately
       setRecentGenerations(prev => prev.map(gen => 
         gen.productId === productId ? { 
           ...gen, 
@@ -556,6 +667,9 @@ const isProductSyncServiceAvailable = () => {
             } : gen
           ));
           showNotification('Retry successful!', 'success');
+          
+          // Reload dashboard data to refresh everything
+          setTimeout(() => loadDashboardData(), 1000);
         } else {
           throw new Error('Retry generation failed');
         }
@@ -636,7 +750,6 @@ const isProductSyncServiceAvailable = () => {
     }
   };
 
-  // Safe filtering with proper error handling
   const filteredGenerations = React.useMemo(() => {
     try {
       if (!Array.isArray(recentGenerations)) return [];
@@ -700,6 +813,28 @@ const isProductSyncServiceAvailable = () => {
         </div>
         
         <div className="flex items-center gap-3">
+          {/* Add navigation to Manual Upload component */}
+          <button
+            onClick={() => window.location.href = '/manual-image-upload'}
+            className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Manual Upload
+          </button>
+
+          {/* Image field fix button for advanced users */}
+          {serviceInitialized && isProductSyncServiceAvailable() && (
+            <button
+              onClick={fixProductImageFields}
+              disabled={isLoading}
+              className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              title="Fix database image field structure"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Fix Fields
+            </button>
+          )}
+          
           <button
             onClick={loadDashboardData}
             disabled={isLoading}
@@ -810,7 +945,7 @@ const isProductSyncServiceAvailable = () => {
         </div>
       </div>
 
-      {/* Products Needing Images */}
+      {/* Enhanced Products Needing Images Section */}
       {productsNeedingImages.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-6 border-b">
@@ -821,6 +956,13 @@ const isProductSyncServiceAvailable = () => {
               </h3>
               
               <div className="flex space-x-3">
+                <button
+                  onClick={() => window.location.href = '/manual-image-upload'}
+                  className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  Manual Upload
+                </button>
+                
                 <button
                   onClick={() => setSelectedProducts(productsNeedingImages.map(p => p.id))}
                   className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -857,8 +999,8 @@ const isProductSyncServiceAvailable = () => {
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
                       <span>Category: {product.category}</span>
                       {product.sku && <span>SKU: {product.sku}</span>}
-                      <span className={`px-2 py-1 rounded text-xs ${getStatusColor(product.imageGenerationStatus)}`}>
-                        {product.imageGenerationStatus || 'needed'}
+                      <span className={`px-2 py-1 rounded text-xs ${getStatusColor(getProductImageStatus(product))}`}>
+                        {getProductImageStatus(product)}
                       </span>
                     </div>
                     {product.description && (
@@ -867,9 +1009,9 @@ const isProductSyncServiceAvailable = () => {
                   </div>
                   
                   <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
-                    {product.imageUrl ? (
+                    {hasRealImage(product) && getProductImageUrls(product).length > 0 ? (
                       <img 
-                        src={product.imageUrl} 
+                        src={getProductImageUrls(product)[0]} 
                         alt={product.name}
                         className="w-16 h-16 object-cover rounded-lg"
                         onError={(e) => {
@@ -1030,106 +1172,12 @@ const isProductSyncServiceAvailable = () => {
         )}
       </div>
 
-      {/* Product Detail Modal */}
+      {/* Product Detail Modal - Using shared ImagePreview component */}
       {selectedProduct && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold flex items-center gap-2">
-                <FileImage className="w-6 h-6 text-blue-600" />
-                Product Image Details
-              </h3>
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium text-gray-900">{selectedProduct.productName}</h4>
-                <p className="text-sm text-gray-600">Product ID: {selectedProduct.productId}</p>
-                <p className="text-sm text-gray-600 capitalize">Category: {(selectedProduct.category || 'general').replace('_', ' ')}</p>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-sm text-gray-600">Status:</span>
-                  <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ml-2 ${getStatusColor(selectedProduct.status)}`}>
-                    {getStatusIcon(selectedProduct.status)}
-                    {selectedProduct.status}
-                  </div>
-                </div>
-                
-                <div>
-                  <span className="text-sm text-gray-600">Provider:</span>
-                  <span className="ml-2 text-sm text-gray-900">OpenAI DALL-E 3</span>
-                </div>
-              </div>
-              
-              <div>
-                <span className="text-sm text-gray-600">Prompt Used:</span>
-                <p className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
-                  {selectedProduct.prompt}
-                </p>
-              </div>
-              
-              {/* Show actual generated images if available */}
-              {selectedProduct.imageUrls && selectedProduct.imageUrls.length > 0 && (
-                <div>
-                  <span className="text-sm text-gray-600">Generated Images:</span>
-                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {selectedProduct.imageUrls.map((url, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={url}
-                          alt={`Generated image ${index + 1}`}
-                          className="w-full h-32 object-cover rounded-lg border cursor-pointer hover:opacity-80"
-                          onClick={() => window.open(url, '_blank')}
-                          onError={(e) => {
-                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNmM2Y0ZjYiLz4KPHR4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjOWNhM2FmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+R2VuZXJhdGVkIEltYWdlPC90ZXQ+Cjwvc3ZnPg==';
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {selectedProduct.error && (
-                <div>
-                  <span className="text-sm text-gray-600">Error Details:</span>
-                  <p className="mt-1 text-sm text-red-700 bg-red-50 p-3 rounded-lg">
-                    {selectedProduct.error}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Close
-              </button>
-              {(selectedProduct.status === 'failed' || selectedProduct.status === 'error' || selectedProduct.status === 'needed') && serviceInitialized && (
-                <button 
-                  onClick={() => {
-                    handleRetryGeneration(selectedProduct.productId);
-                    setSelectedProduct(null);
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  disabled={isGenerating}
-                >
-                  Generate Image
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <ImagePreview
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+        />
       )}
     </div>
   );
