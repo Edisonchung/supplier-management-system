@@ -636,12 +636,13 @@ const OptimizedProductCard = ({
     setImageLoading(false);
     
     // Set fallback image immediately to prevent broken image icons
-    e.target.src = `/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
+    e.target.src = `${API_SERVER_URL}/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
   }, [safeProduct.name]);
+
 
   // Enhanced image URL resolution - prioritizes OpenAI-generated images
   const getImageUrl = useCallback(() => {
-    if (imageError) return `/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
+if (imageError) return `https://supplier-mcp-server-production.up.railway.app/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
     
     // Priority order: imageUrl, image_url, image, photo, pictures, thumbnail
     const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail'];
@@ -673,7 +674,7 @@ const OptimizedProductCard = ({
     }
     
     // Fallback to proper API placeholder with product name
-    return `/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
+return `https://supplier-mcp-server-production.up.railway.app/api/placeholder/400x300?text=${encodeURIComponent(safeProduct.name)}`;
   }, [imageError, safeProduct.name, product]);
 
   const handleClick = useCallback(() => {
