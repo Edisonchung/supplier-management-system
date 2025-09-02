@@ -25,6 +25,11 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
+// API Server Configuration
+const API_SERVER_URL = process.env.REACT_APP_API_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
+
+
+
 // Fixed: Using inline image component instead of external service
 
 // Conditional imports to avoid build errors
