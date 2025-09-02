@@ -426,95 +426,112 @@ async saveImagesToFirebaseStorage(productId, openaiImages) {
    * ENHANCED: Manual image generation with Firebase Storage
    */
   async manualImageGeneration(productIds) {
-    console.log(`Manual image generation with Firebase Storage triggered for ${productIds.length} products`);
+  console.log(`Manual image generation with Firebase Storage triggered for product(s): ${productIds}`);
+  
+  try {
+    const results = [];
+    const errors = [];
     
-    try {
-      const results = [];
-      const errors = [];
-      
-      for (const productId of productIds) {
-        try {
-          // Check if it's a public product ID or internal product ID
-          let internalProduct;
-          let publicProductId;
-          
-          // First try as internal product ID
-          internalProduct = await this.getProductById(productId);
-          if (internalProduct) {
-            publicProductId = await this.findPublicProductId(productId);
-          } else {
-            // Try as public product ID
-            const publicDoc = await getDoc(doc(this.db, 'products_public', productId));
-            if (publicDoc.exists()) {
-              publicProductId = productId;
-              const publicData = publicDoc.data();
-              if (publicData.internalProductId) {
-                internalProduct = await this.getProductById(publicData.internalProductId);
-              }
+    // FIX #1: Handle both single productId string and array of productIds
+    let productIdArray;
+    if (typeof productIds === 'string') {
+      // Single product ID passed as string
+      productIdArray = [productIds];
+      console.log(`Processing single product: ${productIds}`);
+    } else if (Array.isArray(productIds)) {
+      // Array of product IDs
+      productIdArray = productIds;
+      console.log(`Processing ${productIds.length} products`);
+    } else {
+      throw new Error('Invalid productIds parameter - must be string or array');
+    }
+    
+    // FIX #2: Now iterate over the actual product IDs, not characters
+    for (const productId of productIdArray) {
+      try {
+        console.log(`Processing product ID: "${productId}" (type: ${typeof productId})`);
+        
+        // Check if it's a public product ID or internal product ID
+        let internalProduct;
+        let publicProductId;
+        
+        // First try as internal product ID
+        internalProduct = await this.getProductById(productId);
+        if (internalProduct) {
+          publicProductId = await this.findPublicProductId(productId);
+        } else {
+          // Try as public product ID
+          const publicDoc = await getDoc(doc(this.db, 'products_public', productId));
+          if (publicDoc.exists()) {
+            publicProductId = productId;
+            const publicData = publicDoc.data();
+            if (publicData.internalProductId) {
+              internalProduct = await this.getProductById(publicData.internalProductId);
             }
           }
-          
-          if (!internalProduct) {
-            throw new Error(`Product not found: ${productId}`);
-          }
-          
-          if (!publicProductId) {
-            throw new Error(`Public product not found for: ${productId}`);
-          }
-          
-          console.log(`Generating image with Firebase Storage for: ${internalProduct.name}`);
-          
-          // Update status to processing
-          await updateDoc(doc(this.db, 'products_public', publicProductId), {
-            imageGenerationStatus: 'processing',
-            lastImageUpdate: serverTimestamp()
-          });
-          
-          // Generate image directly
-          const generatedImages = await this.generateProductImagesWithMCP(internalProduct);
-          
-          // Update with generated image using Firebase Storage integration
-          const processingTime = Date.now();
-          await this.updateProductImagesWithFirebaseStorage(publicProductId, generatedImages, processingTime);
-          
-          results.push({
-            productId,
-            productName: internalProduct.name,
-            success: true,
-            imageUrl: generatedImages.imageUrls?.[0] || generatedImages.primary?.url,
-            firebaseStored: true
-          });
-          
-          console.log(`✅ Successfully generated image with Firebase Storage for ${internalProduct.name}`);
-          
-          // Wait between requests to respect rate limits
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-        } catch (error) {
-          console.error(`❌ Failed to generate image for ${productId}:`, error);
-          errors.push({
-            productId,
-            error: error.message
-          });
         }
+        
+        if (!internalProduct) {
+          throw new Error(`Product not found: ${productId}`);
+        }
+        
+        if (!publicProductId) {
+          throw new Error(`Public product not found for: ${productId}`);
+        }
+        
+        console.log(`Generating image with Firebase Storage for: ${internalProduct.name}`);
+        
+        // Update status to processing
+        await updateDoc(doc(this.db, 'products_public', publicProductId), {
+          imageGenerationStatus: 'processing',
+          lastImageUpdate: serverTimestamp()
+        });
+        
+        // Generate image directly
+        const generatedImages = await this.generateProductImagesWithMCP(internalProduct);
+        
+        // Update with generated image using Firebase Storage integration
+        const processingTime = Date.now();
+        await this.updateProductImagesWithFirebaseStorage(publicProductId, generatedImages, processingTime);
+        
+        results.push({
+          productId,
+          productName: internalProduct.name,
+          success: true,
+          imageUrl: generatedImages.imageUrls?.[0] || generatedImages.primary,
+          firebaseStored: true
+        });
+        
+        console.log(`✅ Successfully generated image with Firebase Storage for ${internalProduct.name}`);
+        
+        // Wait between requests to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+      } catch (error) {
+        console.error(`❌ Failed to generate image for ${productId}:`, error);
+        errors.push({
+          productId,
+          error: error.message
+        });
       }
-      
-      return {
-        success: true,
-        results,
-        errors,
-        summary: {
-          total: productIds.length,
-          successful: results.length,
-          failed: errors.length
-        }
-      };
-      
-    } catch (error) {
-      console.error('Manual image generation with Firebase Storage failed:', error);
-      throw error;
     }
+    
+    return {
+      success: true,
+      results,
+      errors,
+      summary: {
+        total: productIdArray.length,
+        successful: results.length,
+        failed: errors.length
+      }
+    };
+    
+  } catch (error) {
+    console.error('Manual image generation with Firebase Storage failed:', error);
+    throw error;
   }
+}
 
   // ====================================================================
   // EXISTING MANUAL IMAGE UPLOAD FUNCTIONALITY (PRESERVED)
