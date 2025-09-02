@@ -212,12 +212,21 @@ const ImageGenerationDashboard = () => {
       let fixMethod = null;
       let methodName = '';
       
-      for (const name of possibleMethods) {
-        if (allMethods.includes(name) && typeof productSyncService[name] === 'function') {
-          fixMethod = productSyncService[name];
-          methodName = name;
-          console.log(`✅ Found fix method: ${methodName}`);
-          break;
+      // Direct check for the exact method we can see in the logs
+      if (allMethods.includes('updateProductsWithImageFields') && 
+          typeof productSyncService['updateProductsWithImageFields'] === 'function') {
+        fixMethod = productSyncService['updateProductsWithImageFields'];
+        methodName = 'updateProductsWithImageFields';
+        console.log(`✅ Found fix method: ${methodName}`);
+      } else {
+        // Fallback to other methods
+        for (const name of possibleMethods) {
+          if (allMethods.includes(name) && typeof productSyncService[name] === 'function') {
+            fixMethod = productSyncService[name];
+            methodName = name;
+            console.log(`✅ Found fix method: ${methodName}`);
+            break;
+          }
         }
       }
       
