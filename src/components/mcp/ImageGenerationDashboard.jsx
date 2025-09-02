@@ -1,5 +1,5 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// IMPROVED: Cleaned up and simplified version with better error handling
+// ENHANCED: Added Firebase Storage integration and improved monitoring
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -20,7 +20,10 @@ import {
   X,
   Filter,
   Search,
-  Upload
+  Upload,
+  Database,
+  Cloud,
+  ShieldCheck
 } from 'lucide-react';
 
 // Import shared ImagePreview component
@@ -66,7 +69,12 @@ const ImageGenerationDashboard = () => {
     successRate: 0,
     averageTime: 15.8,
     topCategories: [],
-    providerStats: {}
+    providerStats: {},
+    // Enhanced Firebase Storage stats
+    firebaseStorageRate: 0,
+    firebaseStorageEnabled: 0,
+    manualUploads: 0,
+    uploadErrors: 0
   });
   const [productsNeedingImages, setProductsNeedingImages] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -81,7 +89,10 @@ const ImageGenerationDashboard = () => {
     queueProcessing: false,
     lastCheck: new Date(),
     queueLength: 0,
-    processingRate: 0
+    processingRate: 0,
+    // Enhanced Firebase Storage health
+    firebaseStorageHealthy: false,
+    firebaseStorageEnabled: false
   });
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -120,7 +131,7 @@ const ImageGenerationDashboard = () => {
     setTimeout(() => setNotification(null), duration);
   };
 
-  // Simplified image field migration
+  // Enhanced image field migration with Firebase Storage support
   const fixProductImageFields = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
@@ -128,17 +139,17 @@ const ImageGenerationDashboard = () => {
         return;
       }
 
-      console.log('🔧 Running image field migration fix...');
-      showNotification('Starting image field migration...', 'info');
+      console.log('🔧 Running enhanced image field migration with Firebase Storage support...');
+      showNotification('Starting enhanced image field migration...', 'info');
 
       // Direct method call - the logs show this method exists
       if (typeof productSyncService.updateProductsWithImageFields === 'function') {
         const result = await productSyncService.updateProductsWithImageFields();
-        console.log('✅ Image field migration result:', result);
+        console.log('✅ Enhanced image field migration result:', result);
         
         if (result?.success || result?.updatedCount !== undefined) {
           const updated = result.updated || result.updatedCount || result.modified || 0;
-          showNotification(`Successfully updated ${updated} products with proper image flags`, 'success');
+          showNotification(`Successfully updated ${updated} products with Firebase Storage fields`, 'success');
           setTimeout(() => loadDashboardData(), 1000);
         } else if (result?.message) {
           showNotification(`Migration completed: ${result.message}`, 'info');
@@ -159,10 +170,11 @@ const ImageGenerationDashboard = () => {
     try {
       setIsLoading(true);
       
-      const [healthData, productsData, syncStats] = await Promise.allSettled([
+      const [healthData, productsData, syncStats, storageStats] = await Promise.allSettled([
         fetchSystemHealth(),
         loadProductsNeedingImages(),
-        loadSyncStatistics()
+        loadSyncStatistics(),
+        loadStorageStatistics()
       ]);
       
       if (healthData.status === 'fulfilled') {
@@ -173,6 +185,7 @@ const ImageGenerationDashboard = () => {
           ...prev, 
           mcpApiHealthy: false, 
           openaiAvailable: false,
+          firebaseStorageHealthy: false,
           lastCheck: new Date()
         }));
       }
@@ -192,7 +205,10 @@ const ImageGenerationDashboard = () => {
           timestamp: product.lastImageError || new Date(),
           prompt: generateImagePrompt(product),
           imageUrls: getProductImageUrls(product),
-          error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null
+          error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null,
+          // Enhanced Firebase Storage info
+          firebaseStored: product.firebaseStorageComplete || false,
+          storageProvider: product.firebaseStorageComplete ? 'firebase' : 'openai'
         }));
         
         setRecentGenerations(generationHistory);
@@ -204,6 +220,14 @@ const ImageGenerationDashboard = () => {
       
       if (syncStats.status === 'fulfilled' && syncStats.value && typeof syncStats.value === 'object') {
         const statsData = calculateRealStats(syncStats.value, productsData.value || []);
+        
+        // Merge storage stats if available
+        if (storageStats.status === 'fulfilled' && storageStats.value) {
+          statsData.firebaseStorageEnabled = storageStats.value.enabled || false;
+          statsData.manualUploads = storageStats.value.stats?.manualUploads || 0;
+          statsData.uploadErrors = storageStats.value.stats?.errors || 0;
+        }
+        
         setStats(statsData);
       } else {
         console.warn('Failed to load sync stats:', syncStats.reason);
@@ -214,7 +238,11 @@ const ImageGenerationDashboard = () => {
           successRate: 0,
           averageTime: 15.8,
           topCategories: [],
-          providerStats: {}
+          providerStats: {},
+          firebaseStorageRate: 0,
+          firebaseStorageEnabled: false,
+          manualUploads: 0,
+          uploadErrors: 0
         });
       }
       
@@ -223,6 +251,25 @@ const ImageGenerationDashboard = () => {
       showNotification('Failed to load dashboard data', 'error');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // New method to load Firebase Storage statistics
+  const loadStorageStatistics = async () => {
+    try {
+      if (!isProductSyncServiceAvailable()) {
+        return null;
+      }
+      
+      if (typeof productSyncService.getStorageStatistics === 'function') {
+        return await productSyncService.getStorageStatistics();
+      } else {
+        console.warn('getStorageStatistics method not available');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error loading storage statistics:', error);
+      return null;
     }
   };
 
@@ -402,7 +449,8 @@ const ImageGenerationDashboard = () => {
       imageUrl: null,
       sku: 'IHP-001',
       brand: 'HydroTech',
-      description: 'High-pressure hydraulic pump for industrial applications'
+      description: 'High-pressure hydraulic pump for industrial applications',
+      firebaseStorageComplete: false
     },
     {
       id: 'demo-2', 
@@ -413,7 +461,8 @@ const ImageGenerationDashboard = () => {
       imageUrl: null,
       sku: 'PCV-002',
       brand: 'AirPro',
-      description: 'Precision pneumatic control valve with manual override'
+      description: 'Precision pneumatic control valve with manual override',
+      firebaseStorageComplete: false
     },
     {
       id: 'demo-3',
@@ -424,7 +473,8 @@ const ImageGenerationDashboard = () => {
       imageUrl: null,
       sku: 'PS-M18-003',
       brand: 'SensorTech',
-      description: 'Inductive proximity sensor, M18 thread, PNP output'
+      description: 'Inductive proximity sensor, M18 thread, PNP output',
+      firebaseStorageComplete: false
     }
   ];
 
@@ -436,7 +486,12 @@ const ImageGenerationDashboard = () => {
     imageGenerationRate: 32,
     totalImagesGenerated: 15,
     imageErrors: 2,
-    averageImageTime: 15800
+    averageImageTime: 15800,
+    // Enhanced Firebase Storage demo stats
+    productsWithFirebaseStorage: 5,
+    firebaseStorageRate: 20,
+    manualUploads: 3,
+    uploadErrors: 1
   });
 
   const fetchSystemHealth = async () => {
@@ -460,6 +515,15 @@ const ImageGenerationDashboard = () => {
       
       const result = await response.json();
       
+      // Check Firebase Storage health
+      let firebaseStorageHealthy = false;
+      let firebaseStorageEnabled = false;
+      
+      if (isProductSyncServiceAvailable() && productSyncService.storage) {
+        firebaseStorageHealthy = true;
+        firebaseStorageEnabled = true;
+      }
+      
       return {
         mcpApiHealthy: result.success || false,
         openaiAvailable: result.providers?.providers?.openai?.available || false,
@@ -467,7 +531,10 @@ const ImageGenerationDashboard = () => {
         queueProcessing: false,
         lastCheck: new Date(),
         queueLength: productsNeedingImages.length,
-        processingRate: 0
+        processingRate: 0,
+        // Enhanced Firebase Storage health
+        firebaseStorageHealthy,
+        firebaseStorageEnabled
       };
     } catch (error) {
       console.error('Failed to fetch system health:', error);
@@ -478,7 +545,9 @@ const ImageGenerationDashboard = () => {
         queueProcessing: false,
         lastCheck: new Date(),
         queueLength: 0,
-        processingRate: 0
+        processingRate: 0,
+        firebaseStorageHealthy: false,
+        firebaseStorageEnabled: false
       };
     }
   };
@@ -489,6 +558,12 @@ const ImageGenerationDashboard = () => {
       const productsWithImages = syncData.productsWithRealImages || 0;
       const productsNeedingImagesCount = syncData.productsNeedingImages || 0;
       const totalGenerated = syncData.totalImagesGenerated || 0;
+      
+      // Enhanced Firebase Storage stats
+      const productsWithFirebaseStorage = syncData.productsWithFirebaseStorage || 0;
+      const firebaseStorageRate = syncData.firebaseStorageRate || 0;
+      const manualUploads = syncData.manualUploads || 0;
+      const uploadErrors = syncData.uploadErrors || 0;
       
       const categoryCount = {};
       if (Array.isArray(productsArray)) {
@@ -516,6 +591,11 @@ const ImageGenerationDashboard = () => {
         successRate: syncData.imageGenerationRate || 0,
         averageTime: (syncData.averageImageTime || 15800) / 1000,
         topCategories,
+        // Enhanced Firebase Storage stats
+        firebaseStorageRate,
+        firebaseStorageEnabled: productsWithFirebaseStorage,
+        manualUploads,
+        uploadErrors,
         providerStats: {
           openai: {
             count: totalGenerated,
@@ -523,6 +603,11 @@ const ImageGenerationDashboard = () => {
             avgTime: (syncData.averageImageTime || 15800) / 1000,
             totalTime: totalGenerated * ((syncData.averageImageTime || 15800) / 1000),
             times: Array(Math.max(totalGenerated, 1)).fill((syncData.averageImageTime || 15800) / 1000)
+          },
+          firebase: {
+            count: productsWithFirebaseStorage,
+            percentage: totalProducts > 0 ? Math.round((productsWithFirebaseStorage / totalProducts) * 100) : 0,
+            enabled: productsWithFirebaseStorage > 0
           }
         }
       };
@@ -535,7 +620,11 @@ const ImageGenerationDashboard = () => {
         successRate: 0,
         averageTime: 15.8,
         topCategories: [],
-        providerStats: {}
+        providerStats: {},
+        firebaseStorageRate: 0,
+        firebaseStorageEnabled: false,
+        manualUploads: 0,
+        uploadErrors: 0
       };
     }
   };
@@ -567,8 +656,8 @@ const ImageGenerationDashboard = () => {
 
     setIsGenerating(true);
     try {
-      console.log(`Starting image generation for ${selectedProducts.length} products...`);
-      showNotification(`Starting image generation for ${selectedProducts.length} products...`, 'info');
+      console.log(`Starting image generation with Firebase Storage for ${selectedProducts.length} products...`);
+      showNotification(`Starting image generation with Firebase Storage for ${selectedProducts.length} products...`, 'info');
       
       const result = await productSyncService.manualImageGeneration(selectedProducts);
       
@@ -576,7 +665,7 @@ const ImageGenerationDashboard = () => {
         const { successful, failed, total } = result.summary || { successful: 0, failed: 0, total: 0 };
         
         if (successful > 0) {
-          showNotification(`Successfully generated images for ${successful}/${total} products!`, 'success');
+          showNotification(`Successfully generated and stored ${successful}/${total} product images!`, 'success');
         }
         
         if (failed > 0) {
@@ -603,7 +692,7 @@ const ImageGenerationDashboard = () => {
 
   const handleRetryGeneration = async (productId) => {
     try {
-      showNotification(`Retrying image generation for product ${productId}`, 'info');
+      showNotification(`Retrying image generation with Firebase Storage for product ${productId}`, 'info');
       
       setRecentGenerations(prev => prev.map(gen => 
         gen.productId === productId ? { 
@@ -631,10 +720,12 @@ const ImageGenerationDashboard = () => {
               imageUrls: [generationResult.imageUrl],
               imagesGenerated: ['primary'],
               error: null,
-              timestamp: new Date()
+              timestamp: new Date(),
+              firebaseStored: generationResult.firebaseStored || false,
+              storageProvider: generationResult.firebaseStored ? 'firebase' : 'openai'
             } : gen
           ));
-          showNotification('Retry successful!', 'success');
+          showNotification(`Retry successful! Images stored in ${generationResult.firebaseStored ? 'Firebase Storage' : 'OpenAI'}.`, 'success');
           setTimeout(() => loadDashboardData(), 1000);
         } else {
           throw new Error('Retry generation failed');
@@ -731,7 +822,7 @@ const ImageGenerationDashboard = () => {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader className="w-8 h-8 animate-spin text-blue-600 mr-3" />
-        <span className="text-gray-600">Loading image generation dashboard...</span>
+        <span className="text-gray-600">Loading enhanced image generation dashboard...</span>
       </div>
     );
   }
@@ -760,9 +851,10 @@ const ImageGenerationDashboard = () => {
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
             <FileImage className="w-8 h-8 text-blue-600" />
             AI Image Generation Dashboard
+            <Cloud className="w-6 h-6 text-green-600" title="Firebase Storage Enabled" />
           </h1>
           <p className="text-gray-600 mt-1">
-            Monitor and manage OpenAI-powered product image generation 
+            Monitor and manage OpenAI-powered product image generation with Firebase Storage
             {!serviceInitialized || !isProductSyncServiceAvailable() ? (
               <span className="text-orange-600"> (Demo Mode - ProductSyncService unavailable)</span>
             ) : null}
@@ -783,7 +875,7 @@ const ImageGenerationDashboard = () => {
               onClick={fixProductImageFields}
               disabled={isLoading}
               className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
-              title="Fix database image field structure"
+              title="Fix database image field structure with Firebase Storage support"
             >
               <Settings className="w-4 h-4 mr-2" />
               Fix Fields
@@ -803,6 +895,7 @@ const ImageGenerationDashboard = () => {
             onClick={handleStartImageGeneration}
             disabled={isGenerating || selectedProducts.length === 0 || !isProductSyncServiceAvailable()}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            title="Generate images and store in Firebase Storage"
           >
             {isGenerating ? (
               <>
@@ -819,19 +912,19 @@ const ImageGenerationDashboard = () => {
         </div>
       </div>
 
-      {/* System Health Status */}
+      {/* Enhanced System Health Status */}
       <div className="bg-white p-4 rounded-lg shadow-sm border">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium text-gray-900 flex items-center gap-2">
             <Activity className="w-5 h-5 text-green-600" />
-            System Health
+            Enhanced System Health
           </h3>
           <span className="text-xs text-gray-500">
             Last check: {systemHealth?.lastCheck?.toLocaleTimeString()}
           </span>
         </div>
         
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${systemHealth?.mcpApiHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-sm text-gray-700">Railway API</span>
@@ -843,6 +936,10 @@ const ImageGenerationDashboard = () => {
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${serviceInitialized && isProductSyncServiceAvailable() ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-sm text-gray-700">Sync Service</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${systemHealth?.firebaseStorageHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-sm text-gray-700">Firebase Storage</span>
           </div>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${productsNeedingImages.length > 0 ? 'bg-yellow-500' : 'bg-green-500'}`} />
@@ -857,8 +954,8 @@ const ImageGenerationDashboard = () => {
         </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Enhanced Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
@@ -886,6 +983,16 @@ const ImageGenerationDashboard = () => {
               <p className="text-2xl font-bold text-purple-600">{stats?.successRate || 0}%</p>
             </div>
             <BarChart3 className="w-8 h-8 text-purple-600" />
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Firebase Storage</p>
+              <p className="text-2xl font-bold text-green-600">{stats?.firebaseStorageRate || 0}%</p>
+            </div>
+            <Database className="w-8 h-8 text-green-600" />
           </div>
         </div>
 
@@ -957,6 +1064,12 @@ const ImageGenerationDashboard = () => {
                       <span className={`px-2 py-1 rounded text-xs ${getStatusColor(getProductImageStatus(product))}`}>
                         {getProductImageStatus(product)}
                       </span>
+                      {product.firebaseStorageComplete && (
+                        <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                          <ShieldCheck className="w-3 h-3 mr-1" />
+                          Firebase
+                        </span>
+                      )}
                     </div>
                     {product.description && (
                       <p className="text-sm text-gray-600 mt-1 line-clamp-1">{product.description}</p>
@@ -987,13 +1100,13 @@ const ImageGenerationDashboard = () => {
         </div>
       )}
 
-      {/* Generation History Table */}
+      {/* Enhanced Generation History Table */}
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
             <h3 className="font-medium text-gray-900 flex items-center gap-2">
               <Clock className="w-5 h-5 text-purple-600" />
-              Image Generation History 
+              Image Generation History with Firebase Storage
               {!serviceInitialized || !isProductSyncServiceAvailable() ? (
                 <span className="text-sm text-orange-600">(Demo Data)</span>
               ) : null}
@@ -1033,6 +1146,7 @@ const ImageGenerationDashboard = () => {
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Product</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Category</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Status</th>
+                <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Storage</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Provider</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Time</th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-gray-700">Actions</th>
@@ -1068,6 +1182,21 @@ const ImageGenerationDashboard = () => {
                     )}
                   </td>
                   <td className="py-4 px-6">
+                    <div className="flex items-center gap-1">
+                      {generation.firebaseStored ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800">
+                          <Database className="w-3 h-3 mr-1" />
+                          Firebase
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                          <Cloud className="w-3 h-3 mr-1" />
+                          OpenAI
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-4 px-6">
                     <span className="text-sm text-gray-700">DALL-E 3</span>
                   </td>
                   <td className="py-4 px-6">
@@ -1099,7 +1228,7 @@ const ImageGenerationDashboard = () => {
                         <button 
                           className="text-orange-600 hover:text-orange-800 transition-colors"
                           onClick={() => handleRetryGeneration(generation.productId)}
-                          title="Generate image"
+                          title="Generate image with Firebase Storage"
                           disabled={isGenerating}
                         >
                           <RefreshCw className="w-4 h-4" />
@@ -1126,7 +1255,7 @@ const ImageGenerationDashboard = () => {
         )}
       </div>
 
-      {/* Product Detail Modal using ImagePreview component */}
+      {/* Enhanced Product Detail Modal using ImagePreview component */}
       {selectedProduct && (
         <ImagePreview
           isOpen={!!selectedProduct}
