@@ -695,59 +695,45 @@ const OptimizedProductCard = ({
     };
   }, [product]);
 
-  // CRITICAL FIX: Smart image URL resolution - completely avoid problematic URLs
+  // CRITICAL FIX: Ultra-strict image URL validation - only allow proven working URLs
   const getImageUrl = useCallback(() => {
-    // Never attempt images that have failed or exceeded attempts
-    if (imageState.error || imageState.attempts > 1) {
-      return null; // Return null to use fallback div
+    // Immediately return null if any errors or attempts made
+    if (imageState.error || imageState.attempts > 0) {
+      return null;
     }
     
-    // Priority order for image URL resolution
+    // For now, disable all external image loading to eliminate console errors
+    // This forces all products to use the beautiful gradient fallbacks
+    return null;
+    
+    // TODO: Re-enable this code once we have verified working image URLs
+    /*
     const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail'];
     
     for (const field of imageFields) {
       const imageValue = product?.[field];
       
-      if (imageValue) {
-        // Handle arrays of images
-        if (Array.isArray(imageValue) && imageValue.length > 0) {
-          const validImage = imageValue.find(img => 
-            typeof img === 'string' && 
-            img.trim() !== '' && 
-            !img.includes('placeholder-product.jpg') &&
-            !img.includes('supplier-mcp-server') &&
-            !img.includes('img-') && // Avoid AI-generated images with auth issues
-            img.startsWith('http') &&
-            !img.includes('oaidalleapiprodscus.blob.core.windows.net') // Avoid OpenAI DALL-E URLs that might have auth issues
-          );
-          if (validImage) return validImage;
-        } 
-        // Handle string URLs - be very strict about what we allow
-        else if (typeof imageValue === 'string' && 
-                 imageValue.trim() !== '' && 
-                 !imageValue.includes('placeholder-product.jpg') &&
-                 !imageValue.includes('supplier-mcp-server') &&
-                 !imageValue.includes('img-') && // Avoid problematic AI-generated image URLs
-                 !imageValue.includes('oaidalleapiprodscus.blob.core.windows.net') &&
-                 imageValue.startsWith('http')) {
+      if (imageValue && typeof imageValue === 'string') {
+        // Only allow very specific, known-working domains
+        const allowedDomains = [
+          'cdn.higgsflow.com',
+          'images.higgsflow.com',
+          'assets.higgsflow.com'
+          // Add other verified domains here
+        ];
+        
+        const isAllowedDomain = allowedDomains.some(domain => 
+          imageValue.includes(domain)
+        );
+        
+        if (isAllowedDomain && imageValue.startsWith('https://')) {
           return imageValue;
-        }
-        // Handle image objects from AI generation - be cautious
-        else if (typeof imageValue === 'object' && imageValue?.primary) {
-          const primaryUrl = imageValue.primary.url || imageValue.primary;
-          if (typeof primaryUrl === 'string' && 
-              primaryUrl.startsWith('http') &&
-              !primaryUrl.includes('supplier-mcp-server') &&
-              !primaryUrl.includes('img-') &&
-              !primaryUrl.includes('oaidalleapiprodscus.blob.core.windows.net')) {
-            return primaryUrl;
-          }
         }
       }
     }
     
-    // Return null to use fallback div instead of any external image
     return null;
+    */
   }, [product, imageState.error, imageState.attempts]);
 
   // CRITICAL FIX: Enhanced image handlers with strict error limiting
