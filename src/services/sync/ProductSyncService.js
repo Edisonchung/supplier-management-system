@@ -185,9 +185,9 @@ class ProductSyncService {
    * @param {Object} images - Generated images from OpenAI
    * @param {number} processingTime - Time taken to generate images
    */
-  async updateProductImagesWithFirebaseStorage(publicProductId, images, processingTime) {
+ async updateProductImagesWithFirebaseStorage(publicProductId, images, processingTime) {
     try {
-      console.log(`🔄 Updating product ${publicProductId} with AI-generated images + Firebase Storage`);
+      console.log(`Updating product ${publicProductId} with AI-generated images + Firebase Storage`);
 
       // STEP 1: Immediate update with OpenAI URLs (for instant user feedback)
       const tempUpdateData = {
@@ -217,10 +217,10 @@ class ProductSyncService {
 
       // Update with temporary OpenAI URLs
       await updateDoc(doc(this.db, 'products_public', publicProductId), tempUpdateData);
-      console.log(`✅ Product updated with OpenAI URLs (immediate)`);
+      console.log(`Product updated with OpenAI URLs (immediate)`);
 
       // STEP 2: Background process - Save to Firebase Storage
-      console.log(`🔄 Starting background Firebase Storage upload...`);
+      console.log(`Starting background Firebase Storage upload...`);
       
       try {
         const firebaseImages = await this.saveImagesToFirebaseStorage(publicProductId, images);
@@ -253,7 +253,7 @@ class ProductSyncService {
         }
 
         await updateDoc(doc(this.db, 'products_public', publicProductId), finalUpdateData);
-        console.log(`✅ Product updated with Firebase Storage URLs (permanent)`);
+        console.log(`Product updated with Firebase Storage URLs (permanent)`);
         
         return {
           success: true,
@@ -265,7 +265,7 @@ class ProductSyncService {
           }
         };
       } catch (storageError) {
-        console.error('⚠️ Firebase Storage upload failed, keeping OpenAI URLs:', storageError);
+        console.error('Firebase Storage upload failed, keeping OpenAI URLs:', storageError);
         
         // Update status to indicate Firebase storage failed
         await updateDoc(doc(this.db, 'products_public', publicProductId), {
@@ -286,7 +286,7 @@ class ProductSyncService {
         };
       }
     } catch (error) {
-      console.error('❌ Failed to update product images:', error);
+      console.error('Failed to update product images:', error);
       
       // Try to update with error status
       try {
@@ -296,13 +296,12 @@ class ProductSyncService {
           lastImageUpdate: serverTimestamp()
         });
       } catch (updateError) {
-        console.error('❌ Failed to update error status:', updateError);
+        console.error('Failed to update error status:', updateError);
       }
       
       throw error;
     }
   }
-
   /**
    * Clean up old images from Firebase Storage
    * @param {string} productId - Product ID
@@ -1009,7 +1008,7 @@ class ProductSyncService {
     
     return false;
   }
-
+  
   /**
    * FIXED: Check if product has a real generated image
    */
@@ -1039,9 +1038,9 @@ class ProductSyncService {
       'default-image',
       'no-image',
       'temp-image',
-      '/api/placeholder',  // Added for API placeholder URLs
-      'placeholder.com',   // Added for placeholder.com URLs
-      'placehold.it'       // Added for placehold.it URLs
+      '/api/placeholder',
+      'placeholder.com',
+      'placehold.it'
     ];
     
     return placeholderPatterns.some(pattern => imageUrl.includes(pattern));
@@ -1511,11 +1510,11 @@ class ProductSyncService {
       
       // First run diagnosis to understand the data
       const diagnosis = await this.diagnoseProductsPublic();
-      console.log('📊 Diagnosis complete:', diagnosis.summary);
+      console.log('Diagnosis complete:', diagnosis.summary);
       
-      // If no products in products_public, suggest running sync
+      // If no products in products_public, return demo data
       if (diagnosis.totalProducts === 0) {
-        console.log('💡 No products in products_public - returning demo data and suggesting sync');
+        console.log('No products in products_public - returning demo data');
         return this.getDemoProductsNeedingImages();
       }
       
@@ -1524,7 +1523,7 @@ class ProductSyncService {
       let useOrderBy = false;
       
       try {
-        // First try with orderBy (requires composite index)
+        // First try with orderBy
         publicQuery = query(
           collection(this.db, 'products_public'),
           where('needsImageGeneration', '==', true),
@@ -1575,11 +1574,9 @@ class ProductSyncService {
 
       console.log(`Found ${products.length} products needing images`);
       
-      // If no products found but diagnosis shows products exist, there might be a field issue
+      // If no products found but diagnosis shows products exist
       if (products.length === 0 && diagnosis.totalProducts > 0) {
-        console.log('⚠️ No products with needsImageGeneration=true found, but products exist');
-        console.log('💡 This might indicate that products need to be updated with image generation fields');
-        
+        console.log('No products with needsImageGeneration=true found, but products exist');
         // Return products that don't have real images as potential candidates
         return this.getProductsWithoutRealImages(limitCount);
       }
