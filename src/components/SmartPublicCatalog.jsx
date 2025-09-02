@@ -695,46 +695,158 @@ const OptimizedProductCard = ({
     };
   }, [product]);
 
-  // CRITICAL FIX: Ultra-strict image URL validation - only allow proven working URLs
+  // ENHANCED: Smart image URL resolution supporting your Firebase Storage implementation
   const getImageUrl = useCallback(() => {
-    // Immediately return null if any errors or attempts made
-    if (imageState.error || imageState.attempts > 0) {
+    // Check if we've had errors or too many attempts
+    if (imageState.error || imageState.attempts > 1) {
       return null;
     }
     
-    // For now, disable all external image loading to eliminate console errors
-    // This forces all products to use the beautiful gradient fallbacks
-    return null;
-    
-    // TODO: Re-enable this code once we have verified working image URLs
-    /*
-    const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail'];
+    // Priority order for image URL resolution - optimized for your Firebase Storage system
+    const imageFields = [
+      'imageUrl',           // Primary image URL (highest priority)
+      'generatedImages',    // AI-generated images with Firebase Storage
+      'firebaseStorage',    // Direct Firebase Storage data
+      'manualUpload',       // Manually uploaded images
+      'image_url', 
+      'image',
+      'photo', 
+      'pictures', 
+      'thumbnail'
+    ];
     
     for (const field of imageFields) {
       const imageValue = product?.[field];
       
-      if (imageValue && typeof imageValue === 'string') {
-        // Only allow very specific, known-working domains
-        const allowedDomains = [
-          'cdn.higgsflow.com',
-          'images.higgsflow.com',
-          'assets.higgsflow.com'
-          // Add other verified domains here
-        ];
+      if (imageValue) {
+        // Handle your Firebase Storage implementation structure
+        if (field === 'firebaseStorage' && typeof imageValue === 'object') {
+          // Direct Firebase Storage object from your uploadSingleImageToFirebase method
+          if (imageValue.downloadURL && isValidImageUrl(imageValue.downloadURL)) {
+            return imageValue.downloadURL;
+          }
+          if (imageValue.url && isValidImageUrl(imageValue.url)) {
+            return imageValue.url;
+          }
+        }
         
-        const isAllowedDomain = allowedDomains.some(domain => 
-          imageValue.includes(domain)
-        );
+        // Handle generated images object from your diagnostic implementation
+        else if (field === 'generatedImages' && typeof imageValue === 'object') {
+          // Check for Firebase Storage data first (your implementation priority)
+          if (imageValue.firebaseStorage) {
+            if (imageValue.firebaseStorage.downloadURL && isValidImageUrl(imageValue.firebaseStorage.downloadURL)) {
+              return imageValue.firebaseStorage.downloadURL;
+            }
+            if (imageValue.firebaseStorage.url && isValidImageUrl(imageValue.firebaseStorage.url)) {
+              return imageValue.firebaseStorage.url;
+            }
+          }
+          
+          // Check for primary generated image
+          if (imageValue.primary?.url && isValidImageUrl(imageValue.primary.url)) {
+            return imageValue.primary.url;
+          }
+          
+          // Check for any valid image in imageUrls array
+          if (Array.isArray(imageValue.imageUrls)) {
+            for (const urlObj of imageValue.imageUrls) {
+              const url = typeof urlObj === 'string' ? urlObj : urlObj?.url;
+              if (url && isValidImageUrl(url)) return url;
+            }
+          }
+          
+          // Check for saved Firebase URLs from your bulk upload system
+          if (imageValue.saved?.firebaseUrl && isValidImageUrl(imageValue.saved.firebaseUrl)) {
+            return imageValue.saved.firebaseUrl;
+          }
+        }
         
-        if (isAllowedDomain && imageValue.startsWith('https://')) {
-          return imageValue;
+        // Handle manual upload object structure
+        else if (field === 'manualUpload' && typeof imageValue === 'object') {
+          // Prioritize Firebase URL for manual uploads
+          if (imageValue.firebaseUrl && isValidImageUrl(imageValue.firebaseUrl)) {
+            return imageValue.firebaseUrl;
+          }
+          
+          // Check for downloadURL from Firebase Storage
+          if (imageValue.downloadURL && isValidImageUrl(imageValue.downloadURL)) {
+            return imageValue.downloadURL;
+          }
+          
+          // Fallback to regular imageUrl
+          if (imageValue.imageUrl && isValidImageUrl(imageValue.imageUrl)) {
+            return imageValue.imageUrl;
+          }
+        }
+        
+        // Handle arrays of images
+        else if (Array.isArray(imageValue) && imageValue.length > 0) {
+          const validImage = imageValue.find(img => {
+            const url = typeof img === 'string' ? img : 
+                        img?.downloadURL || img?.firebaseUrl || img?.url;
+            return url && isValidImageUrl(url);
+          });
+          if (validImage) {
+            const url = typeof validImage === 'string' ? validImage : 
+                        validImage.downloadURL || validImage.firebaseUrl || validImage.url;
+            return url;
+          }
+        }
+        
+        // Handle string URLs
+        else if (typeof imageValue === 'string' && imageValue.trim() !== '') {
+          if (isValidImageUrl(imageValue)) {
+            return imageValue;
+          }
+        }
+        
+        // Handle image objects with URL property
+        else if (typeof imageValue === 'object' && imageValue?.url) {
+          if (isValidImageUrl(imageValue.url)) {
+            return imageValue.url;
+          }
         }
       }
     }
     
+    // No valid image found, use fallback
     return null;
-    */
   }, [product, imageState.error, imageState.attempts]);
+
+  // Enhanced helper function supporting your Firebase Storage URLs
+  const isValidImageUrl = (url) => {
+    if (!url || typeof url !== 'string') return false;
+    
+    // Must be HTTPS for security
+    if (!url.startsWith('https://')) return false;
+    
+    // Allow Firebase Storage URLs (your primary storage system)
+    if (url.includes('firebasestorage.googleapis.com')) return true;
+    
+    // Allow Firebase Functions URLs (for generated images)
+    if (url.includes('cloudfunctions.net')) return true;
+    
+    // Allow your Railway backend URLs
+    if (url.includes('railway.app')) return true;
+    
+    // Allow your own domain images
+    if (url.includes('higgsflow.com')) return true;
+    
+    // Allow common reliable CDN providers
+    if (url.includes('cloudinary.com') || 
+        url.includes('amazonaws.com') || 
+        url.includes('googleapis.com')) return true;
+    
+    // Reject known problematic URLs from your diagnostic
+    if (url.includes('placeholder-product.jpg') ||
+        url.includes('supplier-mcp-server') ||
+        (url.includes('img-') && !url.includes('firebasestorage')) ||
+        url.includes('oaidalleapiprodscus.blob.core.windows.net')) {
+      return false;
+    }
+    
+    return true;
+  };
 
   // CRITICAL FIX: Enhanced image handlers with strict error limiting
   const handleImageLoad = useCallback(() => {
@@ -822,39 +934,83 @@ const OptimizedProductCard = ({
     }
   }, [onCompare, safeProduct]);
 
-  // CRITICAL FIX: Image component with elegant fallback and no external failures
+  // ENHANCED: ProductImage component with Firebase Storage status indicators
   const ProductImage = () => {
     const imageUrl = getImageUrl();
     
     if (!imageUrl || imageState.error) {
-      // Use beautiful gradient background with product info instead of broken image
+      // Enhanced gradient fallback with Firebase Storage generation status
       const gradients = [
         'from-blue-400 to-blue-600',
-        'from-purple-400 to-purple-600',
+        'from-purple-400 to-purple-600', 
         'from-green-400 to-green-600',
         'from-pink-400 to-pink-600',
         'from-yellow-400 to-yellow-600',
-        'from-indigo-400 to-indigo-600'
+        'from-indigo-400 to-indigo-600',
+        'from-red-400 to-red-600',
+        'from-teal-400 to-teal-600'
       ];
       
       const gradientClass = gradients[Math.abs(safeProduct.name.charCodeAt(0)) % gradients.length];
+      const imageStatus = product?.imageGenerationStatus;
+      const hasFirebaseStorage = product?.firebaseStorage || product?.generatedImages?.firebaseStorage;
       
       return (
-        <div className={`w-full h-full bg-gradient-to-br ${gradientClass} flex items-center justify-center text-white`}>
-          <div className="text-center p-4">
-            <Package className="w-8 h-8 mx-auto mb-2 opacity-80" />
-            <div className="text-xs font-medium leading-tight">
+        <div className={`w-full h-full bg-gradient-to-br ${gradientClass} flex items-center justify-center text-white relative overflow-hidden`}>
+          {/* Background pattern for visual interest */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-0 left-0 w-full h-1 bg-white transform -skew-y-2"></div>
+            <div className="absolute bottom-0 right-0 w-full h-1 bg-white transform skew-y-2"></div>
+          </div>
+          
+          {/* Processing indicator for generating images */}
+          {(imageStatus === 'processing' || imageStatus === 'pending') && (
+            <div className="absolute top-2 left-2">
+              <Loader2 className="w-4 h-4 animate-spin opacity-75" />
+            </div>
+          )}
+          
+          {/* Firebase Storage indicator */}
+          {hasFirebaseStorage && (
+            <div className="absolute top-2 right-2 flex items-center space-x-1">
+              <div className="w-2 h-2 bg-orange-400 rounded-full opacity-75"></div>
+              <div className="text-xs bg-orange-500 text-white px-1 py-0.5 rounded opacity-80">
+                FB
+              </div>
+            </div>
+          )}
+          
+          <div className="text-center p-4 z-10">
+            <Package className="w-8 h-8 mx-auto mb-2 opacity-90" />
+            <div className="text-xs font-semibold leading-tight mb-1">
               {safeProduct.name.length > 25 ? 
                 safeProduct.name.substring(0, 22) + '...' : 
                 safeProduct.name
               }
             </div>
             {safeProduct.code !== 'N/A' && (
-              <div className="text-xs opacity-75 mt-1">
+              <div className="text-xs opacity-75 mb-1">
                 {safeProduct.code}
               </div>
             )}
+            
+            {/* Show Firebase Storage generation status */}
+            {imageStatus && (
+              <div className="mt-2 text-xs opacity-80 bg-black bg-opacity-20 rounded px-2 py-1">
+                {imageStatus === 'pending' && 'Queued for AI generation'}
+                {imageStatus === 'processing' && 'AI generating & saving to Firebase'}
+                {imageStatus === 'manual_upload' && 'Custom image uploaded'}
+                {imageStatus === 'generated' && hasFirebaseStorage && 'AI generated + Firebase stored'}
+                {imageStatus === 'generated' && !hasFirebaseStorage && 'AI generated (no Firebase)'}
+                {imageStatus === 'not_needed' && 'No image needed'}
+              </div>
+            )}
           </div>
+          
+          {/* Corner indicator for real images */}
+          {product?.hasRealImage && (
+            <div className="absolute bottom-2 right-2 w-2 h-2 bg-green-400 rounded-full opacity-75"></div>
+          )}
         </div>
       );
     }
@@ -863,7 +1019,10 @@ const OptimizedProductCard = ({
       <div className="relative w-full h-full">
         {!imageState.loaded && (
           <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse flex items-center justify-center">
-            <Package className="w-8 h-8 text-gray-400" />
+            <div className="text-center">
+              <Package className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+              <div className="text-xs text-gray-500">Loading from Firebase...</div>
+            </div>
           </div>
         )}
         <img 
@@ -876,6 +1035,32 @@ const OptimizedProductCard = ({
           onError={handleImageError}
           loading="lazy"
         />
+        
+        {/* Success indicators for loaded Firebase Storage images */}
+        {imageState.loaded && (
+          <div className="absolute top-2 right-2 flex flex-col space-y-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            
+            {/* Show source indicator */}
+            {imageUrl.includes('firebasestorage.googleapis.com') && (
+              <div className="text-xs bg-orange-500 text-white px-1 py-0.5 rounded opacity-80">
+                FB
+              </div>
+            )}
+            
+            {product?.imageGenerationStatus === 'generated' && (
+              <div className="text-xs bg-blue-500 text-white px-1 py-0.5 rounded opacity-80">
+                AI
+              </div>
+            )}
+            
+            {product?.imageGenerationStatus === 'manual_upload' && (
+              <div className="text-xs bg-purple-500 text-white px-1 py-0.5 rounded opacity-80">
+                Manual
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
