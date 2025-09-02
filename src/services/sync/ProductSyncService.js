@@ -89,45 +89,67 @@ class ProductSyncService {
    * @param {Object} openaiImages - Object with image URLs from OpenAI
    * @returns {Object} Firebase Storage URLs
    */
-  async saveImagesToFirebaseStorage(productId, openaiImages) {
-    const firebaseImages = {};
-    const uploadPromises = [];
+// 1. REPLACE your saveImagesToFirebaseStorage method with this version:
 
-    console.log(`🔄 Starting Firebase Storage upload for product ${productId}`);
+async saveImagesToFirebaseStorage(productId, openaiImages) {
+  const firebaseImages = {};
+  const uploadPromises = [];
+  console.log(`🔄 Starting Firebase Storage upload for product ${productId}`);
+  
+  // FIX: Filter to only process actual image URLs, not metadata
+  const validImageEntries = Object.entries(openaiImages).filter(([key, value]) => {
+    return typeof value === 'string' && 
+           value.startsWith('https://') && 
+           (value.includes('oaidalleapi') || value.includes('blob.core.windows.net')) &&
+           // Exclude metadata fields that aren't actual images
+           !['generated', 'generatedAt', 'provider', 'model', 'compliance', 'processingTime'].includes(key);
+  });
 
-    for (const [imageType, imageUrl] of Object.entries(openaiImages)) {
-      const uploadPromise = this.uploadSingleImageToFirebase(
-        productId, 
-        imageType, 
-        imageUrl
-      );
-      uploadPromises.push(uploadPromise);
-    }
-
-    try {
-      const results = await Promise.allSettled(uploadPromises);
-      
-      results.forEach((result, index) => {
-        const imageType = Object.keys(openaiImages)[index];
-        const originalUrl = Object.values(openaiImages)[index];
-        
-        if (result.status === 'fulfilled') {
-          firebaseImages[imageType] = result.value;
-          console.log(`✅ ${imageType} image uploaded to Firebase Storage`);
-        } else {
-          console.error(`❌ Failed to upload ${imageType} image:`, result.reason);
-          // Fallback to OpenAI URL
-          firebaseImages[imageType] = originalUrl;
-        }
-      });
-
-      return firebaseImages;
-    } catch (error) {
-      console.error('❌ Firebase Storage batch upload failed:', error);
-      // Return original URLs as fallback
-      return openaiImages;
-    }
+  console.log(`Processing ${validImageEntries.length} valid image URLs out of ${Object.keys(openaiImages).length} total entries`);
+  
+  for (const [imageType, imageUrl] of validImageEntries) {
+    const uploadPromise = this.uploadSingleImageToFirebase(
+      productId, 
+      imageType, 
+      imageUrl
+    ).catch(error => {
+      // Handle individual upload failures gracefully
+      console.error(`Upload failed for ${imageType}:`, error.message);
+      return imageUrl; // Return original URL as fallback
+    });
+    
+    uploadPromises.push(uploadPromise);
   }
+  
+  try {
+    const results = await Promise.allSettled(uploadPromises);
+    
+    results.forEach((result, index) => {
+      const imageType = validImageEntries[index][0];
+      const originalUrl = validImageEntries[index][1];
+      
+      if (result.status === 'fulfilled') {
+        firebaseImages[imageType] = result.value;
+        console.log(`✅ ${imageType} image processed successfully`);
+      } else {
+        console.error(`❌ Failed to process ${imageType} image:`, result.reason);
+        // Fallback to OpenAI URL
+        firebaseImages[imageType] = originalUrl;
+      }
+    });
+    
+    console.log(`Firebase Storage upload complete: ${Object.keys(firebaseImages).length} images processed`);
+    return firebaseImages;
+  } catch (error) {
+    console.error('❌ Firebase Storage batch upload failed:', error);
+    // Return original valid URLs as fallback
+    const fallbackImages = {};
+    validImageEntries.forEach(([key, value]) => {
+      fallbackImages[key] = value;
+    });
+    return fallbackImages;
+  }
+}
 
   /**
    * Upload a single AI-generated image to Firebase Storage
@@ -136,48 +158,61 @@ class ProductSyncService {
    * @param {string} imageUrl - OpenAI image URL
    * @returns {string} Firebase Storage download URL
    */
-  async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
+ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
+  try {
+    // 1. Download image from OpenAI with CORS handling
+    console.log(`⬇️ Downloading ${imageType} image from OpenAI...`);
+    
+    let response;
     try {
-      // 1. Download image from OpenAI
-      console.log(`⬇️ Downloading ${imageType} image from OpenAI...`);
-      const response = await fetch(imageUrl);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to download image: ${response.statusText}`);
-      }
-
-      const imageBlob = await response.blob();
-      console.log(`📦 Downloaded ${imageType} image: ${imageBlob.size} bytes`);
-
-      // 2. Create Firebase Storage reference for AI-generated images
-      const timestamp = Date.now();
-      const fileName = `ai-generated/${productId}/${imageType}-${timestamp}.jpg`;
-      const storageRef = ref(this.storage, fileName);
-
-      // 3. Upload to Firebase Storage
-      console.log(`⬆️ Uploading ${imageType} to Firebase Storage: ${fileName}`);
-      const uploadResult = await uploadBytes(storageRef, imageBlob, {
-        contentType: 'image/jpeg',
-        customMetadata: {
-          productId: productId,
-          imageType: imageType,
-          originalUrl: imageUrl,
-          uploadedAt: new Date().toISOString(),
-          uploadSource: 'ai_generated',
-          aiProvider: 'openai'
-        }
+      response = await fetch(imageUrl, {
+        mode: 'cors',
+        credentials: 'omit'
       });
-
-      // 4. Get download URL
-      const downloadURL = await getDownloadURL(uploadResult.ref);
-      console.log(`🔗 Firebase Storage URL: ${downloadURL}`);
-
-      return downloadURL;
-    } catch (error) {
-      console.error(`❌ Failed to upload ${imageType} image to Firebase:`, error);
-      throw error;
+    } catch (corsError) {
+      // Handle CORS error specifically
+      throw new Error(`CORS error - cannot download directly from OpenAI: ${corsError.message}`);
     }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+    }
+    
+    const imageBlob = await response.blob();
+    console.log(`📦 Downloaded ${imageType} image: ${imageBlob.size} bytes`);
+    
+    // 2. Create Firebase Storage reference for AI-generated images
+    const timestamp = Date.now();
+    const fileName = `ai-generated/${productId}/${imageType}-${timestamp}.jpg`;
+    const storageRef = ref(this.storage, fileName);
+    
+    // 3. Upload to Firebase Storage
+    console.log(`⬆️ Uploading ${imageType} to Firebase Storage: ${fileName}`);
+    const uploadResult = await uploadBytes(storageRef, imageBlob, {
+      contentType: imageBlob.type || 'image/jpeg',
+      customMetadata: {
+        productId: productId,
+        imageType: imageType,
+        originalUrl: imageUrl,
+        uploadedAt: new Date().toISOString(),
+        uploadSource: 'ai_generated',
+        aiProvider: 'openai'
+      }
+    });
+    
+    // 4. Get download URL
+    const downloadURL = await getDownloadURL(uploadResult.ref);
+    console.log(`🔗 Firebase Storage URL: ${downloadURL}`);
+    return downloadURL;
+    
+  } catch (error) {
+    console.error(`❌ Failed to upload ${imageType} image to Firebase:`, error);
+    
+    // Instead of throwing, return the original URL as fallback
+    console.log(`Using original OpenAI URL as fallback for ${imageType}`);
+    return imageUrl;
   }
+}
 
   /**
    * Enhanced method to update product with both OpenAI and Firebase images
