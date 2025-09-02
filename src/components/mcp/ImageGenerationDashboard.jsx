@@ -1,5 +1,5 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// ENHANCED: Added Firebase Storage integration and improved monitoring
+// ENHANCED: Added manual upload, image regeneration, and fixed image display issues
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -23,7 +23,11 @@ import {
   Upload,
   Database,
   Cloud,
-  ShieldCheck
+  ShieldCheck,
+  Trash2,
+  Camera,
+  Plus,
+  Edit
 } from 'lucide-react';
 
 // Import shared ImagePreview component
@@ -97,6 +101,13 @@ const ImageGenerationDashboard = () => {
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState(null);
+
+  // NEW: Manual upload states
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedProductForUpload, setSelectedProductForUpload] = useState(null);
+  const [uploadingFiles, setUploadingFiles] = useState([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
@@ -273,6 +284,242 @@ const ImageGenerationDashboard = () => {
     }
   };
 
+  // NEW: Manual upload functionality
+  const openUploadModal = (product) => {
+    setSelectedProductForUpload(product);
+    setShowUploadModal(true);
+    setUploadingFiles([]);
+  };
+
+  const closeUploadModal = () => {
+    setShowUploadModal(false);
+    setSelectedProductForUpload(null);
+    setUploadingFiles([]);
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    handleFileSelection(files);
+  };
+
+  const handleFileSelection = (files) => {
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      showNotification('Please select valid image files (PNG, JPG, WEBP)', 'error');
+      return;
+    }
+    setUploadingFiles(imageFiles);
+    showNotification(`Selected ${imageFiles.length} image(s) for upload`, 'info');
+  };
+
+  const uploadManualImages = async () => {
+    if (!selectedProductForUpload || uploadingFiles.length === 0) return;
+
+    setIsUploading(true);
+    showNotification(`Uploading ${uploadingFiles.length} images to Firebase Storage...`, 'info');
+
+    try {
+      // FIXED: Use direct API call to server.js endpoint
+      const formData = new FormData();
+      formData.append('productId', selectedProductForUpload.id);
+      formData.append('productName', selectedProductForUpload.name);
+      formData.append('uploadType', 'manual');
+      
+      uploadingFiles.forEach((file, index) => {
+        formData.append(`images`, file);
+      });
+
+      const response = await fetch('/api/ai/upload-product-images', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload images');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        showNotification(
+          `Successfully uploaded ${result.summary.successful} images to Firebase Storage for ${selectedProductForUpload.name}`, 
+          'success'
+        );
+        
+        // Update the product in our local state
+        setProductsNeedingImages(prev => 
+          prev.map(p => 
+            p.id === selectedProductForUpload.id 
+              ? { ...p, hasRealImage: true, firebaseStorageComplete: true }
+              : p
+          )
+        );
+        
+        closeUploadModal();
+        await loadDashboardData();
+      } else {
+        throw new Error(result.error || 'Upload failed');
+      }
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      showNotification(`Failed to upload images: ${error.message}`, 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // NEW: Regenerate specific image
+  const regenerateImage = async (productId) => {
+    const product = productsNeedingImages.find(p => p.id === productId) || 
+                   recentGenerations.find(g => g.productId === productId);
+    
+    if (!product) {
+      showNotification('Product not found', 'error');
+      return;
+    }
+
+    setIsGenerating(true);
+    showNotification(`Regenerating image with Firebase Storage for ${product.productName || product.name}...`, 'info');
+
+    try {
+      // FIXED: Use direct API call to server.js endpoint
+      const response = await fetch('/api/ai/regenerate-product-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: productId,
+          productName: product.productName || product.name,
+          productDescription: product.description,
+          category: product.category,
+          saveToFirebase: true,
+          collectionName: 'products_public'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to regenerate image');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        showNotification(
+          `Successfully regenerated image for ${product.productName || product.name}. Stored in Firebase Storage.`, 
+          'success'
+        );
+        
+        // Update local state
+        setRecentGenerations(prev => 
+          prev.map(gen => 
+            gen.productId === productId 
+              ? { 
+                  ...gen, 
+                  status: 'completed',
+                  imageUrls: [result.imageUrl],
+                  firebaseStored: result.savedToFirebase,
+                  timestamp: new Date()
+                }
+              : gen
+          )
+        );
+        
+        await loadDashboardData();
+      } else {
+        throw new Error(result.error || 'Regeneration failed');
+      }
+      
+    } catch (error) {
+      console.error('Regeneration error:', error);
+      showNotification(`Failed to regenerate image: ${error.message}`, 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // FIXED: Enhanced image generation with proper Firebase saving
+  const generateImagesForProducts = async (productIds) => {
+    if (!productIds || productIds.length === 0) return;
+
+    setIsGenerating(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      showNotification(`Generating images for ${productIds.length} products with Firebase Storage...`, 'info');
+
+      for (const productId of productIds) {
+        const product = productsNeedingImages.find(p => p.id === productId);
+        if (!product) continue;
+
+        try {
+          // FIXED: Use direct API call to server.js endpoint
+          const response = await fetch('/api/ai/generate-product-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              productId: productId,
+              productName: product.name,
+              productDescription: product.description,
+              category: product.category,
+              saveToFirebase: true,
+              collectionName: 'products_public'
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to generate image for ${product.name}`);
+          }
+
+          const result = await response.json();
+          
+          if (result.success) {
+            successCount++;
+            console.log(`✅ Generated image for ${product.name}:`, result);
+            
+            if (!result.savedToFirebase) {
+              console.warn(`⚠️ Image generated but not saved to Firebase for: ${product.name}`);
+            }
+          } else {
+            errorCount++;
+            console.error(`❌ Failed to generate image for ${product.name}:`, result);
+          }
+          
+        } catch (productError) {
+          errorCount++;
+          console.error(`Error generating image for product ${productId}:`, productError);
+        }
+      }
+
+      if (successCount > 0) {
+        showNotification(
+          `Successfully generated ${successCount} images with Firebase Storage!`, 
+          'success'
+        );
+      }
+      
+      if (errorCount > 0) {
+        showNotification(
+          `Failed to generate ${errorCount} images`, 
+          'error'
+        );
+      }
+
+      // Reload dashboard data
+      await loadDashboardData();
+      
+    } catch (error) {
+      console.error('Batch generation error:', error);
+      showNotification(`Failed to generate images: ${error.message}`, 'error');
+    } finally {
+      setIsGenerating(false);
+      setSelectedProducts([]);
+    }
+  };
+
+  // Existing methods (keeping the same logic)
   const getProductImageStatus = (product) => {
     if (!product) return 'needed';
     
@@ -643,107 +890,20 @@ const ImageGenerationDashboard = () => {
     }
   };
 
+  // FIXED: Updated to use new image generation method
   const handleStartImageGeneration = async () => {
     if (selectedProducts.length === 0) {
       showNotification('Please select products to generate images for', 'error');
       return;
     }
 
-    if (!isProductSyncServiceAvailable()) {
-      showNotification('ProductSyncService not available', 'error');
-      return;
-    }
-
-    setIsGenerating(true);
-    try {
-      console.log(`Starting image generation with Firebase Storage for ${selectedProducts.length} products...`);
-      showNotification(`Starting image generation with Firebase Storage for ${selectedProducts.length} products...`, 'info');
-      
-      const result = await productSyncService.manualImageGeneration(selectedProducts);
-      
-      if (result && result.success) {
-        const { successful, failed, total } = result.summary || { successful: 0, failed: 0, total: 0 };
-        
-        if (successful > 0) {
-          showNotification(`Successfully generated and stored ${successful}/${total} product images!`, 'success');
-        }
-        
-        if (failed > 0) {
-          showNotification(`Failed to generate images for ${failed} products`, 'error', 8000);
-          console.error('Failed generations:', result.errors);
-        }
-        
-        setSelectedProducts([]);
-        setTimeout(async () => {
-          await loadDashboardData();
-        }, 2000);
-        
-      } else {
-        throw new Error(result?.message || 'Manual image generation failed');
-      }
-      
-    } catch (error) {
-      console.error('Failed to start image generation:', error);
-      showNotification(`Failed to start image generation: ${error.message}`, 'error');
-    } finally {
-      setTimeout(() => setIsGenerating(false), 3000);
-    }
+    // Use direct API calls instead of ProductSyncService
+    await generateImagesForProducts(selectedProducts);
   };
 
+  // FIXED: Updated retry method
   const handleRetryGeneration = async (productId) => {
-    try {
-      showNotification(`Retrying image generation with Firebase Storage for product ${productId}`, 'info');
-      
-      setRecentGenerations(prev => prev.map(gen => 
-        gen.productId === productId ? { 
-          ...gen, 
-          status: 'processing', 
-          attempts: (gen.attempts || 1) + 1,
-          error: null 
-        } : gen
-      ));
-
-      if (!isProductSyncServiceAvailable()) {
-        throw new Error('Image generation service not available');
-      }
-
-      const result = await productSyncService.manualImageGeneration([productId]);
-      
-      if (result && result.success && result.results && result.results.length > 0) {
-        const generationResult = result.results[0];
-        if (generationResult && generationResult.success) {
-          setRecentGenerations(prev => prev.map(gen => 
-            gen.productId === productId ? { 
-              ...gen, 
-              status: 'completed',
-              processingTime: '15.2s',
-              imageUrls: [generationResult.imageUrl],
-              imagesGenerated: ['primary'],
-              error: null,
-              timestamp: new Date(),
-              firebaseStored: generationResult.firebaseStored || false,
-              storageProvider: generationResult.firebaseStored ? 'firebase' : 'openai'
-            } : gen
-          ));
-          showNotification(`Retry successful! Images stored in ${generationResult.firebaseStored ? 'Firebase Storage' : 'OpenAI'}.`, 'success');
-          setTimeout(() => loadDashboardData(), 1000);
-        } else {
-          throw new Error('Retry generation failed');
-        }
-      } else {
-        throw new Error('Retry failed');
-      }
-      
-    } catch (error) {
-      setRecentGenerations(prev => prev.map(gen => 
-        gen.productId === productId ? { 
-          ...gen, 
-          status: 'failed',
-          error: error.message 
-        } : gen
-      ));
-      showNotification(`Failed to retry generation: ${error.message}`, 'error');
-    }
+    await regenerateImage(productId);
   };
 
   const toggleProductSelection = (productId) => {
@@ -817,6 +977,21 @@ const ImageGenerationDashboard = () => {
       return [];
     }
   }, [recentGenerations, filter, searchTerm]);
+
+  const downloadImage = (imageUrl, filename) => {
+    try {
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = filename;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Download error:', error);
+      showNotification('Failed to download image', 'error');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -893,7 +1068,7 @@ const ImageGenerationDashboard = () => {
           
           <button
             onClick={handleStartImageGeneration}
-            disabled={isGenerating || selectedProducts.length === 0 || !isProductSyncServiceAvailable()}
+            disabled={isGenerating || selectedProducts.length === 0}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
             title="Generate images and store in Firebase Storage"
           >
@@ -1019,13 +1194,6 @@ const ImageGenerationDashboard = () => {
               
               <div className="flex space-x-3">
                 <button
-                  onClick={navigateToManualUpload}
-                  className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  Manual Upload
-                </button>
-                
-                <button
                   onClick={() => setSelectedProducts(productsNeedingImages.map(p => p.id))}
                   className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
                   disabled={isGenerating}
@@ -1073,6 +1241,29 @@ const ImageGenerationDashboard = () => {
                     </div>
                     {product.description && (
                       <p className="text-sm text-gray-600 mt-1 line-clamp-1">{product.description}</p>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    {/* Manual Upload Button */}
+                    <button
+                      onClick={() => openUploadModal(product)}
+                      className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-colors"
+                      title="Upload Images Manually"
+                    >
+                      <Upload className="w-4 h-4" />
+                    </button>
+                    
+                    {/* Regenerate Button */}
+                    {hasRealImage(product) && (
+                      <button
+                        onClick={() => regenerateImage(product.id)}
+                        disabled={isGenerating}
+                        className="p-2 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Regenerate Image"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                   
@@ -1216,15 +1407,13 @@ const ImageGenerationDashboard = () => {
                       {generation.status === 'completed' && generation.imageUrls?.length > 0 && (
                         <button 
                           className="text-green-600 hover:text-green-800 transition-colors"
-                          title="View images"
-                          onClick={() => {
-                            generation.imageUrls.forEach(url => window.open(url, '_blank'));
-                          }}
+                          title="Download image"
+                          onClick={() => downloadImage(generation.imageUrls[0], `${generation.productName}-image.png`)}
                         >
                           <Download className="w-4 h-4" />
                         </button>
                       )}
-                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'needed') && serviceInitialized && isProductSyncServiceAvailable() && (
+                      {(generation.status === 'failed' || generation.status === 'error' || generation.status === 'needed') && (
                         <button 
                           className="text-orange-600 hover:text-orange-800 transition-colors"
                           onClick={() => handleRetryGeneration(generation.productId)}
@@ -1254,6 +1443,88 @@ const ImageGenerationDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Manual Upload Modal */}
+      {showUploadModal && selectedProductForUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Upload className="w-5 h-5 text-purple-600" />
+              Upload Images for {selectedProductForUpload.name}
+            </h3>
+            
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                dragOver ? 'border-purple-500 bg-purple-50' : 'border-gray-300'
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+              }}
+              onDrop={handleFileDrop}
+            >
+              <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+              <p className="text-gray-600 mb-2">Drag and drop images here, or</p>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={(e) => handleFileSelection(Array.from(e.target.files))}
+                className="hidden"
+                id="file-upload"
+              />
+              <label
+                htmlFor="file-upload"
+                className="cursor-pointer bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Browse Files
+              </label>
+            </div>
+
+            {uploadingFiles.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-gray-600 mb-2">Selected files ({uploadingFiles.length}):</p>
+                <div className="max-h-32 overflow-y-auto">
+                  {uploadingFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between py-1 text-sm">
+                      <span className="truncate">{file.name}</span>
+                      <span className="text-gray-500 ml-2">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={closeUploadModal}
+                disabled={isUploading}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={uploadManualImages}
+                disabled={uploadingFiles.length === 0 || isUploading}
+                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isUploading ? (
+                  <div className="flex items-center justify-center">
+                    <Loader className="w-4 h-4 mr-2 animate-spin" />
+                    Uploading...
+                  </div>
+                ) : (
+                  `Upload ${uploadingFiles.length} Image${uploadingFiles.length !== 1 ? 's' : ''}`
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Enhanced Product Detail Modal using ImagePreview component */}
       {selectedProduct && (
