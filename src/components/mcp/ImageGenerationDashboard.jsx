@@ -449,6 +449,60 @@ const ImageGenerationDashboard = () => {
     }
   };
 
+  // Add this test function at the top of the component after the existing functions
+  const testServerEndpoints = async () => {
+    const endpoints = [
+      '/api/ai/generate-image',
+      '/api/mcp/generate-product-images',
+      '/api/ai/generate-catalog-images',
+      '/api/mcp/status',
+      '/api/mcp/capabilities',
+      '/api/ai/health'
+    ];
+
+    console.log('🧪 Testing server endpoints...');
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        console.log(`${endpoint}: ${response.status} ${response.statusText}`);
+        
+        if (response.ok) {
+          try {
+            const data = await response.json();
+            console.log(`  Response:`, data);
+          } catch (e) {
+            console.log(`  Response: Not JSON`);
+          }
+        }
+      } catch (error) {
+        console.log(`${endpoint}: ERROR - ${error.message}`);
+      }
+    }
+    
+    // Test POST to the endpoints we're trying to use
+    console.log('\n🧪 Testing POST endpoints...');
+    
+    try {
+      const testPost = await fetch('/api/ai/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true })
+      });
+      
+      console.log(`POST /api/ai/generate-image: ${testPost.status} ${testPost.statusText}`);
+      const responseText = await testPost.text();
+      console.log(`  Response:`, responseText);
+      
+    } catch (error) {
+      console.log(`POST /api/ai/generate-image: ERROR - ${error.message}`);
+    }
+  };
+
   // FALLBACK FIX: Use working /api/ai/generate-image endpoint from server logs
   const generateImagesForProducts = async (productIds) => {
     if (!productIds || productIds.length === 0) return;
@@ -1056,6 +1110,16 @@ const ImageGenerationDashboard = () => {
         </div>
         
         <div className="flex items-center gap-3">
+          {/* Add diagnostic test button */}
+          <button
+            onClick={testServerEndpoints}
+            className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            title="Test server endpoints - check console"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Test API
+          </button>
+
           <button
             onClick={navigateToManualUpload}
             className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
