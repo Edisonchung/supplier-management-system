@@ -1,6 +1,6 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// ENHANCED: Added manual upload, image regeneration, and fixed image display issues
-// FIXED: Updated API endpoints to match server.js implementation
+// CRITICAL FIX: Updated to properly handle single product ID strings
+// FIXED: ProductSyncService method calls now handle string parameters correctly
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -315,56 +315,52 @@ const ImageGenerationDashboard = () => {
     showNotification(`Selected ${imageFiles.length} image(s) for upload`, 'info');
   };
 
-  // FIXED: Updated manual upload function
+  // FIXED: Updated manual upload function to use ProductSyncService
   const uploadManualImages = async () => {
     if (!selectedProductForUpload || uploadingFiles.length === 0) return;
+
+    if (!isProductSyncServiceAvailable()) {
+      showNotification('ProductSyncService not available - cannot upload images', 'error');
+      return;
+    }
 
     setIsUploading(true);
     showNotification(`Uploading ${uploadingFiles.length} images to Firebase Storage...`, 'info');
 
     try {
-      // FIXED: Use correct endpoint and proper FormData structure
-      const formData = new FormData();
-      formData.append('productId', selectedProductForUpload.id);
-      formData.append('productName', selectedProductForUpload.name);
-      formData.append('uploadType', 'manual');
-      formData.append('saveToFirebase', 'true');
-      
-      uploadingFiles.forEach((file, index) => {
-        formData.append(`images`, file);
-      });
-
-      const response = await fetch('/api/storage/upload-images', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        showNotification(
-          `Successfully uploaded ${result.summary?.successful || uploadingFiles.length} images to Firebase Storage for ${selectedProductForUpload.name}`, 
-          'success'
+      // FIXED: Use ProductSyncService for manual uploads
+      for (const file of uploadingFiles) {
+        const result = await productSyncService.uploadProductImage(
+          selectedProductForUpload.id,
+          file,
+          {
+            imageType: 'primary',
+            replaceExisting: true,
+            compressionQuality: 0.8
+          }
         );
-        
-        // Update the product in our local state
-        setProductsNeedingImages(prev => 
-          prev.map(p => 
-            p.id === selectedProductForUpload.id 
-              ? { ...p, hasRealImage: true, firebaseStorageComplete: true }
-              : p
-          )
-        );
-        
-        closeUploadModal();
-        await loadDashboardData();
-      } else {
-        throw new Error(result.error || 'Upload failed');
+
+        if (!result.success) {
+          throw new Error(result.error || 'Upload failed');
+        }
       }
+      
+      showNotification(
+        `Successfully uploaded ${uploadingFiles.length} images to Firebase Storage for ${selectedProductForUpload.name}`, 
+        'success'
+      );
+      
+      // Update the product in our local state
+      setProductsNeedingImages(prev => 
+        prev.map(p => 
+          p.id === selectedProductForUpload.id 
+            ? { ...p, hasRealImage: true, firebaseStorageComplete: true }
+            : p
+        )
+      );
+      
+      closeUploadModal();
+      await loadDashboardData();
       
     } catch (error) {
       console.error('Upload error:', error);
@@ -374,7 +370,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // ALTERNATIVE FIX: Use ProductSyncService for regeneration too
+  // FIXED: Critical fix for single product regeneration
   const regenerateImage = async (productId) => {
     const product = productsNeedingImages.find(p => p.id === productId) || 
                    recentGenerations.find(g => g.productId === productId);
@@ -394,12 +390,15 @@ const ImageGenerationDashboard = () => {
 
     try {
       console.log(`Calling ProductSyncService.manualImageGeneration for regeneration: ${product.productName || product.name}`);
+      console.log(`Product ID being passed: "${productId}" (type: ${typeof productId})`);
       
+      // CRITICAL FIX: Ensure we pass the productId as a string (not an array)
       const result = await productSyncService.manualImageGeneration(productId);
       console.log('ProductSyncService regeneration result:', result);
       
-      if (result && (result.success || result.imageUrl || result.images)) {
-        const imageUrl = result.imageUrl || result.images?.primary || result.primaryImage?.url;
+      if (result && (result.success || result.results?.length > 0)) {
+        const firstResult = result.results?.[0];
+        const imageUrl = firstResult?.imageUrl || result.imageUrl;
         
         showNotification(
           `Successfully regenerated image for ${product.productName || product.name}`, 
@@ -414,7 +413,7 @@ const ImageGenerationDashboard = () => {
                   ...gen, 
                   status: 'completed',
                   imageUrls: imageUrl ? [imageUrl] : [],
-                  firebaseStored: result.savedToFirebase || result.firebaseStorageComplete || false,
+                  firebaseStored: firstResult?.firebaseStored || false,
                   timestamp: new Date()
                 }
               : gen
@@ -423,7 +422,8 @@ const ImageGenerationDashboard = () => {
         
         await loadDashboardData();
       } else {
-        throw new Error(result?.error || 'Regeneration failed');
+        const errorMessage = result?.errors?.[0]?.error || result?.error || 'Regeneration failed';
+        throw new Error(errorMessage);
       }
       
     } catch (error) {
@@ -488,7 +488,7 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // ALTERNATIVE FIX: Use ProductSyncService instead of direct API calls
+  // FIXED: Critical fix for batch image generation
   const generateImagesForProducts = async (productIds) => {
     if (!productIds || productIds.length === 0) return;
 
@@ -505,24 +505,26 @@ const ImageGenerationDashboard = () => {
     try {
       showNotification(`Generating images for ${productIds.length} products via ProductSyncService...`, 'info');
 
+      // CRITICAL FIX: Process each product ID individually as a string
       for (const productId of productIds) {
         const product = productsNeedingImages.find(p => p.id === productId);
         if (!product) continue;
 
         try {
-          // Use ProductSyncService directly instead of API calls
           console.log(`Calling ProductSyncService.manualImageGeneration for ${product.name}`);
+          console.log(`Product ID being passed: "${productId}" (type: ${typeof productId})`);
           
+          // FIXED: Pass single productId as string, not in array
           const result = await productSyncService.manualImageGeneration(productId);
           console.log('ProductSyncService result:', result);
           
-          if (result && (result.success || result.imageUrl || result.images)) {
+          if (result && (result.success || result.results?.length > 0)) {
             successCount++;
             
-            showNotification(`Generated image for ${product.name}`, 'success');
+            const firstResult = result.results?.[0];
+            const imageUrl = firstResult?.imageUrl || result.imageUrl;
             
-            // Handle different response formats from ProductSyncService
-            const imageUrl = result.imageUrl || result.images?.primary || result.primaryImage?.url;
+            showNotification(`Generated image for ${product.name}`, 'success');
             
             setRecentGenerations(prev => [...prev, {
               id: Date.now() + Math.random(),
@@ -530,13 +532,14 @@ const ImageGenerationDashboard = () => {
               productName: product.name,
               status: 'completed',
               imageUrls: imageUrl ? [imageUrl] : [],
-              firebaseStored: result.savedToFirebase || result.firebaseStorageComplete || false,
+              firebaseStored: firstResult?.firebaseStored || false,
               timestamp: new Date(),
               category: product.category || 'industrial'
             }]);
             
           } else {
-            throw new Error(result?.error || 'Image generation failed');
+            const errorMessage = result?.errors?.[0]?.error || result?.error || 'Image generation failed';
+            throw new Error(errorMessage);
           }
           
         } catch (productError) {
@@ -942,7 +945,7 @@ const ImageGenerationDashboard = () => {
       return;
     }
 
-    // Use direct API calls instead of ProductSyncService
+    // Use ProductSyncService for generation
     await generateImagesForProducts(selectedProducts);
   };
 
