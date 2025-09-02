@@ -1,11 +1,10 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// UPDATED: Integrated fixes from ProductSyncService Image Loading Fix conversation
+// IMPROVED: Cleaned up and simplified version with better error handling
 
 import React, { useState, useEffect } from 'react';
 import {
   Image,
   Play,
-  Pause,
   RefreshCw,
   AlertCircle,
   CheckCircle,
@@ -16,66 +15,43 @@ import {
   Download,
   Settings,
   Loader,
-  TrendingUp,
   Activity,
   FileImage,
-  Palette,
   X,
   Filter,
   Search,
   Upload
 } from 'lucide-react';
 
-// UPDATED: Better service initialization with fallback detection
+// Import shared ImagePreview component
+import ImagePreview from './components/ImagePreview';
+
+// Simplified service initialization
 let productSyncService = null;
 
 const initializeProductSyncService = async () => {
   try {
     console.log('🔄 Initializing ProductSyncService...');
     
-    if (typeof window !== 'undefined') {
-      // Check if service is already available globally
-      if (window.ProductSyncService) {
-        productSyncService = window.ProductSyncService;
-        console.log('✅ Using existing ProductSyncService from window');
-        return true;
-      }
-      
-      if (window.productSyncService) {
-        productSyncService = window.productSyncService;
-        console.log('✅ Using ProductSyncService from window.productSyncService');
-        return true;
-      }
-      
-      // Try dynamic import
-      try {
-        const syncModule = await import('../../services/sync/ProductSyncService.js');
-        
-        if (syncModule.ProductSyncService) {
-          productSyncService = new syncModule.ProductSyncService();
-        } else if (syncModule.default) {
-          productSyncService = new syncModule.default();
-        } else {
-          throw new Error('ProductSyncService class not found in module');
-        }
-        
-        // Initialize the service
-        if (productSyncService && typeof productSyncService.initialize === 'function') {
-          await productSyncService.initialize();
-        }
-        
-        console.log('✅ ProductSyncService initialized successfully');
-        return true;
-        
-      } catch (importError) {
-        console.warn('Dynamic import failed:', importError.message);
-        throw importError;
-      }
+    // Check if already available globally first
+    if (window.productSyncService) {
+      productSyncService = window.productSyncService;
+      console.log('✅ Using existing ProductSyncService from window');
+      return true;
     }
     
-    return false;
+    // Try dynamic import with correct path
+    const syncModule = await import('../../services/sync/ProductSyncService');
+    productSyncService = new (syncModule.default || syncModule.ProductSyncService)();
+    
+    if (productSyncService.initialize) {
+      await productSyncService.initialize();
+    }
+    
+    console.log('✅ ProductSyncService initialized successfully');
+    return true;
   } catch (error) {
-    console.warn('ProductSyncService not available:', error.message);
+    console.warn('ProductSyncService not available:', error);
     productSyncService = null;
     return false;
   }
@@ -125,7 +101,6 @@ const ImageGenerationDashboard = () => {
       
       if (initialized && isProductSyncServiceAvailable()) {
         console.log('✅ ProductSyncService is fully available');
-        // UPDATED: Run the image field migration fix on initialization
         await fixProductImageFields();
       } else {
         console.warn('⚠️ ProductSyncService not available, using demo mode');
@@ -145,152 +120,34 @@ const ImageGenerationDashboard = () => {
     setTimeout(() => setNotification(null), duration);
   };
 
-  // UPDATED: Fix product image fields - enhanced with better method detection and debugging
+  // Simplified image field migration
   const fixProductImageFields = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
-        showNotification('ProductSyncService not available for fixing image fields', 'error');
+        showNotification('ProductSyncService not available', 'error');
         return;
       }
 
       console.log('🔧 Running image field migration fix...');
-      console.log('ProductSyncService instance:', productSyncService);
       showNotification('Starting image field migration...', 'info');
-      
-      // Enhanced method detection - check multiple ways to find methods
-      const getAllMethods = (obj) => {
-        let methods = new Set();
+
+      // Direct method call - the logs show this method exists
+      if (typeof productSyncService.updateProductsWithImageFields === 'function') {
+        const result = await productSyncService.updateProductsWithImageFields();
+        console.log('✅ Image field migration result:', result);
         
-        // Get own properties
-        Object.getOwnPropertyNames(obj).forEach(prop => {
-          if (typeof obj[prop] === 'function') {
-            methods.add(prop);
-          }
-        });
-        
-        // Get prototype methods
-        let proto = Object.getPrototypeOf(obj);
-        while (proto && proto !== Object.prototype) {
-          Object.getOwnPropertyNames(proto).forEach(prop => {
-            if (typeof obj[prop] === 'function') {
-              methods.add(prop);
-            }
-          });
-          proto = Object.getPrototypeOf(proto);
+        if (result?.success || result?.updatedCount !== undefined) {
+          const updated = result.updated || result.updatedCount || result.modified || 0;
+          showNotification(`Successfully updated ${updated} products with proper image flags`, 'success');
+          setTimeout(() => loadDashboardData(), 1000);
+        } else if (result?.message) {
+          showNotification(`Migration completed: ${result.message}`, 'info');
+        } else {
+          showNotification('Migration completed', 'info');
         }
-        
-        // Check direct properties that might be functions
-        for (let key in obj) {
-          try {
-            if (typeof obj[key] === 'function') {
-              methods.add(key);
-            }
-          } catch (e) {
-            // Skip if property access throws
-          }
-        }
-        
-        return Array.from(methods);
-      };
-      
-      const allMethods = getAllMethods(productSyncService);
-      console.log('All available methods:', allMethods);
-      
-      // Try multiple possible method names for the fix function
-      const possibleMethods = [
-        'updateProductsWithImageFields', // Found in method #30!
-        'fixProductImageFields',
-        'updateProductImageFields', 
-        'migrateImageFields',
-        'repairProductFields',
-        'fixImageDetection',
-        'updateProductsWithImageFlags',
-        'syncProductImageData',
-        'refreshProductImageStatus'
-      ];
-      
-      let fixMethod = null;
-      let methodName = '';
-      
-      // Direct check for the exact method we can see in the logs
-      if (allMethods.includes('updateProductsWithImageFields') && 
-          typeof productSyncService['updateProductsWithImageFields'] === 'function') {
-        fixMethod = productSyncService['updateProductsWithImageFields'];
-        methodName = 'updateProductsWithImageFields';
-        console.log(`✅ Found fix method: ${methodName}`);
       } else {
-        // Fallback to other methods
-        for (const name of possibleMethods) {
-          if (allMethods.includes(name) && typeof productSyncService[name] === 'function') {
-            fixMethod = productSyncService[name];
-            methodName = name;
-            console.log(`✅ Found fix method: ${methodName}`);
-            break;
-          }
-        }
-      }
-      
-      if (!fixMethod) {
-        console.log('No direct fix method found, attempting alternative approaches...');
-        
-        // Try to manually update products that need image generation flags
-        if (allMethods.includes('getProductsNeedingImages') && allMethods.includes('updateProduct')) {
-          showNotification('Using manual field update approach...', 'info');
-          
-          try {
-            // Get products without proper image flags
-            const products = await productSyncService.getProductsNeedingImages(100);
-            let updatedCount = 0;
-            
-            if (Array.isArray(products) && products.length > 0) {
-              for (const product of products) {
-                if (!product.needsImageGeneration) {
-                  try {
-                    await productSyncService.updateProduct(product.id, {
-                      needsImageGeneration: true,
-                      hasRealImage: false,
-                      imageGenerationStatus: 'needed'
-                    });
-                    updatedCount++;
-                  } catch (updateError) {
-                    console.warn(`Failed to update product ${product.id}:`, updateError);
-                  }
-                }
-              }
-              
-              if (updatedCount > 0) {
-                showNotification(`Manually updated ${updatedCount} products with image flags`, 'success');
-                setTimeout(() => loadDashboardData(), 1000);
-                return;
-              }
-            }
-          } catch (manualError) {
-            console.error('Manual update approach failed:', manualError);
-          }
-        }
-        
-        // Show available methods for debugging
-        showNotification('Image field migration not available. Check console for available methods.', 'error');
-        console.error('Available methods:', allMethods);
-        console.error('Tried methods:', possibleMethods);
-        return;
-      }
-      
-      const result = await fixMethod.call(productSyncService);
-      console.log('✅ Image field migration result:', result);
-      
-      if (result && (result.success || result.updated !== undefined)) {
-        const updated = result.updated || result.updatedCount || result.modified || 0;
-        showNotification(`Successfully updated ${updated} products with proper image flags`, 'success');
-        
-        // Reload dashboard data to reflect changes
-        setTimeout(() => {
-          loadDashboardData();
-        }, 1000);
-      } else if (result && result.message) {
-        showNotification(`Migration completed: ${result.message}`, 'info');
-      } else {
-        showNotification('Migration completed but result format unknown', 'info');
+        showNotification('Image field migration method not available', 'error');
+        console.error('Available methods:', Object.getOwnPropertyNames(productSyncService));
       }
     } catch (error) {
       console.error('Error fixing product image fields:', error);
@@ -329,12 +186,12 @@ const ImageGenerationDashboard = () => {
           productName: product.name || 'Unknown Product',
           category: product.category || 'general',
           imagesGenerated: product.hasRealImage ? ['primary'] : [],
-          status: getProductImageStatus(product), // UPDATED: Use improved status detection
+          status: getProductImageStatus(product),
           provider: 'openai',
           processingTime: '15.2s',
           timestamp: product.lastImageError || new Date(),
-          prompt: generateImagePrompt(product), // UPDATED: Use proper prompt generation
-          imageUrls: getProductImageUrls(product), // UPDATED: Use improved URL detection
+          prompt: generateImagePrompt(product),
+          imageUrls: getProductImageUrls(product),
           error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null
         }));
         
@@ -369,36 +226,29 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // UPDATED: Improved product image status detection
   const getProductImageStatus = (product) => {
     if (!product) return 'needed';
     
-    // Check if has real image
     if (hasRealImage(product)) {
       return 'completed';
     }
     
-    // Check if generation is in progress
     if (product.imageGenerationStatus === 'processing') {
       return 'processing';
     }
     
-    // Check if generation failed
     if (product.imageGenerationStatus === 'error' || product.lastImageError) {
       return 'failed';
     }
     
-    // Default to needs generation
     return 'needed';
   };
 
-  // UPDATED: Improved real image detection from fix conversation
   const hasRealImage = (product) => {
     const imageUrl = product.imageUrl || product.image_url || product.photo || '';
     
     if (!imageUrl) return false;
     
-    // Real images are from generation services or uploaded files
     return imageUrl.includes('oaidalleapi') || 
            imageUrl.includes('blob.core.windows.net') ||
            imageUrl.includes('generated') ||
@@ -407,7 +257,6 @@ const ImageGenerationDashboard = () => {
            (imageUrl.startsWith('https://') && !isPlaceholderImage(imageUrl));
   };
 
-  // UPDATED: Helper to identify placeholder images
   const isPlaceholderImage = (imageUrl) => {
     if (!imageUrl) return true;
     
@@ -424,11 +273,9 @@ const ImageGenerationDashboard = () => {
     );
   };
 
-  // UPDATED: Get product image URLs with priority order
   const getProductImageUrls = (product) => {
     const urls = [];
     
-    // Priority order for image URL fields
     const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail'];
     
     for (const field of imageFields) {
@@ -442,7 +289,6 @@ const ImageGenerationDashboard = () => {
       }
     }
     
-    // Check for images object structure
     if (product.images && typeof product.images === 'object') {
       Object.values(product.images).forEach(img => {
         if (typeof img === 'string' && !isPlaceholderImage(img)) {
@@ -453,10 +299,9 @@ const ImageGenerationDashboard = () => {
       });
     }
     
-    return [...new Set(urls)]; // Remove duplicates
+    return [...new Set(urls)];
   };
 
-  // UPDATED: Generate proper image prompts
   const generateImagePrompt = (product) => {
     const category = product.category || 'component';
     const name = product.name || 'product';
@@ -484,7 +329,6 @@ const ImageGenerationDashboard = () => {
     return true;
   };
 
-  // UPDATED: Load products with better filtering for those actually needing images
   const loadProductsNeedingImages = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
@@ -506,7 +350,6 @@ const ImageGenerationDashboard = () => {
         return getDemoProducts();
       }
       
-      // UPDATED: Filter to only show products that actually need images
       const filteredProducts = productList.filter(product => {
         return !hasRealImage(product);
       });
@@ -697,7 +540,20 @@ const ImageGenerationDashboard = () => {
     }
   };
 
-  // UPDATED: Enhanced image generation with better error handling
+  // Simplified navigation function
+  const navigateToManualUpload = () => {
+    if (typeof window !== 'undefined') {
+      // Try React Router first
+      if (window.history && window.history.pushState) {
+        window.history.pushState({}, '', '/manual-image-upload');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      } else {
+        // Fallback to hash routing
+        window.location.hash = '#/manual-image-upload';
+      }
+    }
+  };
+
   const handleStartImageGeneration = async () => {
     if (selectedProducts.length === 0) {
       showNotification('Please select products to generate images for', 'error');
@@ -714,10 +570,6 @@ const ImageGenerationDashboard = () => {
       console.log(`Starting image generation for ${selectedProducts.length} products...`);
       showNotification(`Starting image generation for ${selectedProducts.length} products...`, 'info');
       
-      if (typeof productSyncService.manualImageGeneration !== 'function') {
-        throw new Error('Manual image generation not available');
-      }
-      
       const result = await productSyncService.manualImageGeneration(selectedProducts);
       
       if (result && result.success) {
@@ -733,8 +585,6 @@ const ImageGenerationDashboard = () => {
         }
         
         setSelectedProducts([]);
-        
-        // Reload data after generation
         setTimeout(async () => {
           await loadDashboardData();
         }, 2000);
@@ -764,7 +614,7 @@ const ImageGenerationDashboard = () => {
         } : gen
       ));
 
-      if (!isProductSyncServiceAvailable() || typeof productSyncService.manualImageGeneration !== 'function') {
+      if (!isProductSyncServiceAvailable()) {
         throw new Error('Image generation service not available');
       }
 
@@ -785,8 +635,6 @@ const ImageGenerationDashboard = () => {
             } : gen
           ));
           showNotification('Retry successful!', 'success');
-          
-          // Reload dashboard data to refresh everything
           setTimeout(() => loadDashboardData(), 1000);
         } else {
           throw new Error('Retry generation failed');
@@ -859,15 +707,6 @@ const ImageGenerationDashboard = () => {
     return `${parseFloat(seconds).toFixed(1)}s`;
   };
 
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'N/A';
-    try {
-      return new Date(timestamp).toLocaleString();
-    } catch (error) {
-      return 'N/A';
-    }
-  };
-
   const filteredGenerations = React.useMemo(() => {
     try {
       if (!Array.isArray(recentGenerations)) return [];
@@ -931,24 +770,14 @@ const ImageGenerationDashboard = () => {
         </div>
         
         <div className="flex items-center gap-3">
-          {/* Add navigation to Manual Upload component */}
           <button
-            onClick={() => {
-              // Use React Router navigation if available, or fallback to hash routing
-              if (window.history && window.history.pushState) {
-                window.history.pushState({}, '', '/manual-image-upload');
-                window.dispatchEvent(new PopStateEvent('popstate'));
-              } else {
-                window.location.hash = '#/manual-image-upload';
-              }
-            }}
+            onClick={navigateToManualUpload}
             className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
           >
             <Upload className="w-4 h-4 mr-2" />
             Manual Upload
           </button>
 
-          {/* Image field fix button for advanced users */}
           {serviceInitialized && isProductSyncServiceAvailable() && (
             <button
               onClick={fixProductImageFields}
@@ -1071,7 +900,7 @@ const ImageGenerationDashboard = () => {
         </div>
       </div>
 
-      {/* Enhanced Products Needing Images Section */}
+      {/* Products Needing Images Section */}
       {productsNeedingImages.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-6 border-b">
@@ -1083,15 +912,7 @@ const ImageGenerationDashboard = () => {
               
               <div className="flex space-x-3">
                 <button
-                  onClick={() => {
-                    // Use React Router navigation if available, or fallback to hash routing
-                    if (window.history && window.history.pushState) {
-                      window.history.pushState({}, '', '/manual-image-upload');
-                      window.dispatchEvent(new PopStateEvent('popstate'));
-                    } else {
-                      window.location.hash = '#/manual-image-upload';
-                    }
-                  }}
+                  onClick={navigateToManualUpload}
                   className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                 >
                   Manual Upload
@@ -1178,7 +999,6 @@ const ImageGenerationDashboard = () => {
               ) : null}
             </h3>
             
-            {/* Filters */}
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
@@ -1306,105 +1126,15 @@ const ImageGenerationDashboard = () => {
         )}
       </div>
 
-      {/* Product Detail Modal - Inline version (ImagePreview import not working) */}
+      {/* Product Detail Modal using ImagePreview component */}
       {selectedProduct && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold flex items-center gap-2">
-                <FileImage className="w-6 h-6 text-blue-600" />
-                Product Image Details
-              </h3>
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium text-gray-900">{selectedProduct.productName}</h4>
-                <p className="text-sm text-gray-600">Product ID: {selectedProduct.productId}</p>
-                <p className="text-sm text-gray-600 capitalize">Category: {(selectedProduct.category || 'general').replace('_', ' ')}</p>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-sm text-gray-600">Status:</span>
-                  <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium border ml-2 ${getStatusColor(selectedProduct.status)}`}>
-                    {getStatusIcon(selectedProduct.status)}
-                    {selectedProduct.status}
-                  </div>
-                </div>
-                
-                <div>
-                  <span className="text-sm text-gray-600">Provider:</span>
-                  <span className="ml-2 text-sm text-gray-900">OpenAI DALL-E 3</span>
-                </div>
-              </div>
-              
-              <div>
-                <span className="text-sm text-gray-600">Prompt Used:</span>
-                <p className="mt-1 text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
-                  {selectedProduct.prompt}
-                </p>
-              </div>
-              
-              {selectedProduct.imageUrls && selectedProduct.imageUrls.length > 0 && (
-                <div>
-                  <span className="text-sm text-gray-600">Generated Images:</span>
-                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {selectedProduct.imageUrls.map((url, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={url}
-                          alt={`Generated image ${index + 1}`}
-                          className="w-full h-32 object-cover rounded-lg border cursor-pointer hover:opacity-80"
-                          onClick={() => window.open(url, '_blank')}
-                          onError={(e) => {
-                            e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNmM2Y0ZjYiLz4KPHR4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjOWNhM2FmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+R2VuZXJhdGVkIEltYWdlPC90ZXQ+Cjwvc3ZnPg==';
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {selectedProduct.error && (
-                <div>
-                  <span className="text-sm text-gray-600">Error Details:</span>
-                  <p className="mt-1 text-sm text-red-700 bg-red-50 p-3 rounded-lg">
-                    {selectedProduct.error}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Close
-              </button>
-              {(selectedProduct.status === 'failed' || selectedProduct.status === 'error' || selectedProduct.status === 'needed') && serviceInitialized && (
-                <button 
-                  onClick={() => {
-                    handleRetryGeneration(selectedProduct.productId);
-                    setSelectedProduct(null);
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  disabled={isGenerating}
-                >
-                  Generate Image
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <ImagePreview
+          isOpen={!!selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+          product={selectedProduct}
+          onRetry={handleRetryGeneration}
+          isGenerating={isGenerating}
+        />
       )}
     </div>
   );
