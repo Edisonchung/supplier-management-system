@@ -760,6 +760,12 @@ const ImageGenerationDashboard = () => {
     }
   };
 
+  // TEMPORARY COMPATIBILITY: Keep old function name but redirect to new function  
+  const loadProductsNeedingImages = async () => {
+    console.log('🔄 COMPATIBILITY: loadProductsNeedingImages called, redirecting to loadAllProducts...');
+    return await loadAllProducts();
+  };
+
   const loadSyncStatistics = async () => {
     try {
       if (!isProductSyncServiceAvailable()) {
