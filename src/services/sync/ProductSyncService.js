@@ -158,21 +158,17 @@ async saveImagesToFirebaseStorage(productId, openaiImages) {
    * @param {string} imageUrl - OpenAI image URL
    * @returns {string} Firebase Storage download URL
    */
- async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
+async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
   try {
-    console.log(`⬇️ Downloading ${imageType} image via proxy...`);
+    console.log(`⬇️ Downloading ${imageType} image for Firebase Storage...`);
     
-    // Use your server as a proxy to avoid CORS issues
-    const proxyResponse = await fetch(`${this.mcpApiBase}/api/proxy/download-image`, {
-      method: 'POST',
+    // Direct download with fetch (most reliable approach)
+    const imageResponse = await fetch(imageUrl, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        imageUrl: imageUrl,
-        productId: productId,
-        imageType: imageType
-      })
+        'Accept': 'image/*',
+        'User-Agent': 'HiggsFlow-ProductSync/1.0'
+      }
     });
     
     if (!proxyResponse.ok) {
@@ -1290,7 +1286,7 @@ async saveImagesToFirebaseStorage(productId, openaiImages) {
       console.log('Request payload:', requestBody);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // FIXED: Extended to 2 minutes
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // FIXED: Extended to 2 minutes
       
       const response = await fetch(`${this.mcpApiBase}/api/mcp/generate-product-images`, {
         method: 'POST',
@@ -2717,3 +2713,9 @@ export const productSyncService = new ProductSyncService();
 
 // Export the class as default
 export default ProductSyncService;
+
+// Make available globally for dashboard compatibility
+if (typeof window !== 'undefined') {
+  window.ProductSyncService = ProductSyncService;
+  window.productSyncService = productSyncService;
+}
