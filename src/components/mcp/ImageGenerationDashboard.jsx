@@ -1,6 +1,6 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// CRITICAL FIX: Updated to properly handle single product ID strings
-// FIXED: ProductSyncService method calls now handle string parameters correctly
+// CRITICAL FIX: Added missing activeTab state and allProducts state
+// FIXED: ReferenceError: Can't find variable: activeTab
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -81,6 +81,13 @@ const ImageGenerationDashboard = () => {
     manualUploads: 0,
     uploadErrors: 0
   });
+  
+  // CRITICAL FIX: Added missing activeTab state
+  const [activeTab, setActiveTab] = useState('needing');
+  
+  // CRITICAL FIX: Added missing allProducts state
+  const [allProducts, setAllProducts] = useState([]);
+  
   const [productsNeedingImages, setProductsNeedingImages] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [recentGenerations, setRecentGenerations] = useState([]);
@@ -203,14 +210,19 @@ const ImageGenerationDashboard = () => {
       }
       
       if (productsData.status === 'fulfilled' && Array.isArray(productsData.value)) {
-        setProductsNeedingImages(productsData.value);
+        const allProductsData = productsData.value;
+        const needingImagesData = allProductsData.filter(product => !hasRealImage(product));
         
-        const generationHistory = productsData.value.map(product => ({
+        // CRITICAL FIX: Set both allProducts and productsNeedingImages
+        setAllProducts(allProductsData);
+        setProductsNeedingImages(needingImagesData);
+        
+        const generationHistory = allProductsData.map(product => ({
           id: product.id,
           productId: product.id,
           productName: product.name || 'Unknown Product',
           category: product.category || 'general',
-          imagesGenerated: product.hasRealImage ? ['primary'] : [],
+          imagesGenerated: hasRealImage(product) ? ['primary'] : [],
           status: getProductImageStatus(product),
           provider: 'openai',
           processingTime: '15.2s',
@@ -226,6 +238,7 @@ const ImageGenerationDashboard = () => {
         setRecentGenerations(generationHistory);
       } else {
         console.warn('Failed to load products:', productsData.reason);
+        setAllProducts([]);
         setProductsNeedingImages([]);
         setRecentGenerations([]);
       }
@@ -359,6 +372,14 @@ const ImageGenerationDashboard = () => {
         )
       );
       
+      setAllProducts(prev => 
+        prev.map(p => 
+          p.id === selectedProductForUpload.id 
+            ? { ...p, hasRealImage: true, firebaseStorageComplete: true }
+            : p
+        )
+      );
+      
       closeUploadModal();
       await loadDashboardData();
       
@@ -372,7 +393,8 @@ const ImageGenerationDashboard = () => {
 
   // FIXED: Critical fix for single product regeneration
   const regenerateImage = async (productId) => {
-    const product = productsNeedingImages.find(p => p.id === productId) || 
+    const product = allProducts.find(p => p.id === productId) || 
+                   productsNeedingImages.find(p => p.id === productId) || 
                    recentGenerations.find(g => g.productId === productId);
     
     if (!product) {
@@ -507,7 +529,8 @@ const ImageGenerationDashboard = () => {
 
       // CRITICAL FIX: Process each product ID individually as a string
       for (const productId of productIds) {
-        const product = productsNeedingImages.find(p => p.id === productId);
+        const product = allProducts.find(p => p.id === productId) || 
+                       productsNeedingImages.find(p => p.id === productId);
         if (!product) continue;
 
         try {
@@ -692,12 +715,8 @@ const ImageGenerationDashboard = () => {
         return getDemoProducts();
       }
       
-      const filteredProducts = productList.filter(product => {
-        return !hasRealImage(product);
-      });
-      
-      console.log(`Found ${productList.length} total products, ${filteredProducts.length} need images`);
-      return filteredProducts;
+      console.log(`Found ${productList.length} total products, ${productList.filter(p => !hasRealImage(p)).length} need images`);
+      return productList; // Return ALL products, not just those needing images
       
     } catch (error) {
       console.error('Error loading products needing images:', error);
@@ -1323,7 +1342,7 @@ const ImageGenerationDashboard = () => {
                           Firebase
                         </span>
                       )}
-                      {product.hasRealImage && !product.firebaseStorageComplete && (
+                      {hasRealImage(product) && !product.firebaseStorageComplete && (
                         <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
                           <Cloud className="w-3 h-3 mr-1" />
                           OpenAI Only
