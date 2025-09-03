@@ -130,7 +130,53 @@ const ImageGenerationDashboard = () => {
 
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
+ 
+
   /**
+   * Transform product data from Firestore to dashboard format
+   */
+  const transformProductData = useCallback((docId, productData) => {
+    return {
+      id: docId,
+      name: productData.name || productData.title || 'Unnamed Product',
+      description: productData.description || '',
+      category: productData.category || 'general',
+      price: productData.price || 0,
+      stock: productData.stock || 0,
+      supplier: productData.supplier || productData.supplierName || 'Unknown Supplier',
+      sku: productData.sku || productData.productCode,
+      brand: productData.brand || '',
+      
+      // Image generation specific fields
+      needsImageGeneration: productData.needsImageGeneration !== false, // Default to true
+      hasCurrentImage: !!(productData.imageUrl || productData.image || productData.productImageUrl || productData.aiImageUrl),
+      imageUrl: productData.imageUrl || productData.image || productData.productImageUrl || null,
+      
+      // AI Image generation fields
+      aiImageUrl: productData.aiImageUrl || null,
+      aiImageGenerated: !!productData.aiImageGenerated,
+      aiImageStatus: productData.aiImageStatus || 'pending',
+      aiImageGeneratedAt: productData.aiImageGeneratedAt || null,
+      
+      // Firebase Storage fields
+      firebaseStorageComplete: productData.firebaseStorageComplete || false,
+      
+      // Status fields
+      imageGenerationStatus: productData.imageGenerationStatus || 'needed',
+      lastImageError: productData.lastImageError || null,
+      
+      // Additional fields for dashboard display
+      status: productData.status || 'active',
+      visibility: productData.visibility || 'private',
+      featured: productData.featured || false,
+      
+      // Metadata
+      createdAt: productData.createdAt || new Date(),
+      updatedAt: productData.updatedAt || new Date()
+    };
+  }, []);
+
+   /**
    * 🔧 CRITICAL FIX: Missing getAllProductsFromFirestore function
    * This was causing the ReferenceError in the "All Products" tab
    */
@@ -192,50 +238,6 @@ const ImageGenerationDashboard = () => {
       console.log('🔄 LOADALLPRODUCTS: Using demo products due to error');
       return getDemoProducts();
     }
-  }, []);
-
-  /**
-   * Transform product data from Firestore to dashboard format
-   */
-  const transformProductData = useCallback((docId, productData) => {
-    return {
-      id: docId,
-      name: productData.name || productData.title || 'Unnamed Product',
-      description: productData.description || '',
-      category: productData.category || 'general',
-      price: productData.price || 0,
-      stock: productData.stock || 0,
-      supplier: productData.supplier || productData.supplierName || 'Unknown Supplier',
-      sku: productData.sku || productData.productCode,
-      brand: productData.brand || '',
-      
-      // Image generation specific fields
-      needsImageGeneration: productData.needsImageGeneration !== false, // Default to true
-      hasCurrentImage: !!(productData.imageUrl || productData.image || productData.productImageUrl || productData.aiImageUrl),
-      imageUrl: productData.imageUrl || productData.image || productData.productImageUrl || null,
-      
-      // AI Image generation fields
-      aiImageUrl: productData.aiImageUrl || null,
-      aiImageGenerated: !!productData.aiImageGenerated,
-      aiImageStatus: productData.aiImageStatus || 'pending',
-      aiImageGeneratedAt: productData.aiImageGeneratedAt || null,
-      
-      // Firebase Storage fields
-      firebaseStorageComplete: productData.firebaseStorageComplete || false,
-      
-      // Status fields
-      imageGenerationStatus: productData.imageGenerationStatus || 'needed',
-      lastImageError: productData.lastImageError || null,
-      
-      // Additional fields for dashboard display
-      status: productData.status || 'active',
-      visibility: productData.visibility || 'private',
-      featured: productData.featured || false,
-      
-      // Metadata
-      createdAt: productData.createdAt || new Date(),
-      updatedAt: productData.updatedAt || new Date()
-    };
   }, []);
 
   /**
