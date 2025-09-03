@@ -122,7 +122,7 @@ const ImageGenerationDashboard = () => {
   // Initialize service on component mount
   useEffect(() => {
     const initialize = async () => {
-      console.log('🔄 Starting ProductSyncService initialization...');
+      console.log('🔄 Starting ProductSyncService initialization - UPDATED VERSION v2.1...');
       
       await new Promise(resolve => setTimeout(resolve, 1000));
       
