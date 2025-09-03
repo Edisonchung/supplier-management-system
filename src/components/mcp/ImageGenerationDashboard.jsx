@@ -694,32 +694,68 @@ const ImageGenerationDashboard = () => {
     return true;
   };
 
-  const loadProductsNeedingImages = async () => {
+  const loadAllProducts = async () => {
     try {
+      console.log('🔍 LOADALLPRODUCTS: Starting to load all products...');
+      
       if (!isProductSyncServiceAvailable()) {
-        console.warn('ProductSyncService not available, using fallback');
+        console.warn('🔍 LOADALLPRODUCTS: ProductSyncService not available, using fallback');
         return getDemoProducts();
       }
       
-      const products = await productSyncService.getProductsNeedingImages(50);
+      // CRITICAL FIX: Try multiple methods to get ALL products from products_public
+      let allProducts = [];
       
-      let productList = [];
-      if (Array.isArray(products)) {
-        productList = products;
-      } else if (products && products.data && Array.isArray(products.data)) {
-        productList = products.data;
-      } else if (products && products.success && Array.isArray(products.results)) {
-        productList = products.results;
-      } else {
-        console.warn('Invalid products format returned:', typeof products);
-        return getDemoProducts();
+      // Method 1: Try direct Firestore query first (most reliable)
+      console.log('🔍 LOADALLPRODUCTS: Attempting to load all products from Firestore...');
+      allProducts = await getAllProductsFromFirestore();
+      console.log(`🔍 LOADALLPRODUCTS: Direct Firestore query returned ${allProducts.length} products`);
+      
+      // Method 2: If direct query fails, try ProductSyncService methods
+      if (allProducts.length === 0) {
+        console.log('🔍 LOADALLPRODUCTS: Fallback - Using ProductSyncService methods...');
+        
+        // Try getAllPublicProducts if it exists
+        if (typeof productSyncService.getAllPublicProducts === 'function') {
+          const result = await productSyncService.getAllPublicProducts();
+          if (Array.isArray(result)) {
+            allProducts = result;
+          } else if (result && result.data && Array.isArray(result.data)) {
+            allProducts = result.data;
+          }
+          console.log(`🔍 LOADALLPRODUCTS: getAllPublicProducts returned ${allProducts.length} products`);
+        }
+        
+        // If still no products, try getProductsNeedingImages with high limit
+        if (allProducts.length === 0) {
+          console.log('🔍 LOADALLPRODUCTS: Final fallback - Using getProductsNeedingImages...');
+          const products = await productSyncService.getProductsNeedingImages(100);
+          
+          if (Array.isArray(products)) {
+            allProducts = products;
+          } else if (products && products.data && Array.isArray(products.data)) {
+            allProducts = products.data;
+          } else if (products && products.success && Array.isArray(products.results)) {
+            allProducts = products.results;
+          }
+          console.log(`🔍 LOADALLPRODUCTS: getProductsNeedingImages returned ${allProducts.length} products`);
+        }
       }
       
-      console.log(`Found ${productList.length} total products, ${productList.filter(p => !hasRealImage(p)).length} need images`);
-      return productList; // Return ALL products, not just those needing images
+      // Ensure all products have the necessary fields
+      allProducts = allProducts.map(product => ({
+        ...product,
+        hasRealImage: hasRealImage(product),
+        needsImageGeneration: !hasRealImage(product)
+      }));
+      
+      const needingImagesCount = allProducts.filter(p => !hasRealImage(p)).length;
+      console.log(`✅ LOADALLPRODUCTS: Final result - ${allProducts.length} total products, ${needingImagesCount} need images`);
+      
+      return allProducts;
       
     } catch (error) {
-      console.error('Error loading products needing images:', error);
+      console.error('🔍 LOADALLPRODUCTS: Error loading all products:', error);
       return getDemoProducts();
     }
   };
