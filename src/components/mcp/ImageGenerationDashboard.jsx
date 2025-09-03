@@ -291,7 +291,7 @@ const ImageGenerationDashboard = () => {
       setIsLoading(false);
       console.log('✅ LOADALLPRODUCTS: Loading completed');
     }
-  }, [getAllProductsFromFirestore]);
+  }, []);
 
   // Load products needing images - redirects to loadAllProducts for compatibility
   const loadProductsNeedingImages = useCallback(async () => {
