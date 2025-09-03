@@ -37,7 +37,7 @@ import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc, serverTime
 import { db } from '../../config/firebase';
 
 // Import shared ImagePreview component
-import ImagePreview from './ImagePreview';
+import ImagePreview from './components/ImagePreview';
 
 // Simplified service initialization
 let productSyncService = null;
