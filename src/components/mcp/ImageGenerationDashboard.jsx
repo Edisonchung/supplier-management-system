@@ -1240,19 +1240,22 @@ const ImageGenerationDashboard = () => {
         </div>
       </div>
 
-      {/* Products Needing Images Section */}
-      {productsNeedingImages.length > 0 && (
+      {/* Enhanced Products Section with Tabs */}
+      {(productsNeedingImages.length > 0 || allProducts.length > 0) && (
         <div className="bg-white rounded-lg shadow-sm border">
           <div className="p-6 border-b">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
-                Products Needing Images ({productsNeedingImages.length})
+                Product Management
                 {!serviceInitialized && <span className="text-sm text-orange-600 ml-2">(Demo Data)</span>}
               </h3>
               
               <div className="flex space-x-3">
                 <button
-                  onClick={() => setSelectedProducts(productsNeedingImages.map(p => p.id))}
+                  onClick={() => {
+                    const currentProducts = activeTab === 'needing' ? productsNeedingImages : allProducts;
+                    setSelectedProducts(currentProducts.map(p => p.id));
+                  }}
                   className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
                   disabled={isGenerating}
                 >
@@ -1268,10 +1271,34 @@ const ImageGenerationDashboard = () => {
                 </button>
               </div>
             </div>
+
+            {/* Tab Navigation */}
+            <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setActiveTab('needing')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'needing'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Needs Images ({productsNeedingImages.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'all'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                All Products ({allProducts.length})
+              </button>
+            </div>
           </div>
 
           <div className="divide-y max-h-96 overflow-y-auto">
-            {productsNeedingImages.map(product => (
+            {(activeTab === 'needing' ? productsNeedingImages : allProducts).map(product => (
               <div key={product.id} className="p-4 hover:bg-gray-50">
                 <div className="flex items-center space-x-4">
                   <input
@@ -1296,6 +1323,12 @@ const ImageGenerationDashboard = () => {
                           Firebase
                         </span>
                       )}
+                      {product.hasRealImage && !product.firebaseStorageComplete && (
+                        <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">
+                          <Cloud className="w-3 h-3 mr-1" />
+                          OpenAI Only
+                        </span>
+                      )}
                     </div>
                     {product.description && (
                       <p className="text-sm text-gray-600 mt-1 line-clamp-1">{product.description}</p>
@@ -1312,17 +1345,15 @@ const ImageGenerationDashboard = () => {
                       <Upload className="w-4 h-4" />
                     </button>
                     
-                    {/* Regenerate Button */}
-                    {hasRealImage(product) && (
-                      <button
-                        onClick={() => regenerateImage(product.id)}
-                        disabled={isGenerating}
-                        className="p-2 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
-                        title="Regenerate Image"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                    )}
+                    {/* Regenerate/Generate Button - Show for ALL products */}
+                    <button
+                      onClick={() => regenerateImage(product.id)}
+                      disabled={isGenerating}
+                      className="p-2 text-orange-600 hover:text-orange-800 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                      title={hasRealImage(product) ? "Regenerate Image" : "Generate Image"}
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
                   </div>
                   
                   <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
@@ -1346,6 +1377,22 @@ const ImageGenerationDashboard = () => {
               </div>
             ))}
           </div>
+
+          {/* Empty State */}
+          {((activeTab === 'needing' && productsNeedingImages.length === 0) || 
+            (activeTab === 'all' && allProducts.length === 0)) && (
+            <div className="text-center py-12">
+              <FileImage className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {activeTab === 'needing' ? 'No products need images' : 'No products found'}
+              </h3>
+              <p className="text-gray-600">
+                {activeTab === 'needing' 
+                  ? 'All products have images or switch to "All Products" tab to regenerate existing images.'
+                  : 'No products are available in the database.'}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
