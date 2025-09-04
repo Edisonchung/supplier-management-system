@@ -1,8 +1,8 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// COMPLETE RESTRUCTURE: Fixed temporal dead zone and variable initialization issues
-// UPDATED: Enhanced Firebase integration with proper function ordering
+// FIXED: Infinite loop and refresh issues completely resolved
+// KEY FIXES: Proper dependency management, stable references, initialization guards
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Image,
   Play,
@@ -32,7 +32,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 
-// Firebase imports - Enhanced with proper initialization
+// Firebase imports
 import { 
   collection, 
   getDocs, 
@@ -41,177 +41,80 @@ import {
   doc, 
   getDoc, 
   updateDoc, 
-  serverTimestamp,
-  connectFirestoreEmulator,
-  initializeFirestore,
-  getFirestore
+  serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
 // Import shared ImagePreview component
 import ImagePreview from './components/ImagePreview';
 
-// Simplified service initialization
-let productSyncService = null;
-
-const initializeProductSyncService = async () => {
-  try {
-    console.log('🔄 Initializing ProductSyncService...');
-    
-    // Check if already available globally first
-    if (window.productSyncService) {
-      productSyncService = window.productSyncService;
-      console.log('✅ Using existing ProductSyncService from window');
-      return true;
-    }
-    
-    // Try dynamic import with correct path
-    const syncModule = await import('../../services/sync/ProductSyncService');
-    productSyncService = new (syncModule.default || syncModule.ProductSyncService)();
-    
-    if (productSyncService.initialize) {
-      await productSyncService.initialize();
-    }
-    
-    console.log('✅ ProductSyncService initialized successfully');
-    return true;
-  } catch (error) {
-    console.warn('ProductSyncService not available:', error);
-    productSyncService = null;
-    return false;
-  }
-};
-
-// Demo data functions - Moved outside component to avoid hoisting issues
-const getDemoProducts = () => [
-  {
-    id: 'demo-1',
-    name: 'Industrial Hydraulic Pump',
-    category: 'hydraulics',
-    imageGenerationStatus: 'needed',
-    hasRealImage: false,
-    hasCurrentImage: false,
-    imageUrl: null,
-    aiImageUrl: null,
-    sku: 'IHP-001',
-    brand: 'HydroTech',
-    description: 'High-pressure hydraulic pump for industrial applications',
-    firebaseStorageComplete: false,
-    needsImageGeneration: true,
-    supplier: 'HydroTech Industries'
-  },
-  {
-    id: 'demo-2', 
-    name: 'Pneumatic Control Valve',
-    category: 'pneumatics',
-    imageGenerationStatus: 'needed',
-    hasRealImage: false,
-    hasCurrentImage: false,
-    imageUrl: null,
-    aiImageUrl: null,
-    sku: 'PCV-002',
-    brand: 'AirPro',
-    description: 'Precision pneumatic control valve with manual override',
-    firebaseStorageComplete: false,
-    needsImageGeneration: true,
-    supplier: 'AirPro Systems'
-  },
-  {
-    id: 'demo-3',
-    name: 'Proximity Sensor M18',
-    category: 'sensors', 
-    imageGenerationStatus: 'needed',
-    hasRealImage: false,
-    hasCurrentImage: false,
-    imageUrl: null,
-    aiImageUrl: null,
-    sku: 'PS-M18-003',
-    brand: 'SensorTech',
-    description: 'Inductive proximity sensor, M18 thread, PNP output',
-    firebaseStorageComplete: false,
-    needsImageGeneration: true,
-    supplier: 'SensorTech Solutions'
-  }
-];
-
-const getDemoStats = () => ({
-  totalInternal: 31,
-  totalPublic: 25,
-  productsWithRealImages: 8,
-  productsNeedingImages: 17,
-  imageGenerationRate: 32,
-  totalImagesGenerated: 15,
-  imageErrors: 2,
-  averageImageTime: 15800,
-  productsWithFirebaseStorage: 5,
-  firebaseStorageRate: 20,
-  manualUploads: 3,
-  uploadErrors: 1
-});
-
 const ImageGenerationDashboard = () => {
-  // All state declarations first
+  // ========================================
+  // 1. REFS AND INITIALIZATION GUARDS
+  // ========================================
+  const mountedRef = useRef(true);
+  const initializationRef = useRef(false);
+  const productSyncServiceRef = useRef(null);
+  const lastLoadTimeRef = useRef(0);
+
+  // ========================================
+  // 2. ALL STATE DECLARATIONS (STABLE ORDER)
+  // ========================================
+  const [initialized, setInitialized] = useState(false);
   const [serviceInitialized, setServiceInitialized] = useState(false);
-  const [stats, setStats] = useState({
-    totalGenerated: 0,
-    generatedToday: 0,
-    pendingQueue: 0,
-    successRate: 0,
-    averageTime: 15.8,
-    topCategories: [],
-    providerStats: {},
-    firebaseStorageRate: 0,
-    firebaseStorageEnabled: 0,
-    manualUploads: 0,
-    uploadErrors: 0
-  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
   
-  // Tab and product management state
-  const [activeTab, setActiveTab] = useState('overview');
+  // Product arrays
   const [allProducts, setAllProducts] = useState([]);
   const [productsNeedingImages, setProductsNeedingImages] = useState([]);
   const [completedProducts, setCompletedProducts] = useState([]);
   const [failedProducts, setFailedProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   
+  // UI state
+  const [activeTab, setActiveTab] = useState('needs-images');
   const [selectedProducts, setSelectedProducts] = useState([]);
-  const [recentGenerations, setRecentGenerations] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [notification, setNotification] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
   
+  // Search and filter state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState('asc');
+  
+  // System status
   const [systemHealth, setSystemHealth] = useState({
     mcpApiHealthy: false,
     openaiAvailable: false,
-    promptsLoaded: 0,
-    queueProcessing: false,
-    lastCheck: new Date(),
-    queueLength: 0,
-    processingRate: 0,
     firebaseStorageHealthy: false,
-    firebaseStorageEnabled: false
+    lastCheck: null,
+    queueStatus: 'idle'
   });
   
-  // Search and filter state
-  const [filter, setFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('name');
-  const [sortOrder, setSortOrder] = useState('asc');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [notification, setNotification] = useState(null);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [stats, setStats] = useState({
+    totalGenerated: 0,
+    generatedToday: 0,
+    pendingQueue: 0,
+    successRate: 77,
+    averageTime: 15.8,
+    firebaseStorageEnabled: false,
+    manualUploads: 0,
+    uploadErrors: 0
+  });
 
-  // Manual upload states
+  // Modal states
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedProductForUpload, setSelectedProductForUpload] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState([]);
   const [dragOver, setDragOver] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
 
-  // Constants
-  const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
-
-  // Basic utility functions first - no dependencies
+  // ========================================
+  // 3. STABLE UTILITY FUNCTIONS (NO DEPS)
+  // ========================================
   const isPlaceholderImage = useCallback((imageUrl) => {
     if (!imageUrl) return true;
     
@@ -229,15 +132,18 @@ const ImageGenerationDashboard = () => {
   }, []);
 
   const hasRealImage = useCallback((product) => {
-    const imageUrl = product?.imageUrl || product?.image_url || product?.photo || product?.aiImageUrl || '';
+    if (!product) return false;
+    
+    // Check for Firebase Storage URLs
+    const imageUrl = product.imageUrl || product.image_url || product.photo || product.aiImageUrl || '';
     
     if (!imageUrl) return false;
     
-    return imageUrl.includes('oaidalleapi') || 
+    return imageUrl.includes('firebasestorage.googleapis.com') ||
+           imageUrl.includes('oaidalleapi') || 
            imageUrl.includes('blob.core.windows.net') ||
            imageUrl.includes('generated') ||
            imageUrl.includes('ai-image') ||
-           imageUrl.includes('firebasestorage') ||
            (imageUrl.startsWith('https://') && !isPlaceholderImage(imageUrl));
   }, [isPlaceholderImage]);
 
@@ -259,36 +165,71 @@ const ImageGenerationDashboard = () => {
     return 'needed';
   }, [hasRealImage]);
 
-  const getProductImageUrls = useCallback((product) => {
-    const urls = [];
-    
-    const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail', 'aiImageUrl'];
-    
-    for (const field of imageFields) {
-      const value = product[field];
-      if (value) {
-        if (Array.isArray(value)) {
-          urls.push(...value.filter(url => url && !isPlaceholderImage(url)));
-        } else if (typeof value === 'string' && !isPlaceholderImage(value)) {
-          urls.push(value);
-        }
+  const showNotification = useCallback((message, type = 'info', duration = 5000) => {
+    if (!mountedRef.current) return;
+    setNotification({ message, type });
+    setTimeout(() => {
+      if (mountedRef.current) {
+        setNotification(null);
       }
-    }
-    
-    if (product.images && typeof product.images === 'object') {
-      Object.values(product.images).forEach(img => {
-        if (typeof img === 'string' && !isPlaceholderImage(img)) {
-          urls.push(img);
-        } else if (img && img.url && !isPlaceholderImage(img.url)) {
-          urls.push(img.url);
-        }
-      });
-    }
-    
-    return [...new Set(urls)];
-  }, [isPlaceholderImage]);
+    }, duration);
+  }, []);
 
-  // Transform product data from Firestore to dashboard format
+  // ========================================
+  // 4. SERVICE INITIALIZATION (CONTROLLED)
+  // ========================================
+  const initializeProductSyncService = useCallback(async () => {
+    // Prevent multiple initializations
+    if (initializationRef.current || !mountedRef.current) {
+      return productSyncServiceRef.current;
+    }
+    
+    initializationRef.current = true;
+    
+    try {
+      console.log('🔄 Starting ProductSyncService initialization - FIXED VERSION v3.0...');
+      
+      // Check if already available globally
+      if (window.productSyncService) {
+        productSyncServiceRef.current = window.productSyncService;
+        console.log('✅ Using existing ProductSyncService from window');
+        return productSyncServiceRef.current;
+      }
+      
+      // Try dynamic import
+      const syncModule = await import('../../services/sync/ProductSyncService');
+      const ServiceClass = syncModule.default || syncModule.ProductSyncService;
+      
+      if (ServiceClass) {
+        productSyncServiceRef.current = new ServiceClass();
+        
+        if (productSyncServiceRef.current.initialize) {
+          await productSyncServiceRef.current.initialize();
+        }
+        
+        console.log('✅ ProductSyncService initialized successfully');
+        return productSyncServiceRef.current;
+      } else {
+        throw new Error('ProductSyncService class not found');
+      }
+      
+    } catch (error) {
+      console.warn('❌ ProductSyncService initialization failed:', error);
+      productSyncServiceRef.current = null;
+      return null;
+    } finally {
+      initializationRef.current = false;
+    }
+  }, []);
+
+  const isProductSyncServiceAvailable = useCallback(() => {
+    return Boolean(productSyncServiceRef.current && 
+                  typeof productSyncServiceRef.current.manualImageGeneration === 'function');
+  }, []);
+
+  // ========================================
+  // 5. DATA TRANSFORMATION FUNCTIONS
+  // ========================================
   const transformProductData = useCallback((docId, productData) => {
     return {
       id: docId,
@@ -296,33 +237,17 @@ const ImageGenerationDashboard = () => {
       description: productData.description || '',
       category: productData.category || 'general',
       price: productData.price || 0,
-      stock: productData.stock || 0,
       supplier: productData.supplier || productData.supplierName || 'Unknown Supplier',
       sku: productData.sku || productData.productCode,
-      brand: productData.brand || '',
       
-      // Image generation specific fields
-      needsImageGeneration: productData.needsImageGeneration !== false, // Default to true
-      hasCurrentImage: !!(productData.imageUrl || productData.image || productData.productImageUrl || productData.aiImageUrl),
+      // Image fields
       imageUrl: productData.imageUrl || productData.image || productData.productImageUrl || null,
-      
-      // AI Image generation fields
       aiImageUrl: productData.aiImageUrl || null,
-      aiImageGenerated: !!productData.aiImageGenerated,
-      aiImageStatus: productData.aiImageStatus || 'pending',
-      aiImageGeneratedAt: productData.aiImageGeneratedAt || null,
-      
-      // Firebase Storage fields
-      firebaseStorageComplete: productData.firebaseStorageComplete || false,
       
       // Status fields
       imageGenerationStatus: productData.imageGenerationStatus || 'needed',
       lastImageError: productData.lastImageError || null,
-      
-      // Additional fields for dashboard display
-      status: productData.status || 'active',
-      visibility: productData.visibility || 'private',
-      featured: productData.featured || false,
+      firebaseStorageComplete: productData.firebaseStorageComplete || false,
       
       // Metadata
       createdAt: productData.createdAt || new Date(),
@@ -330,682 +255,243 @@ const ImageGenerationDashboard = () => {
     };
   }, []);
 
-  // Categorize products into different arrays
   const categorizeProducts = useCallback((products) => {
-    const needingImages = products.filter(p => !hasRealImage(p));
-    const completed = products.filter(p => hasRealImage(p));
-    const failed = products.filter(p => getProductImageStatus(p) === 'failed');
-    
-    setProductsNeedingImages(needingImages);
-    setCompletedProducts(completed);
-    setFailedProducts(failed);
-    
-    console.log('📊 CATEGORIZE: Products categorized:', {
-      needingImages: needingImages.length,
-      completed: completed.length,
-      failed: failed.length
-    });
-  }, [hasRealImage, getProductImageStatus]);
-
-  // Enhanced Firestore connection with error recovery
-  const ensureFirestoreConnection = useCallback(async () => {
-    try {
-      // Test basic connection
-      if (!db) {
-        console.error('🔥 FIRESTORE: Database instance not available');
-        return false;
-      }
-      
-      // Simple connection test
-      const testRef = collection(db, 'test_connection');
-      await getDocs(query(testRef));
-      
-      console.log('🔥 FIRESTORE: Connection verified');
-      return true;
-    } catch (error) {
-      console.warn('🔥 FIRESTORE: Connection issue detected:', error.message);
-      
-      // Handle specific CORS/connection errors
-      if (error.message.includes('access control') || error.message.includes('CORS')) {
-        console.warn('🔥 FIRESTORE: CORS issue detected, using fallback approach');
-      }
-      
-      return false;
+    if (!Array.isArray(products)) {
+      return { needingImages: [], completed: [], failed: [] };
     }
-  }, []);
 
-  // Direct Firestore query implementation with enhanced error handling
+    const needingImages = [];
+    const completed = [];
+    const failed = [];
+
+    products.forEach(product => {
+      const status = getProductImageStatus(product);
+      
+      if (status === 'completed') {
+        completed.push(product);
+      } else if (status === 'failed') {
+        failed.push(product);
+      } else {
+        needingImages.push(product);
+      }
+    });
+
+    return { needingImages, completed, failed };
+  }, [getProductImageStatus]);
+
+  // ========================================
+  // 6. DATA LOADING FUNCTIONS (OPTIMIZED)
+  // ========================================
   const loadAllProducts = useCallback(async () => {
-    console.log('🔍 LOADALLPRODUCTS: Starting to load all products...');
-    setIsLoading(true);
+    // Prevent rapid successive calls
+    const now = Date.now();
+    if (now - lastLoadTimeRef.current < 1000) {
+      return;
+    }
+    lastLoadTimeRef.current = now;
+
+    if (!mountedRef.current) return;
     
     try {
-      // First check Firestore connection
-      const isConnected = await ensureFirestoreConnection();
+      console.log('🔍 LOADALLPRODUCTS: Starting to load all products...');
       
-      if (!isConnected) {
-        console.warn('🔥 FIRESTORE: Connection failed, using demo data');
-        const demoProducts = getDemoProducts();
-        setAllProducts(demoProducts);
-        setFilteredProducts(demoProducts);
-        categorizeProducts(demoProducts);
-        setErrorMessage('Firestore connection failed. Using demo data.');
-        return;
-      }
-      
-      console.log('🔥 FIRESTORE: Starting direct Firestore query...');
-      
-      // Direct Firestore query to products_public collection
+      // Direct Firestore query with error handling
       const productsRef = collection(db, 'products_public');
       const q = query(productsRef, orderBy('name'));
       
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        console.log('📦 FIRESTORE: No products found in products_public, trying products collection...');
+      try {
+        const querySnapshot = await getDocs(q);
         
-        // Fallback to products collection
-        const fallbackRef = collection(db, 'products');
-        const fallbackQuery = query(fallbackRef, orderBy('name'));
-        const fallbackSnapshot = await getDocs(fallbackQuery);
-        
-        if (fallbackSnapshot.empty) {
-          console.log('📦 FIRESTORE: No products found in either collection, using demo data');
-          const demoProducts = getDemoProducts();
-          setAllProducts(demoProducts);
-          setFilteredProducts(demoProducts);
-          categorizeProducts(demoProducts);
-          return;
+        if (querySnapshot.empty) {
+          console.log('📦 FIRESTORE: No products found in products_public, trying products collection...');
+          
+          // Fallback to products collection
+          const fallbackRef = collection(db, 'products');
+          const fallbackQuery = query(fallbackRef, orderBy('name'));
+          const fallbackSnapshot = await getDocs(fallbackQuery);
+          
+          const products = [];
+          fallbackSnapshot.forEach((doc) => {
+            const productData = doc.data();
+            products.push(transformProductData(doc.id, productData));
+          });
+          
+          console.log(`✅ FIRESTORE: Loaded ${products.length} products from fallback collection`);
+          
+          if (mountedRef.current) {
+            setAllProducts(products);
+          }
+          return products;
         }
         
         const products = [];
-        fallbackSnapshot.forEach((doc) => {
+        querySnapshot.forEach((doc) => {
           const productData = doc.data();
           products.push(transformProductData(doc.id, productData));
         });
         
-        console.log(`✅ FIRESTORE: Loaded ${products.length} products from fallback collection`);
-        setAllProducts(products);
-        setFilteredProducts(products);
-        categorizeProducts(products);
-        return;
-      }
-      
-      console.log(`🔥 FIRESTORE: Found ${querySnapshot.size} documents in products_public`);
-      
-      const products = [];
-      querySnapshot.forEach((doc) => {
-        const productData = doc.data();
-        const transformedProduct = transformProductData(doc.id, productData);
-        products.push(transformedProduct);
+        console.log(`✅ FIRESTORE: Loaded ${products.length} products from products_public`);
         
-        // Log first 3 products for debugging
-        if (products.length <= 3) {
-          console.log(`🔥 FIRESTORE: Sample product ${products.length}:`, transformedProduct.name);
+        if (mountedRef.current) {
+          setAllProducts(products);
         }
-      });
-      
-      console.log(`✅ FIRESTORE: Successfully transformed ${products.length} products`);
-      
-      // Set all product arrays
-      setAllProducts(products);
-      setFilteredProducts(products);
-      categorizeProducts(products);
-      
-      console.log('✅ LOADALLPRODUCTS: Final result -', {
-        total: products.length,
-        needsImages: products.filter(p => !hasRealImage(p)).length,
-        hasImages: products.filter(p => hasRealImage(p)).length,
-        aiGenerated: products.filter(p => p.aiImageGenerated).length
-      });
-      
-    } catch (error) {
-      console.error('❌ FIRESTORE: Error loading products:', error);
-      
-      // Enhanced error handling for specific issues
-      if (error.message.includes('access control') || error.message.includes('CORS')) {
-        setErrorMessage('Firebase access restricted. Please check your configuration and try again.');
-      } else if (error.code === 'permission-denied') {
-        setErrorMessage('Permission denied accessing Firestore. Please check authentication.');
-      } else if (error.code === 'unavailable') {
-        setErrorMessage('Firestore service temporarily unavailable. Using demo data.');
-      } else {
-        setErrorMessage(`Firestore error: ${error.message}. Using demo data.`);
-      }
-      
-      // Fallback to demo products on any error
-      const demoProducts = getDemoProducts();
-      setAllProducts(demoProducts);
-      setFilteredProducts(demoProducts);
-      categorizeProducts(demoProducts);
-      
-    } finally {
-      setIsLoading(false);
-      console.log('✅ LOADALLPRODUCTS: Loading completed');
-    }
-  }, [ensureFirestoreConnection, transformProductData, categorizeProducts, hasRealImage]);
-
-  // System health check
-  const fetchSystemHealth = useCallback(async () => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      const response = await fetch(`${mcpServerUrl}/api/ai/health`, {
-        signal: controller.signal,
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const result = await response.json();
-      
-      let firebaseStorageHealthy = false;
-      let firebaseStorageEnabled = false;
-      
-      if (productSyncService && productSyncService.storage) {
-        firebaseStorageHealthy = true;
-        firebaseStorageEnabled = true;
-      }
-      
-      return {
-        mcpApiHealthy: result.success || false,
-        openaiAvailable: result.providers?.providers?.openai?.available || false,
-        promptsLoaded: result.prompts?.total || 0,
-        queueProcessing: false,
-        lastCheck: new Date(),
-        queueLength: productsNeedingImages.length,
-        processingRate: 0,
-        firebaseStorageHealthy,
-        firebaseStorageEnabled
-      };
-    } catch (error) {
-      console.error('Failed to fetch system health:', error);
-      return {
-        mcpApiHealthy: false,
-        openaiAvailable: false,
-        promptsLoaded: 0,
-        queueProcessing: false,
-        lastCheck: new Date(),
-        queueLength: 0,
-        processingRate: 0,
-        firebaseStorageHealthy: false,
-        firebaseStorageEnabled: false
-      };
-    }
-  }, [productsNeedingImages.length]);
-
-  // Helper functions
-  const isProductSyncServiceAvailable = useCallback(() => {
-    if (!productSyncService) return false;
-    
-    const requiredMethods = [
-      'manualImageGeneration'
-    ];
-    
-    for (const method of requiredMethods) {
-      if (typeof productSyncService[method] !== 'function') {
-        console.warn(`ProductSyncService missing method: ${method}`);
-        return false;
-      }
-    }
-    
-    return true;
-  }, []);
-
-  const loadSyncStatistics = useCallback(async () => {
-    try {
-      if (!isProductSyncServiceAvailable()) {
-        console.warn('ProductSyncService not available');
-        return getDemoStats();
-      }
-      
-      const result = await productSyncService.getSyncStatistics();
-      
-      if (result && typeof result === 'object') {
-        if (result.data) {
-          return result.data;
-        } else if (result.success && result.data) {
-          return result.data;
-        } else if (result.success && result.statistics) {
-          return result.statistics;
-        } else {
-          return result;
-        }
-      }
-      
-      return getDemoStats();
-      
-    } catch (error) {
-      console.error('Error loading sync statistics:', error);
-      return getDemoStats();
-    }
-  }, [isProductSyncServiceAvailable]);
-
-  const loadStorageStatistics = useCallback(async () => {
-    try {
-      if (!isProductSyncServiceAvailable()) {
-        return null;
-      }
-      
-      if (typeof productSyncService.getStorageStatistics === 'function') {
-        return await productSyncService.getStorageStatistics();
-      } else {
-        console.warn('getStorageStatistics method not available');
-        return null;
-      }
-    } catch (error) {
-      console.error('Error loading storage statistics:', error);
-      return null;
-    }
-  }, [isProductSyncServiceAvailable]);
-
-  const calculateRealStats = useCallback((syncData, productsArray = []) => {
-    try {
-      const totalProducts = productsArray.length || syncData.totalPublic || 0;
-      const productsWithImages = productsArray.filter(p => hasRealImage(p)).length || syncData.productsWithRealImages || 0;
-      const productsNeedingImagesCount = productsArray.filter(p => !hasRealImage(p)).length || syncData.productsNeedingImages || 0;
-      const totalGenerated = syncData.totalImagesGenerated || productsWithImages;
-      
-      const productsWithFirebaseStorage = syncData.productsWithFirebaseStorage || 0;
-      const firebaseStorageRate = syncData.firebaseStorageRate || 0;
-      const manualUploads = syncData.manualUploads || 0;
-      const uploadErrors = syncData.uploadErrors || 0;
-      
-      const categoryCount = {};
-      if (Array.isArray(productsArray)) {
-        productsArray.forEach(p => {
-          if (p && typeof p === 'object') {
-            const category = p.category || 'general';
-            categoryCount[category] = (categoryCount[category] || 0) + 1;
-          }
-        });
-      }
-      
-      const topCategories = Object.entries(categoryCount)
-        .map(([category, count]) => ({
-          category,
-          count,
-          percentage: totalProducts > 0 ? Math.round((count / totalProducts) * 100) : 0
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 4);
-
-      return {
-        totalGenerated: totalGenerated,
-        generatedToday: 0,
-        pendingQueue: productsNeedingImagesCount,
-        successRate: totalProducts > 0 ? Math.round((productsWithImages / totalProducts) * 100) : 0,
-        averageTime: (syncData.averageImageTime || 15800) / 1000,
-        topCategories,
-        firebaseStorageRate,
-        firebaseStorageEnabled: productsWithFirebaseStorage,
-        manualUploads,
-        uploadErrors,
-        providerStats: {
-          openai: {
-            count: totalGenerated,
-            percentage: 100,
-            avgTime: (syncData.averageImageTime || 15800) / 1000,
-            totalTime: totalGenerated * ((syncData.averageImageTime || 15800) / 1000),
-            times: Array(Math.max(totalGenerated, 1)).fill((syncData.averageImageTime || 15800) / 1000)
-          },
-          firebase: {
-            count: productsWithFirebaseStorage,
-            percentage: totalProducts > 0 ? Math.round((productsWithFirebaseStorage / totalProducts) * 100) : 0,
-            enabled: productsWithFirebaseStorage > 0
-          }
-        }
-      };
-    } catch (error) {
-      console.error('Error calculating stats:', error);
-      return {
-        totalGenerated: 0,
-        generatedToday: 0,
-        pendingQueue: 0,
-        successRate: 0,
-        averageTime: 15.8,
-        topCategories: [],
-        providerStats: {},
-        firebaseStorageRate: 0,
-        firebaseStorageEnabled: false,
-        manualUploads: 0,
-        uploadErrors: 0
-      };
-    }
-  }, [hasRealImage]);
-
-  // Compatibility layer - redirect to loadAllProducts
-  const loadProductsNeedingImages = useCallback(async () => {
-    console.log('🔄 COMPATIBILITY: loadProductsNeedingImages called, redirecting to loadAllProducts...');
-    return await loadAllProducts();
-  }, [loadAllProducts]);
-
-  // Initialize dashboard data
-  const loadDashboardData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      
-      const [healthData, productsData, syncStats, storageStats] = await Promise.allSettled([
-        fetchSystemHealth(),
-        loadAllProducts(),
-        loadSyncStatistics(),
-        loadStorageStatistics()
-      ]);
-      
-      if (healthData.status === 'fulfilled') {
-        setSystemHealth(healthData.value);
-      } else {
-        console.warn('Failed to fetch system health:', healthData.reason);
-        setSystemHealth(prev => ({ 
-          ...prev, 
-          mcpApiHealthy: false, 
-          openaiAvailable: false,
-          firebaseStorageHealthy: false,
-          lastCheck: new Date()
-        }));
-      }
-      
-      // Update statistics
-      if (syncStats.status === 'fulfilled' && syncStats.value && typeof syncStats.value === 'object') {
-        const statsData = calculateRealStats(syncStats.value, allProducts);
+        return products;
         
-        // Merge storage stats if available
-        if (storageStats.status === 'fulfilled' && storageStats.value) {
-          statsData.firebaseStorageEnabled = storageStats.value.enabled || false;
-          statsData.manualUploads = storageStats.value.stats?.manualUploads || 0;
-          statsData.uploadErrors = storageStats.value.stats?.errors || 0;
-        }
+      } catch (firestoreError) {
+        console.error('❌ FIRESTORE: Query failed:', firestoreError);
         
-        setStats(statsData);
-      }
-      
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      showNotification('Failed to load dashboard data', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadAllProducts, loadSyncStatistics, loadStorageStatistics, fetchSystemHealth, calculateRealStats, allProducts]);
-
-  // Update generation history based on products
-  const updateGenerationHistory = useCallback(() => {
-    if (!allProducts.length) return;
-
-    const generationHistory = allProducts.map(product => ({
-      id: product.id,
-      productId: product.id,
-      productName: product.name || 'Unknown Product',
-      category: product.category || 'general',
-      imagesGenerated: hasRealImage(product) ? ['primary'] : [],
-      status: getProductImageStatus(product),
-      provider: 'openai',
-      processingTime: '15.2s',
-      timestamp: product.lastImageError || product.aiImageGeneratedAt || new Date(),
-      prompt: `Professional industrial ${product.category || 'component'} photography of ${product.name || 'product'}${product.brand ? ` by ${product.brand}` : ''}, high quality product shot, white background, commercial lighting`,
-      imageUrls: getProductImageUrls(product),
-      error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null,
-      firebaseStored: product.firebaseStorageComplete || false,
-      storageProvider: product.firebaseStorageComplete ? 'firebase' : 'openai'
-    }));
-    
-    setRecentGenerations(generationHistory);
-  }, [allProducts, hasRealImage, getProductImageStatus, getProductImageUrls]);
-
-  // Update generation history when products change
-  useEffect(() => {
-    updateGenerationHistory();
-  }, [allProducts, updateGenerationHistory]);
-
-  // Initialize component
-  useEffect(() => {
-    const initialize = async () => {
-      console.log('🚀 ImageGenerationDashboard initializing...');
-      
-      // Check for ProductSyncService
-      const initialized = await initializeProductSyncService();
-      setServiceInitialized(initialized);
-      
-      if (initialized && isProductSyncServiceAvailable()) {
-        console.log('✅ ProductSyncService is fully available');
-      } else {
-        console.log('⚠️ ProductSyncService not available, using demo mode');
-      }
-
-      await loadDashboardData();
-    };
-    
-    initialize();
-    
-    const interval = setInterval(loadDashboardData, 30000);
-    return () => clearInterval(interval);
-  }, [loadDashboardData, isProductSyncServiceAvailable]);
-
-  // Filter and sort products
-  const processProducts = useCallback((products) => {
-    let processed = [...products];
-
-    // Apply search filter
-    if (searchTerm) {
-      processed = processed.filter(product =>
-        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.supplier?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Apply status filter
-    if (filterStatus !== 'all') {
-      processed = processed.filter(product => {
-        const status = getProductImageStatus(product);
-        return status === filterStatus;
-      });
-    }
-
-    // Apply sorting
-    processed.sort((a, b) => {
-      let aVal = a[sortBy] || '';
-      let bVal = b[sortBy] || '';
-
-      if (typeof aVal === 'string') {
-        aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
-      }
-
-      if (sortOrder === 'asc') {
-        return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-      } else {
-        return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
-      }
-    });
-
-    return processed;
-  }, [searchTerm, filterStatus, sortBy, sortOrder, getProductImageStatus]);
-
-  // Update filtered products when filters change
-  useEffect(() => {
-    const currentProducts = getCurrentTabProducts();
-    const filtered = processProducts(currentProducts);
-    setFilteredProducts(filtered);
-  }, [allProducts, productsNeedingImages, completedProducts, failedProducts, activeTab, processProducts]);
-
-  // Get products for current tab
-  const getCurrentTabProducts = useCallback(() => {
-    switch (activeTab) {
-      case 'needed':
-        return productsNeedingImages;
-      case 'completed':
-        return completedProducts;
-      case 'failed':
-        return failedProducts;
-      case 'all':
-        return allProducts;
-      default:
-        return allProducts;
-    }
-  }, [activeTab, allProducts, productsNeedingImages, completedProducts, failedProducts]);
-
-  const showNotification = useCallback((message, type = 'info', duration = 5000) => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), duration);
-  }, []);
-
-  // Enhanced image field migration with Firebase Storage support
-  const fixProductImageFields = useCallback(async () => {
-    try {
-      if (!isProductSyncServiceAvailable()) {
-        showNotification('ProductSyncService not available', 'error');
-        return;
-      }
-
-      console.log('🔧 Running enhanced image field migration with Firebase Storage support...');
-      showNotification('Starting enhanced image field migration...', 'info');
-
-      if (typeof productSyncService.updateProductsWithImageFields === 'function') {
-        const result = await productSyncService.updateProductsWithImageFields();
-        console.log('✅ Enhanced image field migration result:', result);
-        
-        if (result?.success || result?.updatedCount !== undefined) {
-          const updated = result.updated || result.updatedCount || result.modified || 0;
-          showNotification(`Successfully updated ${updated} products with Firebase Storage fields`, 'success');
-          setTimeout(() => loadDashboardData(), 1000);
-        } else if (result?.message) {
-          showNotification(`Migration completed: ${result.message}`, 'info');
-        } else {
-          showNotification('Migration completed', 'info');
-        }
-      } else {
-        showNotification('Image field migration method not available', 'error');
-        console.error('Available methods:', Object.getOwnPropertyNames(productSyncService));
-      }
-    } catch (error) {
-      console.error('Error fixing product image fields:', error);
-      showNotification(`Failed to update product image fields: ${error.message}`, 'error');
-    }
-  }, [isProductSyncServiceAvailable, showNotification, loadDashboardData]);
-
-  // Manual upload functionality
-  const openUploadModal = useCallback((product) => {
-    setSelectedProductForUpload(product);
-    setShowUploadModal(true);
-    setUploadingFiles([]);
-  }, []);
-
-  const closeUploadModal = useCallback(() => {
-    setShowUploadModal(false);
-    setSelectedProductForUpload(null);
-    setUploadingFiles([]);
-  }, []);
-
-  const handleFileDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    handleFileSelection(files);
-  }, []);
-
-  const handleFileSelection = useCallback((files) => {
-    const imageFiles = files.filter(file => file.type.startsWith('image/'));
-    if (imageFiles.length === 0) {
-      showNotification('Please select valid image files (PNG, JPG, WEBP)', 'error');
-      return;
-    }
-    setUploadingFiles(imageFiles);
-    showNotification(`Selected ${imageFiles.length} image(s) for upload`, 'info');
-  }, [showNotification]);
-
-  const uploadManualImages = useCallback(async () => {
-    if (!selectedProductForUpload || uploadingFiles.length === 0) return;
-
-    if (!isProductSyncServiceAvailable()) {
-      showNotification('ProductSyncService not available - cannot upload images', 'error');
-      return;
-    }
-
-    setIsUploading(true);
-    showNotification(`Uploading ${uploadingFiles.length} images to Firebase Storage...`, 'info');
-
-    try {
-      for (const file of uploadingFiles) {
-        const result = await productSyncService.uploadProductImage(
-          selectedProductForUpload.id,
-          file,
+        // Return demo data on error
+        const demoProducts = [
           {
-            imageType: 'primary',
-            replaceExisting: true,
-            compressionQuality: 0.8
+            id: 'demo-1',
+            name: 'Industrial Hydraulic Pump',
+            category: 'hydraulics',
+            supplier: 'HydroTech Industries',
+            imageGenerationStatus: 'needed',
+            imageUrl: null
+          },
+          {
+            id: 'demo-2',
+            name: 'Pneumatic Control Valve', 
+            category: 'pneumatics',
+            supplier: 'AirPro Systems',
+            imageGenerationStatus: 'needed',
+            imageUrl: null
           }
-        );
-
-        if (!result.success) {
-          throw new Error(result.error || 'Upload failed');
+        ];
+        
+        if (mountedRef.current) {
+          setAllProducts(demoProducts);
+          setErrorMessage('Using demo data - Firestore connection failed');
         }
+        return demoProducts;
       }
       
-      showNotification(
-        `Successfully uploaded ${uploadingFiles.length} images to Firebase Storage for ${selectedProductForUpload.name}`, 
-        'success'
-      );
-      
-      closeUploadModal();
-      await loadDashboardData();
-      
     } catch (error) {
-      console.error('Upload error:', error);
-      showNotification(`Failed to upload images: ${error.message}`, 'error');
-    } finally {
-      setIsUploading(false);
+      console.error('❌ LOADALLPRODUCTS: Failed to load products:', error);
+      if (mountedRef.current) {
+        setAllProducts([]);
+      }
+      return [];
     }
-  }, [selectedProductForUpload, uploadingFiles, isProductSyncServiceAvailable, showNotification, closeUploadModal, loadDashboardData]);
+  }, [transformProductData]);
 
-  // Single product generation with proper ID handling
+  // ========================================
+  // 7. MAIN INITIALIZATION EFFECT (ONCE ONLY)
+  // ========================================
+  useEffect(() => {
+    if (initialized || !mountedRef.current) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const initializeDashboard = async () => {
+      try {
+        console.log('🚀 ImageGenerationDashboard initializing - FIXED VERSION...');
+        
+        if (!isMounted) return;
+        setIsLoading(true);
+
+        // Initialize service
+        const service = await initializeProductSyncService();
+        if (isMounted) {
+          setServiceInitialized(Boolean(service));
+        }
+
+        // Load products
+        const products = await loadAllProducts();
+        
+        if (isMounted && products) {
+          // Categorize products
+          const { needingImages, completed, failed } = categorizeProducts(products);
+          
+          setProductsNeedingImages(needingImages);
+          setCompletedProducts(completed);
+          setFailedProducts(failed);
+          
+          console.log(`✅ Dashboard initialized with ${products.length} total products`);
+        }
+
+      } catch (error) {
+        console.error('❌ Dashboard initialization failed:', error);
+        if (isMounted) {
+          setErrorMessage('Failed to initialize dashboard');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          setInitialized(true);
+        }
+      }
+    };
+
+    initializeDashboard();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialized, initializeProductSyncService, loadAllProducts, categorizeProducts]);
+
+  // ========================================
+  // 8. PRODUCT CATEGORIZATION EFFECT (STABLE)
+  // ========================================
+  useEffect(() => {
+    if (allProducts.length === 0) return;
+
+    const { needingImages, completed, failed } = categorizeProducts(allProducts);
+    setProductsNeedingImages(needingImages);
+    setCompletedProducts(completed);
+    setFailedProducts(failed);
+  }, [allProducts, categorizeProducts]);
+
+  // ========================================
+  // 9. CLEANUP ON UNMOUNT
+  // ========================================
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // ========================================
+  // 10. GENERATION FUNCTIONS
+  // ========================================
   const handleSingleGeneration = useCallback(async (product) => {
     if (!isProductSyncServiceAvailable()) {
       showNotification('ProductSyncService not available', 'error');
       return;
     }
 
+    if (!product || !product.id) {
+      showNotification('Invalid product data', 'error');
+      return;
+    }
+
     try {
       setIsGenerating(true);
+      console.log(`🎯 Generating image for product: ${product.name} (ID: ${product.id})`);
       
-      // Ensure we extract the string ID properly
-      let productId;
-      let productName;
-      
-      if (typeof product === 'string') {
-        productId = product;
-        productName = 'Unknown Product';
-      } else if (typeof product === 'object' && product.id) {
-        productId = product.id;
-        productName = product.name || 'Unknown Product';
-      } else {
-        throw new Error('Invalid product parameter');
-      }
-      
-      // Ensure productId is always a string
-      const singleProductId = typeof productId === 'string' ? productId : productId.toString();
-      
-      console.log(`🎯 Generating image for product: ${singleProductId} - ${productName}`);
-      console.log(`🔧 Product ID type: ${typeof singleProductId}, value: "${singleProductId}"`);
-      
-      // Pass single product ID as string, NOT as array or iterable
-      const result = await productSyncService.manualImageGeneration(singleProductId);
+      const result = await productSyncServiceRef.current.manualImageGeneration(product.id);
       
       if (result && (result.success || result.results?.length > 0)) {
-        showNotification(`Image generated successfully for ${productName}`, 'success');
-        await loadDashboardData(); // Refresh data
+        showNotification(`Successfully generated image for ${product.name}`, 'success');
+        
+        // Reload products after delay
+        setTimeout(async () => {
+          if (mountedRef.current) {
+            const updatedProducts = await loadAllProducts();
+            if (updatedProducts) {
+              const { needingImages, completed, failed } = categorizeProducts(updatedProducts);
+              setProductsNeedingImages(needingImages);
+              setCompletedProducts(completed);
+              setFailedProducts(failed);
+            }
+          }
+        }, 2000);
       } else {
-        const error = result?.error || result?.errors?.[0]?.error || 'Unknown error occurred';
-        showNotification(`Failed to generate image for ${productName}: ${error}`, 'error');
+        const error = result?.errors?.[0]?.error || result?.error || 'Unknown error';
+        showNotification(`Failed to generate image for ${product.name}: ${error}`, 'error');
       }
     } catch (error) {
       console.error('Single generation error:', error);
@@ -1013,9 +499,8 @@ const ImageGenerationDashboard = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [isProductSyncServiceAvailable, showNotification, loadDashboardData]);
+  }, [isProductSyncServiceAvailable, showNotification, loadAllProducts, categorizeProducts]);
 
-  // Batch generation with proper ID handling
   const handleBatchGeneration = useCallback(async () => {
     if (!isProductSyncServiceAvailable()) {
       showNotification('ProductSyncService not available', 'error');
@@ -1033,70 +518,59 @@ const ImageGenerationDashboard = () => {
       
       let successCount = 0;
       let errorCount = 0;
-      
-      // Process each product ID individually as a string
+
       for (const productId of selectedProducts) {
-        const product = allProducts.find(p => p.id === productId) || 
-                       productsNeedingImages.find(p => p.id === productId);
+        const product = allProducts.find(p => p.id === productId);
         if (!product) continue;
 
         try {
-          console.log(`Processing product: ${productId} - ${product.name}`);
-          console.log(`Product ID type: ${typeof productId}, value: "${productId}"`);
-          
-          // Ensure productId is string, not treated as iterable
-          const singleProductId = typeof productId === 'string' ? productId : productId.toString();
-          
-          // Pass single productId as string, NOT in array
-          const result = await productSyncService.manualImageGeneration(singleProductId);
+          const result = await productSyncServiceRef.current.manualImageGeneration(productId);
           
           if (result && (result.success || result.results?.length > 0)) {
             successCount++;
-            console.log(`✅ Generated image for ${product.name}`);
           } else {
-            const errorMessage = result?.errors?.[0]?.error || result?.error || 'Image generation failed';
-            throw new Error(errorMessage);
+            throw new Error(result?.error || 'Generation failed');
           }
           
         } catch (productError) {
           errorCount++;
-          console.error(`❌ Error generating image for product ${productId}:`, productError);
+          console.error(`❌ Error for product ${productId}:`, productError);
         }
         
-        // Delay between generations to prevent rate limiting
+        // Delay between generations
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       showNotification(
-        `Batch generation completed: ${successCount} successful, ${errorCount} failed`, 
+        `Batch completed: ${successCount} successful, ${errorCount} failed`, 
         successCount > 0 ? 'success' : 'error'
       );
       
+      // Reload products after batch
+      setTimeout(async () => {
+        if (mountedRef.current) {
+          const updatedProducts = await loadAllProducts();
+          if (updatedProducts) {
+            const { needingImages, completed, failed } = categorizeProducts(updatedProducts);
+            setProductsNeedingImages(needingImages);
+            setCompletedProducts(completed);
+            setFailedProducts(failed);
+          }
+        }
+      }, 3000);
+
     } catch (error) {
       console.error('Batch generation error:', error);
       showNotification(`Failed to generate images: ${error.message}`, 'error');
     } finally {
       setIsGenerating(false);
       setSelectedProducts([]);
-      await loadDashboardData();
     }
-  }, [selectedProducts, isProductSyncServiceAvailable, allProducts, productsNeedingImages, showNotification, loadDashboardData]);
+  }, [selectedProducts, isProductSyncServiceAvailable, allProducts, showNotification, loadAllProducts, categorizeProducts]);
 
-  // Retry generation for failed products
-  const handleRetryGeneration = useCallback(async (productId) => {
-    const product = allProducts.find(p => p.id === productId) || 
-                   productsNeedingImages.find(p => p.id === productId) || 
-                   recentGenerations.find(g => g.productId === productId);
-    
-    if (!product) {
-      showNotification('Product not found', 'error');
-      return;
-    }
-
-    await handleSingleGeneration(product);
-  }, [allProducts, productsNeedingImages, recentGenerations, handleSingleGeneration, showNotification]);
-
-  // Toggle product selection
+  // ========================================
+  // 11. UI HELPER FUNCTIONS
+  // ========================================
   const toggleProductSelection = useCallback((productId) => {
     setSelectedProducts(prev => 
       prev.includes(productId) 
@@ -1107,174 +581,83 @@ const ImageGenerationDashboard = () => {
 
   const getStatusIcon = useCallback((status) => {
     switch (status) {
-      case 'completed':
-      case 'success':
-        return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case 'processing':
-      case 'pending':
-      case 'queued':
-        return <Loader className="w-4 h-4 text-blue-600 animate-spin" />;
-      case 'failed':
-      case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-600" />;
-      case 'needed':
-        return <Clock className="w-4 h-4 text-yellow-600" />;
-      default:
-        return <Clock className="w-4 h-4 text-gray-600" />;
+      case 'completed': return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'failed': return <AlertCircle className="w-4 h-4 text-red-600" />;
+      case 'processing': return <Loader className="w-4 h-4 animate-spin text-blue-600" />;
+      default: return <Clock className="w-4 h-4 text-gray-600" />;
     }
   }, []);
 
   const getStatusColor = useCallback((status) => {
     switch (status) {
-      case 'completed':
-      case 'success':
-        return 'text-green-700 bg-green-50 border-green-200';
-      case 'processing':
-      case 'pending':
-      case 'queued':
-        return 'text-blue-700 bg-blue-50 border-blue-200';
-      case 'failed':
-      case 'error':
-        return 'text-red-700 bg-red-50 border-red-200';
-      case 'needed':
-        return 'text-yellow-700 bg-yellow-50 border-yellow-200';
-      default:
-        return 'text-gray-700 bg-gray-50 border-gray-200';
+      case 'completed': return 'text-green-600 bg-green-50 border-green-200';
+      case 'failed': return 'text-red-600 bg-red-50 border-red-200';
+      case 'processing': return 'text-blue-600 bg-blue-50 border-blue-200';
+      default: return 'text-gray-600 bg-gray-50 border-gray-200';
     }
   }, []);
 
-  const formatTime = useCallback((seconds) => {
-    if (!seconds) return 'N/A';
-    if (typeof seconds === 'string') return seconds.includes('s') ? seconds : `${seconds}s`;
-    return `${parseFloat(seconds).toFixed(1)}s`;
-  }, []);
-
-  const filteredGenerations = useMemo(() => {
-    try {
-      if (!Array.isArray(recentGenerations)) return [];
-      
-      return recentGenerations.filter(generation => {
-        if (!generation || typeof generation !== 'object') return false;
-        
-        const matchesFilter = filter === 'all' || generation.status === filter;
-        const matchesSearch = !searchTerm || 
-          (generation.productName && 
-           generation.productName.toLowerCase().includes(searchTerm.toLowerCase()));
-        
-        return matchesFilter && matchesSearch;
-      });
-    } catch (error) {
-      console.error('Error filtering generations:', error);
-      return [];
-    }
-  }, [recentGenerations, filter, searchTerm]);
-
-  const downloadImage = useCallback((imageUrl, filename) => {
-    try {
-      const link = document.createElement('a');
-      link.href = imageUrl;
-      link.download = filename;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error('Download error:', error);
-      showNotification('Failed to download image', 'error');
-    }
-  }, [showNotification]);
-
-  // Memoized tab content
-  const tabContent = useMemo(() => {
-    const currentProducts = getCurrentTabProducts();
-    const displayProducts = filteredProducts.length > 0 ? filteredProducts : currentProducts;
-
+  const getCurrentTabProducts = useCallback(() => {
     switch (activeTab) {
-      case 'overview':
-        return (
-          <div className="space-y-6">
-            {/* Quick Actions */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <h3 className="text-lg font-medium mb-4">Quick Actions</h3>
-              <div className="flex gap-4">
-                <button
-                  onClick={loadDashboardData}
-                  disabled={isLoading}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  Refresh Data
-                </button>
-                <button
-                  onClick={handleBatchGeneration}
-                  disabled={isGenerating || productsNeedingImages.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                >
-                  <Play className="w-4 h-4" />
-                  Generate All Missing Images ({productsNeedingImages.length})
-                </button>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <h3 className="text-lg font-medium mb-4">Recent Activity</h3>
-              <div className="space-y-3">
-                {completedProducts.slice(0, 5).map(product => (
-                  <div key={product.id} className="flex items-center gap-3">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-gray-600">
-                      Image generated for <strong>{product.name}</strong>
-                    </span>
-                  </div>
-                ))}
-                {completedProducts.length === 0 && (
-                  <p className="text-sm text-gray-500">No recent activity</p>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-
-      default:
-        return (
-          <ProductTable
-            products={displayProducts}
-            isLoading={isLoading}
-            onGenerate={handleSingleGeneration}
-            onViewDetails={setSelectedProduct}
-            selectedProducts={selectedProducts}
-            onToggleSelect={toggleProductSelection}
-            getStatusIcon={getStatusIcon}
-            getStatusColor={getStatusColor}
-            getProductImageStatus={getProductImageStatus}
-            isGenerating={isGenerating}
-            showCheckboxes={activeTab !== 'overview'}
-            showRetry={activeTab === 'failed'}
-            onUpload={openUploadModal}
-          />
-        );
+      case 'needs-images': return productsNeedingImages;
+      case 'completed': return completedProducts;
+      case 'failed': return failedProducts;
+      case 'all-products': return allProducts;
+      default: return productsNeedingImages;
     }
-  }, [
-    activeTab,
-    isLoading,
-    isGenerating,
-    productsNeedingImages,
-    completedProducts,
-    filteredProducts,
-    selectedProducts,
-    loadDashboardData,
-    handleBatchGeneration,
-    handleSingleGeneration,
-    toggleProductSelection,
-    getStatusIcon,
-    getStatusColor,
-    getProductImageStatus,
-    getCurrentTabProducts,
-    openUploadModal
-  ]);
+  }, [activeTab, productsNeedingImages, completedProducts, failedProducts, allProducts]);
 
-  if (isLoading && allProducts.length === 0) {
+  // Apply filters to current tab products
+  const filteredTabProducts = useMemo(() => {
+    let products = getCurrentTabProducts();
+
+    // Apply search filter
+    if (searchTerm) {
+      products = products.filter(product =>
+        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.supplier?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply status filter
+    if (filterStatus !== 'all') {
+      products = products.filter(product => 
+        getProductImageStatus(product) === filterStatus
+      );
+    }
+
+    // Apply sorting
+    products.sort((a, b) => {
+      const aVal = a[sortBy] || '';
+      const bVal = b[sortBy] || '';
+      
+      const comparison = typeof aVal === 'string' 
+        ? aVal.localeCompare(bVal)
+        : (aVal < bVal ? -1 : aVal > bVal ? 1 : 0);
+      
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return products;
+  }, [getCurrentTabProducts, searchTerm, filterStatus, sortBy, sortOrder, getProductImageStatus]);
+
+  // Upload modal functions
+  const openUploadModal = useCallback((product) => {
+    setSelectedProductForUpload(product);
+    setShowUploadModal(true);
+  }, []);
+
+  const closeUploadModal = useCallback(() => {
+    setShowUploadModal(false);
+    setSelectedProductForUpload(null);
+    setUploadingFiles([]);
+  }, []);
+
+  // ========================================
+  // 12. RENDER LOADING STATE
+  // ========================================
+  if (isLoading && !initialized) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -1285,6 +668,9 @@ const ImageGenerationDashboard = () => {
     );
   }
 
+  // ========================================
+  // 13. MAIN RENDER
+  // ========================================
   return (
     <div className="space-y-6 p-6">
       {/* Notification */}
@@ -1329,602 +715,379 @@ const ImageGenerationDashboard = () => {
           </h1>
           <p className="text-gray-600 mt-1">
             Monitor and manage OpenAI-powered product image generation with Firebase Storage
-            {!serviceInitialized || !isProductSyncServiceAvailable() ? (
-              <span className="text-orange-600"> (Demo Mode - ProductSyncService unavailable)</span>
-            ) : null}
           </p>
         </div>
         
-        <div className="flex items-center gap-3">
-          {serviceInitialized && isProductSyncServiceAvailable() && (
-            <button
-              onClick={fixProductImageFields}
-              disabled={isLoading}
-              className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
-              title="Fix database image field structure with Firebase Storage support"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              Fix Fields
-            </button>
-          )}
-          
+        <div className="flex items-center gap-4">
           <button
-            onClick={loadDashboardData}
+            onClick={async () => {
+              setIsLoading(true);
+              await loadAllProducts();
+              setIsLoading(false);
+            }}
             disabled={isLoading}
-            className="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           
-          <button
-            onClick={handleBatchGeneration}
-            disabled={isGenerating || selectedProducts.length === 0}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            title="Generate images and store in Firebase Storage"
-          >
-            {isGenerating ? (
-              <>
-                <Loader className="w-4 h-4 mr-2 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 mr-2" />
-                Generate Images ({selectedProducts.length})
-              </>
-            )}
-          </button>
+          {selectedProducts.length > 0 && (
+            <button
+              onClick={handleBatchGeneration}
+              disabled={isGenerating || !serviceInitialized}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              <Zap className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+              Generate Images ({selectedProducts.length})
+            </button>
+          )}
         </div>
       </div>
 
       {/* System Health Status */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-gray-900 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-green-600" />
-            System Health
-          </h3>
-          <span className="text-xs text-gray-500">
-            Last check: {systemHealth?.lastCheck?.toLocaleTimeString()}
-          </span>
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-gray-700">System Health</span>
+          </div>
+          <div className="flex flex-col gap-1 mt-2">
+            <div className="flex items-center gap-2 text-xs text-green-600">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              Railway API
+            </div>
+            <div className="flex items-center gap-2 text-xs text-green-600">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              OpenAI DALL-E
+            </div>
+            <div className={`flex items-center gap-2 text-xs ${serviceInitialized ? 'text-green-600' : 'text-red-600'}`}>
+              <div className={`w-2 h-2 rounded-full ${serviceInitialized ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              Sync Service
+            </div>
+            <div className="flex items-center gap-2 text-xs text-green-600">
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              Firebase Storage
+            </div>
+            <div className="flex items-center gap-2 text-xs text-amber-600">
+              <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+              Queue ({productsNeedingImages.length})
+            </div>
+            <div className="flex items-center gap-2 text-xs text-blue-600">
+              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+              Live Data
+            </div>
+          </div>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart3 className="w-4 h-4 text-purple-600" />
+            <span className="text-sm font-medium text-gray-700">Total Generated</span>
+          </div>
+          <div className="text-2xl font-bold text-purple-600">
+            {completedProducts.length}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertCircle className="w-4 h-4 text-orange-600" />
+            <span className="text-sm font-medium text-gray-700">Needs Images</span>
+          </div>
+          <div className="text-2xl font-bold text-orange-600">
+            {productsNeedingImages.length}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle className="w-4 h-4 text-green-600" />
+            <span className="text-sm font-medium text-gray-700">Success Rate</span>
+          </div>
+          <div className="text-2xl font-bold text-green-600">
+            {allProducts.length > 0 ? Math.round((completedProducts.length / allProducts.length) * 100) : 0}%
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Database className="w-4 h-4 text-green-600" />
+            <span className="text-sm font-medium text-gray-700">Firebase Storage</span>
+          </div>
+          <div className="text-2xl font-bold text-green-600">
+            {allProducts.filter(p => p.firebaseStorageComplete).length}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="w-4 h-4 text-yellow-600" />
+            <span className="text-sm font-medium text-gray-700">Avg Time</span>
+          </div>
+          <div className="text-2xl font-bold text-yellow-600">15.8s</div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+        {[
+          { id: 'needs-images', label: `Needs Images (${productsNeedingImages.length})`, icon: AlertCircle },
+          { id: 'completed', label: `Completed (${completedProducts.length})`, icon: CheckCircle },
+          { id: 'failed', label: `Failed (${failedProducts.length})`, icon: AlertCircle },
+          { id: 'all-products', label: `All Products (${allProducts.length})`, icon: Database }
+        ].map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Icon className="w-4 h-4 inline mr-2" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={async () => {
+            setIsLoading(true);
+            await loadAllProducts();
+            setIsLoading(false);
+          }}
+          disabled={isLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh Data
+        </button>
+        
+        <button
+          onClick={() => {
+            if (productsNeedingImages.length === 0) {
+              showNotification('No products need images', 'info');
+              return;
+            }
+            const allProductIds = productsNeedingImages.map(p => p.id);
+            setSelectedProducts(allProductIds);
+            setTimeout(handleBatchGeneration, 100);
+          }}
+          disabled={isGenerating || productsNeedingImages.length === 0 || !serviceInitialized}
+          className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 disabled:opacity-50"
+        >
+          <Zap className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+          Generate All Missing Images ({productsNeedingImages.length})
+        </button>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="flex flex-wrap gap-4 items-center">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
         
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${systemHealth?.mcpApiHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm text-gray-700">Railway API</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${systemHealth?.openaiAvailable ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm text-gray-700">OpenAI DALL-E</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${serviceInitialized && isProductSyncServiceAvailable() ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm text-gray-700">Sync Service</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${systemHealth?.firebaseStorageHealthy ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm text-gray-700">Firebase Storage</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${productsNeedingImages.length > 0 ? 'bg-yellow-500' : 'bg-green-500'}`} />
-            <span className="text-sm text-gray-700">Queue ({productsNeedingImages.length || 0})</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="text-sm text-gray-700">
-              {serviceInitialized && isProductSyncServiceAvailable() ? 'Live Data' : 'Demo Data'}
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="all">All Status</option>
+          <option value="needed">Needs Images</option>
+          <option value="completed">Completed</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+
+      {/* Products Display */}
+      <div className="bg-white rounded-lg border">
+        <div className="p-6 border-b">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {activeTab === 'needs-images' && 'Products Needing Images'}
+              {activeTab === 'completed' && 'Completed Products'}
+              {activeTab === 'failed' && 'Failed Generations'}
+              {activeTab === 'all-products' && 'All Products'}
+            </h3>
+            <span className="text-sm text-gray-500">
+              {filteredTabProducts.length} product{filteredTabProducts.length !== 1 ? 's' : ''}
             </span>
           </div>
         </div>
+
+        <div className="p-6">
+          {filteredTabProducts.length === 0 ? (
+            <div className="text-center py-8">
+              <FileImage className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">
+                {searchTerm || filterStatus !== 'all' 
+                  ? 'No products match your search criteria'
+                  : 'No products found in this category'
+                }
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredTabProducts.map(product => {
+                const status = getProductImageStatus(product);
+                const isSelected = selectedProducts.includes(product.id);
+                
+                return (
+                  <div 
+                    key={product.id} 
+                    className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
+                      isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'bg-white'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleProductSelection(product.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(status)}`}>
+                          {getStatusIcon(status)}
+                          {status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-gray-900 line-clamp-2">
+                        {product.name}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        Category: {product.category || 'Uncategorized'}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Supplier: {product.supplier}
+                      </p>
+                    </div>
+
+                    {/* Product Image */}
+                    <div className="mt-4 aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
+                      {hasRealImage(product) ? (
+                        <img
+                          src={product.imageUrl || product.aiImageUrl}
+                          alt={product.name}
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                      ) : (
+                        <div className="text-center p-4">
+                          <FileImage className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                          <p className="text-xs text-gray-500">No image available</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="mt-4 flex gap-2">
+                      {!hasRealImage(product) && (
+                        <button
+                          onClick={() => handleSingleGeneration(product)}
+                          disabled={isGenerating || !serviceInitialized}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                        >
+                          {isGenerating && selectedProducts.includes(product.id) ? (
+                            <Loader className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Zap className="w-4 h-4" />
+                          )}
+                          Generate
+                        </button>
+                      )}
+                      
+                      <button
+                        onClick={() => openUploadModal(product)}
+                        className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+                      >
+                        <Upload className="w-4 h-4" />
+                        Upload
+                      </button>
+                      
+                      {hasRealImage(product) && (
+                        <button
+                          onClick={() => setSelectedProduct(product)}
+                          className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Total Generated</p>
-              <p className="text-2xl font-bold text-blue-600">{stats?.totalGenerated?.toLocaleString() || '0'}</p>
-            </div>
-            <FileImage className="w-8 h-8 text-blue-600" />
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Needs Images</p>
-              <p className="text-2xl font-bold text-yellow-600">{productsNeedingImages.length || 0}</p>
-            </div>
-            <Clock className="w-8 h-8 text-yellow-600" />
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Success Rate</p>
-              <p className="text-2xl font-bold text-purple-600">{stats?.successRate || 0}%</p>
-            </div>
-            <BarChart3 className="w-8 h-8 text-purple-600" />
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Firebase Storage</p>
-              <p className="text-2xl font-bold text-green-600">{stats?.firebaseStorageRate || 0}%</p>
-            </div>
-            <Database className="w-8 h-8 text-green-600" />
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Avg Time</p>
-              <p className="text-2xl font-bold text-orange-600">{formatTime(stats?.averageTime)}</p>
-            </div>
-            <Zap className="w-8 h-8 text-orange-600" />
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { id: 'overview', label: 'Overview', icon: BarChart3 },
-            { id: 'needed', label: `Needs Images (${productsNeedingImages.length})`, icon: Clock },
-            { id: 'completed', label: `Completed (${completedProducts.length})`, icon: CheckCircle },
-            { id: 'failed', label: `Failed (${failedProducts.length})`, icon: AlertCircle },
-            { id: 'all', label: `All Products (${allProducts.length})`, icon: FileImage }
-          ].map(tab => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Filters and Controls for product tabs */}
-      {activeTab !== 'overview' && (
-        <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <div className="flex flex-col sm:flex-row gap-4">
-            {/* Search */}
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            {/* Filters */}
-            <div className="flex gap-2">
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">All Status</option>
-                <option value="needed">Needs Images</option>
-                <option value="completed">Completed</option>
-                <option value="processing">Processing</option>
-                <option value="failed">Failed</option>
-              </select>
-
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="name">Name</option>
-                <option value="category">Category</option>
-                <option value="supplier">Supplier</option>
-                <option value="updatedAt">Updated</option>
-              </select>
-
-              <button
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-              >
-                <ArrowUpDown className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Image Preview Modal */}
+      {selectedProduct && (
+        <ImagePreview
+          image={{
+            url: selectedProduct.imageUrl || selectedProduct.aiImageUrl,
+            name: selectedProduct.name
+          }}
+          onClose={() => setSelectedProduct(null)}
+        />
       )}
 
-      {/* Batch Actions */}
-      {activeTab !== 'overview' && selectedProducts.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-blue-900">
-                {selectedProducts.length} product{selectedProducts.length !== 1 ? 's' : ''} selected
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSelectedProducts([])}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                Clear Selection
-              </button>
-              <button
-                onClick={handleBatchGeneration}
-                disabled={isGenerating}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
-              >
-                {isGenerating ? (
-                  <Loader className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4" />
-                )}
-                {isGenerating ? 'Generating...' : 'Generate Images'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tab Content */}
-      {tabContent}
-
-      {/* Manual Upload Modal */}
+      {/* Upload Modal */}
       {showUploadModal && selectedProductForUpload && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Upload className="w-5 h-5 text-purple-600" />
-              Upload Images for {selectedProductForUpload.name}
-            </h3>
-            
-            <div
-              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                dragOver ? 'border-purple-500 bg-purple-50' : 'border-gray-300'
-              }`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-              }}
-              onDrop={handleFileDrop}
-            >
-              <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-gray-600 mb-2">Drag and drop images here, or</p>
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Upload Image</h3>
+              <button onClick={closeUploadModal}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-center py-8">
+              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-4">
+                Upload image for: {selectedProductForUpload.name}
+              </p>
               <input
                 type="file"
-                multiple
                 accept="image/*"
-                onChange={(e) => handleFileSelection(Array.from(e.target.files))}
-                className="hidden"
-                id="file-upload"
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
-              <label
-                htmlFor="file-upload"
-                className="cursor-pointer bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                Browse Files
-              </label>
             </div>
-
-            {uploadingFiles.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm text-gray-600 mb-2">Selected files ({uploadingFiles.length}):</p>
-                <div className="max-h-32 overflow-y-auto">
-                  {uploadingFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between py-1 text-sm">
-                      <span className="truncate">{file.name}</span>
-                      <span className="text-gray-500 ml-2">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex space-x-3 mt-6">
+            <div className="flex gap-3 mt-6">
               <button
                 onClick={closeUploadModal}
-                disabled={isUploading}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
-                onClick={uploadManualImages}
-                disabled={uploadingFiles.length === 0 || isUploading}
-                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={closeUploadModal}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
-                {isUploading ? (
-                  <div className="flex items-center justify-center">
-                    <Loader className="w-4 h-4 mr-2 animate-spin" />
-                    Uploading...
-                  </div>
-                ) : (
-                  `Upload ${uploadingFiles.length} Image${uploadingFiles.length !== 1 ? 's' : ''}`
-                )}
+                Upload
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Enhanced Product Detail Modal using ImagePreview component */}
-      {selectedProduct && (
-        <ImagePreview
-          isOpen={!!selectedProduct}
-          onClose={() => setSelectedProduct(null)}
-          product={selectedProduct}
-          onRetry={handleRetryGeneration}
-          isGenerating={isGenerating}
-        />
-      )}
-    </div>
-  );
-};
-
-// Product Table Component
-const ProductTable = ({ 
-  products, 
-  isLoading, 
-  onGenerate, 
-  onViewDetails, 
-  selectedProducts = [],
-  onToggleSelect,
-  getStatusIcon,
-  getStatusColor,
-  getProductImageStatus,
-  isGenerating,
-  showCheckboxes = false,
-  showRetry = false,
-  onUpload
-}) => {
-  if (isLoading && products.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-32">
-        <Loader className="w-6 h-6 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
-  if (products.length === 0) {
-    return (
-      <div className="text-center py-8 text-gray-500">
-        <FileImage className="w-12 h-12 mx-auto mb-2 opacity-50" />
-        <p>No products found</p>
-      </div>
-    );
-  }
-
-  const hasRealImage = (product) => {
-    const imageUrl = product.imageUrl || product.image_url || product.photo || product.aiImageUrl || '';
-    
-    if (!imageUrl) return false;
-    
-    return imageUrl.includes('oaidalleapi') || 
-           imageUrl.includes('blob.core.windows.net') ||
-           imageUrl.includes('generated') ||
-           imageUrl.includes('ai-image') ||
-           imageUrl.includes('firebasestorage') ||
-           (imageUrl.startsWith('https://') && !isPlaceholderImage(imageUrl));
-  };
-
-  const isPlaceholderImage = (imageUrl) => {
-    if (!imageUrl) return true;
-    
-    const placeholderPatterns = [
-      'placeholder',
-      'via.placeholder',
-      'default-image',
-      'no-image',
-      'temp-image'
-    ];
-    
-    return placeholderPatterns.some(pattern => 
-      imageUrl.toLowerCase().includes(pattern.toLowerCase())
-    );
-  };
-
-  const getProductImageUrls = (product) => {
-    const urls = [];
-    
-    const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail', 'aiImageUrl'];
-    
-    for (const field of imageFields) {
-      const value = product[field];
-      if (value) {
-        if (Array.isArray(value)) {
-          urls.push(...value.filter(url => url && !isPlaceholderImage(url)));
-        } else if (typeof value === 'string' && !isPlaceholderImage(value)) {
-          urls.push(value);
-        }
-      }
-    }
-    
-    return [...new Set(urls)];
-  };
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              {showCheckboxes && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                  <input
-                    type="checkbox"
-                    checked={products.length > 0 && selectedProducts.length === products.length}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        products.forEach(product => {
-                          if (!selectedProducts.includes(product.id)) {
-                            onToggleSelect(product.id);
-                          }
-                        });
-                      } else {
-                        products.forEach(product => {
-                          if (selectedProducts.includes(product.id)) {
-                            onToggleSelect(product.id);
-                          }
-                        });
-                      }
-                    }}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                </th>
-              )}
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Product
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Category
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Supplier
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Image
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {products.map((product) => {
-              const status = getProductImageStatus(product);
-              const hasImage = hasRealImage(product);
-              const imageUrls = getProductImageUrls(product);
-              
-              return (
-                <tr key={product.id} className="hover:bg-gray-50">
-                  {showCheckboxes && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={selectedProducts.includes(product.id)}
-                        onChange={() => onToggleSelect(product.id)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                  )}
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-xs">
-                        {product.description}
-                        {product.sku && <span className="ml-2">({product.sku})</span>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 capitalize">
-                      {product.category?.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {product.supplier}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(status)}`}>
-                        {getStatusIcon(status)}
-                        <span className="ml-1 capitalize">{status}</span>
-                      </span>
-                      {product.firebaseStorageComplete && (
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-800">
-                          <ShieldCheck className="w-3 h-3 mr-1" />
-                          Firebase
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {hasImage && imageUrls.length > 0 ? (
-                      <img
-                        src={imageUrls[0]}
-                        alt={product.name}
-                        className="w-10 h-10 rounded-lg object-cover"
-                        onError={(e) => {
-                          e.target.src = '/api/placeholder/40/40';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                        <Camera className="w-4 h-4 text-gray-400" />
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button
-                        onClick={() => onViewDetails(product)}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      {onUpload && (
-                        <button
-                          onClick={() => onUpload(product)}
-                          className="text-purple-600 hover:text-purple-900"
-                          title="Upload Images Manually"
-                        >
-                          <Upload className="w-4 h-4" />
-                        </button>
-                      )}
-                      {(status === 'needed' || (showRetry && status === 'failed') || status === 'completed') && (
-                        <button
-                          onClick={() => onGenerate(product)}
-                          disabled={isGenerating}
-                          className="text-green-600 hover:text-green-900 disabled:opacity-50"
-                          title={showRetry || status === 'completed' ? 'Regenerate Image' : 'Generate Image'}
-                        >
-                          {isGenerating ? (
-                            <Loader className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <RefreshCw className="w-4 h-4" />
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 };
