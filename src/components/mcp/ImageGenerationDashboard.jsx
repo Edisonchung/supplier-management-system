@@ -860,9 +860,27 @@ const ImageGenerationDashboard = () => {
       <div className="flex flex-wrap gap-3">
         <button
           onClick={async () => {
+            if (isLoading) return;
+            
+            console.log('🔄 Quick refresh triggered...');
             setIsLoading(true);
-            await loadAllProducts();
-            setIsLoading(false);
+            
+            try {
+              const products = await loadAllProducts();
+              if (products) {
+                const { needingImages, completed, failed } = categorizeProducts(products);
+                setProductsNeedingImages(needingImages);
+                setCompletedProducts(completed);
+                setFailedProducts(failed);
+                showNotification('Data refreshed successfully', 'success');
+                console.log(`✅ Quick refresh completed: ${products.length} products loaded`);
+              }
+            } catch (error) {
+              console.error('❌ Quick refresh failed:', error);
+              showNotification('Failed to refresh data', 'error');
+            } finally {
+              setIsLoading(false);
+            }
           }}
           disabled={isLoading}
           className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50"
