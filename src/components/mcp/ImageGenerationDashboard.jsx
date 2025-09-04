@@ -130,8 +130,6 @@ const ImageGenerationDashboard = () => {
 
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
- 
-
   /**
    * Transform product data from Firestore to dashboard format
    */
@@ -176,24 +174,25 @@ const ImageGenerationDashboard = () => {
     };
   }, []);
 
-   /**
-   * 🔧 CRITICAL FIX: Missing getAllProductsFromFirestore function
-   * This was causing the ReferenceError in the "All Products" tab
+  /**
+   * 🔧 CRITICAL FIX: Direct Firestore query implementation
+   * This eliminates the ReferenceError by directly implementing the Firestore query
    */
-  const getAllProductsFromFirestore = useCallback(async () => {
-    console.log('🔍 LOADALLPRODUCTS: getAllProductsFromFirestore called');
+  const loadAllProducts = useCallback(async () => {
+    console.log('🔍 LOADALLPRODUCTS: Starting to load all products...');
+    setIsLoading(true);
     
     try {
-      console.log('🔍 LOADALLPRODUCTS: Loading from products_public collection...');
+      console.log('🔥 FIRESTORE: Starting direct Firestore query...');
       
-      // Query the products_public collection (as shown in your logs)
+      // Direct Firestore query to products_public collection
       const productsRef = collection(db, 'products_public');
-      const q = query(productsRef, orderBy('name')); // Order by name for better UX
+      const q = query(productsRef, orderBy('name'));
       
       const querySnapshot = await getDocs(q);
       
       if (querySnapshot.empty) {
-        console.log('📦 LOADALLPRODUCTS: No products found in products_public, trying products collection...');
+        console.log('📦 FIRESTORE: No products found in products_public, trying products collection...');
         
         // Fallback to products collection
         const fallbackRef = collection(db, 'products');
@@ -201,8 +200,12 @@ const ImageGenerationDashboard = () => {
         const fallbackSnapshot = await getDocs(fallbackQuery);
         
         if (fallbackSnapshot.empty) {
-          console.log('📦 LOADALLPRODUCTS: No products found in either collection');
-          return getDemoProducts();
+          console.log('📦 FIRESTORE: No products found in either collection, using demo data');
+          const demoProducts = getDemoProducts();
+          setAllProducts(demoProducts);
+          setFilteredProducts(demoProducts);
+          categorizeProducts(demoProducts);
+          return;
         }
         
         const products = [];
@@ -211,81 +214,50 @@ const ImageGenerationDashboard = () => {
           products.push(transformProductData(doc.id, productData));
         });
         
-        console.log(`✅ LOADALLPRODUCTS: Loaded ${products.length} products from fallback collection`);
-        return products;
+        console.log(`✅ FIRESTORE: Loaded ${products.length} products from fallback collection`);
+        setAllProducts(products);
+        setFilteredProducts(products);
+        categorizeProducts(products);
+        return;
       }
+      
+      console.log(`🔥 FIRESTORE: Found ${querySnapshot.size} documents in products_public`);
       
       const products = [];
       querySnapshot.forEach((doc) => {
         const productData = doc.data();
-        products.push(transformProductData(doc.id, productData));
+        const transformedProduct = transformProductData(doc.id, productData);
+        products.push(transformedProduct);
+        
+        // Log first 3 products for debugging
+        if (products.length <= 3) {
+          console.log(`🔥 FIRESTORE: Sample product ${products.length}:`, transformedProduct.name);
+        }
       });
       
-      console.log(`✅ LOADALLPRODUCTS: Successfully loaded ${products.length} products from Firestore`);
-      console.log('📊 LOADALLPRODUCTS: Product breakdown:', {
+      console.log(`✅ FIRESTORE: Successfully transformed ${products.length} products`);
+      
+      // Set all product arrays
+      setAllProducts(products);
+      setFilteredProducts(products);
+      categorizeProducts(products);
+      
+      console.log('✅ LOADALLPRODUCTS: Final result -', {
         total: products.length,
-        needsImages: products.filter(p => p.needsImageGeneration && !p.hasCurrentImage).length,
-        hasImages: products.filter(p => p.hasCurrentImage).length,
+        needsImages: products.filter(p => !hasRealImage(p)).length,
+        hasImages: products.filter(p => hasRealImage(p)).length,
         aiGenerated: products.filter(p => p.aiImageGenerated).length
       });
       
-      return products;
-      
     } catch (error) {
-      console.error('❌ LOADALLPRODUCTS: Error loading products from Firestore:', error);
+      console.error('❌ FIRESTORE: Error loading products:', error);
       
-      // Provide fallback demo products for testing
-      console.log('🔄 LOADALLPRODUCTS: Using demo products due to error');
-      return getDemoProducts();
-    }
-  }, []);
-
-  /**
-   * 🔧 UPDATED: loadAllProducts function with proper error handling
-   */
-  const loadAllProducts = useCallback(async () => {
-    console.log('🔍 LOADALLPRODUCTS: Starting to load all products...');
-    setIsLoading(true);
-    
-    try {
-      // Use the newly created getAllProductsFromFirestore function
-      const products = await getAllProductsFromFirestore();
-      
-      if (!products || products.length === 0) {
-        console.log('📭 LOADALLPRODUCTS: No products found');
-        setAllProducts([]);
-        setFilteredProducts([]);
-        setProductsNeedingImages([]);
-        setCompletedProducts([]);
-        setFailedProducts([]);
-        return;
-      }
-      
-      console.log(`✅ LOADALLPRODUCTS: Setting ${products.length} products in state`);
-      setAllProducts(products);
-      setFilteredProducts(products);
-      
-      // Categorize products
-      const needingImages = products.filter(p => !hasRealImage(p));
-      const completed = products.filter(p => hasRealImage(p));
-      const failed = products.filter(p => getProductImageStatus(p) === 'failed');
-      
-      setProductsNeedingImages(needingImages);
-      setCompletedProducts(completed);
-      setFailedProducts(failed);
-      
-    } catch (error) {
-      console.error('❌ LOADALLPRODUCTS: Error in loadAllProducts:', error);
-      
-      // Set empty arrays on error
-      setAllProducts([]);
-      setFilteredProducts([]);
-      setProductsNeedingImages([]);
-      setCompletedProducts([]);
-      setFailedProducts([]);
-      
-      // Show user-friendly error message
-      setErrorMessage('Failed to load products. Please refresh the page.');
+      // Fallback to demo products on error
+      const demoProducts = getDemoProducts();
+      setAllProducts(demoProducts);
+      setFilteredProducts(demoProducts);
+      categorizeProducts(demoProducts);
+      setErrorMessage('Failed to load products from Firestore. Using demo data.');
       
     } finally {
       setIsLoading(false);
@@ -293,7 +265,26 @@ const ImageGenerationDashboard = () => {
     }
   }, []);
 
-  // Load products needing images - redirects to loadAllProducts for compatibility
+  /**
+   * Categorize products into different arrays
+   */
+  const categorizeProducts = useCallback((products) => {
+    const needingImages = products.filter(p => !hasRealImage(p));
+    const completed = products.filter(p => hasRealImage(p));
+    const failed = products.filter(p => getProductImageStatus(p) === 'failed');
+    
+    setProductsNeedingImages(needingImages);
+    setCompletedProducts(completed);
+    setFailedProducts(failed);
+    
+    console.log('📊 CATEGORIZE: Products categorized:', {
+      needingImages: needingImages.length,
+      completed: completed.length,
+      failed: failed.length
+    });
+  }, []);
+
+  // Compatibility layer - redirect to loadAllProducts
   const loadProductsNeedingImages = useCallback(async () => {
     console.log('🔄 COMPATIBILITY: loadProductsNeedingImages called, redirecting to loadAllProducts...');
     return await loadAllProducts();
@@ -609,14 +600,29 @@ const ImageGenerationDashboard = () => {
 
     try {
       setIsGenerating(true);
-      const productId = typeof product === 'object' ? product.id : product;
-      const productName = typeof product === 'object' ? product.name : 'Unknown Product';
       
-      console.log(`🎯 Generating image for product: ${productId} - ${productName}`);
-      console.log(`🔧 Product ID type: ${typeof productId}, value: "${productId}"`);
+      // 🔧 CRITICAL FIX: Ensure we extract the string ID properly
+      let productId;
+      let productName;
       
-      // CRITICAL FIX: Ensure productId is passed as string, not array
-      const result = await productSyncService.manualImageGeneration(productId);
+      if (typeof product === 'string') {
+        productId = product;
+        productName = 'Unknown Product';
+      } else if (typeof product === 'object' && product.id) {
+        productId = product.id;
+        productName = product.name || 'Unknown Product';
+      } else {
+        throw new Error('Invalid product parameter');
+      }
+      
+      // 🔧 CRITICAL FIX: Ensure productId is always a string
+      const singleProductId = typeof productId === 'string' ? productId : productId.toString();
+      
+      console.log(`🎯 Generating image for product: ${singleProductId} - ${productName}`);
+      console.log(`🔧 Product ID type: ${typeof singleProductId}, value: "${singleProductId}"`);
+      
+      // 🔧 CRITICAL FIX: Pass single product ID as string, NOT as array or iterable
+      const result = await productSyncService.manualImageGeneration(singleProductId);
       
       if (result && (result.success || result.results?.length > 0)) {
         showNotification(`Image generated successfully for ${productName}`, 'success');
@@ -652,7 +658,7 @@ const ImageGenerationDashboard = () => {
       let successCount = 0;
       let errorCount = 0;
       
-      // CRITICAL FIX: Process each product ID individually as a string
+      // 🔧 CRITICAL FIX: Process each product ID individually as a string
       for (const productId of selectedProducts) {
         const product = allProducts.find(p => p.id === productId) || 
                        productsNeedingImages.find(p => p.id === productId);
@@ -662,8 +668,11 @@ const ImageGenerationDashboard = () => {
           console.log(`Processing product: ${productId} - ${product.name}`);
           console.log(`Product ID type: ${typeof productId}, value: "${productId}"`);
           
-          // FIXED: Pass single productId as string, not in array
-          const result = await productSyncService.manualImageGeneration(productId);
+          // 🔧 CRITICAL FIX: Ensure productId is string, not treated as iterable
+          const singleProductId = typeof productId === 'string' ? productId : productId.toString();
+          
+          // 🔧 CRITICAL FIX: Pass single productId as string, NOT in array
+          const result = await productSyncService.manualImageGeneration(singleProductId);
           
           if (result && (result.success || result.results?.length > 0)) {
             successCount++;
