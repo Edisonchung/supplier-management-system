@@ -175,14 +175,55 @@ const ImageGenerationDashboard = () => {
   }, []);
 
   /**
-   * 🔧 CRITICAL FIX: Direct Firestore query implementation
-   * This eliminates the ReferenceError by directly implementing the Firestore query
+   * Enhanced Firestore connection with error recovery
+   */
+  const ensureFirestoreConnection = useCallback(async () => {
+    try {
+      // Test basic connection
+      if (!db) {
+        console.error('🔥 FIRESTORE: Database instance not available');
+        return false;
+      }
+      
+      // Simple connection test
+      const testRef = collection(db, 'test_connection');
+      await getDocs(query(testRef));
+      
+      console.log('🔥 FIRESTORE: Connection verified');
+      return true;
+    } catch (error) {
+      console.warn('🔥 FIRESTORE: Connection issue detected:', error.message);
+      
+      // Handle specific CORS/connection errors
+      if (error.message.includes('access control') || error.message.includes('CORS')) {
+        console.warn('🔥 FIRESTORE: CORS issue detected, using fallback approach');
+      }
+      
+      return false;
+    }
+  }, []);
+
+  /**
+   * 🔧 CRITICAL FIX: Direct Firestore query implementation with enhanced error handling
    */
   const loadAllProducts = useCallback(async () => {
     console.log('🔍 LOADALLPRODUCTS: Starting to load all products...');
     setIsLoading(true);
     
     try {
+      // First check Firestore connection
+      const isConnected = await ensureFirestoreConnection();
+      
+      if (!isConnected) {
+        console.warn('🔥 FIRESTORE: Connection failed, using demo data');
+        const demoProducts = getDemoProducts();
+        setAllProducts(demoProducts);
+        setFilteredProducts(demoProducts);
+        categorizeProducts(demoProducts);
+        setErrorMessage('Firestore connection failed. Using demo data.');
+        return;
+      }
+      
       console.log('🔥 FIRESTORE: Starting direct Firestore query...');
       
       // Direct Firestore query to products_public collection
@@ -252,18 +293,28 @@ const ImageGenerationDashboard = () => {
     } catch (error) {
       console.error('❌ FIRESTORE: Error loading products:', error);
       
-      // Fallback to demo products on error
+      // Enhanced error handling for specific issues
+      if (error.message.includes('access control') || error.message.includes('CORS')) {
+        setErrorMessage('Firebase access restricted. Please check your configuration and try again.');
+      } else if (error.code === 'permission-denied') {
+        setErrorMessage('Permission denied accessing Firestore. Please check authentication.');
+      } else if (error.code === 'unavailable') {
+        setErrorMessage('Firestore service temporarily unavailable. Using demo data.');
+      } else {
+        setErrorMessage(`Firestore error: ${error.message}. Using demo data.`);
+      }
+      
+      // Fallback to demo products on any error
       const demoProducts = getDemoProducts();
       setAllProducts(demoProducts);
       setFilteredProducts(demoProducts);
       categorizeProducts(demoProducts);
-      setErrorMessage('Failed to load products from Firestore. Using demo data.');
       
     } finally {
       setIsLoading(false);
       console.log('✅ LOADALLPRODUCTS: Loading completed');
     }
-  }, []);
+  }, [ensureFirestoreConnection, transformProductData, categorizeProducts, hasRealImage]);
 
   /**
    * Categorize products into different arrays
