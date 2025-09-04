@@ -1,6 +1,6 @@
 // src/components/mcp/ImageGenerationDashboard.jsx
-// COMPLETE FIX: Resolved getAllProductsFromFirestore ReferenceError and product ID parsing issues
-// UPDATED: Enhanced Firebase integration and proper error handling
+// COMPLETE RESTRUCTURE: Fixed temporal dead zone and variable initialization issues
+// UPDATED: Enhanced Firebase integration with proper function ordering
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
@@ -32,8 +32,20 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 
-// Firebase imports
-import { collection, getDocs, query, orderBy, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+// Firebase imports - Enhanced with proper initialization
+import { 
+  collection, 
+  getDocs, 
+  query, 
+  orderBy, 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  serverTimestamp,
+  connectFirestoreEmulator,
+  initializeFirestore,
+  getFirestore
+} from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
 // Import shared ImagePreview component
@@ -70,7 +82,75 @@ const initializeProductSyncService = async () => {
   }
 };
 
+// Demo data functions - Moved outside component to avoid hoisting issues
+const getDemoProducts = () => [
+  {
+    id: 'demo-1',
+    name: 'Industrial Hydraulic Pump',
+    category: 'hydraulics',
+    imageGenerationStatus: 'needed',
+    hasRealImage: false,
+    hasCurrentImage: false,
+    imageUrl: null,
+    aiImageUrl: null,
+    sku: 'IHP-001',
+    brand: 'HydroTech',
+    description: 'High-pressure hydraulic pump for industrial applications',
+    firebaseStorageComplete: false,
+    needsImageGeneration: true,
+    supplier: 'HydroTech Industries'
+  },
+  {
+    id: 'demo-2', 
+    name: 'Pneumatic Control Valve',
+    category: 'pneumatics',
+    imageGenerationStatus: 'needed',
+    hasRealImage: false,
+    hasCurrentImage: false,
+    imageUrl: null,
+    aiImageUrl: null,
+    sku: 'PCV-002',
+    brand: 'AirPro',
+    description: 'Precision pneumatic control valve with manual override',
+    firebaseStorageComplete: false,
+    needsImageGeneration: true,
+    supplier: 'AirPro Systems'
+  },
+  {
+    id: 'demo-3',
+    name: 'Proximity Sensor M18',
+    category: 'sensors', 
+    imageGenerationStatus: 'needed',
+    hasRealImage: false,
+    hasCurrentImage: false,
+    imageUrl: null,
+    aiImageUrl: null,
+    sku: 'PS-M18-003',
+    brand: 'SensorTech',
+    description: 'Inductive proximity sensor, M18 thread, PNP output',
+    firebaseStorageComplete: false,
+    needsImageGeneration: true,
+    supplier: 'SensorTech Solutions'
+  }
+];
+
+const getDemoStats = () => ({
+  totalInternal: 31,
+  totalPublic: 25,
+  productsWithRealImages: 8,
+  productsNeedingImages: 17,
+  imageGenerationRate: 32,
+  totalImagesGenerated: 15,
+  imageErrors: 2,
+  averageImageTime: 15800,
+  productsWithFirebaseStorage: 5,
+  firebaseStorageRate: 20,
+  manualUploads: 3,
+  uploadErrors: 1
+});
+
 const ImageGenerationDashboard = () => {
+  // All state declarations first
   const [serviceInitialized, setServiceInitialized] = useState(false);
   const [stats, setStats] = useState({
     totalGenerated: 0,
@@ -128,11 +208,87 @@ const ImageGenerationDashboard = () => {
   const [dragOver, setDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Constants
   const mcpServerUrl = 'https://supplier-mcp-server-production.up.railway.app';
 
-  /**
-   * Transform product data from Firestore to dashboard format
-   */
+  // Basic utility functions first - no dependencies
+  const isPlaceholderImage = useCallback((imageUrl) => {
+    if (!imageUrl) return true;
+    
+    const placeholderPatterns = [
+      'placeholder',
+      'via.placeholder',
+      'default-image',
+      'no-image',
+      'temp-image'
+    ];
+    
+    return placeholderPatterns.some(pattern => 
+      imageUrl.toLowerCase().includes(pattern.toLowerCase())
+    );
+  }, []);
+
+  const hasRealImage = useCallback((product) => {
+    const imageUrl = product?.imageUrl || product?.image_url || product?.photo || product?.aiImageUrl || '';
+    
+    if (!imageUrl) return false;
+    
+    return imageUrl.includes('oaidalleapi') || 
+           imageUrl.includes('blob.core.windows.net') ||
+           imageUrl.includes('generated') ||
+           imageUrl.includes('ai-image') ||
+           imageUrl.includes('firebasestorage') ||
+           (imageUrl.startsWith('https://') && !isPlaceholderImage(imageUrl));
+  }, [isPlaceholderImage]);
+
+  const getProductImageStatus = useCallback((product) => {
+    if (!product) return 'needed';
+    
+    if (hasRealImage(product)) {
+      return 'completed';
+    }
+    
+    if (product.imageGenerationStatus === 'processing' || product.aiImageStatus === 'processing') {
+      return 'processing';
+    }
+    
+    if (product.imageGenerationStatus === 'error' || product.aiImageStatus === 'error' || product.lastImageError) {
+      return 'failed';
+    }
+    
+    return 'needed';
+  }, [hasRealImage]);
+
+  const getProductImageUrls = useCallback((product) => {
+    const urls = [];
+    
+    const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail', 'aiImageUrl'];
+    
+    for (const field of imageFields) {
+      const value = product[field];
+      if (value) {
+        if (Array.isArray(value)) {
+          urls.push(...value.filter(url => url && !isPlaceholderImage(url)));
+        } else if (typeof value === 'string' && !isPlaceholderImage(value)) {
+          urls.push(value);
+        }
+      }
+    }
+    
+    if (product.images && typeof product.images === 'object') {
+      Object.values(product.images).forEach(img => {
+        if (typeof img === 'string' && !isPlaceholderImage(img)) {
+          urls.push(img);
+        } else if (img && img.url && !isPlaceholderImage(img.url)) {
+          urls.push(img.url);
+        }
+      });
+    }
+    
+    return [...new Set(urls)];
+  }, [isPlaceholderImage]);
+
+  // Transform product data from Firestore to dashboard format
   const transformProductData = useCallback((docId, productData) => {
     return {
       id: docId,
@@ -174,9 +330,24 @@ const ImageGenerationDashboard = () => {
     };
   }, []);
 
-  /**
-   * Enhanced Firestore connection with error recovery
-   */
+  // Categorize products into different arrays
+  const categorizeProducts = useCallback((products) => {
+    const needingImages = products.filter(p => !hasRealImage(p));
+    const completed = products.filter(p => hasRealImage(p));
+    const failed = products.filter(p => getProductImageStatus(p) === 'failed');
+    
+    setProductsNeedingImages(needingImages);
+    setCompletedProducts(completed);
+    setFailedProducts(failed);
+    
+    console.log('📊 CATEGORIZE: Products categorized:', {
+      needingImages: needingImages.length,
+      completed: completed.length,
+      failed: failed.length
+    });
+  }, [hasRealImage, getProductImageStatus]);
+
+  // Enhanced Firestore connection with error recovery
   const ensureFirestoreConnection = useCallback(async () => {
     try {
       // Test basic connection
@@ -203,9 +374,7 @@ const ImageGenerationDashboard = () => {
     }
   }, []);
 
-  /**
-   * 🔧 CRITICAL FIX: Direct Firestore query implementation with enhanced error handling
-   */
+  // Direct Firestore query implementation with enhanced error handling
   const loadAllProducts = useCallback(async () => {
     console.log('🔍 LOADALLPRODUCTS: Starting to load all products...');
     setIsLoading(true);
@@ -316,668 +485,8 @@ const ImageGenerationDashboard = () => {
     }
   }, [ensureFirestoreConnection, transformProductData, categorizeProducts, hasRealImage]);
 
-  /**
-   * Categorize products into different arrays
-   */
-  const categorizeProducts = useCallback((products) => {
-    const needingImages = products.filter(p => !hasRealImage(p));
-    const completed = products.filter(p => hasRealImage(p));
-    const failed = products.filter(p => getProductImageStatus(p) === 'failed');
-    
-    setProductsNeedingImages(needingImages);
-    setCompletedProducts(completed);
-    setFailedProducts(failed);
-    
-    console.log('📊 CATEGORIZE: Products categorized:', {
-      needingImages: needingImages.length,
-      completed: completed.length,
-      failed: failed.length
-    });
-  }, []);
-
-  // Compatibility layer - redirect to loadAllProducts
-  const loadProductsNeedingImages = useCallback(async () => {
-    console.log('🔄 COMPATIBILITY: loadProductsNeedingImages called, redirecting to loadAllProducts...');
-    return await loadAllProducts();
-  }, [loadAllProducts]);
-
-  // Initialize dashboard data
-  const loadDashboardData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      
-      const [healthData, productsData, syncStats, storageStats] = await Promise.allSettled([
-        fetchSystemHealth(),
-        loadAllProducts(),
-        loadSyncStatistics(),
-        loadStorageStatistics()
-      ]);
-      
-      if (healthData.status === 'fulfilled') {
-        setSystemHealth(healthData.value);
-      } else {
-        console.warn('Failed to fetch system health:', healthData.reason);
-        setSystemHealth(prev => ({ 
-          ...prev, 
-          mcpApiHealthy: false, 
-          openaiAvailable: false,
-          firebaseStorageHealthy: false,
-          lastCheck: new Date()
-        }));
-      }
-      
-      // Update statistics
-      if (syncStats.status === 'fulfilled' && syncStats.value && typeof syncStats.value === 'object') {
-        const statsData = calculateRealStats(syncStats.value, allProducts);
-        
-        // Merge storage stats if available
-        if (storageStats.status === 'fulfilled' && storageStats.value) {
-          statsData.firebaseStorageEnabled = storageStats.value.enabled || false;
-          statsData.manualUploads = storageStats.value.stats?.manualUploads || 0;
-          statsData.uploadErrors = storageStats.value.stats?.errors || 0;
-        }
-        
-        setStats(statsData);
-      }
-      
-      updateGenerationHistory();
-      
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      showNotification('Failed to load dashboard data', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadAllProducts, allProducts]);
-
-  // Update generation history based on products
-  const updateGenerationHistory = useCallback(() => {
-    if (!allProducts.length) return;
-
-    const generationHistory = allProducts.map(product => ({
-      id: product.id,
-      productId: product.id,
-      productName: product.name || 'Unknown Product',
-      category: product.category || 'general',
-      imagesGenerated: hasRealImage(product) ? ['primary'] : [],
-      status: getProductImageStatus(product),
-      provider: 'openai',
-      processingTime: '15.2s',
-      timestamp: product.lastImageError || product.aiImageGeneratedAt || new Date(),
-      prompt: generateImagePrompt(product),
-      imageUrls: getProductImageUrls(product),
-      error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null,
-      firebaseStored: product.firebaseStorageComplete || false,
-      storageProvider: product.firebaseStorageComplete ? 'firebase' : 'openai'
-    }));
-    
-    setRecentGenerations(generationHistory);
-  }, [allProducts]);
-
-  // Update generation history when products change
-  useEffect(() => {
-    updateGenerationHistory();
-  }, [allProducts, updateGenerationHistory]);
-
-  // Initialize component
-  useEffect(() => {
-    const initialize = async () => {
-      console.log('🚀 ImageGenerationDashboard initializing...');
-      
-      // Check for ProductSyncService
-      const initialized = await initializeProductSyncService();
-      setServiceInitialized(initialized);
-      
-      if (initialized && isProductSyncServiceAvailable()) {
-        console.log('✅ ProductSyncService is fully available');
-        await fixProductImageFields();
-      } else {
-        console.log('⚠️ ProductSyncService not available, using demo mode');
-      }
-
-      await loadDashboardData();
-    };
-    
-    initialize();
-    
-    const interval = setInterval(loadDashboardData, 30000);
-    return () => clearInterval(interval);
-  }, [loadDashboardData]);
-
-  // Filter and sort products
-  const processProducts = useCallback((products) => {
-    let processed = [...products];
-
-    // Apply search filter
-    if (searchTerm) {
-      processed = processed.filter(product =>
-        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.supplier?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Apply status filter
-    if (filterStatus !== 'all') {
-      processed = processed.filter(product => {
-        const status = getProductImageStatus(product);
-        return status === filterStatus;
-      });
-    }
-
-    // Apply sorting
-    processed.sort((a, b) => {
-      let aVal = a[sortBy] || '';
-      let bVal = b[sortBy] || '';
-
-      if (typeof aVal === 'string') {
-        aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
-      }
-
-      if (sortOrder === 'asc') {
-        return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-      } else {
-        return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
-      }
-    });
-
-    return processed;
-  }, [searchTerm, filterStatus, sortBy, sortOrder]);
-
-  // Update filtered products when filters change
-  useEffect(() => {
-    const currentProducts = getCurrentTabProducts();
-    const filtered = processProducts(currentProducts);
-    setFilteredProducts(filtered);
-  }, [allProducts, productsNeedingImages, completedProducts, failedProducts, activeTab, processProducts]);
-
-  // Get products for current tab
-  const getCurrentTabProducts = useCallback(() => {
-    switch (activeTab) {
-      case 'needed':
-        return productsNeedingImages;
-      case 'completed':
-        return completedProducts;
-      case 'failed':
-        return failedProducts;
-      case 'all':
-        return allProducts;
-      default:
-        return allProducts;
-    }
-  }, [activeTab, allProducts, productsNeedingImages, completedProducts, failedProducts]);
-
-  const showNotification = (message, type = 'info', duration = 5000) => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), duration);
-  };
-
-  // Enhanced image field migration with Firebase Storage support
-  const fixProductImageFields = async () => {
-    try {
-      if (!isProductSyncServiceAvailable()) {
-        showNotification('ProductSyncService not available', 'error');
-        return;
-      }
-
-      console.log('🔧 Running enhanced image field migration with Firebase Storage support...');
-      showNotification('Starting enhanced image field migration...', 'info');
-
-      if (typeof productSyncService.updateProductsWithImageFields === 'function') {
-        const result = await productSyncService.updateProductsWithImageFields();
-        console.log('✅ Enhanced image field migration result:', result);
-        
-        if (result?.success || result?.updatedCount !== undefined) {
-          const updated = result.updated || result.updatedCount || result.modified || 0;
-          showNotification(`Successfully updated ${updated} products with Firebase Storage fields`, 'success');
-          setTimeout(() => loadDashboardData(), 1000);
-        } else if (result?.message) {
-          showNotification(`Migration completed: ${result.message}`, 'info');
-        } else {
-          showNotification('Migration completed', 'info');
-        }
-      } else {
-        showNotification('Image field migration method not available', 'error');
-        console.error('Available methods:', Object.getOwnPropertyNames(productSyncService));
-      }
-    } catch (error) {
-      console.error('Error fixing product image fields:', error);
-      showNotification(`Failed to update product image fields: ${error.message}`, 'error');
-    }
-  };
-
-  // New method to load Firebase Storage statistics
-  const loadStorageStatistics = async () => {
-    try {
-      if (!isProductSyncServiceAvailable()) {
-        return null;
-      }
-      
-      if (typeof productSyncService.getStorageStatistics === 'function') {
-        return await productSyncService.getStorageStatistics();
-      } else {
-        console.warn('getStorageStatistics method not available');
-        return null;
-      }
-    } catch (error) {
-      console.error('Error loading storage statistics:', error);
-      return null;
-    }
-  };
-
-  // Manual upload functionality
-  const openUploadModal = (product) => {
-    setSelectedProductForUpload(product);
-    setShowUploadModal(true);
-    setUploadingFiles([]);
-  };
-
-  const closeUploadModal = () => {
-    setShowUploadModal(false);
-    setSelectedProductForUpload(null);
-    setUploadingFiles([]);
-  };
-
-  const handleFileDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    handleFileSelection(files);
-  };
-
-  const handleFileSelection = (files) => {
-    const imageFiles = files.filter(file => file.type.startsWith('image/'));
-    if (imageFiles.length === 0) {
-      showNotification('Please select valid image files (PNG, JPG, WEBP)', 'error');
-      return;
-    }
-    setUploadingFiles(imageFiles);
-    showNotification(`Selected ${imageFiles.length} image(s) for upload`, 'info');
-  };
-
-  const uploadManualImages = async () => {
-    if (!selectedProductForUpload || uploadingFiles.length === 0) return;
-
-    if (!isProductSyncServiceAvailable()) {
-      showNotification('ProductSyncService not available - cannot upload images', 'error');
-      return;
-    }
-
-    setIsUploading(true);
-    showNotification(`Uploading ${uploadingFiles.length} images to Firebase Storage...`, 'info');
-
-    try {
-      for (const file of uploadingFiles) {
-        const result = await productSyncService.uploadProductImage(
-          selectedProductForUpload.id,
-          file,
-          {
-            imageType: 'primary',
-            replaceExisting: true,
-            compressionQuality: 0.8
-          }
-        );
-
-        if (!result.success) {
-          throw new Error(result.error || 'Upload failed');
-        }
-      }
-      
-      showNotification(
-        `Successfully uploaded ${uploadingFiles.length} images to Firebase Storage for ${selectedProductForUpload.name}`, 
-        'success'
-      );
-      
-      closeUploadModal();
-      await loadDashboardData();
-      
-    } catch (error) {
-      console.error('Upload error:', error);
-      showNotification(`Failed to upload images: ${error.message}`, 'error');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // 🔧 CRITICAL FIX: Single product generation with proper ID handling
-  const handleSingleGeneration = useCallback(async (product) => {
-    if (!isProductSyncServiceAvailable()) {
-      showNotification('ProductSyncService not available', 'error');
-      return;
-    }
-
-    try {
-      setIsGenerating(true);
-      
-      // 🔧 CRITICAL FIX: Ensure we extract the string ID properly
-      let productId;
-      let productName;
-      
-      if (typeof product === 'string') {
-        productId = product;
-        productName = 'Unknown Product';
-      } else if (typeof product === 'object' && product.id) {
-        productId = product.id;
-        productName = product.name || 'Unknown Product';
-      } else {
-        throw new Error('Invalid product parameter');
-      }
-      
-      // 🔧 CRITICAL FIX: Ensure productId is always a string
-      const singleProductId = typeof productId === 'string' ? productId : productId.toString();
-      
-      console.log(`🎯 Generating image for product: ${singleProductId} - ${productName}`);
-      console.log(`🔧 Product ID type: ${typeof singleProductId}, value: "${singleProductId}"`);
-      
-      // 🔧 CRITICAL FIX: Pass single product ID as string, NOT as array or iterable
-      const result = await productSyncService.manualImageGeneration(singleProductId);
-      
-      if (result && (result.success || result.results?.length > 0)) {
-        showNotification(`Image generated successfully for ${productName}`, 'success');
-        await loadDashboardData(); // Refresh data
-      } else {
-        const error = result?.error || result?.errors?.[0]?.error || 'Unknown error occurred';
-        showNotification(`Failed to generate image for ${productName}: ${error}`, 'error');
-      }
-    } catch (error) {
-      console.error('Single generation error:', error);
-      showNotification(`Error generating image: ${error.message}`, 'error');
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [isProductSyncServiceAvailable, loadDashboardData]);
-
-  // 🔧 CRITICAL FIX: Batch generation with proper ID handling
-  const handleBatchGeneration = useCallback(async () => {
-    if (!isProductSyncServiceAvailable()) {
-      showNotification('ProductSyncService not available', 'error');
-      return;
-    }
-
-    if (selectedProducts.length === 0) {
-      showNotification('Please select products to generate images', 'warning');
-      return;
-    }
-
-    try {
-      setIsGenerating(true);
-      console.log(`🎯 Starting batch generation for ${selectedProducts.length} products`);
-      
-      let successCount = 0;
-      let errorCount = 0;
-      
-      // 🔧 CRITICAL FIX: Process each product ID individually as a string
-      for (const productId of selectedProducts) {
-        const product = allProducts.find(p => p.id === productId) || 
-                       productsNeedingImages.find(p => p.id === productId);
-        if (!product) continue;
-
-        try {
-          console.log(`Processing product: ${productId} - ${product.name}`);
-          console.log(`Product ID type: ${typeof productId}, value: "${productId}"`);
-          
-          // 🔧 CRITICAL FIX: Ensure productId is string, not treated as iterable
-          const singleProductId = typeof productId === 'string' ? productId : productId.toString();
-          
-          // 🔧 CRITICAL FIX: Pass single productId as string, NOT in array
-          const result = await productSyncService.manualImageGeneration(singleProductId);
-          
-          if (result && (result.success || result.results?.length > 0)) {
-            successCount++;
-            console.log(`✅ Generated image for ${product.name}`);
-          } else {
-            const errorMessage = result?.errors?.[0]?.error || result?.error || 'Image generation failed';
-            throw new Error(errorMessage);
-          }
-          
-        } catch (productError) {
-          errorCount++;
-          console.error(`❌ Error generating image for product ${productId}:`, productError);
-        }
-        
-        // Delay between generations to prevent rate limiting
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
-      showNotification(
-        `Batch generation completed: ${successCount} successful, ${errorCount} failed`, 
-        successCount > 0 ? 'success' : 'error'
-      );
-      
-    } catch (error) {
-      console.error('Batch generation error:', error);
-      showNotification(`Failed to generate images: ${error.message}`, 'error');
-    } finally {
-      setIsGenerating(false);
-      setSelectedProducts([]);
-      await loadDashboardData();
-    }
-  }, [selectedProducts, isProductSyncServiceAvailable, allProducts, productsNeedingImages, loadDashboardData]);
-
-  // Retry generation for failed products
-  const handleRetryGeneration = useCallback(async (productId) => {
-    const product = allProducts.find(p => p.id === productId) || 
-                   productsNeedingImages.find(p => p.id === productId) || 
-                   recentGenerations.find(g => g.productId === productId);
-    
-    if (!product) {
-      showNotification('Product not found', 'error');
-      return;
-    }
-
-    await handleSingleGeneration(product);
-  }, [allProducts, productsNeedingImages, recentGenerations, handleSingleGeneration]);
-
-  // Toggle product selection
-  const toggleProductSelection = useCallback((productId) => {
-    setSelectedProducts(prev => 
-      prev.includes(productId) 
-        ? prev.filter(id => id !== productId)
-        : [...prev, productId]
-    );
-  }, []);
-
-  // Helper functions for product status and images
-  const getProductImageStatus = useCallback((product) => {
-    if (!product) return 'needed';
-    
-    if (hasRealImage(product)) {
-      return 'completed';
-    }
-    
-    if (product.imageGenerationStatus === 'processing' || product.aiImageStatus === 'processing') {
-      return 'processing';
-    }
-    
-    if (product.imageGenerationStatus === 'error' || product.aiImageStatus === 'error' || product.lastImageError) {
-      return 'failed';
-    }
-    
-    return 'needed';
-  }, []);
-
-  const hasRealImage = useCallback((product) => {
-    const imageUrl = product.imageUrl || product.image_url || product.photo || product.aiImageUrl || '';
-    
-    if (!imageUrl) return false;
-    
-    return imageUrl.includes('oaidalleapi') || 
-           imageUrl.includes('blob.core.windows.net') ||
-           imageUrl.includes('generated') ||
-           imageUrl.includes('ai-image') ||
-           imageUrl.includes('firebasestorage') ||
-           (imageUrl.startsWith('https://') && !isPlaceholderImage(imageUrl));
-  }, []);
-
-  const isPlaceholderImage = useCallback((imageUrl) => {
-    if (!imageUrl) return true;
-    
-    const placeholderPatterns = [
-      'placeholder',
-      'via.placeholder',
-      'default-image',
-      'no-image',
-      'temp-image'
-    ];
-    
-    return placeholderPatterns.some(pattern => 
-      imageUrl.toLowerCase().includes(pattern.toLowerCase())
-    );
-  }, []);
-
-  const getProductImageUrls = useCallback((product) => {
-    const urls = [];
-    
-    const imageFields = ['imageUrl', 'image_url', 'image', 'photo', 'pictures', 'thumbnail', 'aiImageUrl'];
-    
-    for (const field of imageFields) {
-      const value = product[field];
-      if (value) {
-        if (Array.isArray(value)) {
-          urls.push(...value.filter(url => url && !isPlaceholderImage(url)));
-        } else if (typeof value === 'string' && !isPlaceholderImage(value)) {
-          urls.push(value);
-        }
-      }
-    }
-    
-    if (product.images && typeof product.images === 'object') {
-      Object.values(product.images).forEach(img => {
-        if (typeof img === 'string' && !isPlaceholderImage(img)) {
-          urls.push(img);
-        } else if (img && img.url && !isPlaceholderImage(img.url)) {
-          urls.push(img.url);
-        }
-      });
-    }
-    
-    return [...new Set(urls)];
-  }, [isPlaceholderImage]);
-
-  const generateImagePrompt = useCallback((product) => {
-    const category = product.category || 'component';
-    const name = product.name || 'product';
-    const brand = product.brand || '';
-    
-    return `Professional industrial ${category} photography of ${name}${brand ? ` by ${brand}` : ''}, high quality product shot, white background, commercial lighting`;
-  }, []);
-
-  const isProductSyncServiceAvailable = useCallback(() => {
-    if (!productSyncService) return false;
-    
-    const requiredMethods = [
-      'manualImageGeneration'
-    ];
-    
-    for (const method of requiredMethods) {
-      if (typeof productSyncService[method] !== 'function') {
-        console.warn(`ProductSyncService missing method: ${method}`);
-        return false;
-      }
-    }
-    
-    return true;
-  }, []);
-
-  const loadSyncStatistics = async () => {
-    try {
-      if (!isProductSyncServiceAvailable()) {
-        console.warn('ProductSyncService not available');
-        return getDemoStats();
-      }
-      
-      const result = await productSyncService.getSyncStatistics();
-      
-      if (result && typeof result === 'object') {
-        if (result.data) {
-          return result.data;
-        } else if (result.success && result.data) {
-          return result.data;
-        } else if (result.success && result.statistics) {
-          return result.statistics;
-        } else {
-          return result;
-        }
-      }
-      
-      return getDemoStats();
-      
-    } catch (error) {
-      console.error('Error loading sync statistics:', error);
-      return getDemoStats();
-    }
-  };
-
-  const getDemoProducts = () => [
-    {
-      id: 'demo-1',
-      name: 'Industrial Hydraulic Pump',
-      category: 'hydraulics',
-      imageGenerationStatus: 'needed',
-      hasRealImage: false,
-      hasCurrentImage: false,
-      imageUrl: null,
-      aiImageUrl: null,
-      sku: 'IHP-001',
-      brand: 'HydroTech',
-      description: 'High-pressure hydraulic pump for industrial applications',
-      firebaseStorageComplete: false,
-      needsImageGeneration: true,
-      supplier: 'HydroTech Industries'
-    },
-    {
-      id: 'demo-2', 
-      name: 'Pneumatic Control Valve',
-      category: 'pneumatics',
-      imageGenerationStatus: 'needed',
-      hasRealImage: false,
-      hasCurrentImage: false,
-      imageUrl: null,
-      aiImageUrl: null,
-      sku: 'PCV-002',
-      brand: 'AirPro',
-      description: 'Precision pneumatic control valve with manual override',
-      firebaseStorageComplete: false,
-      needsImageGeneration: true,
-      supplier: 'AirPro Systems'
-    },
-    {
-      id: 'demo-3',
-      name: 'Proximity Sensor M18',
-      category: 'sensors', 
-      imageGenerationStatus: 'needed',
-      hasRealImage: false,
-      hasCurrentImage: false,
-      imageUrl: null,
-      aiImageUrl: null,
-      sku: 'PS-M18-003',
-      brand: 'SensorTech',
-      description: 'Inductive proximity sensor, M18 thread, PNP output',
-      firebaseStorageComplete: false,
-      needsImageGeneration: true,
-      supplier: 'SensorTech Solutions'
-    }
-  ];
-
-  const getDemoStats = () => ({
-    totalInternal: 31,
-    totalPublic: 25,
-    productsWithRealImages: 8,
-    productsNeedingImages: 17,
-    imageGenerationRate: 32,
-    totalImagesGenerated: 15,
-    imageErrors: 2,
-    averageImageTime: 15800,
-    productsWithFirebaseStorage: 5,
-    firebaseStorageRate: 20,
-    manualUploads: 3,
-    uploadErrors: 1
-  });
-
-  const fetchSystemHealth = async () => {
+  // System health check
+  const fetchSystemHealth = useCallback(async () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -1001,7 +510,7 @@ const ImageGenerationDashboard = () => {
       let firebaseStorageHealthy = false;
       let firebaseStorageEnabled = false;
       
-      if (isProductSyncServiceAvailable() && productSyncService.storage) {
+      if (productSyncService && productSyncService.storage) {
         firebaseStorageHealthy = true;
         firebaseStorageEnabled = true;
       }
@@ -1031,9 +540,74 @@ const ImageGenerationDashboard = () => {
         firebaseStorageEnabled: false
       };
     }
-  };
+  }, [productsNeedingImages.length]);
 
-  const calculateRealStats = (syncData, productsArray = []) => {
+  // Helper functions
+  const isProductSyncServiceAvailable = useCallback(() => {
+    if (!productSyncService) return false;
+    
+    const requiredMethods = [
+      'manualImageGeneration'
+    ];
+    
+    for (const method of requiredMethods) {
+      if (typeof productSyncService[method] !== 'function') {
+        console.warn(`ProductSyncService missing method: ${method}`);
+        return false;
+      }
+    }
+    
+    return true;
+  }, []);
+
+  const loadSyncStatistics = useCallback(async () => {
+    try {
+      if (!isProductSyncServiceAvailable()) {
+        console.warn('ProductSyncService not available');
+        return getDemoStats();
+      }
+      
+      const result = await productSyncService.getSyncStatistics();
+      
+      if (result && typeof result === 'object') {
+        if (result.data) {
+          return result.data;
+        } else if (result.success && result.data) {
+          return result.data;
+        } else if (result.success && result.statistics) {
+          return result.statistics;
+        } else {
+          return result;
+        }
+      }
+      
+      return getDemoStats();
+      
+    } catch (error) {
+      console.error('Error loading sync statistics:', error);
+      return getDemoStats();
+    }
+  }, [isProductSyncServiceAvailable]);
+
+  const loadStorageStatistics = useCallback(async () => {
+    try {
+      if (!isProductSyncServiceAvailable()) {
+        return null;
+      }
+      
+      if (typeof productSyncService.getStorageStatistics === 'function') {
+        return await productSyncService.getStorageStatistics();
+      } else {
+        console.warn('getStorageStatistics method not available');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error loading storage statistics:', error);
+      return null;
+    }
+  }, [isProductSyncServiceAvailable]);
+
+  const calculateRealStats = useCallback((syncData, productsArray = []) => {
     try {
       const totalProducts = productsArray.length || syncData.totalPublic || 0;
       const productsWithImages = productsArray.filter(p => hasRealImage(p)).length || syncData.productsWithRealImages || 0;
@@ -1106,9 +680,432 @@ const ImageGenerationDashboard = () => {
         uploadErrors: 0
       };
     }
-  };
+  }, [hasRealImage]);
 
-  const getStatusIcon = (status) => {
+  // Compatibility layer - redirect to loadAllProducts
+  const loadProductsNeedingImages = useCallback(async () => {
+    console.log('🔄 COMPATIBILITY: loadProductsNeedingImages called, redirecting to loadAllProducts...');
+    return await loadAllProducts();
+  }, [loadAllProducts]);
+
+  // Initialize dashboard data
+  const loadDashboardData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      
+      const [healthData, productsData, syncStats, storageStats] = await Promise.allSettled([
+        fetchSystemHealth(),
+        loadAllProducts(),
+        loadSyncStatistics(),
+        loadStorageStatistics()
+      ]);
+      
+      if (healthData.status === 'fulfilled') {
+        setSystemHealth(healthData.value);
+      } else {
+        console.warn('Failed to fetch system health:', healthData.reason);
+        setSystemHealth(prev => ({ 
+          ...prev, 
+          mcpApiHealthy: false, 
+          openaiAvailable: false,
+          firebaseStorageHealthy: false,
+          lastCheck: new Date()
+        }));
+      }
+      
+      // Update statistics
+      if (syncStats.status === 'fulfilled' && syncStats.value && typeof syncStats.value === 'object') {
+        const statsData = calculateRealStats(syncStats.value, allProducts);
+        
+        // Merge storage stats if available
+        if (storageStats.status === 'fulfilled' && storageStats.value) {
+          statsData.firebaseStorageEnabled = storageStats.value.enabled || false;
+          statsData.manualUploads = storageStats.value.stats?.manualUploads || 0;
+          statsData.uploadErrors = storageStats.value.stats?.errors || 0;
+        }
+        
+        setStats(statsData);
+      }
+      
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      showNotification('Failed to load dashboard data', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadAllProducts, loadSyncStatistics, loadStorageStatistics, fetchSystemHealth, calculateRealStats, allProducts]);
+
+  // Update generation history based on products
+  const updateGenerationHistory = useCallback(() => {
+    if (!allProducts.length) return;
+
+    const generationHistory = allProducts.map(product => ({
+      id: product.id,
+      productId: product.id,
+      productName: product.name || 'Unknown Product',
+      category: product.category || 'general',
+      imagesGenerated: hasRealImage(product) ? ['primary'] : [],
+      status: getProductImageStatus(product),
+      provider: 'openai',
+      processingTime: '15.2s',
+      timestamp: product.lastImageError || product.aiImageGeneratedAt || new Date(),
+      prompt: `Professional industrial ${product.category || 'component'} photography of ${product.name || 'product'}${product.brand ? ` by ${product.brand}` : ''}, high quality product shot, white background, commercial lighting`,
+      imageUrls: getProductImageUrls(product),
+      error: product.imageGenerationStatus === 'error' ? 'Generation failed' : null,
+      firebaseStored: product.firebaseStorageComplete || false,
+      storageProvider: product.firebaseStorageComplete ? 'firebase' : 'openai'
+    }));
+    
+    setRecentGenerations(generationHistory);
+  }, [allProducts, hasRealImage, getProductImageStatus, getProductImageUrls]);
+
+  // Update generation history when products change
+  useEffect(() => {
+    updateGenerationHistory();
+  }, [allProducts, updateGenerationHistory]);
+
+  // Initialize component
+  useEffect(() => {
+    const initialize = async () => {
+      console.log('🚀 ImageGenerationDashboard initializing...');
+      
+      // Check for ProductSyncService
+      const initialized = await initializeProductSyncService();
+      setServiceInitialized(initialized);
+      
+      if (initialized && isProductSyncServiceAvailable()) {
+        console.log('✅ ProductSyncService is fully available');
+      } else {
+        console.log('⚠️ ProductSyncService not available, using demo mode');
+      }
+
+      await loadDashboardData();
+    };
+    
+    initialize();
+    
+    const interval = setInterval(loadDashboardData, 30000);
+    return () => clearInterval(interval);
+  }, [loadDashboardData, isProductSyncServiceAvailable]);
+
+  // Filter and sort products
+  const processProducts = useCallback((products) => {
+    let processed = [...products];
+
+    // Apply search filter
+    if (searchTerm) {
+      processed = processed.filter(product =>
+        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.supplier?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply status filter
+    if (filterStatus !== 'all') {
+      processed = processed.filter(product => {
+        const status = getProductImageStatus(product);
+        return status === filterStatus;
+      });
+    }
+
+    // Apply sorting
+    processed.sort((a, b) => {
+      let aVal = a[sortBy] || '';
+      let bVal = b[sortBy] || '';
+
+      if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = bVal.toLowerCase();
+      }
+
+      if (sortOrder === 'asc') {
+        return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+      } else {
+        return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+      }
+    });
+
+    return processed;
+  }, [searchTerm, filterStatus, sortBy, sortOrder, getProductImageStatus]);
+
+  // Update filtered products when filters change
+  useEffect(() => {
+    const currentProducts = getCurrentTabProducts();
+    const filtered = processProducts(currentProducts);
+    setFilteredProducts(filtered);
+  }, [allProducts, productsNeedingImages, completedProducts, failedProducts, activeTab, processProducts]);
+
+  // Get products for current tab
+  const getCurrentTabProducts = useCallback(() => {
+    switch (activeTab) {
+      case 'needed':
+        return productsNeedingImages;
+      case 'completed':
+        return completedProducts;
+      case 'failed':
+        return failedProducts;
+      case 'all':
+        return allProducts;
+      default:
+        return allProducts;
+    }
+  }, [activeTab, allProducts, productsNeedingImages, completedProducts, failedProducts]);
+
+  const showNotification = useCallback((message, type = 'info', duration = 5000) => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), duration);
+  }, []);
+
+  // Enhanced image field migration with Firebase Storage support
+  const fixProductImageFields = useCallback(async () => {
+    try {
+      if (!isProductSyncServiceAvailable()) {
+        showNotification('ProductSyncService not available', 'error');
+        return;
+      }
+
+      console.log('🔧 Running enhanced image field migration with Firebase Storage support...');
+      showNotification('Starting enhanced image field migration...', 'info');
+
+      if (typeof productSyncService.updateProductsWithImageFields === 'function') {
+        const result = await productSyncService.updateProductsWithImageFields();
+        console.log('✅ Enhanced image field migration result:', result);
+        
+        if (result?.success || result?.updatedCount !== undefined) {
+          const updated = result.updated || result.updatedCount || result.modified || 0;
+          showNotification(`Successfully updated ${updated} products with Firebase Storage fields`, 'success');
+          setTimeout(() => loadDashboardData(), 1000);
+        } else if (result?.message) {
+          showNotification(`Migration completed: ${result.message}`, 'info');
+        } else {
+          showNotification('Migration completed', 'info');
+        }
+      } else {
+        showNotification('Image field migration method not available', 'error');
+        console.error('Available methods:', Object.getOwnPropertyNames(productSyncService));
+      }
+    } catch (error) {
+      console.error('Error fixing product image fields:', error);
+      showNotification(`Failed to update product image fields: ${error.message}`, 'error');
+    }
+  }, [isProductSyncServiceAvailable, showNotification, loadDashboardData]);
+
+  // Manual upload functionality
+  const openUploadModal = useCallback((product) => {
+    setSelectedProductForUpload(product);
+    setShowUploadModal(true);
+    setUploadingFiles([]);
+  }, []);
+
+  const closeUploadModal = useCallback(() => {
+    setShowUploadModal(false);
+    setSelectedProductForUpload(null);
+    setUploadingFiles([]);
+  }, []);
+
+  const handleFileDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    handleFileSelection(files);
+  }, []);
+
+  const handleFileSelection = useCallback((files) => {
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      showNotification('Please select valid image files (PNG, JPG, WEBP)', 'error');
+      return;
+    }
+    setUploadingFiles(imageFiles);
+    showNotification(`Selected ${imageFiles.length} image(s) for upload`, 'info');
+  }, [showNotification]);
+
+  const uploadManualImages = useCallback(async () => {
+    if (!selectedProductForUpload || uploadingFiles.length === 0) return;
+
+    if (!isProductSyncServiceAvailable()) {
+      showNotification('ProductSyncService not available - cannot upload images', 'error');
+      return;
+    }
+
+    setIsUploading(true);
+    showNotification(`Uploading ${uploadingFiles.length} images to Firebase Storage...`, 'info');
+
+    try {
+      for (const file of uploadingFiles) {
+        const result = await productSyncService.uploadProductImage(
+          selectedProductForUpload.id,
+          file,
+          {
+            imageType: 'primary',
+            replaceExisting: true,
+            compressionQuality: 0.8
+          }
+        );
+
+        if (!result.success) {
+          throw new Error(result.error || 'Upload failed');
+        }
+      }
+      
+      showNotification(
+        `Successfully uploaded ${uploadingFiles.length} images to Firebase Storage for ${selectedProductForUpload.name}`, 
+        'success'
+      );
+      
+      closeUploadModal();
+      await loadDashboardData();
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      showNotification(`Failed to upload images: ${error.message}`, 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  }, [selectedProductForUpload, uploadingFiles, isProductSyncServiceAvailable, showNotification, closeUploadModal, loadDashboardData]);
+
+  // Single product generation with proper ID handling
+  const handleSingleGeneration = useCallback(async (product) => {
+    if (!isProductSyncServiceAvailable()) {
+      showNotification('ProductSyncService not available', 'error');
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+      
+      // Ensure we extract the string ID properly
+      let productId;
+      let productName;
+      
+      if (typeof product === 'string') {
+        productId = product;
+        productName = 'Unknown Product';
+      } else if (typeof product === 'object' && product.id) {
+        productId = product.id;
+        productName = product.name || 'Unknown Product';
+      } else {
+        throw new Error('Invalid product parameter');
+      }
+      
+      // Ensure productId is always a string
+      const singleProductId = typeof productId === 'string' ? productId : productId.toString();
+      
+      console.log(`🎯 Generating image for product: ${singleProductId} - ${productName}`);
+      console.log(`🔧 Product ID type: ${typeof singleProductId}, value: "${singleProductId}"`);
+      
+      // Pass single product ID as string, NOT as array or iterable
+      const result = await productSyncService.manualImageGeneration(singleProductId);
+      
+      if (result && (result.success || result.results?.length > 0)) {
+        showNotification(`Image generated successfully for ${productName}`, 'success');
+        await loadDashboardData(); // Refresh data
+      } else {
+        const error = result?.error || result?.errors?.[0]?.error || 'Unknown error occurred';
+        showNotification(`Failed to generate image for ${productName}: ${error}`, 'error');
+      }
+    } catch (error) {
+      console.error('Single generation error:', error);
+      showNotification(`Error generating image: ${error.message}`, 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [isProductSyncServiceAvailable, showNotification, loadDashboardData]);
+
+  // Batch generation with proper ID handling
+  const handleBatchGeneration = useCallback(async () => {
+    if (!isProductSyncServiceAvailable()) {
+      showNotification('ProductSyncService not available', 'error');
+      return;
+    }
+
+    if (selectedProducts.length === 0) {
+      showNotification('Please select products to generate images', 'warning');
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+      console.log(`🎯 Starting batch generation for ${selectedProducts.length} products`);
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      // Process each product ID individually as a string
+      for (const productId of selectedProducts) {
+        const product = allProducts.find(p => p.id === productId) || 
+                       productsNeedingImages.find(p => p.id === productId);
+        if (!product) continue;
+
+        try {
+          console.log(`Processing product: ${productId} - ${product.name}`);
+          console.log(`Product ID type: ${typeof productId}, value: "${productId}"`);
+          
+          // Ensure productId is string, not treated as iterable
+          const singleProductId = typeof productId === 'string' ? productId : productId.toString();
+          
+          // Pass single productId as string, NOT in array
+          const result = await productSyncService.manualImageGeneration(singleProductId);
+          
+          if (result && (result.success || result.results?.length > 0)) {
+            successCount++;
+            console.log(`✅ Generated image for ${product.name}`);
+          } else {
+            const errorMessage = result?.errors?.[0]?.error || result?.error || 'Image generation failed';
+            throw new Error(errorMessage);
+          }
+          
+        } catch (productError) {
+          errorCount++;
+          console.error(`❌ Error generating image for product ${productId}:`, productError);
+        }
+        
+        // Delay between generations to prevent rate limiting
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      showNotification(
+        `Batch generation completed: ${successCount} successful, ${errorCount} failed`, 
+        successCount > 0 ? 'success' : 'error'
+      );
+      
+    } catch (error) {
+      console.error('Batch generation error:', error);
+      showNotification(`Failed to generate images: ${error.message}`, 'error');
+    } finally {
+      setIsGenerating(false);
+      setSelectedProducts([]);
+      await loadDashboardData();
+    }
+  }, [selectedProducts, isProductSyncServiceAvailable, allProducts, productsNeedingImages, showNotification, loadDashboardData]);
+
+  // Retry generation for failed products
+  const handleRetryGeneration = useCallback(async (productId) => {
+    const product = allProducts.find(p => p.id === productId) || 
+                   productsNeedingImages.find(p => p.id === productId) || 
+                   recentGenerations.find(g => g.productId === productId);
+    
+    if (!product) {
+      showNotification('Product not found', 'error');
+      return;
+    }
+
+    await handleSingleGeneration(product);
+  }, [allProducts, productsNeedingImages, recentGenerations, handleSingleGeneration, showNotification]);
+
+  // Toggle product selection
+  const toggleProductSelection = useCallback((productId) => {
+    setSelectedProducts(prev => 
+      prev.includes(productId) 
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  }, []);
+
+  const getStatusIcon = useCallback((status) => {
     switch (status) {
       case 'completed':
       case 'success':
@@ -1125,9 +1122,9 @@ const ImageGenerationDashboard = () => {
       default:
         return <Clock className="w-4 h-4 text-gray-600" />;
     }
-  };
+  }, []);
 
-  const getStatusColor = (status) => {
+  const getStatusColor = useCallback((status) => {
     switch (status) {
       case 'completed':
       case 'success':
@@ -1144,13 +1141,13 @@ const ImageGenerationDashboard = () => {
       default:
         return 'text-gray-700 bg-gray-50 border-gray-200';
     }
-  };
+  }, []);
 
-  const formatTime = (seconds) => {
+  const formatTime = useCallback((seconds) => {
     if (!seconds) return 'N/A';
     if (typeof seconds === 'string') return seconds.includes('s') ? seconds : `${seconds}s`;
     return `${parseFloat(seconds).toFixed(1)}s`;
-  };
+  }, []);
 
   const filteredGenerations = useMemo(() => {
     try {
@@ -1172,7 +1169,7 @@ const ImageGenerationDashboard = () => {
     }
   }, [recentGenerations, filter, searchTerm]);
 
-  const downloadImage = (imageUrl, filename) => {
+  const downloadImage = useCallback((imageUrl, filename) => {
     try {
       const link = document.createElement('a');
       link.href = imageUrl;
@@ -1185,7 +1182,7 @@ const ImageGenerationDashboard = () => {
       console.error('Download error:', error);
       showNotification('Failed to download image', 'error');
     }
-  };
+  }, [showNotification]);
 
   // Memoized tab content
   const tabContent = useMemo(() => {
