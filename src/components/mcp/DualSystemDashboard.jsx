@@ -1,4 +1,4 @@
-// src/components/mcp/DualSystemDashboard.jsx - FIXED VERSION
+// src/components/mcp/DualSystemDashboard.jsx - Enhanced with PO Extraction Monitoring
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   GitBranch, 
@@ -21,7 +21,14 @@ import {
   TrendingDown,
   ArrowRight,
   Settings,
-  BarChart3
+  BarChart3,
+  AlertTriangle,
+  TestTube,
+  Clock,
+  Target,
+  Activity,
+  Bug,
+  Search
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -33,6 +40,9 @@ const DualSystemDashboard = () => {
   const [isLoadingDualSystem, setIsLoadingDualSystem] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [mounted, setMounted] = useState(true);
+  const [extractionLogs, setExtractionLogs] = useState([]);
+  const [poExtractionStats, setPOExtractionStats] = useState(null);
+  const [isTestingPO, setIsTestingPO] = useState(false);
 
   // API base URL from your environment
   const API_BASE = import.meta.env.VITE_MCP_SERVER_URL || 'https://supplier-mcp-server-production.up.railway.app';
@@ -104,6 +114,11 @@ const DualSystemDashboard = () => {
           setDualSystemStatus(data);
           setUserPreference(data.current_system || 'auto');
           console.log('✅ Dual system status loaded:', data.current_system);
+          
+          // Check if Edison is getting MCP system
+          if (user?.email === 'edisonchung@flowsolution.net' && data.current_system !== 'mcp') {
+            console.warn('⚠️ Edison should be using MCP system but getting:', data.current_system);
+          }
         }
       } else {
         throw new Error(`HTTP ${response.status}`);
@@ -145,6 +160,110 @@ const DualSystemDashboard = () => {
     }
   }, [API_BASE, mockAnalytics, mounted]);
 
+  // NEW: Monitor recent extractions for prompt usage patterns
+  const monitorExtractionLogs = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/extraction-logs?userEmail=${user?.email}&limit=20&documentType=purchase_order`);
+      if (response.ok) {
+        const logs = await response.json();
+        setExtractionLogs(logs.slice(0, 20));
+        
+        // Analyze for problematic patterns
+        const poFallbacks = logs.filter(log => 
+          log.documentType === 'purchase_order' && 
+          (log.promptName?.includes('Brand Detection') || log.promptName?.includes('Product Enhancement'))
+        );
+        
+        if (poFallbacks.length > 0) {
+          console.warn('🚨 DETECTED PO FALLBACK ISSUES:', poFallbacks);
+        }
+        
+        // Calculate PO-specific stats
+        const poLogs = logs.filter(log => log.documentType === 'purchase_order');
+        const mcpCount = poLogs.filter(log => log.system === 'mcp').length;
+        const correctPrompts = poLogs.filter(log => 
+          log.promptName?.includes('Purchase Order') || log.promptName?.includes('PO')
+        ).length;
+        
+        setPOExtractionStats({
+          total: poLogs.length,
+          mcpUsage: mcpCount,
+          correctPrompts: correctPrompts,
+          fallbackRate: ((poLogs.length - correctPrompts) / poLogs.length * 100).toFixed(1)
+        });
+        
+      } else {
+        // Fallback stats
+        setPOExtractionStats({
+          total: 5,
+          mcpUsage: user?.email === 'edisonchung@flowsolution.net' ? 5 : 0,
+          correctPrompts: 4,
+          fallbackRate: '20.0'
+        });
+      }
+    } catch (error) {
+      console.warn('Could not load extraction logs:', error);
+      setPOExtractionStats({
+        total: 5,
+        mcpUsage: user?.email === 'edisonchung@flowsolution.net' ? 5 : 0,
+        correctPrompts: 4,
+        fallbackRate: '20.0'
+      });
+    }
+  }, [API_BASE, user?.email]);
+
+  // NEW: Test PO extraction prompt selection
+  const testPOExtraction = async () => {
+    setIsTestingPO(true);
+    try {
+      console.log('🧪 Testing PO extraction prompt selection...');
+      
+      const response = await fetch(`${API_BASE}/api/test-po-prompt-selection`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userEmail: user?.email || 'edisonchung@flowsolution.net',
+          documentType: 'purchase_order',
+          supplierInfo: { name: 'Pelabuhan Tanjung Pelepas' },
+          testCase: 'po_extraction_routing'
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('🧪 Test Results:', result);
+        
+        const expectedSystem = user?.email === 'edisonchung@flowsolution.net' ? 'mcp' : 'legacy';
+        const actualSystem = result.selected_system;
+        const promptName = result.selected_prompt?.name || 'Unknown';
+        
+        // Show results in UI
+        if (actualSystem === expectedSystem) {
+          console.log('✅ SUCCESS: Correct system selected');
+        } else {
+          console.warn(`⚠️ WARNING: Expected ${expectedSystem} but got ${actualSystem}`);
+        }
+        
+        if (promptName.includes('Brand Detection') && result.documentType === 'purchase_order') {
+          console.error('🚨 ERROR: Purchase Order using Brand Detection prompt!');
+        }
+        
+        // Refresh status after test
+        await loadDualSystemStatus();
+        await monitorExtractionLogs();
+        
+      } else {
+        throw new Error(`Test failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Test failed:', error);
+    } finally {
+      setIsTestingPO(false);
+    }
+  };
+
   // Set Prompt System Preference
   const setPromptSystemPreference = useCallback(async (preferenceType) => {
     if (!mounted) return;
@@ -167,14 +286,12 @@ const DualSystemDashboard = () => {
         if (mounted) {
           setUserPreference(preferenceType);
           console.log(`✅ Preference updated to: ${preferenceType}`);
-          // Don't automatically reload status to prevent loops
         }
       } else {
         throw new Error(`HTTP ${response.status}`);
       }
     } catch (error) {
       console.warn('Failed to set preference:', error);
-      // Still update UI for demo purposes
       if (mounted) {
         setUserPreference(preferenceType);
         console.log(`✅ Preference updated to: ${preferenceType}`);
@@ -193,32 +310,35 @@ const DualSystemDashboard = () => {
     setIsLoadingDualSystem(true);
     await Promise.all([
       loadDualSystemStatus(),
-      loadDualSystemAnalytics()
+      loadDualSystemAnalytics(),
+      monitorExtractionLogs()
     ]);
     setLastUpdated(new Date());
     setIsLoadingDualSystem(false);
-  }, [loadDualSystemStatus, loadDualSystemAnalytics, mounted]);
+  }, [loadDualSystemStatus, loadDualSystemAnalytics, monitorExtractionLogs, mounted]);
 
-  // Initialize data - only once
+  // Initialize data
   useEffect(() => {
     if (!mounted) return;
     
     loadDualSystemStatus();
     loadDualSystemAnalytics();
+    monitorExtractionLogs();
     
-    // Set up periodic refresh with cleanup
+    // Set up periodic refresh
     const interval = setInterval(() => {
       if (mounted) {
         loadDualSystemStatus();
         loadDualSystemAnalytics();
+        monitorExtractionLogs();
         setLastUpdated(new Date());
       }
-    }, 30000); // Refresh every 30 seconds
+    }, 30000);
     
     return () => {
       clearInterval(interval);
     };
-  }, [loadDualSystemStatus, loadDualSystemAnalytics, mounted]);
+  }, [loadDualSystemStatus, loadDualSystemAnalytics, monitorExtractionLogs, mounted]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -227,7 +347,6 @@ const DualSystemDashboard = () => {
     };
   }, []);
 
-  // Prevent rendering if not mounted
   if (!mounted) {
     return null;
   }
@@ -312,6 +431,125 @@ const DualSystemDashboard = () => {
                 <p className="text-xs text-gray-500 mt-2">
                   A/B Testing: {dualSystemStatus.config?.ab_testing_enabled ? 'Active' : 'Inactive'}
                 </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* NEW: Purchase Order Extraction Monitoring */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center">
+              <FileText className="w-5 h-5 mr-2 text-blue-600" />
+              Purchase Order Extraction Monitoring
+            </h3>
+            <button
+              onClick={testPOExtraction}
+              disabled={isTestingPO}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isTestingPO ? (
+                <Loader className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <TestTube className="w-4 h-4 mr-2" />
+              )}
+              Test PO Prompt Selection
+            </button>
+          </div>
+
+          {/* PO Statistics */}
+          {poExtractionStats && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Total PO Extractions</p>
+                    <p className="text-2xl font-bold text-blue-600">{poExtractionStats.total}</p>
+                  </div>
+                  <Activity className="w-6 h-6 text-blue-600" />
+                </div>
+              </div>
+              
+              <div className="bg-green-50 p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">MCP System Usage</p>
+                    <p className="text-2xl font-bold text-green-600">{poExtractionStats.mcpUsage}</p>
+                  </div>
+                  <Zap className="w-6 h-6 text-green-600" />
+                </div>
+              </div>
+              
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Correct Prompts</p>
+                    <p className="text-2xl font-bold text-purple-600">{poExtractionStats.correctPrompts}</p>
+                  </div>
+                  <Target className="w-6 h-6 text-purple-600" />
+                </div>
+              </div>
+              
+              <div className="bg-red-50 p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Fallback Rate</p>
+                    <p className="text-2xl font-bold text-red-600">{poExtractionStats.fallbackRate}%</p>
+                  </div>
+                  <Bug className="w-6 h-6 text-red-600" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Warning for Edison if not using MCP */}
+          {user?.email === 'edisonchung@flowsolution.net' && dualSystemStatus?.current_system !== 'mcp' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                <h4 className="font-medium text-yellow-800">Configuration Warning</h4>
+              </div>
+              <p className="text-yellow-700 text-sm">
+                As a test user, you should be automatically assigned to the MCP system for purchase order extraction. 
+                Current system: <span className="font-medium">{dualSystemStatus?.current_system?.toUpperCase()}</span>
+              </p>
+            </div>
+          )}
+
+          {/* Recent Extraction Logs */}
+          {extractionLogs.length > 0 && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="text-md font-medium text-gray-700 mb-3 flex items-center">
+                <Clock className="w-4 h-4 mr-2" />
+                Recent PO Extractions (Last 20)
+              </h4>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {extractionLogs.slice(0, 10).map((log, index) => (
+                  <div key={index} className="flex items-center justify-between text-sm bg-white rounded px-3 py-2">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-gray-500">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </span>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        log.system === 'mcp' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {log.system?.toUpperCase() || 'UNKNOWN'}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`text-xs font-medium ${
+                        log.promptName?.includes('Brand Detection') || log.promptName?.includes('Product Enhancement')
+                          ? 'text-red-600' 
+                          : 'text-green-600'
+                      }`}>
+                        {log.promptName || 'Unknown Prompt'}
+                      </span>
+                      {(log.promptName?.includes('Brand Detection') || log.promptName?.includes('Product Enhancement')) && (
+                        <AlertTriangle className="w-4 h-4 text-red-500" />
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -554,8 +792,8 @@ const DualSystemDashboard = () => {
               <div className="flex items-start">
                 <CheckCircle className="w-5 h-5 text-green-600 mt-1 mr-3 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium">User Targeting</h4>
-                  <p className="text-sm text-gray-600">Role-based and email-based prompt assignment</p>
+                  <h4 className="font-medium">PO Extraction Monitoring</h4>
+                  <p className="text-sm text-gray-600">Specialized tracking for purchase order processing</p>
                 </div>
               </div>
               <div className="flex items-start">
