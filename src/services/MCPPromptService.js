@@ -57,7 +57,7 @@ class MCPPromptService {
   }
 
   /**
-   * Select best prompt for extraction based on context
+   * ✅ CRITICAL FIX: Enhanced prompt selection with document-type priority
    */
   async selectPromptForExtraction(prompts, supplierInfo, documentType, userInfo, fileType) {
     console.log('🎯 Selecting prompt for:', {
@@ -77,90 +77,121 @@ class MCPPromptService {
     const activePrompts = prompts.filter(p => p.isActive !== false);
     console.log(`📋 Active prompts: ${activePrompts.length}/${prompts.length}`);
 
-    // Score each prompt based on context
+    if (activePrompts.length === 0) {
+      console.warn('❌ No active prompts available');
+      return null;
+    }
+
+    // ✅ CRITICAL FIX: Document-type-first scoring algorithm
     const scored = activePrompts.map(prompt => {
       let score = 0;
       const promptName = prompt.name?.toLowerCase() || '';
       const promptCategory = prompt.category?.toLowerCase() || '';
+      const docType = (documentType || '').toLowerCase();
       
-      console.log(`🔍 Scoring prompt: "${prompt.name}"`);
+      console.log(`🔍 Scoring prompt: "${prompt.name}" (category: ${promptCategory})`);
 
-      // CRITICAL: Purchase Order Detection
-      if (documentType === 'purchase_order' || documentType === 'po_extraction') {
-        if (promptName.includes('purchase order') || 
-            promptName.includes('po extraction') ||
-            promptName.includes('po ') ||
-            promptCategory === 'purchase_order') {
-          score += 200; // High priority for PO prompts
-          console.log(`   📋 Purchase Order match: +200 (score: ${score})`);
+      // ✅ STEP 1: CRITICAL DOCUMENT TYPE MATCHING (Category-based - highest priority)
+      if (docType.includes('purchase') || docType === 'purchase_order' || docType === 'po_extraction') {
+        if (promptCategory === 'purchase_order' || promptCategory === 'po_extraction') {
+          score += 1000; // Highest priority for exact category match
+          console.log(`   ✅ Purchase Order category match: +1000 (score: ${score})`);
+        } else if (promptName.includes('purchase order') || promptName.includes('po extraction') || promptName.includes(' po ')) {
+          score += 800; // High priority for name-based PO match
+          console.log(`   ✅ Purchase Order name match: +800 (score: ${score})`);
+        } else if (promptCategory === 'product_enhancement' || promptName.includes('brand detection') || promptName.includes('product enhancement')) {
+          score = -1000; // REJECT wrong prompt types completely
+          console.log(`   ❌ WRONG category for purchase order: ${prompt.name} (-1000) - REJECTED`);
+        } else if (promptCategory === 'proforma_invoice' || promptCategory === 'bank_payment') {
+          score = -1000; // REJECT other document types
+          console.log(`   ❌ WRONG category for purchase order: ${prompt.name} (-1000) - REJECTED`);
         }
-        
-        // Penalize wrong prompt types for PO documents
-        if (promptName.includes('brand detection') || 
-            promptName.includes('product enhancement') ||
-            promptCategory === 'product_enhancement') {
-          score -= 150; // Heavy penalty for wrong prompt type
-          console.log(`   ⚠️ Wrong prompt type penalty: -150 (score: ${score})`);
+      } 
+      else if (docType.includes('proforma') || docType === 'proforma_invoice') {
+        if (promptCategory === 'proforma_invoice') {
+          score += 1000;
+          console.log(`   ✅ Proforma category match: +1000 (score: ${score})`);
+        } else if (promptName.includes('proforma') || promptName.includes('pi extraction')) {
+          score += 800;
+          console.log(`   ✅ Proforma name match: +800 (score: ${score})`);
+        } else if (promptCategory === 'purchase_order' || promptCategory === 'product_enhancement' || promptCategory === 'bank_payment') {
+          score = -1000; // REJECT wrong categories
+          console.log(`   ❌ WRONG category for proforma: ${prompt.name} (-1000) - REJECTED`);
+        }
+      }
+      else if (docType.includes('bank') || docType.includes('payment')) {
+        if (promptCategory === 'bank_payment' || promptCategory === 'payment_extraction') {
+          score += 1000;
+          console.log(`   ✅ Bank/Payment category match: +1000 (score: ${score})`);
+        } else if (promptName.includes('bank') || promptName.includes('payment')) {
+          score += 800;
+          console.log(`   ✅ Bank/Payment name match: +800 (score: ${score})`);
+        } else if (promptCategory === 'purchase_order' || promptCategory === 'proforma_invoice' || promptCategory === 'product_enhancement') {
+          score = -1000; // REJECT wrong categories
+          console.log(`   ❌ WRONG category for bank payment: ${prompt.name} (-1000) - REJECTED`);
         }
       }
 
-      // Supplier-specific matching
-      if (supplierInfo?.name) {
-        const supplierName = supplierInfo.name.toLowerCase();
-        
-        if (prompt.suppliers?.includes(supplierInfo.name) || 
-            prompt.suppliers?.includes('ALL') ||
-            promptName.includes(supplierName)) {
-          score += 100;
-          console.log(`   🏢 Supplier match: +100 (score: ${score})`);
-        }
-        
-        // Special PTP handling
-        if (supplierName.includes('tanjung pelepas') || supplierName.includes('ptp')) {
-          if (promptName.includes('ptp') || promptName.includes('tanjung pelepas')) {
-            score += 150;
-            console.log(`   🚢 PTP specific match: +150 (score: ${score})`);
+      // ✅ STEP 2: Additional scoring (only if not rejected in step 1)
+      if (score >= 0) {
+        // 🏢 Supplier-specific matching
+        if (supplierInfo?.name) {
+          const supplierName = supplierInfo.name.toLowerCase();
+          
+          if (prompt.suppliers?.includes(supplierInfo.name) || 
+              prompt.suppliers?.includes('ALL') ||
+              promptName.includes(supplierName)) {
+            score += 100;
+            console.log(`   🏢 Supplier match: +100 (score: ${score})`);
+          }
+          
+          // Special PTP handling
+          if (supplierName.includes('tanjung pelepas') || supplierName.includes('ptp')) {
+            if (promptName.includes('ptp') || promptName.includes('tanjung pelepas')) {
+              score += 150;
+              console.log(`   🚢 PTP specific match: +150 (score: ${score})`);
+            }
           }
         }
-      }
 
-      // User-specific targeting (Edison gets MCP prompts)
-      if (userInfo?.email === 'edisonchung@flowsolution.net') {
-        if (!promptName.includes('legacy') && !promptName.includes('fallback')) {
-          score += 80;
-          console.log(`   👤 Test user MCP preference: +80 (score: ${score})`);
+        // 👤 User-specific targeting (Edison gets MCP prompts)
+        if (userInfo?.email === 'edisonchung@flowsolution.net') {
+          if (!promptName.includes('legacy') && !promptName.includes('fallback')) {
+            score += 80;
+            console.log(`   👤 Test user MCP preference: +80 (score: ${score})`);
+          }
         }
-      }
 
-      // Document type matching
-      if (prompt.documentTypes?.includes(documentType) || 
-          prompt.category === documentType) {
-        score += 90;
-        console.log(`   📄 Document type match: +90 (score: ${score})`);
-      }
-
-      // AI provider preference
-      if (prompt.aiProvider === 'deepseek') {
-        score += 30;
-        console.log(`   🤖 AI provider match: +30 (score: ${score})`);
-      }
-
-      // Version scoring
-      if (prompt.version) {
-        const versionMatch = prompt.version.match(/(\d+)\.(\d+)/);
-        if (versionMatch) {
-          const major = parseInt(versionMatch[1]);
-          const minor = parseInt(versionMatch[2]);
-          const versionScore = major * 10 + minor;
-          score += versionScore;
-          console.log(`   📊 Version score: +${versionScore} (score: ${score})`);
+        // 📄 Document type matching (additional points for document types array)
+        if (prompt.documentTypes?.includes(documentType) || 
+            prompt.category === documentType) {
+          score += 90;
+          console.log(`   📄 Document type match: +90 (score: ${score})`);
         }
-      }
 
-      // Performance boost
-      if (prompt.performance?.accuracy > 0.9) {
-        score += 40;
-        console.log(`   ⭐ High accuracy boost: +40 (score: ${score})`);
+        // 🤖 AI provider preference
+        if (prompt.aiProvider === 'deepseek') {
+          score += 30;
+          console.log(`   🤖 AI provider match: +30 (score: ${score})`);
+        }
+
+        // 🔄 Version scoring (newer versions get bonus)
+        if (prompt.version) {
+          const versionMatch = prompt.version.match(/(\d+)\.(\d+)/);
+          if (versionMatch) {
+            const major = parseInt(versionMatch[1]);
+            const minor = parseInt(versionMatch[2]);
+            const versionScore = major * 10 + minor;
+            score += versionScore;
+            console.log(`   🔄 Version score: +${versionScore} (score: ${score})`);
+          }
+        }
+
+        // ⭐ Performance boost for high accuracy
+        if (prompt.performance?.accuracy > 0.9) {
+          score += 40;
+          console.log(`   ⭐ High accuracy boost: +40 (score: ${score})`);
+        }
       }
 
       console.log(`📊 Final score for "${prompt.name}": ${score}`);
@@ -177,20 +208,41 @@ class MCPPromptService {
 
     const bestPrompt = sorted[0];
     
-    // Only return prompts with positive scores
+    // ✅ CRITICAL: Only return prompts with positive scores
     if (bestPrompt && bestPrompt._score > 0) {
       console.log(`✅ SELECTED: "${bestPrompt.name}" with score ${bestPrompt._score}`);
       
-      // Validation for purchase orders
-      if (documentType === 'purchase_order' || documentType === 'po_extraction') {
-        if (bestPrompt.name.toLowerCase().includes('brand detection')) {
-          console.error('🚨 CRITICAL ERROR: Selected brand detection prompt for Purchase Order!');
+      // ✅ VALIDATION: Double-check for Purchase Orders
+      if (docType.includes('purchase') || docType === 'purchase_order' || docType === 'po_extraction') {
+        if (bestPrompt.name.toLowerCase().includes('brand detection') || 
+            bestPrompt.name.toLowerCase().includes('product enhancement')) {
+          console.error('🚨 CRITICAL ERROR: Selected wrong prompt type for Purchase Order!');
+          console.error(`Expected: Purchase Order prompt`);
+          console.error(`Actual: "${bestPrompt.name}"`);
+          console.error(`System used: mcp`);
+          console.error(`User: ${userInfo?.email}`);
+          
+          // Try to find a backup PO prompt
+          const backupPO = sorted.find(p => 
+            p._score > 0 && 
+            (p.category === 'purchase_order' || 
+             p.name.toLowerCase().includes('purchase order'))
+          );
+          
+          if (backupPO) {
+            console.log(`🔄 Using backup PO prompt: ${backupPO.name}`);
+            return backupPO;
+          } else {
+            console.error('❌ No backup PO prompt available!');
+            return null;
+          }
         }
       }
       
       return bestPrompt;
     } else {
       console.log(`❌ No suitable prompt found - best score: ${bestPrompt?._score || 'none'}`);
+      console.log('💡 Reason: No category-matched prompts available or all prompts rejected for wrong document type');
       return null;
     }
   }
@@ -237,78 +289,69 @@ class MCPPromptService {
   }
 
   /**
-   * Create fallback prompts when MCP API is unavailable
+   * ✅ ENHANCED: Create fallback prompts when MCP API is unavailable
    */
   createFallbackPrompts() {
     return [
       {
-        id: 'fallback_po_base',
-        name: 'Purchase Order - Base Extraction (Fallback)',
+        id: 'fallback_po_enhanced',
+        name: 'Purchase Order - Enhanced Extraction (Fallback)',
         category: 'purchase_order',
         documentTypes: ['purchase_order', 'po_extraction'],
-        version: '2.0.0',
+        version: '2.1.0',
         isActive: true,
         suppliers: ['ALL'],
         aiProvider: 'deepseek',
         temperature: 0.1,
-        maxTokens: 2000,
-        description: 'Fallback prompt when MCP API is unavailable - specifically for Purchase Orders',
-        performance: { accuracy: 0.85 },
-        prompt: `You are a specialized Purchase Order extraction expert. Extract PO information with precision.
+        maxTokens: 2500,
+        description: 'Enhanced fallback prompt specifically for Purchase Orders when MCP API is unavailable',
+        performance: { accuracy: 0.90 },
+        prompt: `You are a specialized Purchase Order extraction expert with advanced table parsing capabilities.
 
-CRITICAL INSTRUCTIONS:
-1. This is a PURCHASE ORDER document - extract PO-specific data
-2. Focus on: PO number, client info, line items, quantities, prices, delivery terms
-3. Do NOT treat this as a product enhancement or brand detection task
+CRITICAL INSTRUCTIONS FOR PURCHASE ORDER EXTRACTION:
+1. This is a PURCHASE ORDER document - extract PO-specific information only
+2. Focus on: PO number, supplier/client details, line items with precise quantities and prices
+3. Parse tables with exact column identification and data extraction
+4. Do NOT treat this as product enhancement or brand detection
 
-EXTRACT PURCHASE ORDER DATA:
-- Purchase Order Number
-- Client Information (name, address, contact)
-- Supplier Information (recipient of PO)
-- Order Date and Delivery Date
-- Payment Terms and Delivery Terms
-- Line Items with:
-  * Item codes/part numbers
-  * Descriptions
-  * Quantities
-  * Unit prices
-  * Total amounts
-- Subtotal, Tax, Grand Total
-
-OUTPUT STRUCTURED JSON:
+REQUIRED OUTPUT STRUCTURE:
 {
-  "purchase_order": {
-    "order_number": "extracted PO number",
-    "client": {
-      "name": "client company name",
-      "address": "client address"
-    },
-    "items": [
-      {
-        "lineNumber": 1,
-        "productCode": "item code",
-        "productName": "item description",
-        "quantity": number,
-        "unitPrice": number,
-        "totalPrice": number
-      }
-    ],
-    "totals": {
-      "subtotal": number,
-      "tax": number,
-      "total": number
+  "poNumber": "extracted PO number",
+  "dateIssued": "YYYY-MM-DD format",
+  "supplier": {
+    "name": "supplier company name",
+    "address": "full address",
+    "contact": "phone/email"
+  },
+  "items": [
+    {
+      "lineNumber": number,
+      "productCode": "item code",
+      "productName": "item description",
+      "quantity": number,
+      "unit": "UOM",
+      "unitPrice": number,
+      "totalPrice": number,
+      "projectCode": "project reference if available"
     }
-  }
+  ],
+  "totalAmount": total_numeric_value,
+  "deliveryDate": "YYYY-MM-DD format",
+  "paymentTerms": "payment terms",
+  "extractedAt": "current ISO timestamp",
+  "aiProvider": "deepseek",
+  "confidence": confidence_score_0_to_1,
+  "documentType": "purchase_order"
 }
 
-Remember: This is a PURCHASE ORDER extraction, not product enhancement!`
+EXTRACT ONLY PURCHASE ORDER DATA. Do not confuse with proforma invoices or other document types.`
       },
       {
         id: 'fallback_po_ptp',
         name: 'Purchase Order - PTP Client Specific (Fallback)',
         category: 'purchase_order',
         documentTypes: ['purchase_order'],
-        version: '2.0.0',
+        version: '2.1.0',
         isActive: true,
         suppliers: ['Pelabuhan Tanjung Pelepas', 'PTP', 'ALL'],
         aiProvider: 'deepseek',
@@ -328,32 +371,94 @@ CLIENT IDENTIFICATION:
 
 EXTRACT WITH PTP CONTEXT:
 {
-  "purchase_order": {
-    "order_number": "PTP's PO number",
-    "client": {
-      "name": "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
-      "address": "PTP address"
-    },
-    "supplier": {
-      "name": "Flow Solution Sdn Bhd",
-      "address": "Flow Solution address"
-    },
-    "items": [
-      {
-        "lineNumber": 1,
-        "clientItemCode": "PTP's item code (e.g., 400MEQ0025)",
-        "productCode": "manufacturer part number",
-        "productName": "item description",
-        "quantity": number,
-        "unitPrice": number,
-        "totalPrice": number,
-        "projectCode": "FS-XXXX project code if present"
-      }
-    ]
-  }
+  "poNumber": "PTP's PO number",
+  "dateIssued": "YYYY-MM-DD format",
+  "supplier": {
+    "name": "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+    "address": "PTP address"
+  },
+  "client": {
+    "name": "Flow Solution Sdn Bhd",
+    "address": "Flow Solution address"
+  },
+  "items": [
+    {
+      "lineNumber": 1,
+      "clientItemCode": "PTP's item code (e.g., 400MEQ0025)",
+      "productCode": "manufacturer part number",
+      "productName": "item description",
+      "quantity": number,
+      "unitPrice": number,
+      "totalPrice": number,
+      "projectCode": "FS-XXXX project code if present"
+    }
+  ],
+  "totalAmount": number,
+  "deliveryDate": "YYYY-MM-DD format",
+  "paymentTerms": "payment terms",
+  "extractedAt": "current ISO timestamp",
+  "aiProvider": "deepseek",
+  "confidence": confidence_score_0_to_1,
+  "documentType": "purchase_order"
 }
 
 CRITICAL: This is a CLIENT PURCHASE ORDER, not product enhancement!`
+      },
+      {
+        id: 'fallback_pi_base',
+        name: 'Proforma Invoice - Base Extraction (Fallback)',
+        category: 'proforma_invoice',
+        documentTypes: ['proforma_invoice', 'pi_extraction'],
+        version: '2.0.0',
+        isActive: true,
+        suppliers: ['ALL'],
+        aiProvider: 'deepseek',
+        temperature: 0.1,
+        maxTokens: 2000,
+        description: 'Fallback prompt for Proforma Invoice extraction',
+        performance: { accuracy: 0.88 },
+        prompt: `You are a specialized Proforma Invoice extraction expert.
+
+CRITICAL INSTRUCTIONS FOR PROFORMA INVOICE EXTRACTION:
+1. This is a PROFORMA INVOICE document - extract PI-specific information only
+2. Focus on: Invoice number, billing details, quoted items, prices, and terms
+3. Extract supplier information and client billing details accurately
+
+REQUIRED OUTPUT STRUCTURE:
+{
+  "invoiceNumber": "PI number",
+  "dateIssued": "YYYY-MM-DD format",
+  "supplier": {
+    "name": "supplier company name",
+    "address": "supplier address",
+    "contact": "contact details"
+  },
+  "client": {
+    "name": "client company name",
+    "address": "billing address"
+  },
+  "items": [
+    {
+      "lineNumber": number,
+      "productCode": "item code",
+      "description": "item description",
+      "quantity": number,
+      "unitPrice": number,
+      "totalPrice": number
+    }
+  ],
+  "subtotal": numeric_value,
+  "tax": numeric_value,
+  "totalAmount": numeric_value,
+  "validUntil": "YYYY-MM-DD format",
+  "paymentTerms": "payment terms",
+  "extractedAt": "current ISO timestamp",
+  "aiProvider": "deepseek",
+  "confidence": confidence_score_0_to_1,
+  "documentType": "proforma_invoice"
+}
+
+EXTRACT ONLY PROFORMA INVOICE DATA. Do not confuse with purchase orders or other document types.`
       },
       {
         id: 'fallback_brand_detection',
