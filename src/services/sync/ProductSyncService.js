@@ -1,6 +1,6 @@
 // src/services/sync/ProductSyncService.js
 // Enhanced Product Sync Service for HiggsFlow E-commerce
-// UPDATED: Added Firebase Storage integration for AI-generated images + existing manual upload functionality
+// UPDATED: Fixed sync process + Firebase Storage integration for AI-generated images + manual upload functionality
 
 import { 
   collection, 
@@ -80,7 +80,150 @@ class ProductSyncService {
   }
 
   // ====================================================================
-  // NEW: FIREBASE STORAGE METHODS FOR AI-GENERATED IMAGES
+  // CRITICAL FIX: THE MISSING LINK - SYNC PROCESS
+  // ====================================================================
+
+  /**
+   * CRITICAL FIX: Force sync product images after generation/upload
+   * This is the missing link that ensures images appear in public catalog
+   * @param {string} productId - Internal or public product ID
+   * @returns {Object} Sync result
+   */
+  async forceSyncProductImages(productId) {
+    try {
+      console.log(`🔄 FORCE SYNC: Starting image sync for product ${productId}...`);
+      
+      let internalProduct;
+      let publicProductId;
+      
+      // Step 1: Determine if this is internal or public product ID
+      if (productId.length > 20) {
+        // Likely a Firestore document ID (public product)
+        publicProductId = productId;
+        const publicDoc = await getDoc(doc(this.db, 'products_public', publicProductId));
+        
+        if (publicDoc.exists()) {
+          const publicData = publicDoc.data();
+          if (publicData.internalProductId) {
+            internalProduct = await this.getProductById(publicData.internalProductId);
+          }
+        }
+      } else {
+        // Likely an internal product ID
+        internalProduct = await this.getProductById(productId);
+        if (internalProduct) {
+          publicProductId = await this.findPublicProductId(productId);
+        }
+      }
+
+      if (!internalProduct) {
+        throw new Error(`Internal product not found for ID: ${productId}`);
+      }
+
+      // Step 2: If no public product exists, create it
+      if (!publicProductId) {
+        console.log(`📝 Creating new public product for ${internalProduct.name}...`);
+        const publicProduct = this.transformForPublicCatalog(internalProduct);
+        const docRef = await addDoc(collection(this.db, 'products_public'), publicProduct);
+        publicProductId = docRef.id;
+        console.log(`✅ Created public product: ${publicProductId}`);
+      }
+
+      // Step 3: Ensure the public product has the latest image data
+      await this.syncImageDataToPublic(internalProduct, publicProductId);
+
+      // Step 4: Update sync stats
+      this.syncStats.totalSynced++;
+      this.syncStats.successCount++;
+      this.syncStats.lastSyncTime = new Date();
+
+      console.log(`✅ FORCE SYNC COMPLETE: Product ${internalProduct.name} synced to public catalog`);
+
+      return {
+        success: true,
+        internalProductId: internalProduct.id,
+        publicProductId: publicProductId,
+        productName: internalProduct.name,
+        message: 'Product successfully synced to public catalog'
+      };
+
+    } catch (error) {
+      console.error(`❌ FORCE SYNC FAILED for ${productId}:`, error);
+      this.syncStats.errorCount++;
+      
+      return {
+        success: false,
+        error: error.message,
+        productId: productId
+      };
+    }
+  }
+
+  /**
+   * CRITICAL FIX: Sync image data from internal to public product
+   * Ensures all image-related fields are properly copied
+   */
+  async syncImageDataToPublic(internalProduct, publicProductId) {
+    try {
+      console.log(`🖼️ Syncing image data to public product ${publicProductId}...`);
+
+      // Get current public product data
+      const publicDoc = await getDoc(doc(this.db, 'products_public', publicProductId));
+      const currentPublicData = publicDoc.exists() ? publicDoc.data() : {};
+
+      // Prepare comprehensive image update
+      const imageUrl = this.getProductImageUrl(internalProduct);
+      const hasRealImage = this.hasRealImage(internalProduct);
+      const needsImageGeneration = this.needsImageGeneration(internalProduct);
+
+      const imageUpdate = {
+        // Core image fields
+        imageUrl: imageUrl,
+        hasRealImage: hasRealImage,
+        needsImageGeneration: needsImageGeneration,
+        
+        // Status tracking
+        imageGenerationStatus: needsImageGeneration ? 'needed' : 
+                              hasRealImage ? 'completed' : 'not_needed',
+        
+        // Sync metadata
+        lastImageSync: serverTimestamp(),
+        imageSyncedFrom: 'internal_product',
+        
+        // Preserve existing Firebase Storage data if it exists
+        ...(currentPublicData.images && { images: currentPublicData.images }),
+        ...(currentPublicData.firebaseStorageComplete && { 
+          firebaseStorageComplete: currentPublicData.firebaseStorageComplete 
+        }),
+        
+        // Update general product data
+        name: internalProduct.name,
+        displayName: this.generateDisplayName(internalProduct),
+        description: this.generateCustomerDescription(internalProduct),
+        price: this.calculatePublicPrice(internalProduct.price || 0),
+        stock: internalProduct.stock || 0,
+        category: this.mapCategory(internalProduct.category),
+        
+        // Sync timestamp
+        lastSyncedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      // Update the public product
+      await updateDoc(doc(this.db, 'products_public', publicProductId), imageUpdate);
+      
+      console.log(`✅ Image data synced to public product successfully`);
+      
+      return true;
+
+    } catch (error) {
+      console.error(`❌ Failed to sync image data to public product:`, error);
+      throw error;
+    }
+  }
+
+  // ====================================================================
+  // FIREBASE STORAGE METHODS FOR AI-GENERATED IMAGES (FIXED WITH SYNC)
   // ====================================================================
 
   /**
@@ -89,67 +232,65 @@ class ProductSyncService {
    * @param {Object} openaiImages - Object with image URLs from OpenAI
    * @returns {Object} Firebase Storage URLs
    */
-// 1. REPLACE your saveImagesToFirebaseStorage method with this version:
-
-async saveImagesToFirebaseStorage(productId, openaiImages) {
-  const firebaseImages = {};
-  const uploadPromises = [];
-  console.log(`🔄 Starting Firebase Storage upload for product ${productId}`);
-  
-  // FIX: Filter to only process actual image URLs, not metadata
-  const validImageEntries = Object.entries(openaiImages).filter(([key, value]) => {
-    return typeof value === 'string' && 
-           value.startsWith('https://') && 
-           (value.includes('oaidalleapi') || value.includes('blob.core.windows.net')) &&
-           // Exclude metadata fields that aren't actual images
-           !['generated', 'generatedAt', 'provider', 'model', 'compliance', 'processingTime'].includes(key);
-  });
-
-  console.log(`Processing ${validImageEntries.length} valid image URLs out of ${Object.keys(openaiImages).length} total entries`);
-  
-  for (const [imageType, imageUrl] of validImageEntries) {
-    const uploadPromise = this.uploadSingleImageToFirebase(
-      productId, 
-      imageType, 
-      imageUrl
-    ).catch(error => {
-      // Handle individual upload failures gracefully
-      console.error(`Upload failed for ${imageType}:`, error.message);
-      return imageUrl; // Return original URL as fallback
+  async saveImagesToFirebaseStorage(productId, openaiImages) {
+    const firebaseImages = {};
+    const uploadPromises = [];
+    console.log(`🔥 Starting Firebase Storage upload for product ${productId}`);
+    
+    // FIX: Filter to only process actual image URLs, not metadata
+    const validImageEntries = Object.entries(openaiImages).filter(([key, value]) => {
+      return typeof value === 'string' && 
+             value.startsWith('https://') && 
+             (value.includes('oaidalleapi') || value.includes('blob.core.windows.net')) &&
+             // Exclude metadata fields that aren't actual images
+             !['generated', 'generatedAt', 'provider', 'model', 'compliance', 'processingTime'].includes(key);
     });
+
+    console.log(`Processing ${validImageEntries.length} valid image URLs out of ${Object.keys(openaiImages).length} total entries`);
     
-    uploadPromises.push(uploadPromise);
-  }
-  
-  try {
-    const results = await Promise.allSettled(uploadPromises);
-    
-    results.forEach((result, index) => {
-      const imageType = validImageEntries[index][0];
-      const originalUrl = validImageEntries[index][1];
+    for (const [imageType, imageUrl] of validImageEntries) {
+      const uploadPromise = this.uploadSingleImageToFirebase(
+        productId, 
+        imageType, 
+        imageUrl
+      ).catch(error => {
+        // Handle individual upload failures gracefully
+        console.error(`Upload failed for ${imageType}:`, error.message);
+        return imageUrl; // Return original URL as fallback
+      });
       
-      if (result.status === 'fulfilled') {
-        firebaseImages[imageType] = result.value;
-        console.log(`✅ ${imageType} image processed successfully`);
-      } else {
-        console.error(`❌ Failed to process ${imageType} image:`, result.reason);
-        // Fallback to OpenAI URL
-        firebaseImages[imageType] = originalUrl;
-      }
-    });
+      uploadPromises.push(uploadPromise);
+    }
     
-    console.log(`Firebase Storage upload complete: ${Object.keys(firebaseImages).length} images processed`);
-    return firebaseImages;
-  } catch (error) {
-    console.error('❌ Firebase Storage batch upload failed:', error);
-    // Return original valid URLs as fallback
-    const fallbackImages = {};
-    validImageEntries.forEach(([key, value]) => {
-      fallbackImages[key] = value;
-    });
-    return fallbackImages;
+    try {
+      const results = await Promise.allSettled(uploadPromises);
+      
+      results.forEach((result, index) => {
+        const imageType = validImageEntries[index][0];
+        const originalUrl = validImageEntries[index][1];
+        
+        if (result.status === 'fulfilled') {
+          firebaseImages[imageType] = result.value;
+          console.log(`✅ ${imageType} image processed successfully`);
+        } else {
+          console.error(`❌ Failed to process ${imageType} image:`, result.reason);
+          // Fallback to OpenAI URL
+          firebaseImages[imageType] = originalUrl;
+        }
+      });
+      
+      console.log(`Firebase Storage upload complete: ${Object.keys(firebaseImages).length} images processed`);
+      return firebaseImages;
+    } catch (error) {
+      console.error('❌ Firebase Storage batch upload failed:', error);
+      // Return original valid URLs as fallback
+      const fallbackImages = {};
+      validImageEntries.forEach(([key, value]) => {
+        fallbackImages[key] = value;
+      });
+      return fallbackImages;
+    }
   }
-}
 
   /**
    * Upload a single AI-generated image to Firebase Storage
@@ -158,55 +299,55 @@ async saveImagesToFirebaseStorage(productId, openaiImages) {
    * @param {string} imageUrl - OpenAI image URL
    * @returns {string} Firebase Storage download URL
    */
-async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
-  try {
-    console.log(`⬇️ Downloading ${imageType} image for Firebase Storage...`);
-    
-    // Direct download with fetch (most reliable approach)
-    const imageResponse = await fetch(imageUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'image/*',
-        'User-Agent': 'HiggsFlow-ProductSync/1.0'
+  async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
+    try {
+      console.log(`⬇️ Downloading ${imageType} image for Firebase Storage...`);
+      
+      // Direct download with fetch (most reliable approach)
+      const imageResponse = await fetch(imageUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'image/*',
+          'User-Agent': 'HiggsFlow-ProductSync/1.0'
+        }
+      });
+      
+      if (!imageResponse.ok) {
+        throw new Error(`Download failed: ${imageResponse.status} ${imageResponse.statusText}`);
       }
-    });
-    
-    if (!proxyResponse.ok) {
-      throw new Error(`Proxy download failed: ${proxyResponse.status} ${proxyResponse.statusText}`);
+      
+      const imageBlob = await imageResponse.blob();
+      console.log(`📦 Downloaded ${imageType} image: ${imageBlob.size} bytes`);
+      
+      // Rest of your existing Firebase Storage upload code...
+      const timestamp = Date.now();
+      const fileName = `ai-generated/${productId}/${imageType}-${timestamp}.jpg`;
+      const storageRef = ref(this.storage, fileName);
+      
+      console.log(`⬆️ Uploading ${imageType} to Firebase Storage: ${fileName}`);
+      const uploadResult = await uploadBytes(storageRef, imageBlob, {
+        contentType: imageBlob.type || 'image/jpeg',
+        customMetadata: {
+          productId: productId,
+          imageType: imageType,
+          originalUrl: imageUrl,
+          uploadedAt: new Date().toISOString(),
+          uploadSource: 'ai_generated',
+          aiProvider: 'openai'
+        }
+      });
+      
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+      console.log(`🔗 Firebase Storage URL: ${downloadURL}`);
+      return downloadURL;
+      
+    } catch (error) {
+      console.error(`❌ Failed to upload ${imageType} image to Firebase:`, error);
+      // Return original URL as fallback instead of throwing
+      console.log(`Using original OpenAI URL as fallback for ${imageType}`);
+      return imageUrl;
     }
-    
-    const imageBlob = await proxyResponse.blob();
-    console.log(`📦 Downloaded ${imageType} image via proxy: ${imageBlob.size} bytes`);
-    
-    // Rest of your existing Firebase Storage upload code...
-    const timestamp = Date.now();
-    const fileName = `ai-generated/${productId}/${imageType}-${timestamp}.jpg`;
-    const storageRef = ref(this.storage, fileName);
-    
-    console.log(`⬆️ Uploading ${imageType} to Firebase Storage: ${fileName}`);
-    const uploadResult = await uploadBytes(storageRef, imageBlob, {
-      contentType: imageBlob.type || 'image/jpeg',
-      customMetadata: {
-        productId: productId,
-        imageType: imageType,
-        originalUrl: imageUrl,
-        uploadedAt: new Date().toISOString(),
-        uploadSource: 'ai_generated',
-        aiProvider: 'openai'
-      }
-    });
-    
-    const downloadURL = await getDownloadURL(uploadResult.ref);
-    console.log(`🔗 Firebase Storage URL: ${downloadURL}`);
-    return downloadURL;
-    
-  } catch (error) {
-    console.error(`❌ Failed to upload ${imageType} image to Firebase:`, error);
-    // Return original URL as fallback instead of throwing
-    console.log(`Using original OpenAI URL as fallback for ${imageType}`);
-    return imageUrl;
   }
-}
 
   /**
    * Enhanced method to update product with both OpenAI and Firebase images
@@ -214,7 +355,7 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
    * @param {Object} images - Generated images from OpenAI
    * @param {number} processingTime - Time taken to generate images
    */
- async updateProductImagesWithFirebaseStorage(publicProductId, images, processingTime) {
+  async updateProductImagesWithFirebaseStorage(publicProductId, images, processingTime) {
     try {
       console.log(`Updating product ${publicProductId} with AI-generated images + Firebase Storage`);
 
@@ -331,6 +472,7 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
       throw error;
     }
   }
+
   /**
    * Clean up old images from Firebase Storage
    * @param {string} productId - Product ID
@@ -361,11 +503,11 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
   }
 
   // ====================================================================
-  // ENHANCED: AI IMAGE GENERATION WITH FIREBASE STORAGE INTEGRATION
+  // AI IMAGE GENERATION WITH FIREBASE STORAGE INTEGRATION (FIXED WITH AUTO-SYNC)
   // ====================================================================
 
   /**
-   * ENHANCED: Process image generation with Firebase Storage integration
+   * ENHANCED: Process image generation with Firebase Storage integration + AUTO-SYNC
    */
   async processImageGeneration(imageTask) {
     const startTime = Date.now();
@@ -390,6 +532,10 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
         
         // Use the enhanced Firebase Storage method instead of the old one
         await this.updateProductImagesWithFirebaseStorage(publicProductId, generatedImages, processingTime);
+        
+        // CRITICAL FIX: Force sync after image generation
+        console.log(`🔄 Auto-syncing after image generation...`);
+        await this.forceSyncProductImages(imageTask.productId);
       }
       
       // Update statistics
@@ -398,7 +544,7 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
       const processingTime = Date.now() - startTime;
       this.syncStats.imageGenerationTime += processingTime;
       
-      console.log(`Generated images for ${internalProduct.name} in ${processingTime}ms (with Firebase Storage)`);
+      console.log(`Generated images for ${internalProduct.name} in ${processingTime}ms (with Firebase Storage + Auto-sync)`);
       
       // Log successful image generation
       await this.logImageGeneration(imageTask, 'success', generatedImages, processingTime);
@@ -419,118 +565,123 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
   }
 
   /**
-   * ENHANCED: Manual image generation with Firebase Storage
+   * ENHANCED: Manual image generation with Firebase Storage + AUTO-SYNC
    */
   async manualImageGeneration(productIds) {
-  console.log(`Manual image generation with Firebase Storage triggered for product(s): ${productIds}`);
-  
-  try {
-    const results = [];
-    const errors = [];
+    console.log(`Manual image generation with Firebase Storage + Auto-sync triggered for product(s): ${productIds}`);
     
-    // FIX #1: Handle both single productId string and array of productIds
-    let productIdArray;
-    if (typeof productIds === 'string') {
-      // Single product ID passed as string
-      productIdArray = [productIds];
-      console.log(`Processing single product: ${productIds}`);
-    } else if (Array.isArray(productIds)) {
-      // Array of product IDs
-      productIdArray = productIds;
-      console.log(`Processing ${productIds.length} products`);
-    } else {
-      throw new Error('Invalid productIds parameter - must be string or array');
-    }
-    
-    // FIX #2: Now iterate over the actual product IDs, not characters
-    for (const productId of productIdArray) {
-      try {
-        console.log(`Processing product ID: "${productId}" (type: ${typeof productId})`);
-        
-        // Check if it's a public product ID or internal product ID
-        let internalProduct;
-        let publicProductId;
-        
-        // First try as internal product ID
-        internalProduct = await this.getProductById(productId);
-        if (internalProduct) {
-          publicProductId = await this.findPublicProductId(productId);
-        } else {
-          // Try as public product ID
-          const publicDoc = await getDoc(doc(this.db, 'products_public', productId));
-          if (publicDoc.exists()) {
-            publicProductId = productId;
-            const publicData = publicDoc.data();
-            if (publicData.internalProductId) {
-              internalProduct = await this.getProductById(publicData.internalProductId);
+    try {
+      const results = [];
+      const errors = [];
+      
+      // FIX #1: Handle both single productId string and array of productIds
+      let productIdArray;
+      if (typeof productIds === 'string') {
+        // Single product ID passed as string
+        productIdArray = [productIds];
+        console.log(`Processing single product: ${productIds}`);
+      } else if (Array.isArray(productIds)) {
+        // Array of product IDs
+        productIdArray = productIds;
+        console.log(`Processing ${productIds.length} products`);
+      } else {
+        throw new Error('Invalid productIds parameter - must be string or array');
+      }
+      
+      // FIX #2: Now iterate over the actual product IDs, not characters
+      for (const productId of productIdArray) {
+        try {
+          console.log(`Processing product ID: "${productId}" (type: ${typeof productId})`);
+          
+          // Check if it's a public product ID or internal product ID
+          let internalProduct;
+          let publicProductId;
+          
+          // First try as internal product ID
+          internalProduct = await this.getProductById(productId);
+          if (internalProduct) {
+            publicProductId = await this.findPublicProductId(productId);
+          } else {
+            // Try as public product ID
+            const publicDoc = await getDoc(doc(this.db, 'products_public', productId));
+            if (publicDoc.exists()) {
+              publicProductId = productId;
+              const publicData = publicDoc.data();
+              if (publicData.internalProductId) {
+                internalProduct = await this.getProductById(publicData.internalProductId);
+              }
             }
           }
+          
+          if (!internalProduct) {
+            throw new Error(`Product not found: ${productId}`);
+          }
+          
+          if (!publicProductId) {
+            throw new Error(`Public product not found for: ${productId}`);
+          }
+          
+          console.log(`Generating image with Firebase Storage for: ${internalProduct.name}`);
+          
+          // Update status to processing
+          await updateDoc(doc(this.db, 'products_public', publicProductId), {
+            imageGenerationStatus: 'processing',
+            lastImageUpdate: serverTimestamp()
+          });
+          
+          // Generate image directly
+          const generatedImages = await this.generateProductImagesWithMCP(internalProduct);
+          
+          // Update with generated image using Firebase Storage integration
+          const processingTime = Date.now();
+          await this.updateProductImagesWithFirebaseStorage(publicProductId, generatedImages, processingTime);
+          
+          // CRITICAL FIX: Force sync after manual generation
+          console.log(`🔄 Auto-syncing after manual image generation...`);
+          const syncResult = await this.forceSyncProductImages(internalProduct.id);
+          
+          results.push({
+            productId,
+            productName: internalProduct.name,
+            success: true,
+            imageUrl: generatedImages.imageUrls?.[0] || generatedImages.primary,
+            firebaseStored: true,
+            syncedToPublic: syncResult.success
+          });
+          
+          console.log(`✅ Successfully generated image with auto-sync for ${internalProduct.name}`);
+          
+          // Wait between requests to respect rate limits
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+        } catch (error) {
+          console.error(`❌ Failed to generate image for ${productId}:`, error);
+          errors.push({
+            productId,
+            error: error.message
+          });
         }
-        
-        if (!internalProduct) {
-          throw new Error(`Product not found: ${productId}`);
-        }
-        
-        if (!publicProductId) {
-          throw new Error(`Public product not found for: ${productId}`);
-        }
-        
-        console.log(`Generating image with Firebase Storage for: ${internalProduct.name}`);
-        
-        // Update status to processing
-        await updateDoc(doc(this.db, 'products_public', publicProductId), {
-          imageGenerationStatus: 'processing',
-          lastImageUpdate: serverTimestamp()
-        });
-        
-        // Generate image directly
-        const generatedImages = await this.generateProductImagesWithMCP(internalProduct);
-        
-        // Update with generated image using Firebase Storage integration
-        const processingTime = Date.now();
-        await this.updateProductImagesWithFirebaseStorage(publicProductId, generatedImages, processingTime);
-        
-        results.push({
-          productId,
-          productName: internalProduct.name,
-          success: true,
-          imageUrl: generatedImages.imageUrls?.[0] || generatedImages.primary,
-          firebaseStored: true
-        });
-        
-        console.log(`✅ Successfully generated image with Firebase Storage for ${internalProduct.name}`);
-        
-        // Wait between requests to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-      } catch (error) {
-        console.error(`❌ Failed to generate image for ${productId}:`, error);
-        errors.push({
-          productId,
-          error: error.message
-        });
       }
+      
+      return {
+        success: true,
+        results,
+        errors,
+        summary: {
+          total: productIdArray.length,
+          successful: results.length,
+          failed: errors.length
+        }
+      };
+      
+    } catch (error) {
+      console.error('Manual image generation with Firebase Storage + Auto-sync failed:', error);
+      throw error;
     }
-    
-    return {
-      success: true,
-      results,
-      errors,
-      summary: {
-        total: productIdArray.length,
-        successful: results.length,
-        failed: errors.length
-      }
-    };
-    
-  } catch (error) {
-    console.error('Manual image generation with Firebase Storage failed:', error);
-    throw error;
   }
-}
 
   // ====================================================================
-  // EXISTING MANUAL IMAGE UPLOAD FUNCTIONALITY (PRESERVED)
+  // MANUAL IMAGE UPLOAD FUNCTIONALITY (ENHANCED WITH AUTO-SYNC)
   // ====================================================================
 
   /**
@@ -572,7 +723,7 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
   }
 
   /**
-   * Upload single product image manually
+   * Upload single product image manually (ENHANCED WITH AUTO-SYNC)
    */
   async uploadProductImage(productId, imageFile, options = {}) {
     try {
@@ -637,18 +788,24 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
       
       if (updateResult.success) {
         this.syncStats.manualUploads++;
-        console.log(`Successfully uploaded and updated product ${productId}`);
+        
+        // CRITICAL FIX: Force sync after manual upload
+        console.log(`🔄 Auto-syncing after manual upload...`);
+        const syncResult = await this.forceSyncProductImages(productId);
+        
+        console.log(`Successfully uploaded and synced product ${productId}`);
+        
+        return {
+          success: true,
+          downloadURL,
+          fileName,
+          storagePath,
+          productId,
+          imageType,
+          fileSize: imageFile.size,
+          syncedToPublic: syncResult.success
+        };
       }
-      
-      return {
-        success: true,
-        downloadURL,
-        fileName,
-        storagePath,
-        productId,
-        imageType,
-        fileSize: imageFile.size
-      };
       
     } catch (error) {
       this.syncStats.uploadErrors++;
@@ -965,7 +1122,7 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
   }
 
   // ====================================================================
-  // EXISTING METHODS (PRESERVED - ALL YOUR ORIGINAL FUNCTIONALITY)
+  // ENHANCED IMAGE HANDLING METHODS (ALL PRESERVED WITH FIXES)
   // ====================================================================
 
   /**
@@ -1092,8 +1249,9 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
     return placeholderPatterns.some(pattern => imageUrl.includes(pattern));
   }
 
-  // ALL YOUR EXISTING METHODS ARE PRESERVED HERE
-  // (I'm including just a few key ones to avoid making the response too long)
+  // ====================================================================
+  // SYNC CORE METHODS (ALL PRESERVED)
+  // ====================================================================
 
   async performInitialSync() {
     console.log('Performing initial product sync with FIXED image detection...');
@@ -1154,10 +1312,6 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
       throw error;
     }
   }
-
-  // ... ALL OTHER EXISTING METHODS PRESERVED ...
-  // (Including setupRealTimeSync, startBatchProcessor, queueImageGeneration, 
-  //  generateProductImagesWithMCP, findPublicProductId, etc.)
 
   async queueImageGeneration(product) {
     if (!this.needsImageGeneration(product)) {
@@ -1286,7 +1440,7 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
       console.log('Request payload:', requestBody);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 180000); // FIXED: Extended to 2 minutes
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // FIXED: Extended to 3 minutes
       
       const response = await fetch(`${this.mcpApiBase}/api/mcp/generate-product-images`, {
         method: 'POST',
@@ -1347,7 +1501,7 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
       console.error('MCP image generation failed:', error);
       
       if (error.name === 'AbortError') {
-        console.error('Request timed out after 2 minutes');
+        console.error('Request timed out after 3 minutes');
       }
       
       throw error;
@@ -1368,24 +1522,12 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
     return categoryMap[productCategory?.toLowerCase()] || 'product_image_primary';
   }
 
-  /**
-   * REPLACED: Use the new Firebase Storage integration method instead
-   */
-  async updateProductImages(publicProductId, images) {
-    // This method is now replaced by updateProductImagesWithFirebaseStorage
-    // But we'll keep it for backward compatibility, delegating to the new method
-    return await this.updateProductImagesWithFirebaseStorage(publicProductId, images, 0);
-  }
-
-  // ... CONTINUE WITH ALL YOUR OTHER EXISTING METHODS ...
-  // (All preserved exactly as they were)
-
-  isProductEligible(product) {
+  isProductEligible(internalProduct) {
     return (
-      product.name && 
-      product.name.trim().length > 0 &&
-      product.status !== 'pending' &&
-      (product.stock || 0) >= 0
+      internalProduct.name && 
+      internalProduct.name.trim().length > 0 &&
+      internalProduct.status !== 'pending' &&
+      (internalProduct.stock || 0) >= 0
     );
   }
 
@@ -1522,347 +1664,8 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
     return priority;
   }
 
-  // Get storage statistics for monitoring
-  async getStorageStatistics() {
-    try {
-      return {
-        provider: 'Firebase Storage',
-        enabled: true,
-        uploadPath: {
-          aiGenerated: 'ai-generated/',
-          manualUploads: 'products/manual-uploads/'
-        },
-        maxFileSize: '10MB',
-        supportedFormats: ['jpg', 'png', 'webp'],
-        stats: {
-          manualUploads: this.syncStats.manualUploads,
-          aiGenerated: this.syncStats.imagesGenerated,
-          totalUploadSize: this.syncStats.totalUploadSize,
-          errors: this.syncStats.uploadErrors + this.syncStats.imageErrors
-        }
-      };
-    } catch (error) {
-      console.error('Failed to get storage statistics:', error);
-      return null;
-    }
-  }
-
-  // ... ALL OTHER EXISTING METHODS PRESERVED EXACTLY AS THEY WERE ...
-  // (Including all your sync methods, dashboard methods, helper methods, etc.)
-
-  async getProductsNeedingImages(limitCount = 50) {
-    try {
-      console.log('Loading products needing images...');
-      
-      // First run diagnosis to understand the data
-      const diagnosis = await this.diagnoseProductsPublic();
-      console.log('Diagnosis complete:', diagnosis.summary);
-      
-      // If no products in products_public, return demo data
-      if (diagnosis.totalProducts === 0) {
-        console.log('No products in products_public - returning demo data');
-        return this.getDemoProductsNeedingImages();
-      }
-      
-      // Try simple query first (without orderBy to avoid index requirement)
-      let publicQuery;
-      let useOrderBy = false;
-      
-      try {
-        // First try with orderBy
-        publicQuery = query(
-          collection(this.db, 'products_public'),
-          where('needsImageGeneration', '==', true),
-          orderBy('createdAt', 'desc')
-        );
-        useOrderBy = true;
-      } catch (indexError) {
-        // Fallback to simple query without orderBy
-        publicQuery = query(
-          collection(this.db, 'products_public'),
-          where('needsImageGeneration', '==', true)
-        );
-        useOrderBy = false;
-        console.log('Using simple query without orderBy due to missing index');
-      }
-
-      const publicSnapshot = await getDocs(publicQuery);
-      let products = [];
-
-      // Collect all matching products
-      publicSnapshot.forEach(doc => {
-        const data = doc.data();
-        products.push({
-          id: doc.id,
-          internalId: data.internalProductId,
-          name: data.displayName || data.name,
-          category: data.category,
-          imageUrl: data.imageUrl,
-          hasRealImage: data.hasRealImage || false,
-          imageGenerationStatus: data.imageGenerationStatus || 'needed',
-          lastImageError: data.lastImageError,
-          needsImageGeneration: data.needsImageGeneration,
-          createdAt: data.createdAt || new Date()
-        });
-      });
-
-      // Sort manually if we couldn't use orderBy
-      if (!useOrderBy) {
-        products.sort((a, b) => {
-          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-          return dateB - dateA; // Descending order (newest first)
-        });
-      }
-
-      // Apply manual limit
-      products = products.slice(0, limitCount);
-
-      console.log(`Found ${products.length} products needing images`);
-      
-      // If no products found but diagnosis shows products exist
-      if (products.length === 0 && diagnosis.totalProducts > 0) {
-        console.log('No products with needsImageGeneration=true found, but products exist');
-        // Return products that don't have real images as potential candidates
-        return this.getProductsWithoutRealImages(limitCount);
-      }
-
-      return products;
-
-    } catch (error) {
-      console.error('Failed to get products needing images:', error);
-      
-      // Return demo data if Firestore query fails
-      console.log('Returning demo data due to Firestore error');
-      return this.getDemoProductsNeedingImages();
-    }
-  }
-
-  getDemoProductsNeedingImages() {
-    return [
-      {
-        id: 'demo-1',
-        internalId: 'PROD-001',
-        name: 'Hydraulic Pump Demo',
-        category: 'hydraulics',
-        imageUrl: null,
-        hasRealImage: false,
-        imageGenerationStatus: 'needed',
-        needsImageGeneration: true,
-        createdAt: new Date()
-      },
-      {
-        id: 'demo-2', 
-        internalId: 'PROD-002',
-        name: 'Pneumatic Valve Demo',
-        category: 'pneumatics',
-        imageUrl: 'https://via.placeholder.com/400x400',
-        hasRealImage: false,
-        imageGenerationStatus: 'needed',
-        needsImageGeneration: true,
-        createdAt: new Date()
-      },
-      {
-        id: 'demo-3',
-        internalId: 'PROD-003', 
-        name: 'Industrial Sensor Module',
-        category: 'sensors',
-        imageUrl: null,
-        hasRealImage: false,
-        imageGenerationStatus: 'needed',
-        needsImageGeneration: true,
-        createdAt: new Date()
-      }
-    ];
-  }
-
-  async startSync() {
-    if (this.isRunning) {
-      console.log('Product sync is already running');
-      return;
-    }
-
-    console.log('🚀 Starting HiggsFlow Product Sync Service with Firebase Storage integration...');
-    this.isRunning = true;
-
-    try {
-      await this.performInitialSync();
-      this.setupRealTimeSync();
-      this.startBatchProcessor();
-      
-      console.log('✅ Product sync service with Firebase Storage started successfully');
-      
-    } catch (error) {
-      console.error('❌ Failed to start product sync:', error);
-      this.isRunning = false;
-      throw error;
-    }
-  }
-
-  getSyncStats() {
-    const uploadStats = this.getUploadStats();
-    
-    return {
-      ...this.syncStats,
-      isRunning: this.isRunning,
-      queueLength: this.syncQueue.length,
-      // FIXED: Enhanced image generation stats
-      imageQueueLength: this.imageGenerationQueue.length,
-      processingImages: this.processingImages,
-      imageSuccessRate: this.syncStats.imagesGenerated > 0 ? 
-        ((this.syncStats.imagesGenerated / (this.syncStats.imagesGenerated + this.syncStats.imageErrors)) * 100).toFixed(1) : 0,
-      averageImageTime: this.syncStats.imagesGenerated > 0 ? 
-        Math.round(this.syncStats.imageGenerationTime / this.syncStats.imagesGenerated) : 0,
-      activeListeners: this.syncListeners.size,
-      // Manual upload stats
-      ...uploadStats,
-      uploadQueueLength: this.uploadQueue.length,
-      processingUploads: this.processingUploads,
-      firebaseStorageEnabled: true
-    };
-  }
-
-  async getProductById(productId) {
-    try {
-      const docSnap = await getDoc(doc(this.db, 'products', productId));
-      return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
-    } catch (error) {
-      console.error(`Failed to get product ${productId}:`, error);
-      return null;
-    }
-  }
-
-  // ALL YOUR OTHER METHODS EXACTLY AS THEY WERE...
-  // (I'm truncating here for space, but all your existing methods would be preserved)
-
-  generateDisplayName(internalProduct) {
-    let displayName = internalProduct.name || 'Industrial Product';
-    
-    // Add brand if available
-    if (internalProduct.brand && !displayName.toLowerCase().includes(internalProduct.brand.toLowerCase())) {
-      displayName = `${internalProduct.brand} ${displayName}`;
-    }
-    
-    // Add descriptive qualifiers based on category
-    const categoryQualifiers = {
-      'electronics': 'Professional Grade',
-      'hydraulics': 'Industrial Hydraulic',
-      'pneumatics': 'Pneumatic System',
-      'automation': 'Automation Grade',
-      'sensors': 'Industrial Sensor',
-      'cables': 'Industrial Cable',
-      'components': 'Industrial Component'
-    };
-    
-    const qualifier = categoryQualifiers[internalProduct.category?.toLowerCase()];
-    if (qualifier && !displayName.toLowerCase().includes(qualifier.toLowerCase())) {
-      displayName = `${qualifier} ${displayName}`;
-    }
-    
-    return displayName;
-  }
-
-  calculatePublicPrice(internalPrice) {
-    const markup = this.syncRules.priceMarkup / 100;
-    return Math.round(internalPrice * (1 + markup) * 100) / 100;
-  }
-
-  calculateAvailability(product) {
-    const stockLevel = product.stock || 0;
-    
-    if (stockLevel === 0) return 'out-of-stock';
-    if (stockLevel < 5) return 'low-stock';
-    if (stockLevel < 20) return 'limited';
-    return 'in-stock';
-  }
-
-  generateCustomerDescription(internalProduct) {
-    let description = internalProduct.description || '';
-    
-    // If no description, generate one based on available data
-    if (!description || description.length < 50) {
-      const category = internalProduct.category || 'industrial';
-      const brand = internalProduct.brand || 'Professional';
-      
-      description = `High-quality ${category} product from ${brand}. Suitable for professional industrial applications with reliable performance and durability.`;
-      
-      if (internalProduct.sku) {
-        description += ` Model/SKU: ${internalProduct.sku}.`;
-      }
-    }
-    
-    return description;
-  }
-
-  mapCategory(internalCategory) {
-    const categoryMap = {
-      'electronics': 'Electronics & Components',
-      'hydraulics': 'Hydraulic Systems',
-      'pneumatics': 'Pneumatic Systems', 
-      'automation': 'Automation & Control',
-      'sensors': 'Sensors & Instrumentation',
-      'cables': 'Cables & Wiring',
-      'components': 'Industrial Components'
-    };
-    
-    return categoryMap[internalCategory?.toLowerCase()] || 'Industrial Equipment';
-  }
-
-  mapSubcategory(internalCategory) {
-    const subcategoryMap = {
-      'electronics': 'Electronic Components',
-      'hydraulics': 'Hydraulic Components',
-      'pneumatics': 'Pneumatic Components',
-      'automation': 'Control Systems',
-      'sensors': 'Industrial Sensors',
-      'cables': 'Industrial Cables',
-      'components': 'General Components'
-    };
-    
-    return subcategoryMap[internalCategory?.toLowerCase()] || 'General Equipment';
-  }
-
-  formatSpecifications(internalProduct) {
-    return {
-      sku: internalProduct.sku || 'Contact for details',
-      brand: internalProduct.brand || 'Professional Grade',
-      category: internalProduct.category || 'Industrial',
-      description: internalProduct.description || 'Contact for detailed specifications',
-      warranty: '1 year manufacturer warranty',
-      compliance: ['Industry Standard']
-    };
-  }
-
-  generateSEOData(internalProduct) {
-    const name = (internalProduct.name || '').toLowerCase();
-    const category = (internalProduct.category || '').toLowerCase();
-    const brand = (internalProduct.brand || '').toLowerCase();
-    
-    const keywords = [name, category, brand, 'industrial', 'malaysia', 'professional'].filter(Boolean);
-
-    return {
-      keywords: keywords,
-      metaTitle: `${internalProduct.name} - Professional ${category} | HiggsFlow`,
-      metaDescription: `Professional ${category} - ${internalProduct.name}. High-quality industrial equipment from verified Malaysian suppliers.`
-    };
-  }
-
-  determineVisibility(internalProduct) {
-    const hasStock = (internalProduct.stock || 0) > 0;
-    const isActive = internalProduct.status !== 'pending';
-    
-    return (hasStock && isActive) ? 'public' : 'private';
-  }
-
-  shouldBeFeatured(internalProduct) {
-    const hasGoodStock = (internalProduct.stock || 0) > 20;
-    const isHighValue = (internalProduct.price || 0) > 500;
-    
-    return hasGoodStock && isHighValue;
-  }
-
   // ====================================================================
-  // SYNC MANAGEMENT AND DASHBOARD METHODS (PRESERVED)
+  // SYNC MANAGEMENT AND DASHBOARD METHODS (ALL PRESERVED)
   // ====================================================================
 
   setupRealTimeSync() {
@@ -2493,6 +2296,132 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
     ];
   }
 
+  async getProductsNeedingImages(limitCount = 50) {
+    try {
+      console.log('Loading products needing images...');
+      
+      // First run diagnosis to understand the data
+      const diagnosis = await this.diagnoseProductsPublic();
+      console.log('Diagnosis complete:', diagnosis.summary);
+      
+      // If no products in products_public, return demo data
+      if (diagnosis.totalProducts === 0) {
+        console.log('No products in products_public - returning demo data');
+        return this.getDemoProductsNeedingImages();
+      }
+      
+      // Try simple query first (without orderBy to avoid index requirement)
+      let publicQuery;
+      let useOrderBy = false;
+      
+      try {
+        // First try with orderBy
+        publicQuery = query(
+          collection(this.db, 'products_public'),
+          where('needsImageGeneration', '==', true),
+          orderBy('createdAt', 'desc')
+        );
+        useOrderBy = true;
+      } catch (indexError) {
+        // Fallback to simple query without orderBy
+        publicQuery = query(
+          collection(this.db, 'products_public'),
+          where('needsImageGeneration', '==', true)
+        );
+        useOrderBy = false;
+        console.log('Using simple query without orderBy due to missing index');
+      }
+
+      const publicSnapshot = await getDocs(publicQuery);
+      let products = [];
+
+      // Collect all matching products
+      publicSnapshot.forEach(doc => {
+        const data = doc.data();
+        products.push({
+          id: doc.id,
+          internalId: data.internalProductId,
+          name: data.displayName || data.name,
+          category: data.category,
+          imageUrl: data.imageUrl,
+          hasRealImage: data.hasRealImage || false,
+          imageGenerationStatus: data.imageGenerationStatus || 'needed',
+          lastImageError: data.lastImageError,
+          needsImageGeneration: data.needsImageGeneration,
+          createdAt: data.createdAt || new Date()
+        });
+      });
+
+      // Sort manually if we couldn't use orderBy
+      if (!useOrderBy) {
+        products.sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+          return dateB - dateA; // Descending order (newest first)
+        });
+      }
+
+      // Apply manual limit
+      products = products.slice(0, limitCount);
+
+      console.log(`Found ${products.length} products needing images`);
+      
+      // If no products found but diagnosis shows products exist
+      if (products.length === 0 && diagnosis.totalProducts > 0) {
+        console.log('No products with needsImageGeneration=true found, but products exist');
+        // Return products that don't have real images as potential candidates
+        return this.getProductsWithoutRealImages(limitCount);
+      }
+
+      return products;
+
+    } catch (error) {
+      console.error('Failed to get products needing images:', error);
+      
+      // Return demo data if Firestore query fails
+      console.log('Returning demo data due to Firestore error');
+      return this.getDemoProductsNeedingImages();
+    }
+  }
+
+  getDemoProductsNeedingImages() {
+    return [
+      {
+        id: 'demo-1',
+        internalId: 'PROD-001',
+        name: 'Hydraulic Pump Demo',
+        category: 'hydraulics',
+        imageUrl: null,
+        hasRealImage: false,
+        imageGenerationStatus: 'needed',
+        needsImageGeneration: true,
+        createdAt: new Date()
+      },
+      {
+        id: 'demo-2', 
+        internalId: 'PROD-002',
+        name: 'Pneumatic Valve Demo',
+        category: 'pneumatics',
+        imageUrl: 'https://via.placeholder.com/400x400',
+        hasRealImage: false,
+        imageGenerationStatus: 'needed',
+        needsImageGeneration: true,
+        createdAt: new Date()
+      },
+      {
+        id: 'demo-3',
+        internalId: 'PROD-003', 
+        name: 'Industrial Sensor Module',
+        category: 'sensors',
+        imageUrl: null,
+        hasRealImage: false,
+        imageGenerationStatus: 'needed',
+        needsImageGeneration: true,
+        createdAt: new Date()
+      }
+    ];
+  }
+
   // Additional diagnostic and helper methods
   async diagnoseProductsPublic() {
     try {
@@ -2698,13 +2627,225 @@ async uploadSingleImageToFirebase(productId, imageType, imageUrl) {
     }
   }
 
+  // Get storage statistics for monitoring
+  async getStorageStatistics() {
+    try {
+      return {
+        provider: 'Firebase Storage',
+        enabled: true,
+        uploadPath: {
+          aiGenerated: 'ai-generated/',
+          manualUploads: 'products/manual-uploads/'
+        },
+        maxFileSize: '10MB',
+        supportedFormats: ['jpg', 'png', 'webp'],
+        stats: {
+          manualUploads: this.syncStats.manualUploads,
+          aiGenerated: this.syncStats.imagesGenerated,
+          totalUploadSize: this.syncStats.totalUploadSize,
+          errors: this.syncStats.uploadErrors + this.syncStats.imageErrors
+        }
+      };
+    } catch (error) {
+      console.error('Failed to get storage statistics:', error);
+      return null;
+    }
+  }
+
+  // ====================================================================
+  // HELPER METHODS (ALL PRESERVED)
+  // ====================================================================
+
+  generateDisplayName(internalProduct) {
+    let displayName = internalProduct.name || 'Industrial Product';
+    
+    // Add brand if available
+    if (internalProduct.brand && !displayName.toLowerCase().includes(internalProduct.brand.toLowerCase())) {
+      displayName = `${internalProduct.brand} ${displayName}`;
+    }
+    
+    // Add descriptive qualifiers based on category
+    const categoryQualifiers = {
+      'electronics': 'Professional Grade',
+      'hydraulics': 'Industrial Hydraulic',
+      'pneumatics': 'Pneumatic System',
+      'automation': 'Automation Grade',
+      'sensors': 'Industrial Sensor',
+      'cables': 'Industrial Cable',
+      'components': 'Industrial Component'
+    };
+    
+    const qualifier = categoryQualifiers[internalProduct.category?.toLowerCase()];
+    if (qualifier && !displayName.toLowerCase().includes(qualifier.toLowerCase())) {
+      displayName = `${qualifier} ${displayName}`;
+    }
+    
+    return displayName;
+  }
+
+  calculatePublicPrice(internalPrice) {
+    const markup = this.syncRules.priceMarkup / 100;
+    return Math.round(internalPrice * (1 + markup) * 100) / 100;
+  }
+
+  calculateAvailability(product) {
+    const stockLevel = product.stock || 0;
+    
+    if (stockLevel === 0) return 'out-of-stock';
+    if (stockLevel < 5) return 'low-stock';
+    if (stockLevel < 20) return 'limited';
+    return 'in-stock';
+  }
+
+  generateCustomerDescription(internalProduct) {
+    let description = internalProduct.description || '';
+    
+    // If no description, generate one based on available data
+    if (!description || description.length < 50) {
+      const category = internalProduct.category || 'industrial';
+      const brand = internalProduct.brand || 'Professional';
+      
+      description = `High-quality ${category} product from ${brand}. Suitable for professional industrial applications with reliable performance and durability.`;
+      
+      if (internalProduct.sku) {
+        description += ` Model/SKU: ${internalProduct.sku}.`;
+      }
+    }
+    
+    return description;
+  }
+
+  mapCategory(internalCategory) {
+    const categoryMap = {
+      'electronics': 'Electronics & Components',
+      'hydraulics': 'Hydraulic Systems',
+      'pneumatics': 'Pneumatic Systems', 
+      'automation': 'Automation & Control',
+      'sensors': 'Sensors & Instrumentation',
+      'cables': 'Cables & Wiring',
+      'components': 'Industrial Components'
+    };
+    
+    return categoryMap[internalCategory?.toLowerCase()] || 'Industrial Equipment';
+  }
+
+  mapSubcategory(internalCategory) {
+    const subcategoryMap = {
+      'electronics': 'Electronic Components',
+      'hydraulics': 'Hydraulic Components',
+      'pneumatics': 'Pneumatic Components',
+      'automation': 'Control Systems',
+      'sensors': 'Industrial Sensors',
+      'cables': 'Industrial Cables',
+      'components': 'General Components'
+    };
+    
+    return subcategoryMap[internalCategory?.toLowerCase()] || 'General Equipment';
+  }
+
+  formatSpecifications(internalProduct) {
+    return {
+      sku: internalProduct.sku || 'Contact for details',
+      brand: internalProduct.brand || 'Professional Grade',
+      category: internalProduct.category || 'Industrial',
+      description: internalProduct.description || 'Contact for detailed specifications',
+      warranty: '1 year manufacturer warranty',
+      compliance: ['Industry Standard']
+    };
+  }
+
+  generateSEOData(internalProduct) {
+    const name = (internalProduct.name || '').toLowerCase();
+    const category = (internalProduct.category || '').toLowerCase();
+    const brand = (internalProduct.brand || '').toLowerCase();
+    
+    const keywords = [name, category, brand, 'industrial', 'malaysia', 'professional'].filter(Boolean);
+
+    return {
+      keywords: keywords,
+      metaTitle: `${internalProduct.name} - Professional ${category} | HiggsFlow`,
+      metaDescription: `Professional ${category} - ${internalProduct.name}. High-quality industrial equipment from verified Malaysian suppliers.`
+    };
+  }
+
+  determineVisibility(internalProduct) {
+    const hasStock = (internalProduct.stock || 0) > 0;
+    const isActive = internalProduct.status !== 'pending';
+    
+    return (hasStock && isActive) ? 'public' : 'private';
+  }
+
+  shouldBeFeatured(internalProduct) {
+    const hasGoodStock = (internalProduct.stock || 0) > 20;
+    const isHighValue = (internalProduct.price || 0) > 500;
+    
+    return hasGoodStock && isHighValue;
+  }
+
+  async startSync() {
+    if (this.isRunning) {
+      console.log('Product sync is already running');
+      return;
+    }
+
+    console.log('🚀 Starting HiggsFlow Product Sync Service with Firebase Storage integration + AUTO-SYNC...');
+    this.isRunning = true;
+
+    try {
+      await this.performInitialSync();
+      this.setupRealTimeSync();
+      this.startBatchProcessor();
+      
+      console.log('✅ Product sync service with Firebase Storage + AUTO-SYNC started successfully');
+      
+    } catch (error) {
+      console.error('❌ Failed to start product sync:', error);
+      this.isRunning = false;
+      throw error;
+    }
+  }
+
+  getSyncStats() {
+    const uploadStats = this.getUploadStats();
+    
+    return {
+      ...this.syncStats,
+      isRunning: this.isRunning,
+      queueLength: this.syncQueue.length,
+      // FIXED: Enhanced image generation stats
+      imageQueueLength: this.imageGenerationQueue.length,
+      processingImages: this.processingImages,
+      imageSuccessRate: this.syncStats.imagesGenerated > 0 ? 
+        ((this.syncStats.imagesGenerated / (this.syncStats.imagesGenerated + this.syncStats.imageErrors)) * 100).toFixed(1) : 0,
+      averageImageTime: this.syncStats.imagesGenerated > 0 ? 
+        Math.round(this.syncStats.imageGenerationTime / this.syncStats.imagesGenerated) : 0,
+      activeListeners: this.syncListeners.size,
+      // Manual upload stats
+      ...uploadStats,
+      uploadQueueLength: this.uploadQueue.length,
+      processingUploads: this.processingUploads,
+      firebaseStorageEnabled: true,
+      autoSyncEnabled: true // NEW: Indicates the missing link is fixed
+    };
+  }
+
+  async getProductById(productId) {
+    try {
+      const docSnap = await getDoc(doc(this.db, 'products', productId));
+      return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+    } catch (error) {
+      console.error(`Failed to get product ${productId}:`, error);
+      return null;
+    }
+  }
+
   async stopSync() {
     console.log('🛑 Stopping product sync service...');
     this.isRunning = false;
     this.processingImages = false;
     this.syncListeners.forEach(unsubscribe => unsubscribe());
     this.syncListeners.clear();
-    console.log('✅ Product sync service with Firebase Storage stopped');
+    console.log('✅ Product sync service with Firebase Storage + AUTO-SYNC stopped');
   }
 }
 
