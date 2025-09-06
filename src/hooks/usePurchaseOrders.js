@@ -287,8 +287,8 @@ export const usePurchaseOrders = () => {
     setFilteredPurchaseOrders(filtered);
   }, [purchaseOrders, selectedCompany, selectedBranch]);
 
-  // Add new purchase order with company assignment
-  const addPurchaseOrder = useCallback(async (poData) => {
+  // CRITICAL FIX: Enhanced addPurchaseOrder with complete document storage support
+  const addPurchaseOrder = useCallback(async (poData, options = {}) => {
     if (!user) {
       toast.error('Please sign in to create purchase orders');
       return { success: false, error: 'Not authenticated' };
@@ -306,27 +306,96 @@ export const usePurchaseOrders = () => {
     try {
       setLoading(true);
       
+      console.log('💾 Enhanced PO save with document validation:', {
+        poNumber: poData.poNumber,
+        companyId: targetCompanyId,
+        branchId: targetBranchId,
+        documentId: poData.documentId,
+        hasStoredDocuments: poData.hasStoredDocuments,
+        originalFileName: poData.originalFileName
+      });
+      
       // Validate and normalize data
       const validatedData = validatePOData(poData);
       
-      const docData = {
+      // CRITICAL FIX: Explicitly extract and preserve ALL document storage fields
+      const documentStorageFields = {
+        // Core document identification
+        documentId: poData.documentId || null,
+        documentNumber: poData.documentNumber || validatedData.poNumber,
+        documentType: poData.documentType || 'po',
+        
+        // Storage status and metadata
+        hasStoredDocuments: Boolean(poData.hasStoredDocuments),
+        originalFileName: poData.originalFileName || '',
+        fileSize: poData.fileSize || 0,
+        contentType: poData.contentType || '',
+        extractedAt: poData.extractedAt || new Date().toISOString(),
+        
+        // Storage information and URLs
+        storageInfo: poData.storageInfo || null,
+        downloadURL: poData.downloadURL || '',
+        storagePath: poData.storagePath || '',
+        
+        // Processing metadata
+        fileValidated: Boolean(poData.fileValidated),
+        extractionStatus: poData.extractionStatus || 'completed',
+        processingStatus: poData.processingStatus || 'completed',
+        documentMetadata: poData.documentMetadata || null
+      };
+
+      // Remove undefined values but keep false/null values (they are meaningful)
+      Object.keys(documentStorageFields).forEach(key => {
+        if (documentStorageFields[key] === undefined) {
+          delete documentStorageFields[key];
+        }
+      });
+      
+      console.log('[DEBUG] addPurchaseOrder: Document storage fields to save:', {
+        documentId: documentStorageFields.documentId,
+        hasStoredDocuments: documentStorageFields.hasStoredDocuments,
+        originalFileName: documentStorageFields.originalFileName,
+        fieldsCount: Object.keys(documentStorageFields).length,
+        allDocumentFields: Object.keys(documentStorageFields)
+      });
+      
+      // CRITICAL: Combine validated data with document storage fields
+      const completeDocData = {
         ...validatedData,
+        ...documentStorageFields, // CRITICAL: Document fields at root level
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
       
-      const docRef = await addDoc(collection(db, 'purchaseOrders'), docData);
+      console.log('[DEBUG] addPurchaseOrder: Complete data being saved to Firestore:', {
+        firestoreFields: Object.keys(completeDocData).length,
+        hasDocumentId: !!completeDocData.documentId,
+        hasStoredDocuments: completeDocData.hasStoredDocuments,
+        originalFileName: completeDocData.originalFileName,
+        documentFieldsIncluded: Object.keys(documentStorageFields).filter(key => 
+          completeDocData[key] !== undefined
+        )
+      });
+      
+      const docRef = await addDoc(collection(db, 'purchaseOrders'), completeDocData);
       
       console.log(`Added purchase order to Firestore: ${validatedData.poNumber} for ${validatedData.companyId}`);
+      console.log(`✅ Document storage fields preserved in Firestore document: ${docRef.id}`);
+      
+      // CRITICAL: Trigger refresh if requested
+      if (options.shouldRefresh && typeof refetch === 'function') {
+        console.log('🔄 Refreshing PO list after save...');
+        await refetch();
+      }
+      
       toast.success('Purchase order created successfully');
       
       return { 
         success: true, 
         data: {
           id: docRef.id,
-          ...validatedData,
-          createdBy: user.uid,
+          ...completeDocData,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -339,10 +408,10 @@ export const usePurchaseOrders = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, validatePOData, selectedCompany, selectedBranch]);
+  }, [user, validatePOData, selectedCompany, selectedBranch, canCreatePOFor, refetch]);
 
   // CRITICAL FIX: Update existing purchase order with document storage preservation
-  const updatePurchaseOrder = useCallback(async (id, updates) => {
+  const updatePurchaseOrder = useCallback(async (id, updates, options = {}) => {
     if (!user) {
       toast.error('Please sign in to update purchase orders');
       return { success: false, error: 'Not authenticated' };
@@ -444,10 +513,12 @@ export const usePurchaseOrders = () => {
       await updateDoc(doc(db, 'purchaseOrders', id), updateData);
       
       console.log(`Updated purchase order in Firestore: ${id}`);
+      console.log(`✅ Document storage fields preserved: documentId=${updateData.documentId}, hasStoredDocuments=${updateData.hasStoredDocuments}`);
       
       // Trigger refresh if needed
-      if (updates.shouldRefresh) {
-        console.log('🔄 Refreshing PO list after save...');
+      if (options.shouldRefresh && typeof refetch === 'function') {
+        console.log('🔄 Refreshing PO list after update...');
+        await refetch();
       }
       
       toast.success('Purchase order updated successfully');
@@ -461,7 +532,7 @@ export const usePurchaseOrders = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, calculateSubtotal]);
+  }, [user, calculateSubtotal, refetch]);
 
   // Delete purchase order
   const deletePurchaseOrder = useCallback(async (id) => {
