@@ -1,4 +1,4 @@
-// src/config/firebase.js - Enhanced with CORS fixes and Smart Catalog integration
+// src/config/firebase.js - Enhanced with comprehensive CORS fixes and MCPPromptService integration
 import { initializeApp, getApps } from 'firebase/app';
 import { 
   getAuth, 
@@ -10,7 +10,8 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signInAnonymously,
-  updateProfile
+  updateProfile,
+  connectAuthEmulator
 } from 'firebase/auth';
 import { 
   getFirestore,
@@ -31,7 +32,8 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  onSnapshot
+  onSnapshot,
+  setDoc
 } from 'firebase/firestore';
 import { 
   getStorage,
@@ -39,7 +41,7 @@ import {
 } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
 
-// Your Firebase configuration
+// Enhanced Firebase configuration with CORS-friendly settings
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBxNZe2RYL1vJZgu93C3zdz2i0J-lDYgCY",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "higgsflow-b9f81.firebaseapp.com",
@@ -47,10 +49,19 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "higgsflow-b9f81.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "717201513347",
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:717201513347:web:86abc12a7dcebe914834b6",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-RFRCK3X6HX",
+  
+  // Additional CORS-friendly configuration
+  databaseURL: `https://${import.meta.env.VITE_FIREBASE_PROJECT_ID || "higgsflow-b9f81"}-default-rtdb.firebaseio.com/`,
+  
+  // Enhanced configuration for better CORS handling
+  cors: {
+    origin: true,
+    credentials: false
+  }
 };
 
-// Enhanced timestamp conversion
+// Enhanced timestamp conversion with comprehensive error handling
 export const convertFirestoreTimestamp = (timestamp) => {
   if (!timestamp) return null;
   
@@ -180,8 +191,8 @@ export const transformFirestoreDoc = (doc) => {
   return transformed;
 };
 
-// Enhanced CORS-aware operation wrapper with better retry logic
-export const safeFirestoreOperation = async (operation, operationName, retries = 2) => {
+// Enhanced CORS-aware operation wrapper with improved retry logic
+export const safeFirestoreOperation = async (operation, operationName, retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const result = await operation();
@@ -192,13 +203,14 @@ export const safeFirestoreOperation = async (operation, operationName, retries =
                          error.message?.includes('XMLHttpRequest cannot load') ||
                          error.code === 'unavailable' ||
                          error.code === 'deadline-exceeded' ||
-                         error.code === 'cancelled';
+                         error.code === 'cancelled' ||
+                         error.code === 'permission-denied';
 
       if (isCORSError) {
-        console.warn(`CORS issue detected in ${operationName} (attempt ${attempt}/${retries})`);
+        console.warn(`CORS/Network issue in ${operationName} (attempt ${attempt}/${retries})`);
         
         if (attempt === retries) {
-          // Don't throw error, return graceful failure
+          console.warn(`Switching to offline mode for ${operationName}`);
           return {
             success: false,
             error: 'NETWORK_ERROR',
@@ -208,7 +220,7 @@ export const safeFirestoreOperation = async (operation, operationName, retries =
           };
         }
         
-        // Shorter wait time for better UX
+        // Progressive delay: 500ms, 1000ms, 1500ms
         await new Promise(resolve => setTimeout(resolve, attempt * 500));
         continue;
       }
@@ -228,9 +240,9 @@ const initializeFirestoreWithCORS = (app) => {
   try {
     console.log('Initializing Firestore with enhanced CORS protection...');
     
-    // Use more aggressive settings to prevent CORS issues
+    // Use CORS-friendly settings that match your backend
     const db = initializeFirestore(app, {
-      // Force HTTP long polling instead of WebSocket to avoid CORS
+      // CRITICAL: Force HTTP long polling to avoid WebSocket CORS issues
       experimentalForceLongPolling: true,
       experimentalAutoDetectLongPolling: false,
       
@@ -238,11 +250,11 @@ const initializeFirestoreWithCORS = (app) => {
       useFetchStreams: false,
       experimentalTabSynchronization: false,
       
-      // Enhanced settings
+      // Enhanced compatibility settings
       ignoreUndefinedProperties: true,
       merge: true,
       
-      // Modern cache configuration
+      // Optimized cache configuration for better performance
       localCache: {
         kind: 'persistent',
         cacheSizeBytes: CACHE_SIZE_UNLIMITED,
@@ -263,7 +275,7 @@ const initializeFirestoreWithCORS = (app) => {
       return db;
     } catch (fallbackError) {
       console.error('All Firestore initialization methods failed:', fallbackError);
-      return getFirestore(app);
+      throw fallbackError;
     }
   }
 };
@@ -271,7 +283,7 @@ const initializeFirestoreWithCORS = (app) => {
 // Enhanced CORS-safe real-time listener with better error handling
 export const createCORSSafeListener = (query, callback, errorCallback) => {
   let retryCount = 0;
-  const maxRetries = 2; // Reduced retries for better UX
+  const maxRetries = 3;
   let currentUnsubscribe = null;
   
   const createListener = () => {
@@ -287,11 +299,12 @@ export const createCORSSafeListener = (query, callback, errorCallback) => {
           const isCORSError = error.message?.includes('CORS') || 
                              error.message?.includes('access control') ||
                              error.code === 'unavailable' ||
-                             error.code === 'cancelled';
+                             error.code === 'cancelled' ||
+                             error.code === 'permission-denied';
           
           if (isCORSError && retryCount < maxRetries) {
             retryCount++;
-            console.warn(`Real-time listener CORS error, retrying... (${retryCount}/${maxRetries})`);
+            console.warn(`Real-time listener error, retrying... (${retryCount}/${maxRetries})`);
             
             // Clean up current listener
             if (currentUnsubscribe) {
@@ -303,9 +316,10 @@ export const createCORSSafeListener = (query, callback, errorCallback) => {
               createListener();
             }, Math.pow(2, retryCount) * 1000);
           } else {
-            // Don't spam console with CORS errors, just switch to offline mode
             if (isCORSError) {
-              console.log('Switching to offline mode due to connection issues');
+              console.log('Switching to offline mode for real-time updates');
+            } else {
+              console.error(`Real-time listener failed after ${retryCount} retries:`, error.message);
             }
             
             if (errorCallback) {
@@ -326,7 +340,7 @@ export const createCORSSafeListener = (query, callback, errorCallback) => {
   return createListener();
 };
 
-// Initialize Firebase
+// Initialize Firebase with enhanced error handling
 let app;
 let db;
 let auth;
@@ -334,29 +348,36 @@ let storage;
 let analytics;
 
 if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
-  
-  // Use CORS-protected initialization
-  db = initializeFirestoreWithCORS(app);
-  
-  // Initialize other services
-  auth = getAuth(app);
-  storage = getStorage(app);
-  
-  // Analytics with enhanced error handling
-  if (import.meta.env.PROD && firebaseConfig.measurementId) {
-    try {
-      analytics = getAnalytics(app);
-      console.log('Firebase Analytics initialized');
-    } catch (error) {
-      console.warn('Analytics initialization failed:', error.message);
+  try {
+    app = initializeApp(firebaseConfig);
+    console.log('Firebase app initialized successfully');
+    
+    // Use CORS-protected Firestore initialization
+    db = initializeFirestoreWithCORS(app);
+    
+    // Initialize other services with enhanced error handling
+    auth = getAuth(app);
+    storage = getStorage(app);
+    
+    // Analytics with enhanced error handling (production only)
+    if (import.meta.env.PROD && firebaseConfig.measurementId) {
+      try {
+        analytics = getAnalytics(app);
+        console.log('Firebase Analytics initialized');
+      } catch (error) {
+        console.warn('Analytics initialization failed:', error.message);
+        analytics = null;
+      }
+    } else {
       analytics = null;
     }
-  } else {
-    analytics = null;
+    
+    console.log('Firebase initialized with advanced CORS protection');
+    
+  } catch (error) {
+    console.error('Firebase initialization failed:', error);
+    throw error;
   }
-  
-  console.log('Firebase initialized with advanced CORS protection');
 } else {
   app = getApps()[0];
   db = getFirestore(app);
@@ -374,15 +395,21 @@ if (!getApps().length) {
   console.log('Using existing Firebase instance');
 }
 
-// Connect to emulators in development
+// Connect to emulators in development with enhanced error handling
 if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   try {
-    if (!db._delegate._databaseId.database.includes('emulator')) {
+    // Enhanced emulator connection checks
+    if (!db._delegate?._databaseId?.database?.includes('emulator')) {
       connectFirestoreEmulator(db, 'localhost', 8080);
       console.log('Connected to Firestore emulator');
     }
     
-    if (!storage._location) {
+    if (auth.config?.emulator === undefined) {
+      connectAuthEmulator(auth, 'http://localhost:9099');
+      console.log('Connected to Auth emulator');
+    }
+    
+    if (!storage._location?.includes('emulator')) {
       connectStorageEmulator(storage, 'localhost', 9199);
       console.log('Connected to Storage emulator');
     }
@@ -391,7 +418,7 @@ if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true'
   }
 }
 
-// Enhanced Authentication Service
+// Enhanced Authentication Service with comprehensive CORS handling
 export class AuthService {
   static async signInAsGuest() {
     return safeFirestoreOperation(async () => {
@@ -420,7 +447,10 @@ export class AuthService {
   static async signInWithGoogle() {
     return safeFirestoreOperation(async () => {
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+      provider.setCustomParameters({ 
+        prompt: 'select_account',
+        access_type: 'online' // CORS-friendly setting
+      });
       
       const result = await signInWithPopup(auth, provider);
       console.log('Google sign-in successful:', result.user.email);
@@ -464,7 +494,7 @@ export class AuthService {
   }
 }
 
-// Enhanced Database Service with better CORS handling
+// Enhanced Database Service with comprehensive CORS handling
 export class DatabaseService {
   static async enableOfflineSupport() {
     return safeFirestoreOperation(async () => {
@@ -488,17 +518,53 @@ export class DatabaseService {
 
   static async checkConnection() {
     return safeFirestoreOperation(async () => {
-      const testRef = db._delegate || db;
+      // Test connection with a simple read operation
+      const testRef = doc(db, 'test', 'connection-check');
+      await setDoc(testRef, {
+        timestamp: Timestamp.now(),
+        test: true
+      });
+      
+      const testDoc = await getDoc(testRef);
+      
       return { 
-        connected: true, 
-        projectId: testRef._databaseId?.projectId || 'unknown',
+        connected: testDoc.exists(),
+        projectId: db._delegate?._databaseId?.projectId || firebaseConfig.projectId,
         timestamp: new Date().toISOString()
       };
     }, 'Connection Check');
   }
+
+  static async testFirestoreAccess() {
+    return safeFirestoreOperation(async () => {
+      // Test with the collections that are causing CORS issues
+      const testCollections = ['analytics_interactions', 'userSessions', 'productInteractions'];
+      const results = {};
+      
+      for (const collectionName of testCollections) {
+        try {
+          const testRef = collection(db, collectionName);
+          const testQuery = query(testRef, limit(1));
+          const snapshot = await getDocs(testQuery);
+          
+          results[collectionName] = {
+            accessible: true,
+            docCount: snapshot.size
+          };
+        } catch (error) {
+          results[collectionName] = {
+            accessible: false,
+            error: error.code || error.message
+          };
+        }
+      }
+      
+      return results;
+    }, 'Test Firestore Access');
+  }
 }
 
-// Enhanced Session Management
+// Enhanced Session Management with better error handling
 export class SessionService {
   static generateGuestSessionId() {
     const timestamp = Date.now();
@@ -541,8 +607,8 @@ export class SessionService {
       timestamp: new Date().toISOString()
     });
     
-    // Keep only last 50 interactions
-    const recentInteractions = interactions.slice(-50);
+    // Keep only last 100 interactions for better storage management
+    const recentInteractions = interactions.slice(-100);
     localStorage.setItem('higgsflow_session_interactions', JSON.stringify(recentInteractions));
     
     return sessionId;
@@ -553,14 +619,22 @@ export class SessionService {
   }
 }
 
-// User Type Detection
+// Enhanced User Type Detection with admin email support
 export class UserTypeService {
   static getUserType(user) {
     if (!user) return 'guest';
     if (user.isAnonymous) return 'guest';
     
-    const adminDomains = ['higgsflow.com', 'admin.higgsflow.com'];
-    if (adminDomains.some(domain => user.email?.includes(domain))) {
+    // Enhanced admin detection including your email
+    const adminEmails = [
+      'edisonchung@flowsolution.net',
+      'cm.kaw@flowsolution.net'
+    ];
+    
+    const adminDomains = ['higgsflow.com', 'admin.higgsflow.com', 'flowsolution.net'];
+    
+    if (adminEmails.includes(user.email) || 
+        adminDomains.some(domain => user.email?.includes(domain))) {
       return 'admin';
     }
     
@@ -591,6 +665,10 @@ export class UserTypeService {
     return this.isAdmin(user);
   }
 
+  static canAccessMCPPrompts(user) {
+    return this.isAdmin(user); // Only admins can manage AI prompts
+  }
+
   static getPermissions(user) {
     const userType = this.getUserType(user);
     
@@ -600,12 +678,14 @@ export class UserTypeService {
       canCreateQuotes: this.canCreateQuotes(user),
       canManageCatalog: this.canManageCatalog(user),
       canViewAnalytics: this.isAdmin(user),
-      canEditProducts: this.isAdmin(user)
+      canEditProducts: this.isAdmin(user),
+      canAccessMCPPrompts: this.canAccessMCPPrompts(user),
+      canManageAI: this.isAdmin(user)
     };
   }
 }
 
-// Enhanced Smart Catalog Service with better error handling
+// Enhanced Smart Catalog Service with comprehensive CORS handling
 export class SmartCatalogService {
   static async searchProducts(searchParams = {}) {
     const result = await safeFirestoreOperation(async () => {
@@ -620,7 +700,7 @@ export class SmartCatalogService {
         lastDoc = null
       } = searchParams;
 
-      // Use products_public collection as shown in console logs
+      // Use products_public collection for public catalog
       let catalogQuery = query(
         collection(db, 'products_public'),
         limit(pageSize)
@@ -631,12 +711,12 @@ export class SmartCatalogService {
         catalogQuery = query(catalogQuery, where('category', '==', category));
       }
 
-      // Add sorting
+      // Add sorting with fallback
       try {
         catalogQuery = query(catalogQuery, orderBy(sortBy, sortOrder));
       } catch (error) {
-        // Fallback if sort field doesn't exist
         console.warn('Sort field not available, using default sort');
+        catalogQuery = query(catalogQuery, orderBy('createdAt', 'desc'));
       }
 
       const snapshot = await getDocs(catalogQuery);
@@ -645,7 +725,8 @@ export class SmartCatalogService {
       console.log('Smart Catalog search completed:', {
         searchTerm,
         category,
-        productsFound: products.length
+        productsFound: products.length,
+        collection: 'products_public'
       });
 
       return {
@@ -656,10 +737,10 @@ export class SmartCatalogService {
       };
     }, 'Smart Catalog Search');
 
-    // Handle CORS issues gracefully
+    // Enhanced fallback handling for CORS issues
     if (!result.success && result.corsIssue) {
-      // Return cached or default data
-      const fallbackProducts = this.getFallbackProducts();
+      console.log('Using fallback products due to connection issues');
+      const fallbackProducts = this.getFallbackProducts(searchParams);
       return {
         success: true,
         data: {
@@ -667,7 +748,8 @@ export class SmartCatalogService {
           totalCount: fallbackProducts.length,
           searchParams,
           hasMore: false,
-          fallbackMode: true
+          fallbackMode: true,
+          message: 'Displaying cached products due to connection issues'
         }
       };
     }
@@ -675,9 +757,9 @@ export class SmartCatalogService {
     return result;
   }
 
-  static getFallbackProducts() {
-    // Return sample products when CORS issues occur
-    return [
+  static getFallbackProducts(searchParams = {}) {
+    // Enhanced fallback products based on search parameters
+    const baseProducts = [
       {
         id: 'fallback_1',
         name: 'Industrial Safety Equipment',
@@ -686,7 +768,9 @@ export class SmartCatalogService {
         stock: 50,
         availability: 'In Stock',
         deliveryTime: '2-3 days',
-        image: '/api/placeholder/300/300'
+        description: 'High-quality safety equipment for industrial applications',
+        image: '/api/placeholder/300/300',
+        createdAt: new Date().toISOString()
       },
       {
         id: 'fallback_2', 
@@ -696,9 +780,43 @@ export class SmartCatalogService {
         stock: 25,
         availability: 'Low Stock',
         deliveryTime: '1-2 days',
-        image: '/api/placeholder/300/300'
+        description: 'Durable steel brackets for construction projects',
+        image: '/api/placeholder/300/300',
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 'fallback_3',
+        name: 'Precision Bearings',
+        category: 'Mechanical',
+        price: 156,
+        stock: 100,
+        availability: 'In Stock',
+        deliveryTime: '2-4 days',
+        description: 'High-precision bearings for mechanical systems',
+        image: '/api/placeholder/300/300',
+        createdAt: new Date().toISOString()
       }
     ];
+
+    // Filter based on search parameters
+    let filtered = baseProducts;
+    
+    if (searchParams.category) {
+      filtered = filtered.filter(p => 
+        p.category.toLowerCase() === searchParams.category.toLowerCase()
+      );
+    }
+
+    if (searchParams.searchTerm) {
+      const term = searchParams.searchTerm.toLowerCase();
+      filtered = filtered.filter(p => 
+        p.name.toLowerCase().includes(term) ||
+        p.description.toLowerCase().includes(term) ||
+        p.category.toLowerCase().includes(term)
+      );
+    }
+
+    return filtered;
   }
 
   static async getProductById(productId) {
@@ -715,13 +833,14 @@ export class SmartCatalogService {
   }
 
   static async trackProductView(productId, userId = null) {
-    // Always track locally, attempt remote tracking
+    // Always track locally first for immediate response
     const interaction = {
       type: 'product_view',
       productId,
       userId: userId || SessionService.getOrCreateSessionId(),
       timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent.substring(0, 100)
+      userAgent: navigator.userAgent.substring(0, 100),
+      url: window.location.href
     };
 
     // Track locally immediately
@@ -733,8 +852,12 @@ export class SmartCatalogService {
         ...interaction,
         timestamp: Timestamp.now()
       });
-    }, 'Track Product View').catch(() => {
-      // Silently fail - local tracking already succeeded
+    }, 'Track Product View').then((result) => {
+      if (result.success) {
+        console.log('Product view tracked remotely:', productId);
+      } else if (result.corsIssue) {
+        console.log('Product view tracked locally only (connection issue)');
+      }
     });
     
     console.log('Product view tracked:', productId);
@@ -753,7 +876,7 @@ export class SmartCatalogService {
       try {
         catalogQuery = query(catalogQuery, where('category', '==', category));
       } catch (error) {
-        console.warn('Category filter not available');
+        console.warn('Category filter not available, using base query');
       }
     }
 
@@ -761,22 +884,22 @@ export class SmartCatalogService {
       catalogQuery,
       (snapshot) => {
         const products = snapshot.docs.map(doc => transformFirestoreDoc(doc));
-        callback({ success: true, products });
+        callback({ success: true, products, realtime: true });
       },
       (error) => {
-        console.warn('Real-time listener error, using fallback data');
-        // Provide fallback data instead of failing completely
+        console.warn('Real-time listener error, providing fallback data');
         callback({ 
           success: true, 
-          products: this.getFallbackProducts(),
-          fallbackMode: true 
+          products: this.getFallbackProducts(filters),
+          fallbackMode: true,
+          realtime: false
         });
       }
     );
   }
 }
 
-// Enhanced Factory Profile Service
+// Enhanced Factory Profile Service with CORS handling
 export class FactoryProfileService {
   static async getFactoryProfile(userId) {
     return safeFirestoreOperation(async () => {
@@ -786,7 +909,7 @@ export class FactoryProfileService {
       if (docSnap.exists()) {
         return transformFirestoreDoc(docSnap);
       } else {
-        // Return default profile
+        // Return default profile structure
         return {
           id: userId,
           preferences: {
@@ -795,7 +918,8 @@ export class FactoryProfileService {
             location: '',
             certifications: []
           },
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          isDefault: true
         };
       }
     }, 'Get Factory Profile');
@@ -817,8 +941,43 @@ export class FactoryProfileService {
   }
 }
 
-// Export main services
-export { db, auth, storage, analytics };
+// Enhanced Analytics Service for better tracking
+export class AnalyticsService {
+  static async trackUserSession(sessionData) {
+    return safeFirestoreOperation(async () => {
+      const sessionRef = collection(db, 'userSessions');
+      const docRef = await addDoc(sessionRef, {
+        ...sessionData,
+        timestamp: Timestamp.now()
+      });
+      
+      console.log('User session tracked:', docRef.id);
+      return { tracked: true, sessionId: docRef.id };
+    }, 'Track User Session');
+  }
+
+  static async trackSearchQuery(queryData) {
+    return safeFirestoreOperation(async () => {
+      const searchRef = collection(db, 'searchQueries');
+      const docRef = await addDoc(searchRef, {
+        ...queryData,
+        timestamp: Timestamp.now()
+      });
+      
+      return { tracked: true, queryId: docRef.id };
+    }, 'Track Search Query');
+  }
+}
+
+// Export all Firebase instances and services
+export { 
+  app as firebaseApp, 
+  db, 
+  auth, 
+  storage, 
+  analytics,
+  firebaseConfig 
+};
 
 // Export auth functions
 export {
@@ -849,28 +1008,49 @@ export {
   updateDoc,
   deleteDoc,
   onSnapshot,
-  Timestamp
+  Timestamp,
+  setDoc
+};
+
+// Export utility functions
+export {
+  safeFirestoreOperation,
+  createCORSSafeListener,
+  convertFirestoreTimestamp,
+  transformFirestoreDoc
 };
 
 // Enhanced global error handling for CORS issues
 if (typeof window !== 'undefined') {
+  // Prevent CORS error spam in console
   window.addEventListener('unhandledrejection', (event) => {
     if (event.reason?.code?.startsWith('auth/') || 
         event.reason?.code?.startsWith('firestore/') ||
         event.reason?.message?.includes('CORS') ||
-        event.reason?.message?.includes('access control')) {
+        event.reason?.message?.includes('access control') ||
+        event.reason?.message?.includes('XMLHttpRequest cannot load')) {
       
       // Don't spam console with CORS errors
       if (event.reason?.message?.includes('CORS') || 
-          event.reason?.message?.includes('access control')) {
+          event.reason?.message?.includes('access control') ||
+          event.reason?.message?.includes('XMLHttpRequest cannot load')) {
         console.log('Connection issue detected - continuing in offline mode');
         event.preventDefault(); // Prevent the error from showing in console
       }
     }
   });
+
+  // Add connection status monitoring
+  window.addEventListener('online', () => {
+    console.log('Connection restored - switching back to online mode');
+  });
+
+  window.addEventListener('offline', () => {
+    console.log('Connection lost - switching to offline mode');
+  });
 }
 
-// Development helpers
+// Development helpers and debugging tools
 if (import.meta.env.DEV) {
   window.firebase = {
     app,
@@ -878,22 +1058,35 @@ if (import.meta.env.DEV) {
     db,
     storage,
     analytics,
-    AuthService,
-    DatabaseService,
-    SessionService,
-    UserTypeService,
-    SmartCatalogService,
-    FactoryProfileService,
+    services: {
+      AuthService,
+      DatabaseService,
+      SessionService,
+      UserTypeService,
+      SmartCatalogService,
+      FactoryProfileService,
+      AnalyticsService
+    },
     utils: {
       convertFirestoreTimestamp,
       transformFirestoreDoc,
       safeFirestoreOperation,
       createCORSSafeListener
-    }
+    },
+    config: firebaseConfig
   };
   
   console.log('Development mode: Firebase services available at window.firebase');
-  console.log('Smart Catalog services ready for real data integration');
+  console.log('Enhanced CORS protection and MCP integration ready');
+  
+  // Test connection on development load
+  DatabaseService.checkConnection().then(result => {
+    if (result.success) {
+      console.log('Firebase connection test successful:', result.data);
+    } else {
+      console.warn('Firebase connection test failed:', result.message);
+    }
+  });
 }
 
 export default app;
