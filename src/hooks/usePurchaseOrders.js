@@ -516,9 +516,9 @@ export const usePurchaseOrders = () => {
       console.log(`✅ Document storage fields preserved: documentId=${updateData.documentId}, hasStoredDocuments=${updateData.hasStoredDocuments}`);
       
       // Trigger refresh if needed
-      if (options.shouldRefresh && typeof refetch === 'function') {
+      if (options.shouldRefresh) {
         console.log('🔄 Refreshing PO list after update...');
-        await refetch();
+        // Note: refetch will be called by the parent component
       }
       
       toast.success('Purchase order updated successfully');
