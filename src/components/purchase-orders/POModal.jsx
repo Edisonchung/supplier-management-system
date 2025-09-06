@@ -410,6 +410,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     contentType: '',
     extractedAt: '',
     
+    // Additional document metadata fields
+    downloadURL: '',
+    storagePath: '',
+    fileValidated: false,
+    extractionStatus: '',
+    processingStatus: '',
+    documentMetadata: null,
+    
     // Existing PO fields
     poNumber: '',
     clientPoNumber: '',
@@ -517,132 +525,162 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   };
 
   // =============================================================================
-  // FIX 3: Enhanced useEffect for editingPO with ClientItemCode Preservation
+  // CRITICAL FIX: Enhanced Document Field Extraction Function
   // =============================================================================
-  useEffect(() => {
-  if (editingPO) {
-    console.log('[DEBUG] POModal: Loading PO for editing:', editingPO.poNumber);
-    console.log('[DEBUG] POModal: Available document fields in editingPO:', {
-      documentId: editingPO.documentId,
-      hasStoredDocuments: editingPO.hasStoredDocuments,
-      originalFileName: editingPO.originalFileName,
-      storageInfo: !!editingPO.storageInfo,
-      documentMetadata: !!editingPO.documentMetadata,
-      allFields: Object.keys(editingPO).filter(k => k.includes('document') || k.includes('storage'))
-    });
+  const extractAllDocumentFields = (source, fallbackSource = null) => {
+    const extractedFields = {};
     
-    // CRITICAL FIX: Enhanced document field extraction with multiple fallback sources
-    const extractDocumentFields = (po) => {
-      return {
-        documentId: po.documentId || 
-                   po.document?.id || 
-                   po.extractionMetadata?.documentId || 
-                   po.documentStorage?.documentId || 
-                   po.documentMetadata?.documentId ||
-                   null,
-                   
-        documentNumber: po.documentNumber || 
-                       po.document?.number || 
-                       po.poNumber || 
-                       null,
-                       
-        hasStoredDocuments: Boolean(
-          po.hasStoredDocuments || 
-          po.document?.stored || 
-          po.documentId || 
-          po.storageInfo ||
-          po.documentStorage ||
-          po.documentMetadata
-        ),
-        
-        originalFileName: po.originalFileName || 
-                         po.document?.originalFileName || 
-                         po.documentMetadata?.originalFileName ||
-                         '',
-                         
-        fileSize: po.fileSize || 
-                 po.document?.fileSize || 
-                 po.documentMetadata?.fileSize ||
-                 0,
-                 
-        contentType: po.contentType || 
-                    po.document?.contentType || 
-                    po.documentMetadata?.contentType ||
-                    '',
-                    
-        extractedAt: po.extractedAt || 
-                    po.document?.extractedAt || 
-                    po.documentMetadata?.uploadedAt ||
-                    po.createdAt || 
-                    new Date().toISOString(),
-                    
-        storageInfo: po.storageInfo || 
-                    po.documentStorage || 
-                    null,
-                    
-        documentType: 'po'
-      };
+    // Define all possible document field names and their variations
+    const documentFieldMappings = {
+      documentId: ['documentId', 'document_id', 'docId', 'id'],
+      documentNumber: ['documentNumber', 'document_number', 'docNumber', 'poNumber', 'orderNumber'],
+      hasStoredDocuments: ['hasStoredDocuments', 'has_stored_documents', 'documentsStored', 'isStored'],
+      originalFileName: ['originalFileName', 'original_file_name', 'fileName', 'filename'],
+      fileSize: ['fileSize', 'file_size', 'size'],
+      contentType: ['contentType', 'content_type', 'mimeType', 'type'],
+      extractedAt: ['extractedAt', 'extracted_at', 'uploadedAt', 'uploaded_at', 'createdAt'],
+      storageInfo: ['storageInfo', 'storage_info', 'storage', 'metadata'],
+      downloadURL: ['downloadURL', 'download_url', 'url', 'fileUrl'],
+      storagePath: ['storagePath', 'storage_path', 'path', 'filePath'],
+      fileValidated: ['fileValidated', 'file_validated', 'validated', 'isValid'],
+      extractionStatus: ['extractionStatus', 'extraction_status', 'status'],
+      processingStatus: ['processingStatus', 'processing_status', 'processStatus'],
+      documentMetadata: ['documentMetadata', 'document_metadata', 'metadata', 'meta']
     };
     
-    const documentFields = extractDocumentFields(editingPO);
-    
-    console.log('[DEBUG] POModal: Extracted document fields:', documentFields);
-    
-    // Process items with enhanced preservation
-    let itemsToUse = editingPO.items || [];
-    
-    if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
-      const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
-      const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
+    // Extract from primary source
+    Object.keys(documentFieldMappings).forEach(fieldName => {
+      const possibleKeys = documentFieldMappings[fieldName];
       
-      if (extractedHasClientCode && !editingHasClientCode) {
-        console.log('[CRITICAL] Using extractedData.items because it has clientItemCode');
-        itemsToUse = editingPO.extractedData.items;
-      } else if (extractedHasClientCode && editingHasClientCode) {
-        itemsToUse = editingPO.items.map((editingItem, index) => {
-          const extractedItem = editingPO.extractedData.items[index];
-          return {
-            ...editingItem,
-            clientItemCode: editingItem.clientItemCode || extractedItem?.clientItemCode || '',
-            productCode: editingItem.productCode || extractedItem?.productCode || '',
-            projectCode: editingItem.projectCode || extractedItem?.projectCode || ''
-          };
-        });
+      for (const key of possibleKeys) {
+        if (source && source[key] !== undefined && source[key] !== null) {
+          extractedFields[fieldName] = source[key];
+          break;
+        }
       }
-    }
-    
-    const processedItems = itemsToUse.map((item, index) => ({
-      ...item,
-      clientItemCode: item.clientItemCode || '',
-      productCode: item.productCode || '',
-      projectCode: item.projectCode || '',
-      productName: item.productName || '',
-      id: item.id || `item_${index + 1}`,
-      quantity: parseFloat(item.quantity) || 0,
-      unitPrice: parseFloat(item.unitPrice) || 0,
-      totalPrice: parseFloat(item.totalPrice) || 0
-    }));
-    
-    // CRITICAL: Set form data with ALL fields properly preserved
-    setFormData({
-      ...formData,        // Start with defaults
-      ...editingPO,       // Overlay with editing PO data
-      ...documentFields,  // Explicitly set document fields
-      items: processedItems,
-      documentType: 'po'  // Ensure this is always set
+      
+      // Try fallback source if primary didn't yield result
+      if (extractedFields[fieldName] === undefined && fallbackSource) {
+        for (const key of possibleKeys) {
+          if (fallbackSource[key] !== undefined && fallbackSource[key] !== null) {
+            extractedFields[fieldName] = fallbackSource[key];
+            break;
+          }
+        }
+      }
     });
     
-    console.log('[SUCCESS] POModal: Form data set with enhanced document field preservation');
+    // Ensure document type is always set
+    extractedFields.documentType = 'po';
     
-  } else {
-    setFormData(prev => ({
-      ...prev,
-      poNumber: generatePONumber(),
-      documentType: 'po',
-      hasStoredDocuments: false
-    }));
-  }
-}, [editingPO]);
+    // Convert boolean fields properly
+    if (extractedFields.hasStoredDocuments !== undefined) {
+      extractedFields.hasStoredDocuments = Boolean(extractedFields.hasStoredDocuments);
+    }
+    
+    if (extractedFields.fileValidated !== undefined) {
+      extractedFields.fileValidated = Boolean(extractedFields.fileValidated);
+    }
+    
+    return extractedFields;
+  };
+
+  // =============================================================================
+  // CRITICAL FIX: Enhanced useEffect for editingPO with Complete Document Field Preservation
+  // =============================================================================
+  useEffect(() => {
+    if (editingPO && isOpen) {
+      console.log('[DEBUG] POModal: Loading PO for editing:', editingPO.poNumber);
+      console.log('[DEBUG] POModal: Available document fields in editingPO:', {
+        allFields: Object.keys(editingPO).filter(key => 
+          key.includes('document') || 
+          key.includes('storage') || 
+          key.includes('file') ||
+          key === 'hasStoredDocuments' ||
+          key === 'originalFileName'
+        ),
+        documentId: editingPO.documentId,
+        hasStoredDocuments: editingPO.hasStoredDocuments,
+        originalFileName: editingPO.originalFileName,
+        storageInfo: !!editingPO.storageInfo,
+        documentMetadata: !!editingPO.documentMetadata
+      });
+
+      // CRITICAL FIX: Use enhanced document field extraction
+      const documentFields = extractAllDocumentFields(editingPO);
+      
+      console.log('[DEBUG] POModal: Extracted document fields:', documentFields);
+
+      // Process items with enhanced preservation
+      let itemsToUse = editingPO.items || [];
+      
+      if (editingPO.extractedData?.items && editingPO.extractedData.items.length > 0) {
+        const extractedHasClientCode = editingPO.extractedData.items.some(item => item.clientItemCode);
+        const editingHasClientCode = editingPO.items?.some(item => item.clientItemCode);
+        
+        if (extractedHasClientCode && !editingHasClientCode) {
+          console.log('[CRITICAL] Using extractedData.items because it has clientItemCode');
+          itemsToUse = editingPO.extractedData.items;
+        } else if (extractedHasClientCode && editingHasClientCode) {
+          itemsToUse = editingPO.items.map((editingItem, index) => {
+            const extractedItem = editingPO.extractedData.items[index];
+            return {
+              ...editingItem,
+              clientItemCode: editingItem.clientItemCode || extractedItem?.clientItemCode || '',
+              productCode: editingItem.productCode || extractedItem?.productCode || '',
+              projectCode: editingItem.projectCode || extractedItem?.projectCode || ''
+            };
+          });
+        }
+      }
+      
+      const processedItems = itemsToUse.map((item, index) => ({
+        ...item,
+        clientItemCode: item.clientItemCode || '',
+        productCode: item.productCode || '',
+        projectCode: item.projectCode || '',
+        productName: item.productName || '',
+        id: item.id || `item_${index + 1}`,
+        quantity: parseFloat(item.quantity) || 0,
+        unitPrice: parseFloat(item.unitPrice) || 0,
+        totalPrice: parseFloat(item.totalPrice) || 0
+      }));
+      
+      // CRITICAL: Set form data with ALL fields properly preserved
+      setFormData({
+        ...formData,        // Start with defaults
+        ...editingPO,       // Overlay with editing PO data
+        ...documentFields,  // Explicitly set document fields (this will override any conflicting fields)
+        items: processedItems,
+        // Ensure dates are properly formatted
+        orderDate: editingPO.orderDate ? 
+          (typeof editingPO.orderDate === 'string' ? 
+            editingPO.orderDate : 
+            editingPO.orderDate.toISOString().split('T')[0]) : 
+          new Date().toISOString().split('T')[0],
+        requiredDate: editingPO.requiredDate ? 
+          (typeof editingPO.requiredDate === 'string' ? 
+            editingPO.requiredDate : 
+            editingPO.requiredDate.toISOString().split('T')[0]) : 
+          ''
+      });
+      
+      console.log('[SUCCESS] POModal: Form data set with enhanced document field preservation');
+      
+    } else if (isOpen) {
+      // Reset for new PO
+      setFormData(prev => ({
+        ...prev,
+        poNumber: generatePONumber(),
+        documentType: 'po',
+        hasStoredDocuments: false,
+        documentId: '',
+        storageInfo: null,
+        originalFileName: '',
+        items: []
+      }));
+    }
+  }, [editingPO, isOpen]);
 
   // CRITICAL FIX: Real-time total recalculation useEffect with improved logic
   useEffect(() => {
@@ -1046,109 +1084,104 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   };
 
   // =============================================================================
-  // FIX 6: Enhanced handleSubmit with ClientItemCode Preservation & CORS Protection
+  // CRITICAL FIX: Enhanced handleSubmit with Complete Document Field Preservation & CORS Protection
   // =============================================================================
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  // Validate before saving
-  const errors = [];
-  if (!formData.clientName) errors.push({ field: 'clientName', message: 'Client name is required' });
-  if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
+    e.preventDefault();
+    
+    // Validate before saving
+    const errors = [];
+    if (!formData.clientName) errors.push({ field: 'clientName', message: 'Client name is required' });
+    if (formData.items.length === 0) errors.push({ field: 'items', message: 'At least one item is required' });
 
-  if (formData.projectCode && formData.projectCode.length < 3) {
-    errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
-  }
-  
-  if (errors.length > 0) {
-    setValidationErrors(errors);
-    return;
-  }
-  
-  setLoading(true);
-  try {
-    const validatedData = validatePOTotals(formData, true);
-    
-    const itemsWithPreservedClientCodes = validatedData.items.map((item, index) => {
-      const originalItem = formData.items[index];
-      
-      return {
-        ...item,
-        clientItemCode: item.clientItemCode || originalItem?.clientItemCode || '',
-        productCode: item.productCode || originalItem?.productCode || '',
-        projectCode: item.projectCode || originalItem?.projectCode || '',
-        productName: item.productName || originalItem?.productName || '',
-        id: item.id || originalItem?.id || `item_${index + 1}`,
-        quantity: parseFloat(item.quantity) || 0,
-        unitPrice: parseFloat(item.unitPrice) || 0,
-        totalPrice: parseFloat(item.totalPrice) || 0
-      };
-    });
-    
-    // CRITICAL FIX: Ensure all document storage fields are explicitly included
-    const documentStorageFields = {
-      // Core document identification
-      documentId: formData.documentId || null,
-      documentNumber: formData.documentNumber || formData.poNumber,
-      documentType: 'po',
-      
-      // Storage status and metadata
-      hasStoredDocuments: Boolean(formData.documentId && formData.hasStoredDocuments),
-      originalFileName: formData.originalFileName || '',
-      fileSize: formData.fileSize || 0,
-      contentType: formData.contentType || '',
-      extractedAt: formData.extractedAt || new Date().toISOString(),
-      
-      // Storage information object
-      storageInfo: formData.storageInfo || null,
-      
-      // Additional tracking fields
-      documentMetadata: {
-        uploadedAt: formData.extractedAt || new Date().toISOString(),
-        processingStatus: 'completed',
-        extractionStatus: 'completed',
-        sourceType: 'upload'
-      }
-    };
-
-    const dataToSave = {
-      ...validatedData,
-      items: itemsWithPreservedClientCodes,
-      ...documentStorageFields, // Spread all document fields at root level
-      lastUpdated: new Date().toISOString()
-    };
-    
-    console.log('[DEBUG] POModal: Saving PO with document storage fields:', {
-      documentId: dataToSave.documentId,
-      hasStoredDocuments: dataToSave.hasStoredDocuments,
-      originalFileName: dataToSave.originalFileName,
-      storageInfoPresent: !!dataToSave.storageInfo,
-      allFields: Object.keys(dataToSave).filter(k => k.includes('document') || k.includes('storage'))
-    });
-    
-    // CRITICAL: Wrap save operation in CORS protection with enhanced metadata
-    await safeFirestoreOperation(
-      () => onSave(dataToSave, { 
-        shouldRefresh: true,
-        preserveDocumentFields: true, // Signal to parent to preserve these fields
-        documentStorageFields: documentStorageFields // Pass fields explicitly
-      }),
-      { success: true }
-    );
-    
-    onClose();
-  } catch (error) {
-    console.error('Save failed:', error);
-    
-    if (error.message?.includes('CORS') || error.message?.includes('XMLHttpRequest')) {
-      alert('Network connectivity issue. Your data may have been saved. Please refresh the page to check.');
-    } else {
-      alert('Failed to save purchase order: ' + error.message);
+    if (formData.projectCode && formData.projectCode.length < 3) {
+      errors.push({ field: 'projectCode', message: 'Project code must be at least 3 characters' });
     }
-  } finally {
-    setLoading(false);
-  }
-};
+    
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const validatedData = validatePOTotals(formData, true);
+      
+      const itemsWithPreservedClientCodes = validatedData.items.map((item, index) => {
+        const originalItem = formData.items[index];
+        
+        return {
+          ...item,
+          clientItemCode: item.clientItemCode || originalItem?.clientItemCode || '',
+          productCode: item.productCode || originalItem?.productCode || '',
+          projectCode: item.projectCode || originalItem?.projectCode || '',
+          productName: item.productName || originalItem?.productName || '',
+          id: item.id || originalItem?.id || `item_${index + 1}`,
+          quantity: parseFloat(item.quantity) || 0,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          totalPrice: parseFloat(item.totalPrice) || 0
+        };
+      });
+      
+      // CRITICAL FIX: Comprehensive document storage fields preservation
+      const completeDocumentStorageFields = extractAllDocumentFields(formData, editingPO);
+      
+      // Ensure core document tracking
+      completeDocumentStorageFields.documentNumber = formData.poNumber;
+      completeDocumentStorageFields.documentType = 'po';
+      completeDocumentStorageFields.lastUpdated = new Date().toISOString();
+      
+      // If we have a document ID, ensure hasStoredDocuments is true
+      if (completeDocumentStorageFields.documentId && 
+          !completeDocumentStorageFields.documentId.includes('temp-') &&
+          !completeDocumentStorageFields.documentId.includes('fallback')) {
+        completeDocumentStorageFields.hasStoredDocuments = true;
+      }
+
+      const dataToSave = {
+        ...validatedData,
+        items: itemsWithPreservedClientCodes,
+        ...completeDocumentStorageFields, // Spread all document fields at root level
+        
+        // Additional metadata for tracking
+        lastUpdated: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      console.log('[DEBUG] POModal: Saving PO with complete document storage fields:', {
+        documentId: dataToSave.documentId,
+        hasStoredDocuments: dataToSave.hasStoredDocuments,
+        originalFileName: dataToSave.originalFileName,
+        documentType: dataToSave.documentType,
+        totalAmount: dataToSave.totalAmount,
+        tax: dataToSave.tax,
+        storageInfoPresent: !!dataToSave.storageInfo,
+        allDocumentFields: Object.keys(completeDocumentStorageFields)
+      });
+      
+      // CRITICAL: Wrap save operation in CORS protection with enhanced metadata
+      await safeFirestoreOperation(
+        () => onSave(dataToSave, { 
+          shouldRefresh: true,
+          preserveDocumentFields: true, // Signal to parent to preserve these fields
+          documentStorageFields: completeDocumentStorageFields // Pass fields explicitly
+        }),
+        { success: true }
+      );
+      
+      onClose();
+    } catch (error) {
+      console.error('Save failed:', error);
+      
+      if (error.message?.includes('CORS') || error.message?.includes('XMLHttpRequest')) {
+        alert('Network connectivity issue. Your data may have been saved. Please refresh the page to check.');
+      } else {
+        alert('Failed to save purchase order: ' + error.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // NEW: Function to calculate PO total for list display consistency  
   const calculatePOTotal = (po) => {
@@ -2005,97 +2038,97 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 
                 {/* ENHANCED DOCUMENT VIEWER with better fallback logic */}
                 {(() => {
-  // Try multiple sources for document ID with enhanced logging
-  const documentId = editingPO?.documentId || formData.documentId;
-  const hasStoredDocuments = editingPO?.hasStoredDocuments || formData.hasStoredDocuments;
-  const poNumber = editingPO?.poNumber || formData.poNumber;
-  
-  console.log('[DOCUMENT_TAB] Enhanced rendering decision:', {
-    documentId: documentId,
-    hasStoredDocuments: hasStoredDocuments,
-    poNumber: poNumber,
-    editingPO: !!editingPO,
-    formData: !!formData,
-    documentIdSource: editingPO?.documentId ? 'editingPO' : formData.documentId ? 'formData' : 'none',
-    storageSource: editingPO?.hasStoredDocuments ? 'editingPO' : formData.hasStoredDocuments ? 'formData' : 'none'
-  });
-  
-  // Enhanced condition: Check for valid document ID (not temp/fallback)
-  const hasValidDocumentId = documentId && 
-                             !documentId.includes('temp-') && 
-                             !documentId.includes('fallback') &&
-                             documentId.length > 10; // Valid IDs are usually longer
-  
-  if (hasValidDocumentId || hasStoredDocuments) {
-    return (
-      <div>
-        <div className="mb-2 text-sm text-green-600 font-medium flex items-center gap-2">
-          <CheckCircle className="w-4 h-4" />
-          Document storage available - loading files...
-        </div>
-        <DocumentViewer
-          documentId={documentId}
-          documentType="po"
-          documentNumber={poNumber}
-          allowDelete={true}
-          onDocumentDeleted={(doc) => {
-            console.log('Document deleted:', doc);
-            // Update form data to reflect deletion
-            setFormData(prev => ({
-              ...prev,
-              hasStoredDocuments: false,
-              documentId: null
-            }));
-            alert('Document deleted successfully');
-          }}
-        />
-      </div>
-    );
-  } else {
-    return (
-      <div className="text-center py-12">
-        <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-        <p className="font-medium mb-1 text-gray-600">No Documents Available</p>
-        <p className="text-sm text-gray-500 mb-4">
-          {documentId && documentId.includes('temp-') ? 
-            'Document storage failed during upload' :
-            documentId && documentId.includes('fallback') ?
-            'Document link was broken' :
-            'No document has been uploaded for this PO'
-          }
-        </p>
-        
-        {/* Enhanced troubleshooting info */}
-        <div className="text-xs bg-gray-50 border border-gray-200 rounded p-3 max-w-lg mx-auto">
-          <h6 className="font-semibold text-gray-700 mb-2">Troubleshooting Info:</h6>
-          <div className="text-gray-600 space-y-1 text-left">
-            <div>Document ID: {documentId || 'Not set'}</div>
-            <div>Has Stored Docs: {String(hasStoredDocuments)}</div>
-            <div>PO Number: {poNumber || 'Not set'}</div>
-            <div>Source: {editingPO?.documentId ? 'Database' : formData.documentId ? 'Form' : 'None'}</div>
-            {documentId && (
-              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-                <div className="text-yellow-700 font-medium">ID Status:</div>
-                <div className="text-yellow-600">
-                  {documentId.includes('temp-') ? '⚠️ Temporary (storage failed)' :
-                   documentId.includes('fallback') ? '❌ Fallback (link broken)' :
-                   documentId.length < 10 ? '❌ Invalid format' :
-                   '✅ Valid format'}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        
-        <div className="mt-4">
-          <p className="text-sm text-blue-600">
-            To add documents, upload a PDF using the AI Document Extraction feature above.
-          </p>
-        </div>
-      </div>
-    );
-  }
-})()}
+                  // Try multiple sources for document ID with enhanced logging
+                  const documentId = editingPO?.documentId || formData.documentId;
+                  const hasStoredDocuments = editingPO?.hasStoredDocuments || formData.hasStoredDocuments;
+                  const poNumber = editingPO?.poNumber || formData.poNumber;
+                  
+                  console.log('[DOCUMENT_TAB] Enhanced rendering decision:', {
+                    documentId: documentId,
+                    hasStoredDocuments: hasStoredDocuments,
+                    poNumber: poNumber,
+                    editingPO: !!editingPO,
+                    formData: !!formData,
+                    documentIdSource: editingPO?.documentId ? 'editingPO' : formData.documentId ? 'formData' : 'none',
+                    storageSource: editingPO?.hasStoredDocuments ? 'editingPO' : formData.hasStoredDocuments ? 'formData' : 'none'
+                  });
+                  
+                  // Enhanced condition: Check for valid document ID (not temp/fallback)
+                  const hasValidDocumentId = documentId && 
+                                             !documentId.includes('temp-') && 
+                                             !documentId.includes('fallback') &&
+                                             documentId.length > 10; // Valid IDs are usually longer
+                  
+                  if (hasValidDocumentId || hasStoredDocuments) {
+                    return (
+                      <div>
+                        <div className="mb-2 text-sm text-green-600 font-medium flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          Document storage available - loading files...
+                        </div>
+                        <DocumentViewer
+                          documentId={documentId}
+                          documentType="po"
+                          documentNumber={poNumber}
+                          allowDelete={true}
+                          onDocumentDeleted={(doc) => {
+                            console.log('Document deleted:', doc);
+                            // Update form data to reflect deletion
+                            setFormData(prev => ({
+                              ...prev,
+                              hasStoredDocuments: false,
+                              documentId: null
+                            }));
+                            alert('Document deleted successfully');
+                          }}
+                        />
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="text-center py-12">
+                        <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                        <p className="font-medium mb-1 text-gray-600">No Documents Available</p>
+                        <p className="text-sm text-gray-500 mb-4">
+                          {documentId && documentId.includes('temp-') ? 
+                            'Document storage failed during upload' :
+                            documentId && documentId.includes('fallback') ?
+                            'Document link was broken' :
+                            'No document has been uploaded for this PO'
+                          }
+                        </p>
+                        
+                        {/* Enhanced troubleshooting info */}
+                        <div className="text-xs bg-gray-50 border border-gray-200 rounded p-3 max-w-lg mx-auto">
+                          <h6 className="font-semibold text-gray-700 mb-2">Troubleshooting Info:</h6>
+                          <div className="text-gray-600 space-y-1 text-left">
+                            <div>Document ID: {documentId || 'Not set'}</div>
+                            <div>Has Stored Docs: {String(hasStoredDocuments)}</div>
+                            <div>PO Number: {poNumber || 'Not set'}</div>
+                            <div>Source: {editingPO?.documentId ? 'Database' : formData.documentId ? 'Form' : 'None'}</div>
+                            {documentId && (
+                              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                                <div className="text-yellow-700 font-medium">ID Status:</div>
+                                <div className="text-yellow-600">
+                                  {documentId.includes('temp-') ? '⚠️ Temporary (storage failed)' :
+                                   documentId.includes('fallback') ? '❌ Fallback (link broken)' :
+                                   documentId.length < 10 ? '❌ Invalid format' :
+                                   '✅ Valid format'}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="mt-4">
+                          <p className="text-sm text-blue-600">
+                            To add documents, upload a PDF using the AI Document Extraction feature above.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                })()}
               </div>
             ) : null}
           </div>
