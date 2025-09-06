@@ -1012,13 +1012,7 @@ export {
   setDoc
 };
 
-// Export utility functions
-export {
-  safeFirestoreOperation,
-  createCORSSafeListener,
-  convertFirestoreTimestamp,
-  transformFirestoreDoc
-};
+// Note: Utility functions are already exported above, no duplicate exports needed
 
 // Enhanced global error handling for CORS issues
 if (typeof window !== 'undefined') {
