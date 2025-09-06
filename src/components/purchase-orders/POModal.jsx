@@ -229,6 +229,37 @@ const processExtractedPOData = (extractedData, debug = true) => {
 
   let processedData = { ...extractedData };
   
+  // CRITICAL FIX: Ensure both legacy and new field formats are populated
+  processedData = {
+    ...processedData,
+    // New required fields for frontend forms
+    clientName: extractedData.clientName || extractedData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+    clientPoNumber: extractedData.clientPoNumber || extractedData.poNumber || "",
+    supplierName: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
+    
+    // Legacy fields for compatibility  
+    poNumber: extractedData.poNumber || extractedData.clientPoNumber || "",
+    supplier: extractedData.supplier || {
+      name: extractedData.supplierName || "Flow Solution Sdn. Bhd.",
+      address: extractedData.supplier?.address || "",
+      contact: extractedData.supplier?.contact || ""
+    },
+    client: extractedData.client || {
+      name: extractedData.clientName || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+      address: extractedData.client?.address || "",
+      contact: extractedData.client?.contact || ""
+    }
+  };
+
+  if (debug) {
+    console.log('[DEBUG] AFTER field mapping:', {
+      clientName: processedData.clientName,
+      clientPoNumber: processedData.clientPoNumber,
+      supplierName: processedData.supplierName,
+      poNumber: processedData.poNumber
+    });
+  }
+  
   // Critical debug: Check AFTER copying extractedData
   if (debug && processedData.items && processedData.items.length > 0) {
     console.log('[DEBUG] AFTER copying extractedData - Items details:');
@@ -861,6 +892,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         clientPoNumber: processedData.clientPoNumber || processedData.poNumber || formData.clientPoNumber,
         poNumber: processedData.poNumber || formData.poNumber || generatePONumber(),
         clientName: processedData.clientName || formData.clientName,
+        supplierName: processedData.supplierName || formData.supplierName,
         totalAmount: processedData.totalAmount || 0,
         tax: processedData.tax !== undefined ? processedData.tax : formData.tax
       };
