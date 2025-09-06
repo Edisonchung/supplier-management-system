@@ -229,14 +229,14 @@ const processExtractedPOData = (extractedData, debug = true) => {
 
   // CRITICAL FIX: Ensure both legacy and new field formats are populated FIRST
   let processedData = {
-    ...extractedData,
-    // New required fields for frontend forms - extract from AI response
-    clientName: extractedData.clientName || extractedData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
-    clientPoNumber: extractedData.clientPoNumber || extractedData.poNumber || "",
-    supplierName: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
-    
-    // Legacy fields for compatibility  
-    poNumber: extractedData.poNumber || extractedData.clientPoNumber || "",
+  ...extractedData,
+  // CRITICAL FIX: Proper field extraction with correct priority
+  clientName: extractedData.clientName || extractedData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+  clientPoNumber: extractedData.clientPoNumber || extractedData.poNumber || extractedData.order_number || "",
+  supplierName: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
+  
+  // Legacy fields for compatibility - ensure poNumber matches clientPoNumber
+  poNumber: extractedData.clientPoNumber || extractedData.poNumber || extractedData.order_number || generatePONumber(),
     supplier: extractedData.supplier || {
       name: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
       address: extractedData.supplier?.address || "",
@@ -894,19 +894,28 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
 
       // CRITICAL: Combine processed data with document storage fields
       const completeFormData = {
-        ...processedData,
-        ...documentStorageFields,
-        // Preserve any existing form data that shouldn't be overwritten
-        ...formData,
-        // Override with new extracted data (most important fields)
-        items: processedData.items || [],
-        clientPoNumber: processedData.clientPoNumber || processedData.poNumber || formData.clientPoNumber,
-        poNumber: processedData.poNumber || formData.poNumber || generatePONumber(),
-        clientName: processedData.clientName || formData.clientName,
+  ...formData, // Start with existing form data
+  ...processedData, // Override with processed extraction data
+  ...documentStorageFields, // Add document storage fields
+  // CRITICAL FIX: Ensure extracted fields take precedence
+  clientPoNumber: processedData.clientPoNumber || processedData.poNumber || "",
+  clientName: processedData.clientName || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+  poNumber: processedData.poNumber || processedData.clientPoNumber || generatePONumber(),
+  supplierName: processedData.supplierName || "Flow Solution Sdn. Bhd.",
         supplierName: processedData.supplierName || formData.supplierName,
         totalAmount: processedData.totalAmount || 0,
         tax: processedData.tax !== undefined ? processedData.tax : formData.tax
       };
+
+      // CRITICAL DEBUG: Log the final field values being set
+console.log('[CRITICAL DEBUG] Final form data field assignment:', {
+  extractedClientName: processedData.clientName,
+  extractedClientPoNumber: processedData.clientPoNumber,
+  finalClientName: completeFormData.clientName,
+  finalClientPoNumber: completeFormData.clientPoNumber,
+  hasValidClientPoNumber: !!completeFormData.clientPoNumber && completeFormData.clientPoNumber !== "",
+  hasValidClientName: !!completeFormData.clientName && completeFormData.clientName !== ""
+});
 
       console.log('[SUCCESS] Setting complete form data with document fields:', {
         documentId: completeFormData.documentId,
@@ -945,6 +954,8 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       }
     }
   };
+
+  
 
   // UPDATED: Enhanced handleInputChange with tax handling
   const handleInputChange = (field, value) => {
@@ -1414,14 +1425,14 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
                         <label className="block text-sm font-semibold text-gray-800 mb-1">
                           Client PO Number *
                         </label>
-                        <input
-                          type="text"
-                          value={formData.clientPoNumber}
-                          onChange={(e) => handleInputChange('clientPoNumber', e.target.value)}
-                          className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium text-lg"
-                          placeholder="e.g., PO-024974"
-                          required
-                        />
+<input
+  type="text"
+  value={formData.clientPoNumber || ''}
+  onChange={(e) => handleInputChange('clientPoNumber', e.target.value)}
+  className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium text-lg"
+  placeholder="e.g., PO-024974, RS-019010"
+  required
+/>
                         <p className="text-xs text-blue-600 mt-1 font-medium">
                           Primary business reference
                         </p>
