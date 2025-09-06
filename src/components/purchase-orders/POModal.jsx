@@ -227,12 +227,10 @@ const processExtractedPOData = (extractedData, debug = true) => {
     }
   }
 
-  let processedData = { ...extractedData };
-  
-  // CRITICAL FIX: Ensure both legacy and new field formats are populated
-  processedData = {
-    ...processedData,
-    // New required fields for frontend forms
+  // CRITICAL FIX: Ensure both legacy and new field formats are populated FIRST
+  let processedData = {
+    ...extractedData,
+    // New required fields for frontend forms - extract from AI response
     clientName: extractedData.clientName || extractedData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
     clientPoNumber: extractedData.clientPoNumber || extractedData.poNumber || "",
     supplierName: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
@@ -240,12 +238,12 @@ const processExtractedPOData = (extractedData, debug = true) => {
     // Legacy fields for compatibility  
     poNumber: extractedData.poNumber || extractedData.clientPoNumber || "",
     supplier: extractedData.supplier || {
-      name: extractedData.supplierName || "Flow Solution Sdn. Bhd.",
+      name: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
       address: extractedData.supplier?.address || "",
       contact: extractedData.supplier?.contact || ""
     },
     client: extractedData.client || {
-      name: extractedData.clientName || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+      name: extractedData.clientName || extractedData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
       address: extractedData.client?.address || "",
       contact: extractedData.client?.contact || ""
     }
@@ -256,7 +254,9 @@ const processExtractedPOData = (extractedData, debug = true) => {
       clientName: processedData.clientName,
       clientPoNumber: processedData.clientPoNumber,
       supplierName: processedData.supplierName,
-      poNumber: processedData.poNumber
+      poNumber: processedData.poNumber,
+      hasClientName: !!processedData.clientName,
+      hasClientPoNumber: !!processedData.clientPoNumber
     });
   }
   
@@ -317,6 +317,17 @@ const processExtractedPOData = (extractedData, debug = true) => {
         projectCode: item.projectCode,
         productName: item.productName?.substring(0, 40)
       });
+    });
+  }
+
+  // FINAL CRITICAL DEBUG: Verify the final data has the required fields
+  if (debug) {
+    console.log('[DEBUG] FINAL PROCESSED DATA - Required Fields Check:', {
+      clientName: processedData.clientName,
+      clientPoNumber: processedData.clientPoNumber,
+      supplierName: processedData.supplierName,
+      poNumber: processedData.poNumber,
+      allFieldsPresent: !!(processedData.clientName && processedData.clientPoNumber)
     });
   }
   
