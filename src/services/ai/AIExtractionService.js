@@ -1803,27 +1803,31 @@ if (docType.type === 'bank_payment_slip') {
   }
 
   /**
-   * Extract raw data from file using appropriate method
-   */
-  async extractRawData(file) {
-    const fileType = ExtractionService.getFileType(file);
-    
-    console.log(`Extracting from ${fileType} file: ${file.name}`);
-    
-    switch (fileType) {
-      case 'pdf':
-        return ExtractionService.extractFromPDF(file);
-      case 'image':
-        return ExtractionService.extractFromImage(file);
-      case 'excel':
-        return ExtractionService.extractFromExcel(file);
-      case 'email':
-        return ExtractionService.extractFromEmail(file);
-      default:
-        throw new Error(`Unsupported file type: ${fileType}`);
-    }
+ * Extract raw data from file using appropriate method - ENHANCED WITH USER CONTEXT
+ */
+async extractRawData(file) {
+  const fileType = ExtractionService.getFileType(file);
+  
+  console.log(`Extracting from ${fileType} file: ${file.name}`);
+  
+  // Get current user context for dual system routing
+  const user = this.getCurrentUser();
+  console.log('User context for extraction:', user?.email || 'anonymous');
+  
+  switch (fileType) {
+    case 'pdf':
+      return ExtractionService.extractFromPDF(file, user); // Pass user context
+    case 'image':
+      return ExtractionService.extractFromImage(file, user);
+    case 'excel':
+      return ExtractionService.extractFromExcel(file, user);
+    case 'email':
+      return ExtractionService.extractFromEmail(file, user);
+    default:
+      throw new Error(`Unsupported file type: ${fileType}`);
   }
-
+}
+  
   /**
    * Validate file before processing
    */
@@ -1992,6 +1996,58 @@ parsePrice(priceValue) {
   }
   
   return 0;
+}
+
+  /**
+ * Get current user context for dual system routing
+ */
+getCurrentUser() {
+  try {
+    // Try multiple sources for user data
+    const sources = [
+      () => JSON.parse(localStorage.getItem('currentUser')),
+      () => JSON.parse(sessionStorage.getItem('user')),
+      () => JSON.parse(localStorage.getItem('user')),
+      () => window.currentUser,
+      () => this.extractUserFromAuth()
+    ];
+
+    for (const source of sources) {
+      try {
+        const user = source();
+        if (user && (user.email || user.userEmail)) {
+          console.log('Found user context:', user.email || user.userEmail);
+          return user;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    console.warn('No user context found in any source');
+    return null;
+  } catch (error) {
+    console.warn('Error getting current user:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract user from Firebase Auth if available
+ */
+extractUserFromAuth() {
+  if (typeof window !== 'undefined' && window.firebase?.auth) {
+    const currentUser = window.firebase.auth().currentUser;
+    if (currentUser) {
+      return {
+        email: currentUser.email,
+        uid: currentUser.uid,
+        displayName: currentUser.displayName,
+        role: 'user' // Default role
+      };
+    }
+  }
+  return null;
 }
 
   /**
