@@ -1,4 +1,4 @@
-// src/hooks/usePurchaseOrders.js - Updated with Multi-Company Support and Document Storage Fix
+// src/hooks/usePurchaseOrders.js - FIXED with Enhanced Document Storage and Variable Declaration
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
@@ -34,6 +34,13 @@ export const usePurchaseOrders = () => {
   const [branches, setBranches] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState('all');
   const [selectedBranch, setSelectedBranch] = useState('all');
+
+  // CRITICAL FIX: Declare refetch function early to avoid hoisting issues
+  const refetch = useCallback(() => {
+    // Firestore real-time listener handles this automatically
+    // This is just for UI feedback
+    toast.success('Purchase orders refreshed');
+  }, []);
 
   // Load companies and branches on mount
   useEffect(() => {
@@ -83,6 +90,15 @@ export const usePurchaseOrders = () => {
     const tax = subtotal * taxRate;
     return subtotal + tax;
   }, [calculateSubtotal]);
+
+  // Check if user can create PO for specific company/branch
+  const canCreatePOFor = useCallback((companyId, branchId) => {
+    if (!permissions.canEditPurchaseOrders) return false;
+    if (permissions.isGroupAdmin) return true;
+    
+    return permissions.canAccessCompany(companyId) && 
+           permissions.canAccessBranch(branchId);
+  }, [permissions]);
 
   // Validate and normalize PO data with company information
   const validatePOData = useCallback((poData) => {
@@ -420,7 +436,8 @@ export const usePurchaseOrders = () => {
     try {
       setLoading(true);
       
-      console.log('💾 Enhanced PO save with document validation:', {
+      console.log('💾 Enhanced PO update with document validation:', {
+        id: id,
         poNumber: updates.poNumber,
         companyId: updates.companyId,
         branchId: updates.branchId,
@@ -464,7 +481,7 @@ export const usePurchaseOrders = () => {
         });
       }
       
-      // CRITICAL FIX: Explicitly preserve all document storage fields
+      // CRITICAL FIX: Explicitly preserve all document storage fields at UPDATE
       const documentStorageFields = {};
       
       // Core document identification
@@ -472,7 +489,7 @@ export const usePurchaseOrders = () => {
       if (updates.documentNumber !== undefined) documentStorageFields.documentNumber = updates.documentNumber;
       if (updates.documentType !== undefined) documentStorageFields.documentType = updates.documentType;
       
-      // Storage status and metadata
+      // Storage status and metadata - CRITICAL: These must be preserved
       if (updates.hasStoredDocuments !== undefined) documentStorageFields.hasStoredDocuments = updates.hasStoredDocuments;
       if (updates.originalFileName !== undefined) documentStorageFields.originalFileName = updates.originalFileName;
       if (updates.fileSize !== undefined) documentStorageFields.fileSize = updates.fileSize;
@@ -490,6 +507,7 @@ export const usePurchaseOrders = () => {
       if (updates.extractionStatus !== undefined) documentStorageFields.extractionStatus = updates.extractionStatus;
       if (updates.processingStatus !== undefined) documentStorageFields.processingStatus = updates.processingStatus;
       
+      // CRITICAL: Build update data with ALL document storage fields preserved
       const updateData = {
         ...processedUpdates,
         ...documentStorageFields, // CRITICAL: Include ALL document storage fields
@@ -497,7 +515,7 @@ export const usePurchaseOrders = () => {
         updatedBy: user.uid
       };
       
-      console.log('[DEBUG] POModal: Saving PO with complete document storage fields:', {
+      console.log('[DEBUG] updatePurchaseOrder: Saving PO with complete document storage fields:', {
         documentId: updateData.documentId,
         hasStoredDocuments: updateData.hasStoredDocuments,
         originalFileName: updateData.originalFileName,
@@ -507,13 +525,14 @@ export const usePurchaseOrders = () => {
         storageInfo: !!updateData.storageInfo,
         downloadURL: !!updateData.downloadURL,
         fileValidated: updateData.fileValidated,
-        allDocumentFields: Object.keys(documentStorageFields)
+        allDocumentFields: Object.keys(documentStorageFields),
+        preservedFieldsCount: Object.keys(documentStorageFields).length
       });
       
       await updateDoc(doc(db, 'purchaseOrders', id), updateData);
       
       console.log(`Updated purchase order in Firestore: ${id}`);
-      console.log(`✅ Document storage fields preserved: documentId=${updateData.documentId}, hasStoredDocuments=${updateData.hasStoredDocuments}`);
+      console.log(`✅ Document storage fields preserved in update: documentId=${updateData.documentId}, hasStoredDocuments=${updateData.hasStoredDocuments}`);
       
       // Trigger refresh if needed
       if (options.shouldRefresh) {
@@ -532,7 +551,7 @@ export const usePurchaseOrders = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, calculateSubtotal, refetch]);
+  }, [user, calculateSubtotal]);
 
   // Delete purchase order
   const deletePurchaseOrder = useCallback(async (id) => {
@@ -568,15 +587,6 @@ export const usePurchaseOrders = () => {
       setLoading(false);
     }
   }, [user, permissions.canDeletePurchaseOrders]);
-
-  // Check if user can create PO for specific company/branch
-  const canCreatePOFor = useCallback((companyId, branchId) => {
-    if (!permissions.canEditPurchaseOrders) return false;
-    if (permissions.isGroupAdmin) return true;
-    
-    return permissions.canAccessCompany(companyId) && 
-           permissions.canAccessBranch(branchId);
-  }, [permissions]);
 
   // Get purchase order by ID
   const getPurchaseOrderById = useCallback((id) => {
@@ -743,13 +753,6 @@ export const usePurchaseOrders = () => {
   const resetFilters = useCallback(() => {
     setSelectedCompany('all');
     setSelectedBranch('all');
-  }, []);
-
-  // Refresh data (for manual refresh)
-  const refetch = useCallback(() => {
-    // Firestore real-time listener handles this automatically
-    // This is just for UI feedback
-    toast.success('Purchase orders refreshed');
   }, []);
 
   // Clear all purchase orders (for development/testing)
