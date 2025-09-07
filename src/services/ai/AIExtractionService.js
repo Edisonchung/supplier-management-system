@@ -2115,7 +2115,7 @@ validateClientItemCode(clientCode) {
   console.log('🏢 Extracting client name from data:', {
     supplier: data.supplier,
     ship_to: data.ship_to,
-    bill_to: data.bill_to
+    bill_to: data.bill_to,
     nestedData: data.data
   });
 
