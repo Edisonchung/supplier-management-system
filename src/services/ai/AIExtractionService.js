@@ -1596,6 +1596,35 @@ if (docType.type === 'bank_payment_slip') {
   // NEW: Process Client Purchase Order (like PTP)
   console.log('Processing Client Purchase Order from:', 
     rawData.data?.purchase_order?.supplier?.name || 'Unknown Client');
+
+   // 🔍 ADD THIS DEBUG CODE RIGHT HERE:
+  console.log('🔍 [DEBUG] PROCESSING EXTRACTED PO DATA - FUNCTION CALLED!');
+  console.log('🔍 [DEBUG] rawData structure:', rawData);
+  console.log('🔍 [DEBUG] rawData keys:', Object.keys(rawData));
+  console.log('🔍 [DEBUG] fileName:', file?.name || 'unknown');
+  
+  // Check all possible nested locations for clientPoNumber
+  const checkLocations = [
+    { path: 'rawData.clientPoNumber', value: rawData.clientPoNumber },
+    { path: 'rawData.data.clientPoNumber', value: rawData.data?.clientPoNumber },
+    { path: 'rawData.data.data.clientPoNumber', value: rawData.data?.data?.clientPoNumber },
+    { path: 'rawData.data.data.data.clientPoNumber', value: rawData.data?.data?.data?.clientPoNumber }
+  ];
+  
+  console.log('🔍 [DEBUG] Checking clientPoNumber locations:');
+  checkLocations.forEach(location => {
+    console.log(`   ${location.path}: ${location.value || 'undefined'}`);
+  });
+  
+  // Also check for the nested data structure we saw in logs
+  if (rawData.data && rawData.data.data) {
+    console.log('🎯 [DEBUG] Found nested data.data structure:', {
+      hasClientPoNumber: !!rawData.data.data.clientPoNumber,
+      hasPoNumber: !!rawData.data.data.poNumber,
+      keys: Object.keys(rawData.data.data)
+    });
+  }
+  // 🔍 END DEBUG CODE
   
   // FIX: Access the correct data structure
   const actualData = rawData.data || rawData;
