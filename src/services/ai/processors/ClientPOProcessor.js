@@ -417,21 +417,38 @@ export class ClientPOProcessor {
   }
 
   /**
-   * Extract PO number
-   */
-  static extractPONumber(data) {
-    // Direct fields
-    if (data.order_number) return data.order_number;
-    if (data.po_number) return data.po_number;
-    if (data.purchase_order_number) return data.purchase_order_number;
-    
-    // Pattern matching
-    const text = JSON.stringify(data);
-    const poPattern = /PO-\d{6}|PO\d{6}|P\.O\.\s*\d+/i;
-    const match = text.match(poPattern);
-    
-    return match ? match[0] : this.generatePONumber();
+ * Extract PO number - UPDATED for nested AI response
+ */
+static extractPONumber(data) {
+  // CRITICAL FIX: Handle nested AI response structure first
+  let actualData = data;
+  if (data.data?.data) {
+    actualData = data.data.data; // Handle nested: data.data.clientPoNumber
+  } else if (data.data) {
+    actualData = data.data; // Handle single level: data.clientPoNumber
   }
+
+  // PRIORITY 1: Check for clientPoNumber (from new AI prompt)
+  if (actualData.clientPoNumber) return actualData.clientPoNumber;
+  if (actualData.poNumber) return actualData.poNumber;
+
+  // PRIORITY 2: Check legacy direct fields
+  if (actualData.order_number) return actualData.order_number;
+  if (actualData.po_number) return actualData.po_number;
+  if (actualData.purchase_order_number) return actualData.purchase_order_number;
+  
+  // PRIORITY 3: Check original data structure (fallback)
+  if (data.order_number) return data.order_number;
+  if (data.po_number) return data.po_number;
+  if (data.purchase_order_number) return data.purchase_order_number;
+  
+  // Pattern matching (existing logic)
+  const text = JSON.stringify(data);
+  const poPattern = /PO-\d{6}|PO\d{6}|P\.O\.\s*\d+/i;
+  const match = text.match(poPattern);
+  
+  return match ? match[0] : this.generatePONumber();
+}
 
   /**
    * Extract PR numbers
