@@ -2116,7 +2116,36 @@ validateClientItemCode(clientCode) {
     supplier: data.supplier,
     ship_to: data.ship_to,
     bill_to: data.bill_to
+    nestedData: data.data
   });
+
+  // CRITICAL FIX: Handle nested AI response structure
+  let actualData = data;
+  if (data.data?.data) {
+    actualData = data.data.data; // Handle response: data.data.clientName
+    console.log('🏢 Using nested data.data structure');
+  } else if (data.data) {
+    actualData = data.data; // Handle response: data.clientName
+    console.log('🏢 Using single data structure');
+  }
+
+  // PRIORITY 1: Check for direct clientName field (from new AI prompt)
+  if (actualData.clientName) {
+    console.log('🏢 Direct clientName found:', actualData.clientName);
+    return actualData.clientName;
+  }
+
+  // PRIORITY 2: Check client object
+  if (actualData.client?.name) {
+    console.log('🏢 Client object name found:', actualData.client.name);
+    return actualData.client.name;
+  }
+
+  // PRIORITY 3: For RS-019010 patterns, default to PTP
+  if (actualData.poNumber?.startsWith('RS-') || actualData.clientPoNumber?.startsWith('RS-')) {
+    console.log('🏢 RS-pattern detected, using PTP default');
+    return "Pelabuhan Tanjung Pelepas Sdn. Bhd.";
+  }
 
   // For PTP client POs, the client info is in the supplier field (they're sending us the PO)
   let clientName = '';
