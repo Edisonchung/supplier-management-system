@@ -1672,7 +1672,7 @@ if (docType.type === 'bank_payment_slip') {
   
   // FIXED: Client info (the one sending us the PO)
   clientName: this.extractClientName(data),
-  clientPONumber: data.order_number || data.po_number || '',
+  clientPONumber: data.data?.data?.clientPoNumber || data.data?.clientPoNumber || data.clientPoNumber || data.order_number || data.po_number || '',
   clientAddress: data.supplier?.address || data.ship_to?.address || '',
   prNumber: data.pr_number || (data.pr_numbers && data.pr_numbers.length > 0 ? data.pr_numbers.join(', ') : ''),
   
