@@ -416,38 +416,89 @@ export class ClientPOProcessor {
     return 'general';
   }
 
-  /**
- * Extract PO number - UPDATED for nested AI response
+/**
+ * Extract PO number - FIXED to handle nested AI response structure
  */
 static extractPONumber(data) {
-  // CRITICAL FIX: Handle nested AI response structure first
-  let actualData = data;
-  if (data.data?.data) {
-    actualData = data.data.data; // Handle nested: data.data.clientPoNumber
-  } else if (data.data) {
-    actualData = data.data; // Handle single level: data.clientPoNumber
+  console.log('[NESTED FIX] Extracting PO number from nested structure...');
+  console.log('[NESTED FIX] Data structure:', {
+    hasData: !!data.data,
+    hasNestedData: !!(data.data && data.data.data),
+    directClientPO: data.clientPoNumber,
+    nestedClientPO: data.data?.clientPoNumber,
+    deepNestedClientPO: data.data?.data?.clientPoNumber
+  });
+
+  // Handle the nested AI response structure that returns data.data.clientPoNumber
+  let clientPoNumber = null;
+  
+  // Try multiple levels of nesting based on actual AI response structure
+  if (data.data && data.data.data && data.data.data.clientPoNumber) {
+    // Deep nested: rawData.data.data.clientPoNumber
+    clientPoNumber = data.data.data.clientPoNumber;
+    console.log('[NESTED FIX] Found clientPoNumber in data.data.data:', clientPoNumber);
+  } else if (data.data && data.data.clientPoNumber) {
+    // Single nested: rawData.data.clientPoNumber  
+    clientPoNumber = data.data.clientPoNumber;
+    console.log('[NESTED FIX] Found clientPoNumber in data.data:', clientPoNumber);
+  } else if (data.clientPoNumber) {
+    // Direct: rawData.clientPoNumber
+    clientPoNumber = data.clientPoNumber;
+    console.log('[NESTED FIX] Found clientPoNumber directly:', clientPoNumber);
   }
 
-  // PRIORITY 1: Check for clientPoNumber (from new AI prompt)
-  if (actualData.clientPoNumber) return actualData.clientPoNumber;
-  if (actualData.poNumber) return actualData.poNumber;
+  // If we found a clientPoNumber, return it
+  if (clientPoNumber) {
+    console.log('[NESTED FIX] ✅ Successfully extracted clientPoNumber:', clientPoNumber);
+    return clientPoNumber;
+  }
 
-  // PRIORITY 2: Check legacy direct fields
-  if (actualData.order_number) return actualData.order_number;
-  if (actualData.po_number) return actualData.po_number;
-  if (actualData.purchase_order_number) return actualData.purchase_order_number;
+  // Fallback to existing logic for other PO number fields
+  console.log('[NESTED FIX] No clientPoNumber found, trying fallback fields...');
   
-  // PRIORITY 3: Check original data structure (fallback)
-  if (data.order_number) return data.order_number;
-  if (data.po_number) return data.po_number;
-  if (data.purchase_order_number) return data.purchase_order_number;
-  
-  // Pattern matching (existing logic)
+  // Check standard PO number fields
+  const possibleFields = [
+    'poNumber',
+    'po_number', 
+    'order_number',
+    'purchase_order_number',
+    'client_po_number',
+    'po_ref'
+  ];
+
+  for (const field of possibleFields) {
+    // Check in nested data first
+    if (data.data && data.data.data && data.data.data[field]) {
+      console.log(`[NESTED FIX] Found ${field} in data.data.data:`, data.data.data[field]);
+      return data.data.data[field];
+    } else if (data.data && data.data[field]) {
+      console.log(`[NESTED FIX] Found ${field} in data.data:`, data.data[field]);
+      return data.data[field];
+    } else if (data[field]) {
+      console.log(`[NESTED FIX] Found ${field} directly:`, data[field]);
+      return data[field];
+    }
+  }
+
+  // Pattern matching as last resort
   const text = JSON.stringify(data);
-  const poPattern = /PO-\d{6}|PO\d{6}|P\.O\.\s*\d+/i;
-  const match = text.match(poPattern);
-  
-  return match ? match[0] : this.generatePONumber();
+  const patterns = [
+    /RS-\d{6}/i,           // RS-019010 format
+    /PO-\d{6}/i,           // PO-020748 format  
+    /FS-PO-\d{8}-\d{3}/i,  // FS-PO-20250907-524 format
+    /\b[A-Z]{2,4}-\d{6}\b/i // Generic format
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      console.log('[NESTED FIX] Found PO number via pattern:', match[0]);
+      return match[0];
+    }
+  }
+
+  console.log('[NESTED FIX] ❌ No PO number found, generating fallback');
+  return this.generatePONumber();
 }
 
   /**
