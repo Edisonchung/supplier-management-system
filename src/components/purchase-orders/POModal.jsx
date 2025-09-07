@@ -213,41 +213,61 @@ const processExtractedPOData = (extractedData, debug = true) => {
   if (debug) {
     console.log('[DEBUG] PROCESSING EXTRACTED PO DATA');
     console.log('Original extracted data:', extractedData);
-    
-    // Critical debug: Check clientItemCode at the START
-    if (extractedData.items && extractedData.items.length > 0) {
-      console.log('[DEBUG] BEFORE processing - Items details:');
-      extractedData.items.forEach((item, index) => {
-        console.log(`  Item ${index + 1}:`, {
-          clientItemCode: item.clientItemCode,
-          productCode: item.productCode,
-          productName: item.productName?.substring(0, 40)
-        });
-      });
-    }
   }
 
-  // CRITICAL FIX: Ensure both legacy and new field formats are populated FIRST
+  // CRITICAL FIX: Handle nested AI response structure
+  let actualData = extractedData;
+  if (extractedData.data?.data) {
+    actualData = extractedData.data.data; // Handle nested: data.data.clientPoNumber
+    console.log('[NESTED FIX] Using nested data.data structure');
+  } else if (extractedData.data) {
+    actualData = extractedData.data; // Handle single level: data.clientPoNumber
+    console.log('[NESTED FIX] Using single level data structure');
+  }
+
+  if (debug) {
+    console.log('[DEBUG] Actual data to process:', {
+      clientName: actualData.clientName,
+      clientPoNumber: actualData.clientPoNumber,
+      supplierName: actualData.supplierName,
+      poNumber: actualData.poNumber
+    });
+  }
+
+  // Critical debug: Check clientItemCode at the START
+  if (actualData.items && actualData.items.length > 0) {
+    console.log('[DEBUG] BEFORE processing - Items details:');
+    actualData.items.forEach((item, index) => {
+      console.log(`  Item ${index + 1}:`, {
+        clientItemCode: item.clientItemCode,
+        productCode: item.productCode,
+        productName: item.productName?.substring(0, 40)
+      });
+    });
+  }
+
+  // CRITICAL FIX: Use actualData instead of extractedData
   let processedData = {
-  ...extractedData,
-  // CRITICAL FIX: Proper field extraction with correct priority
-  clientName: extractedData.clientName || extractedData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
-  clientPoNumber: extractedData.clientPoNumber || extractedData.poNumber || extractedData.order_number || "",
-  supplierName: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
-  
-  // Legacy fields for compatibility - ensure poNumber matches clientPoNumber
-  poNumber: extractedData.clientPoNumber || extractedData.poNumber || extractedData.order_number || generatePONumber(),
-    supplier: extractedData.supplier || {
-      name: extractedData.supplierName || extractedData.supplier?.name || "Flow Solution Sdn. Bhd.",
-      address: extractedData.supplier?.address || "",
-      contact: extractedData.supplier?.contact || ""
+    ...actualData, // Changed from extractedData to actualData
+    // CRITICAL FIX: Proper field extraction with correct priority
+    clientName: actualData.clientName || actualData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+    clientPoNumber: actualData.clientPoNumber || actualData.poNumber || actualData.order_number || "",
+    supplierName: actualData.supplierName || actualData.supplier?.name || "Flow Solution Sdn. Bhd.",
+    
+    // Legacy fields for compatibility - ensure poNumber matches clientPoNumber
+    poNumber: actualData.clientPoNumber || actualData.poNumber || actualData.order_number || generatePONumber(),
+    supplier: actualData.supplier || {
+      name: actualData.supplierName || actualData.supplier?.name || "Flow Solution Sdn. Bhd.",
+      address: actualData.supplier?.address || "",
+      contact: actualData.supplier?.contact || ""
     },
-    client: extractedData.client || {
-      name: extractedData.clientName || extractedData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
-      address: extractedData.client?.address || "",
-      contact: extractedData.client?.contact || ""
+    client: actualData.client || {
+      name: actualData.clientName || actualData.client?.name || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+      address: actualData.client?.address || "",
+      contact: actualData.client?.contact || ""
     }
   };
+
 
   if (debug) {
     console.log('[DEBUG] AFTER field mapping:', {
