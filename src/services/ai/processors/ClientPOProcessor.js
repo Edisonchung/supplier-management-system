@@ -434,7 +434,7 @@ static extractPONumber(data) {
   
   // Try multiple levels of nesting based on actual AI response structure
   if (data.data && data.data.data && data.data.data.clientPoNumber) {
-    // Deep nested: rawData.data.data.clientPoNumber
+    // Deep nested: rawData.data.data.clientPoNumber - THIS IS WHERE IT'S FOUND!
     clientPoNumber = data.data.data.clientPoNumber;
     console.log('[NESTED FIX] Found clientPoNumber in data.data.data:', clientPoNumber);
   } else if (data.data && data.data.clientPoNumber) {
@@ -456,7 +456,7 @@ static extractPONumber(data) {
   // Fallback to existing logic for other PO number fields
   console.log('[NESTED FIX] No clientPoNumber found, trying fallback fields...');
   
-  // Check standard PO number fields
+  // Check standard PO number fields (also check nested locations)
   const possibleFields = [
     'poNumber',
     'po_number', 
