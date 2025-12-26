@@ -106,6 +106,8 @@ export const usePurchaseOrders = () => {
       id: item.id || `item-${Date.now()}-${Math.random()}`,
       productName: item.productName || '',
       productCode: item.productCode || '',
+      clientItemCode: item.clientItemCode || '',
+      projectCode: item.projectCode || '',
       quantity: Number(item.quantity) || 1,
       unitPrice: Number(item.unitPrice) || 0,
       totalPrice: Number(item.totalPrice) || (Number(item.quantity || 1) * Number(item.unitPrice || 0)),
