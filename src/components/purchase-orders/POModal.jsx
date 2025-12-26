@@ -513,6 +513,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [currentItem, setCurrentItem] = useState({
     productName: '',
     productCode: '',
+    clientItemCode: '',
     projectCode: '',
     quantity: 1,
     unitPrice: 0,
@@ -1014,10 +1015,15 @@ console.log('[CRITICAL DEBUG] Final form data field assignment:', {
   // FIX 4: Enhanced handleItemChange with Critical ClientItemCode Field Preservation
   // =============================================================================
   const handleItemChange = (index, field, value) => {
-    const newItems = [...formData.items];
-    const oldItem = { ...newItems[index] }; // Store original item for restoration
-    const oldValue = newItems[index][field];
+  setFormData(prev => {
+    // CRITICAL: Use prev.items (current state), NOT formData.items (stale closure)
+    const newItems = [...prev.items];
+    const oldItem = { ...newItems[index] };
+    const oldValue = oldItem[field];
     
+    console.log(`[handleItemChange] Item ${index}, field "${field}": "${oldValue}" → "${value}"`);
+    
+    // Update the specific field
     newItems[index] = {
       ...newItems[index],
       [field]: value
@@ -1031,41 +1037,49 @@ console.log('[CRITICAL DEBUG] Final form data field assignment:', {
         console.log(`[DEBUG] Auto-extracted product code: "${extractedCode}" from "${value}"`);
       }
     }
-     // Critical: Ensure project code changes are preserved
+    
+    // Log project code changes
     if (field === 'projectCode') {
       console.log(`[SUCCESS] Project code for item ${index} changed from "${oldValue}" to "${value}"`);
     }
     
-    // Special logging for clientItemCode changes
+    // Log clientItemCode changes
     if (field === 'clientItemCode') {
       console.log(`[CLIENT_CODE_CHANGE] Item ${index}: "${oldItem.clientItemCode}" → "${value}"`);
     }
     
-    // Auto-format project codes
+    // Auto-format project codes (uppercase, alphanumeric + dash only)
     if (field === 'projectCode' && value) {
-      value = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-      newItems[index][field] = value;
+      const formattedValue = value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      newItems[index][field] = formattedValue;
     }
 
-    // Critical field preservation check - prevent accidental loss
+    // Critical field preservation - prevent accidental loss
     const criticalFields = ['clientItemCode', 'productCode', 'projectCode', 'productName', 'id'];
     criticalFields.forEach(criticalField => {
       if (oldItem[criticalField] && 
           !newItems[index][criticalField] && 
-          criticalField !== field) { // Don't restore the field being changed
+          criticalField !== field) {
         newItems[index][criticalField] = oldItem[criticalField];
         console.log(`[PRESERVATION] Restored ${criticalField} for item ${index}: ${oldItem[criticalField]}`);
       }
     });
     
-    // Apply price fixing (but with enhanced field preservation)
+    // Apply price fixing with field preservation
     const fixedItems = fixPOItemPrices(newItems, false);
     
-    setFormData(prev => ({
+    // Final verification - ensure our change wasn't lost during price fixing
+    if (field !== 'projectCode' && fixedItems[index][field] !== value) {
+      console.warn(`[WARNING] Field "${field}" modified during price fixing. Restoring.`);
+      fixedItems[index][field] = value;
+    }
+    
+    return {
       ...prev,
       items: fixedItems
-    }));
-  };
+    };
+  });
+};
 
   // Product Code Bulk Extraction for all items (compatible with fixPOItemPrices)
   const handleBulkProductCodeExtraction = () => {
@@ -1093,36 +1107,57 @@ console.log('[CRITICAL DEBUG] Final form data field assignment:', {
       };
     });
   };
-
-  // Enhanced: Add item with price fixing
-  const addItem = () => {
-    if (currentItem.productName && currentItem.quantity > 0) {
-      const newItems = [...formData.items, { 
+// =============================================================================
+// CRITICAL FIX: addItem with proper React state handling
+// =============================================================================
+const addItem = () => {
+  if (currentItem.productName && currentItem.quantity > 0) {
+    // Move ALL logic inside setFormData callback
+    setFormData(prev => {
+      const newItem = { 
         ...currentItem, 
-        id: Date.now().toString() 
-      }];
+        id: Date.now().toString(),
+        // Explicitly preserve all fields
+        clientItemCode: currentItem.clientItemCode || '',
+        productCode: currentItem.productCode || '',
+        projectCode: currentItem.projectCode || '',
+        productName: currentItem.productName || '',
+        quantity: parseFloat(currentItem.quantity) || 1,
+        unitPrice: parseFloat(currentItem.unitPrice) || 0,
+        totalPrice: parseFloat(currentItem.totalPrice) || 
+          (parseFloat(currentItem.quantity) || 1) * (parseFloat(currentItem.unitPrice) || 0)
+      };
       
-      // Apply price fixing to the new items list
+      console.log('[addItem] Adding new item:', {
+        productName: newItem.productName,
+        productCode: newItem.productCode,
+        clientItemCode: newItem.clientItemCode,
+        projectCode: newItem.projectCode
+      });
+      
+      const newItems = [...prev.items, newItem];
       const fixedItems = fixPOItemPrices(newItems, false);
       
-      setFormData(prev => ({
+      return {
         ...prev,
         items: fixedItems
-      }));
-      
-      // Reset current item
-      setCurrentItem({
-        productName: '',
-        productCode: '',
-        projectCode: '',
-        quantity: 1,
-        unitPrice: 0,
-        totalPrice: 0
-      });
-      setSearchTerm('');
-      setShowProductSearch(false);
-    }
-  };
+      };
+    });
+    
+    // Reset current item
+    setCurrentItem({
+      productName: '',
+      productCode: '',
+      clientItemCode: '',
+      projectCode: '',
+      quantity: 1,
+      unitPrice: 0,
+      totalPrice: 0
+    });
+    setSearchTerm('');
+    setShowProductSearch(false);
+  }
+};
 
   // Manual price fix button handler
   const handleFixPrices = () => {
@@ -1144,18 +1179,20 @@ console.log('[CRITICAL DEBUG] Final form data field assignment:', {
       items: prev.items.filter((_, i) => i !== index)
     }));
   };
-
-  const selectProduct = (product) => {
-    setCurrentItem({
-      productName: product.name,
-      productCode: product.code,
-      quantity: 1,
-      unitPrice: product.price,
-      totalPrice: product.price
-    });
-    setSearchTerm(product.name);
-    setShowProductSearch(false);
-  };
+  
+const selectProduct = (product) => {
+  setCurrentItem({
+    productName: product.name,
+    productCode: product.code || product.sku || '',
+    clientItemCode: '',
+    projectCode: '',
+    quantity: 1,
+    unitPrice: product.price || 0,
+    totalPrice: product.price || 0
+  });
+  setSearchTerm(product.name);
+  setShowProductSearch(false);
+};
 
   // =============================================================================
   // CRITICAL FIX: Enhanced handleSubmit with Complete Document Field Preservation & CORS Protection
@@ -1810,6 +1847,25 @@ console.log('[CRITICAL DEBUG] Final form data field assignment:', {
                         </div>
                       </div>
 
+                      {/* NEW: Client Item Code Field */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Client Item Code
+                          <span className="text-blue-600 ml-1" title="Client's unique identifier">🏷️</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={currentItem.clientItemCode}
+                          onChange={(e) => setCurrentItem({
+                            ...currentItem,
+                            clientItemCode: e.target.value
+                          })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g. QCR0927"
+                        />
+                      </div>
+
+                      
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">
                           Project Code
