@@ -192,28 +192,68 @@ export const useClients = (options = {}) => {
   }, [user, selectedCompany, selectedBranch]);
 
   /**
-   * Update an existing client
+   * Update an existing client - ENHANCED VERSION
+   * Now properly handles contact deletion
    */
   const updateClient = useCallback(async (clientId, updates) => {
     try {
       const { contacts, ...clientUpdates } = updates;
       
+      // Update client document
       await updateDoc(doc(db, 'clients', clientId), {
         ...cleanFormDataForFirestore(clientUpdates),
         updatedAt: serverTimestamp()
       });
 
-      // Update contacts if provided
-      if (contacts) {
-        for (const contact of contacts) {
+      // Handle contacts if provided
+      if (contacts !== undefined) {
+        console.log('[useClients] Processing contacts for client:', clientId, {
+          newContactsCount: contacts?.length || 0
+        });
+
+        // STEP 1: Get existing contacts from Firestore
+        const existingContactsQuery = query(
+          collection(db, 'clientContacts'),
+          where('clientId', '==', clientId)
+        );
+        const existingSnapshot = await getDocs(existingContactsQuery);
+        const existingContacts = existingSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        console.log('[useClients] Existing contacts in Firestore:', existingContacts.length);
+
+        // STEP 2: Identify contacts to delete
+        const newContactIds = (contacts || [])
+          .filter(c => c.id && !c.id.startsWith('temp-'))
+          .map(c => c.id);
+        
+        // Find contacts that exist in Firestore but not in the new array (deleted by user)
+        const contactsToDelete = existingContacts.filter(
+          existing => !newContactIds.includes(existing.id)
+        );
+
+        console.log('[useClients] Contacts to delete:', contactsToDelete.length);
+
+        // STEP 3: Delete removed contacts
+        for (const contact of contactsToDelete) {
+          console.log('[useClients] Deleting contact:', contact.id, contact.name);
+          await deleteDoc(doc(db, 'clientContacts', contact.id));
+        }
+
+        // STEP 4: Update existing contacts and add new ones
+        for (const contact of (contacts || [])) {
           if (contact.id && !contact.id.startsWith('temp-')) {
             // Update existing contact
+            console.log('[useClients] Updating contact:', contact.id);
             await updateDoc(doc(db, 'clientContacts', contact.id), {
               ...cleanFormDataForFirestore(contact),
               updatedAt: serverTimestamp()
             });
           } else {
-            // Add new contact
+            // Add new contact (temp- id or no id)
+            console.log('[useClients] Adding new contact:', contact.name);
             await addDoc(collection(db, 'clientContacts'), {
               ...cleanFormDataForFirestore(contact),
               clientId,
@@ -228,6 +268,12 @@ export const useClients = (options = {}) => {
           const newMap = { ...prev };
           delete newMap[clientId];
           return newMap;
+        });
+
+        console.log('[useClients] Contact sync complete:', {
+          deleted: contactsToDelete.length,
+          updated: contacts?.filter(c => c.id && !c.id.startsWith('temp-')).length || 0,
+          added: contacts?.filter(c => !c.id || c.id.startsWith('temp-')).length || 0
         });
       }
 
