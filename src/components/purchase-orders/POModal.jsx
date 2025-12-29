@@ -9,6 +9,8 @@ import DocumentViewer from '../common/DocumentViewer';
 import { useClients } from '../../hooks/useClients';
 import { ClientSelector, ClientContactSelector, ClientTermsDisplay } from './POModalClientIntegration';
 import ClientModal from '../clients/ClientModal';
+import { db } from '../../config/firebase';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 
 // =============================================================================
 // FIX 1: CORS Protection Wrapper
@@ -533,7 +535,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [activeTab, setActiveTab] = useState('details');
 
   // Client selection state
-  const { clients, getContactsForClient, addClient } = useClients();
+  const { clients, addClient } = useClients();
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [clientContacts, setClientContacts] = useState([]);
   const [selectedContactId, setSelectedContactId] = useState(null);
@@ -770,18 +772,75 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     }
   }, [editingPO, isOpen]);
 
-  // Load contacts when client changes
+  // Load contacts when client changes - fetch directly from Firestore
   useEffect(() => {
-    if (selectedClientId) {
-      const contacts = getContactsForClient(selectedClientId);
-      setClientContacts(contacts);
-      const primary = contacts.find(c => c.isPrimary);
-      if (primary) setSelectedContactId(primary.id);
-    } else {
-      setClientContacts([]);
-      setSelectedContactId(null);
-    }
-  }, [selectedClientId, getContactsForClient]);
+    const loadContactsForClient = async () => {
+      if (!selectedClientId) {
+        setClientContacts([]);
+        setSelectedContactId(null);
+        return;
+      }
+
+      try {
+        console.log('[POModal] Loading contacts for client:', selectedClientId);
+        
+        const q = query(
+          collection(db, 'clientContacts'),
+          where('clientId', '==', selectedClientId),
+          orderBy('isPrimary', 'desc')
+        );
+        
+        const snapshot = await getDocs(q);
+        
+        // Use doc.id, remove any stored 'id' field to prevent issues
+        const contacts = snapshot.docs.map(docSnap => {
+          const data = docSnap.data();
+          const { id: storedId, ...cleanData } = data;
+          return {
+            ...cleanData,
+            id: docSnap.id
+          };
+        });
+        
+        console.log('[POModal] Loaded contacts:', contacts.length);
+        setClientContacts(contacts);
+        
+        // Auto-select primary contact
+        const primary = contacts.find(c => c.isPrimary);
+        if (primary) {
+          setSelectedContactId(primary.id);
+        }
+      } catch (err) {
+        console.error('[POModal] Error loading contacts:', err);
+        // Fallback without orderBy if index issue
+        if (err.code === 'failed-precondition' || err.message?.includes('index')) {
+          try {
+            const q = query(
+              collection(db, 'clientContacts'),
+              where('clientId', '==', selectedClientId)
+            );
+            const snapshot = await getDocs(q);
+            const contacts = snapshot.docs.map(docSnap => {
+              const data = docSnap.data();
+              const { id: storedId, ...cleanData } = data;
+              return { ...cleanData, id: docSnap.id };
+            });
+            contacts.sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+            setClientContacts(contacts);
+            const primary = contacts.find(c => c.isPrimary);
+            if (primary) setSelectedContactId(primary.id);
+          } catch (retryErr) {
+            console.error('[POModal] Retry failed:', retryErr);
+            setClientContacts([]);
+          }
+        } else {
+          setClientContacts([]);
+        }
+      }
+    };
+
+    loadContactsForClient();
+  }, [selectedClientId]);
 
   // CRITICAL FIX: Real-time total recalculation useEffect with improved logic
   useEffect(() => {
