@@ -267,7 +267,7 @@ const SupplierModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50">
-      <div className={`${cardClasses} rounded-lg max-w-md w-full max-h-[90vh] overflow-hidden`}>
+      <div className={`${cardClasses} rounded-lg max-w-md w-full max-h-[90vh] overflow-hidden`} style={{ isolation: 'isolate' }}>
         {/* Enhanced Header with Dark Mode */}
         <div className={`p-6 border-b ${isDarkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
           <div className="flex justify-between items-center">
@@ -307,36 +307,44 @@ const SupplierModal = ({
           )}
         </div>
 
-        {/* Enhanced Form Content with Dark Mode */}
-        <div className="overflow-y-auto max-h-[calc(90vh-180px)]">
-          {/* Tabs */}
-          <div className="px-6 pt-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex space-x-4">
+        {/* Tabs - Outside scrollable area, sticky */}
+        <div className={`sticky top-[73px] z-10 border-b border-gray-200 dark:border-gray-700 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <div className="px-6 pt-4">
+            <div className="flex space-x-4 relative">
               <button
                 type="button"
                 onClick={() => setActiveTab('basic')}
-                className={`pb-2 text-sm font-medium ${
+                className={`relative pb-2 text-sm font-medium transition-colors ${
                   activeTab === 'basic'
-                    ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
                 Basic Info
+                {activeTab === 'basic' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 dark:bg-blue-400"></span>
+                )}
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('bank')}
-                className={`pb-2 text-sm font-medium ${
+                className={`relative pb-2 text-sm font-medium transition-colors ${
                   activeTab === 'bank'
-                    ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    ? 'text-blue-600 dark:text-blue-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
                 Bank Accounts
+                {activeTab === 'bank' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 dark:bg-blue-400"></span>
+                )}
               </button>
             </div>
           </div>
+        </div>
 
+        {/* Enhanced Form Content with Dark Mode */}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)', minHeight: '300px' }}>
           <div className="p-6">
             {activeTab === 'basic' && (
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -495,18 +503,20 @@ const SupplierModal = ({
             )}
 
             {activeTab === 'bank' && (
-              <BankAccountsTab
-                bankAccounts={formData.bankAccounts || []}
-                onUpdate={(accounts) =>
-                  setFormData(prev => ({
-                    ...prev,
-                    bankAccounts: accounts
-                  }))
-                }
-                supplierName={formData.name}
-                supplierAddress={formData.address}
-                showNotification={showNotification}
-              />
+              <div className="min-h-[200px]">
+                <BankAccountsTab
+                  bankAccounts={formData.bankAccounts || []}
+                  onUpdate={(accounts) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      bankAccounts: accounts
+                    }))
+                  }
+                  supplierName={formData.name}
+                  supplierAddress={formData.address}
+                  showNotification={showNotification}
+                />
+              </div>
             )}
           </div>
         </div>
