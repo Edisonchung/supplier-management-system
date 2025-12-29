@@ -697,20 +697,19 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     },
     // Additional extracted fields
     deliveryTerms: '',
-    validity: ''
+    validity: '',
+    // Document storage fields
+    documentId: '',
+    documentNumber: '',
+    documentType: 'pi',
+    hasStoredDocuments: false,
+    storageInfo: null,
+    originalFileName: '',
+    fileSize: 0,
+    contentType: '',
+    extractedAt: '',
+    storedAt: ''
   });
-  // Document storage fields
-  documentId: '',
-  documentNumber: '',
-  documentType: 'pi',
-  hasStoredDocuments: false,
-  storageInfo: null,
-  originalFileName: '',
-  fileSize: 0,
-  contentType: '',
-  extractedAt: '',
-  storedAt: ''
-});
 
 
 
