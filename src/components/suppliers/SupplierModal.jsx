@@ -267,9 +267,9 @@ const SupplierModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center p-4 z-50">
-      <div className={`${cardClasses} rounded-lg max-w-md w-full max-h-[90vh] overflow-hidden`} style={{ isolation: 'isolate' }}>
+      <div className={`${cardClasses} rounded-lg max-w-md w-full max-h-[90vh] overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'} relative`} style={{ isolation: 'isolate' }}>
         {/* Enhanced Header with Dark Mode */}
-        <div className={`p-6 border-b ${isDarkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+        <div className={`p-6 border-b ${isDarkMode ? 'border-gray-700/50 bg-gray-800' : 'border-gray-200 bg-white'}`}>
           <div className="flex justify-between items-center">
             <h2 className={`text-xl font-semibold ${textPrimaryClasses}`}>
               {supplier ? 'Edit Supplier' : 'Create New Supplier'}
@@ -307,8 +307,8 @@ const SupplierModal = ({
           )}
         </div>
 
-        {/* Tabs - Outside scrollable area, sticky */}
-        <div className={`sticky top-[73px] z-10 border-b border-gray-200 dark:border-gray-700 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        {/* Tabs - Outside scrollable area */}
+        <div className={`border-b border-gray-200 dark:border-gray-700 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} relative z-10`}>
           <div className="px-6 pt-4">
             <div className="flex space-x-4 relative">
               <button
@@ -344,7 +344,7 @@ const SupplierModal = ({
         </div>
 
         {/* Enhanced Form Content with Dark Mode */}
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)', minHeight: '300px' }}>
+        <div className={`overflow-y-auto ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`} style={{ maxHeight: 'calc(90vh - 200px)', minHeight: '300px' }}>
           <div className="p-6">
             {activeTab === 'basic' && (
               <form onSubmit={handleSubmit} className="space-y-4">
