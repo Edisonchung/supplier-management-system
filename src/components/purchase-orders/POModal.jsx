@@ -8,6 +8,7 @@ import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDispla
 import DocumentViewer from '../common/DocumentViewer';
 import { useClients } from '../../hooks/useClients';
 import { ClientSelector, ClientContactSelector, ClientTermsDisplay } from './POModalClientIntegration';
+import ClientModal from '../clients/ClientModal';
 
 // =============================================================================
 // FIX 1: CORS Protection Wrapper
@@ -532,11 +533,12 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [activeTab, setActiveTab] = useState('details');
 
   // Client selection state
-  const { clients, getContactsForClient } = useClients();
+  const { clients, getContactsForClient, addClient } = useClients();
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [clientContacts, setClientContacts] = useState([]);
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [termsAutoPopulated, setTermsAutoPopulated] = useState(false);
+  const [showClientModal, setShowClientModal] = useState(false);
 
   // Mock products for demo
   const mockProducts = [
@@ -1639,8 +1641,7 @@ const selectProduct = (product) => {
                           setTermsAutoPopulated(true);
                         }}
                         onManualEntry={() => {
-                          setSelectedClientId(null);
-                          setTermsAutoPopulated(false);
+                          setShowClientModal(true);
                         }}
                         error={validationErrors?.find(e => e.field === 'clientName')?.message}
                       />
@@ -2391,6 +2392,69 @@ const selectProduct = (product) => {
           </button>
         </div>
       </div>
+
+      {/* Client Creation Modal */}
+      <ClientModal
+        isOpen={showClientModal}
+        onClose={() => setShowClientModal(false)}
+        onSave={async (clientData, clientId) => {
+          try {
+            if (clientId) {
+              // Editing existing client - not applicable for manual entry
+              console.log('[POModal] Editing client not supported in this context');
+              return;
+            }
+            
+            // Create new client
+            const result = await addClient(clientData);
+            
+            if (result && result.id) {
+              // Wait a moment for the real-time listener to update
+              setTimeout(() => {
+                // Find the newly created client in the clients array
+                const newClient = clients.find(c => c.id === result.id);
+                
+                if (newClient) {
+                  // Select the new client and populate form data
+                  setSelectedClientId(newClient.id);
+                  setFormData(prev => ({
+                    ...prev,
+                    clientId: newClient.id,
+                    clientName: newClient.name,
+                    paymentTerms: newClient.paymentTerms || 'Net 30',
+                    deliveryTerms: newClient.deliveryTerms || 'DDP',
+                    currency: newClient.currency || 'MYR'
+                  }));
+                  setTermsAutoPopulated(true);
+                  setShowClientModal(false);
+                  console.log('[POModal] ✅ New client created and selected:', newClient.name);
+                } else {
+                  // Fallback: use the clientData directly if not found in list yet
+                  setSelectedClientId(result.id);
+                  setFormData(prev => ({
+                    ...prev,
+                    clientId: result.id,
+                    clientName: clientData.name,
+                    paymentTerms: clientData.paymentTerms || 'Net 30',
+                    deliveryTerms: clientData.deliveryTerms || 'DDP',
+                    currency: clientData.currency || 'MYR'
+                  }));
+                  setTermsAutoPopulated(true);
+                  setShowClientModal(false);
+                  console.log('[POModal] ✅ New client created (using clientData):', clientData.name);
+                }
+              }, 500); // Wait 500ms for real-time listener to update
+            }
+          } catch (error) {
+            console.error('[POModal] Error creating client:', error);
+            throw error; // Re-throw so ClientModal can show error notification
+          }
+        }}
+        showNotification={(message, type) => {
+          // Optional: You can add a notification system here if needed
+          console.log(`[POModal] Client notification: ${message} (${type})`);
+        }}
+      />
     </div>
   );
 };
