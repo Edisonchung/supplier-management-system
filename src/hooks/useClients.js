@@ -4,7 +4,8 @@
  * Provides real-time client data management with Firestore integration.
  * Follows the same patterns as useSuppliers and usePurchaseOrders.
  * 
- * FIX: Updated CompanyContext import path to use .jsx extension
+ * NOTE: CompanyContext is not yet implemented in this project.
+ * Multi-tenant filtering will use 'default' company until CompanyContext is added.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -23,8 +24,10 @@ import {
   getDocs
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-// FIX: Added .jsx extension to match actual file
-import { useCompanyContext } from '../context/CompanyContext.jsx';
+
+// NOTE: CompanyContext doesn't exist yet - using defaults
+// When CompanyContext is created, uncomment this:
+// import { useCompanyContext } from '../context/CompanyContext';
 
 /**
  * Custom hook for managing clients
@@ -44,7 +47,11 @@ export const useClients = (options = {}) => {
   
   // Context
   const { user } = useAuth();
-  const { selectedCompany, selectedBranch } = useCompanyContext();
+  
+  // TODO: Replace with useCompanyContext when it's created
+  // const { selectedCompany, selectedBranch } = useCompanyContext();
+  const selectedCompany = 'default';
+  const selectedBranch = 'default';
 
   // ============================================================================
   // Real-time Firestore Listener for Clients
@@ -59,20 +66,11 @@ export const useClients = (options = {}) => {
     setError(null);
 
     try {
-      // Build query with multi-tenant filtering
-      let q = query(
+      // Build query - for now, get all clients ordered by createdAt
+      const q = query(
         collection(db, 'clients'),
         orderBy('createdAt', 'desc')
       );
-
-      // Add company filter if selected
-      if (selectedCompany && selectedCompany !== 'all') {
-        q = query(
-          collection(db, 'clients'),
-          where('companyId', '==', selectedCompany),
-          orderBy('createdAt', 'desc')
-        );
-      }
 
       // Subscribe to real-time updates
       const unsubscribe = onSnapshot(
@@ -106,7 +104,7 @@ export const useClients = (options = {}) => {
       setError(err.message);
       setLoading(false);
     }
-  }, [user, selectedCompany, statusFilter]);
+  }, [user, statusFilter]);
 
   // ============================================================================
   // Load Contacts for Selected Client
