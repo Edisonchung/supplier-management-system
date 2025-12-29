@@ -123,6 +123,7 @@ const ClientModal = ({
 
   // ==========================================================================
   // FIX: Load contacts from Firestore when editing a client
+  // IMPORTANT: Use doc.id, remove any stored 'id' field to prevent duplicates
   // ==========================================================================
   const loadContactsForClient = useCallback(async (clientId) => {
     if (!clientId) {
@@ -141,12 +142,19 @@ const ClientModal = ({
       );
       
       const snapshot = await getDocs(q);
-      const loadedContacts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      
+      // FIXED: Use doc.id as authoritative ID, remove any stored 'id' field
+      const loadedContacts = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        const { id: storedId, ...cleanData } = data;  // Remove stored id if exists
+        return {
+          ...cleanData,
+          id: docSnap.id  // Firestore document ID is the real ID
+        };
+      });
       
       console.log('[ClientModal] Loaded contacts:', loadedContacts.length);
+      console.log('[ClientModal] Contact IDs:', loadedContacts.map(c => c.id));
       setContacts(loadedContacts);
     } catch (err) {
       console.error('[ClientModal] Error loading contacts:', err);
@@ -159,10 +167,15 @@ const ClientModal = ({
             where('clientId', '==', clientId)
           );
           const snapshot = await getDocs(q);
-          const loadedContacts = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
+          // FIXED: Same fix for fallback
+          const loadedContacts = snapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            const { id: storedId, ...cleanData } = data;
+            return {
+              ...cleanData,
+              id: docSnap.id
+            };
+          });
           // Sort client-side
           loadedContacts.sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
           setContacts(loadedContacts);

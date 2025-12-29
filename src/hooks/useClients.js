@@ -121,10 +121,16 @@ export const useClients = (options = {}) => {
         );
         
         const snapshot = await getDocs(q);
-        const contacts = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        
+        // IMPORTANT: Ensure doc.id is used, not any stored 'id' field
+        const contacts = snapshot.docs.map(docSnap => {
+          const data = docSnap.data();
+          const { id: storedId, ...cleanData } = data;  // Remove stored id if exists
+          return {
+            ...cleanData,
+            id: docSnap.id  // Firestore document ID is the real ID
+          };
+        });
         
         setContactsMap(prev => ({
           ...prev,
@@ -171,11 +177,13 @@ export const useClients = (options = {}) => {
 
       const docRef = await addDoc(collection(db, 'clients'), clientWithoutContacts);
       
-      // Add contacts if provided
+      // Add contacts if provided - DO NOT include temp- ids
       if (contacts && contacts.length > 0) {
         for (const contact of contacts) {
+          // Strip the id field before saving
+          const { id, ...contactDataWithoutId } = contact;
           await addDoc(collection(db, 'clientContacts'), {
-            ...cleanFormDataForFirestore(contact),
+            ...cleanFormDataForFirestore(contactDataWithoutId),
             clientId: docRef.id,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
@@ -217,18 +225,29 @@ export const useClients = (options = {}) => {
           where('clientId', '==', clientId)
         );
         const existingSnapshot = await getDocs(existingContactsQuery);
-        const existingContacts = existingSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        
+        // IMPORTANT: Use doc.id as the authoritative ID, ignore any stored 'id' field
+        const existingContacts = existingSnapshot.docs.map(docSnap => {
+          const data = docSnap.data();
+          // Remove any stored 'id' field to prevent confusion
+          const { id: storedId, ...cleanData } = data;
+          return {
+            ...cleanData,
+            id: docSnap.id  // Use Firestore document ID as the real ID
+          };
+        });
 
         console.log('[useClients] Existing contacts in Firestore:', existingContacts.length);
+        console.log('[useClients] Existing contact IDs:', existingContacts.map(c => c.id));
 
         // STEP 2: Identify contacts to delete
+        // A contact is "existing" if its ID matches a Firestore document ID (not temp-)
         const newContactIds = (contacts || [])
           .filter(c => c.id && !c.id.startsWith('temp-'))
           .map(c => c.id);
         
+        console.log('[useClients] Contact IDs from form:', newContactIds);
+
         // Find contacts that exist in Firestore but not in the new array (deleted by user)
         const contactsToDelete = existingContacts.filter(
           existing => !newContactIds.includes(existing.id)
@@ -244,18 +263,22 @@ export const useClients = (options = {}) => {
 
         // STEP 4: Update existing contacts and add new ones
         for (const contact of (contacts || [])) {
+          // Strip id before saving to Firestore
+          const { id, ...contactDataWithoutId } = contact;
+          
           if (contact.id && !contact.id.startsWith('temp-')) {
             // Update existing contact
             console.log('[useClients] Updating contact:', contact.id);
             await updateDoc(doc(db, 'clientContacts', contact.id), {
-              ...cleanFormDataForFirestore(contact),
+              ...cleanFormDataForFirestore(contactDataWithoutId),
+              clientId,  // Ensure clientId is always set
               updatedAt: serverTimestamp()
             });
           } else {
-            // Add new contact (temp- id or no id)
+            // Add new contact - DO NOT include the temp- id
             console.log('[useClients] Adding new contact:', contact.name);
             await addDoc(collection(db, 'clientContacts'), {
-              ...cleanFormDataForFirestore(contact),
+              ...cleanFormDataForFirestore(contactDataWithoutId),
               clientId,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
