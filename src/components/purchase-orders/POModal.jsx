@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, Building2, ChevronDown, ChevronUp, Plus, Trash2, Calculator } from 'lucide-react';
 import { AIExtractionService, ValidationService } from "../../services/ai";
+import ClientMatchingService from '../../services/ClientMatchingService';
 import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDisplay';
 import DocumentViewer from '../common/DocumentViewer';
 import { useClients } from '../../hooks/useClients';
@@ -866,6 +867,23 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       const processedData = processExtractedPOData(extractedPOData, true);
       console.log("✅ Processed data:", processedData);
 
+      // Phase 4: Client Matching Integration
+      let clientMatchedData = processedData;
+      if (clients && clients.length > 0) {
+        console.log('[Phase 4] Attempting client match for:', processedData.clientName);
+        clientMatchedData = ClientMatchingService.processExtractedDataWithClientMatch(
+          processedData, 
+          clients
+        );
+        
+        // If client was matched, update the selectedClientId state
+        if (clientMatchedData.clientMatch?.found) {
+          setSelectedClientId(clientMatchedData.clientMatch.clientId);
+          setTermsAutoPopulated(true);
+          console.log('[Phase 4] ✅ Auto-matched client:', clientMatchedData.clientMatch.clientName);
+        }
+      }
+
       // CRITICAL: Document storage fields integration with enhanced extraction
       let documentStorageFields = {
         documentId: '',
@@ -950,22 +968,34 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
       // CRITICAL: Combine processed data with document storage fields
       const completeFormData = {
   ...formData, // Start with existing form data
-  ...processedData, // Override with processed extraction data
+  ...clientMatchedData, // Override with client-matched extraction data
   ...documentStorageFields, // Add document storage fields
-  // CRITICAL FIX: Ensure extracted fields take precedence
-  clientPoNumber: processedData.clientPoNumber || processedData.poNumber || "",
-  clientName: processedData.clientName || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
-  poNumber: processedData.poNumber || processedData.clientPoNumber || generatePONumber(),
-  supplierName: processedData.supplierName || "Flow Solution Sdn. Bhd.",
-        supplierName: processedData.supplierName || formData.supplierName,
-        totalAmount: processedData.totalAmount || 0,
-        tax: processedData.tax !== undefined ? processedData.tax : formData.tax
+  // CRITICAL FIX: Ensure extracted fields take precedence and honor client match
+  clientPoNumber: clientMatchedData.clientPoNumber || clientMatchedData.poNumber || "",
+  clientName: clientMatchedData.clientName || "Pelabuhan Tanjung Pelepas Sdn. Bhd.",
+  poNumber: clientMatchedData.poNumber || clientMatchedData.clientPoNumber || generatePONumber(),
+  supplierName: clientMatchedData.supplierName || formData.supplierName || "Flow Solution Sdn. Bhd.",
+        totalAmount: clientMatchedData.totalAmount || 0,
+        tax: clientMatchedData.tax !== undefined ? clientMatchedData.tax : formData.tax,
+        paymentTerms: clientMatchedData.paymentTerms || 'Net 30',
+        deliveryTerms: clientMatchedData.deliveryTerms || 'DDP',
+        currency: clientMatchedData.currency || 'MYR'
       };
 
-      // CRITICAL DEBUG: Log the final field values being set
+// Phase 4: Client match result logging
+if (clientMatchedData.clientMatch) {
+  console.log('[Phase 4] Client match result:', {
+    found: clientMatchedData.clientMatch.found,
+    confidence: clientMatchedData.clientMatch.confidence,
+    matchType: clientMatchedData.clientMatch.matchType,
+    clientName: clientMatchedData.clientMatch.clientName
+  });
+}
+
+// CRITICAL DEBUG: Log the final field values being set
 console.log('[CRITICAL DEBUG] Final form data field assignment:', {
-  extractedClientName: processedData.clientName,
-  extractedClientPoNumber: processedData.clientPoNumber,
+  extractedClientName: clientMatchedData.clientName,
+  extractedClientPoNumber: clientMatchedData.clientPoNumber,
   finalClientName: completeFormData.clientName,
   finalClientPoNumber: completeFormData.clientPoNumber,
   hasValidClientPoNumber: !!completeFormData.clientPoNumber && completeFormData.clientPoNumber !== "",
