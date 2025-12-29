@@ -2,6 +2,7 @@
 // Enhanced SupplierModal with Dark Mode Support - All existing features preserved
 import React, { useState, useEffect } from 'react';
 import { X, Building2, Mail, Phone, MapPin, User, Loader2, AlertTriangle, Info } from 'lucide-react';
+import BankAccountsTab from './BankAccountsTab';
 
 // Import the enhanced dark mode system
 import { useDarkMode } from '../../hooks/useDarkMode';
@@ -35,12 +36,14 @@ const SupplierModal = ({
     phone: '',
     address: '',
     contactPerson: '',
-    status: 'active'
+    status: 'active',
+    bankAccounts: []
   });
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAIDataInfo, setShowAIDataInfo] = useState(false);
+  const [activeTab, setActiveTab] = useState('basic');
 
   // All useEffect logic preserved exactly as before
   useEffect(() => {
@@ -52,7 +55,8 @@ const SupplierModal = ({
         phone: supplier.phone || '',
         address: supplier.address || '',
         contactPerson: supplier.contactPerson || '',
-        status: supplier.status || 'active'
+        status: supplier.status || 'active',
+        bankAccounts: supplier.bankAccounts || []
       });
       setShowAIDataInfo(false);
     } else if (prePopulatedData) {
@@ -63,7 +67,8 @@ const SupplierModal = ({
         phone: prePopulatedData.phone || prePopulatedData.mobile || '',
         address: prePopulatedData.address || '',
         contactPerson: prePopulatedData.contact || prePopulatedData.contactPerson || '',
-        status: 'active'
+        status: 'active',
+        bankAccounts: prePopulatedData.bankAccounts || []
       });
       setShowAIDataInfo(true);
     } else {
@@ -74,7 +79,8 @@ const SupplierModal = ({
         phone: '',
         address: '',
         contactPerson: '',
-        status: 'active'
+        status: 'active',
+        bankAccounts: []
       });
       setShowAIDataInfo(false);
     }
@@ -139,7 +145,8 @@ const SupplierModal = ({
         phone: formData.phone.trim(),
         contactPerson: formData.contactPerson.trim(),
         address: formData.address.trim(),
-        status: formData.status
+        status: formData.status,
+        bankAccounts: formData.bankAccounts || []
       };
 
       // Add metadata if this was created from AI extraction
@@ -159,7 +166,8 @@ const SupplierModal = ({
           phone: '',
           address: '',
           contactPerson: '',
-          status: 'active'
+          status: 'active',
+          bankAccounts: []
         });
         setShowAIDataInfo(false);
       }
@@ -189,7 +197,8 @@ const SupplierModal = ({
       phone: '',
       address: '',
       contactPerson: '',
-      status: 'active'
+      status: 'active',
+      bankAccounts: []
     });
     setErrors({});
     setShowAIDataInfo(false);
@@ -300,161 +309,206 @@ const SupplierModal = ({
 
         {/* Enhanced Form Content with Dark Mode */}
         <div className="overflow-y-auto max-h-[calc(90vh-180px)]">
-          <form onSubmit={handleSubmit} className="p-6">
-            <div className="space-y-4">
-              {/* Enhanced Supplier Name Field */}
-              <div>
-                <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
-                  Supplier Name <span className="text-red-500 dark:text-red-400">*</span>
-                </label>
-                <div className="relative">
-                  <Building2 className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleChange('name', e.target.value)}
-                    className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg ${getInputErrorClasses(errors.name)}`}
-                    placeholder="Enter supplier name"
-                    disabled={isSubmitting}
-                  />
-                </div>
-                {errors.name && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
-                    <p className="text-red-500 dark:text-red-400 text-xs">{errors.name}</p>
+          {/* Tabs */}
+          <div className="px-6 pt-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex space-x-4">
+              <button
+                type="button"
+                onClick={() => setActiveTab('basic')}
+                className={`pb-2 text-sm font-medium ${
+                  activeTab === 'basic'
+                    ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                Basic Info
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('bank')}
+                className={`pb-2 text-sm font-medium ${
+                  activeTab === 'bank'
+                    ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                Bank Accounts
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6">
+            {activeTab === 'basic' && (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Enhanced Supplier Name Field */}
+                <div>
+                  <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
+                    Supplier Name <span className="text-red-500 dark:text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Building2 className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => handleChange('name', e.target.value)}
+                      className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg ${getInputErrorClasses(errors.name)}`}
+                      placeholder="Enter supplier name"
+                      disabled={isSubmitting}
+                    />
                   </div>
-                )}
-              </div>
-
-              {/* Enhanced Email Field */}
-              <div>
-                <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
-                  Email <span className="text-red-500 dark:text-red-400">*</span>
-                </label>
-                <div className="relative">
-                  <Mail className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                    className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg ${getInputErrorClasses(errors.email)}`}
-                    placeholder="supplier@example.com"
-                    disabled={isSubmitting}
-                  />
+                  {errors.name && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
+                      <p className="text-red-500 dark:text-red-400 text-xs">{errors.name}</p>
+                    </div>
+                  )}
                 </div>
-                {errors.email && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
-                    <p className="text-red-500 dark:text-red-400 text-xs">{errors.email}</p>
+
+                {/* Enhanced Email Field */}
+                <div>
+                  <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
+                    Email <span className="text-red-500 dark:text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => handleChange('email', e.target.value)}
+                      className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg ${getInputErrorClasses(errors.email)}`}
+                      placeholder="supplier@example.com"
+                      disabled={isSubmitting}
+                    />
                   </div>
-                )}
-              </div>
-
-              {/* Enhanced Phone Field */}
-              <div>
-                <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
-                  Phone
-                </label>
-                <div className="relative">
-                  <Phone className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
-                  <input
-                    type="text"
-                    value={formData.phone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
-                    onBlur={handlePhoneBlur}
-                    className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg ${getInputErrorClasses(errors.phone)}`}
-                    placeholder="+1 (555) 123-4567"
-                    disabled={isSubmitting}
-                  />
+                  {errors.email && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
+                      <p className="text-red-500 dark:text-red-400 text-xs">{errors.email}</p>
+                    </div>
+                  )}
                 </div>
-                {errors.phone && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
-                    <p className="text-red-500 dark:text-red-400 text-xs">{errors.phone}</p>
+
+                {/* Enhanced Phone Field */}
+                <div>
+                  <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
+                    Phone
+                  </label>
+                  <div className="relative">
+                    <Phone className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
+                    <input
+                      type="text"
+                      value={formData.phone}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      onBlur={handlePhoneBlur}
+                      className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg ${getInputErrorClasses(errors.phone)}`}
+                      placeholder="+1 (555) 123-4567"
+                      disabled={isSubmitting}
+                    />
                   </div>
-                )}
-              </div>
-
-              {/* Enhanced Contact Person Field */}
-              <div>
-                <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
-                  Contact Person
-                </label>
-                <div className="relative">
-                  <User className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
-                  <input
-                    type="text"
-                    value={formData.contactPerson}
-                    onChange={(e) => handleChange('contactPerson', e.target.value)}
-                    className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg`}
-                    placeholder="John Doe"
-                    disabled={isSubmitting}
-                  />
+                  {errors.phone && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <AlertTriangle size={14} className="text-red-500 dark:text-red-400" />
+                      <p className="text-red-500 dark:text-red-400 text-xs">{errors.phone}</p>
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              {/* Enhanced Address Field */}
-              <div>
-                <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
-                  Address
-                </label>
-                <div className="relative">
-                  <MapPin className={`absolute left-3 top-3 ${getIconColor()}`} size={18} />
-                  <textarea
-                    value={formData.address}
-                    onChange={(e) => handleChange('address', e.target.value)}
-                    rows="3"
-                    className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg resize-none`}
-                    placeholder="123 Business St, City, State 12345"
-                    disabled={isSubmitting}
-                  />
+                {/* Enhanced Contact Person Field */}
+                <div>
+                  <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
+                    Contact Person
+                  </label>
+                  <div className="relative">
+                    <User className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${getIconColor()}`} size={18} />
+                    <input
+                      type="text"
+                      value={formData.contactPerson}
+                      onChange={(e) => handleChange('contactPerson', e.target.value)}
+                      className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg`}
+                      placeholder="John Doe"
+                      disabled={isSubmitting}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Enhanced Status Field */}
-              <div>
-                <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
-                  Status
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => handleChange('status', e.target.value)}
-                  className={`${inputClasses} w-full px-3 py-2 rounded-lg`}
-                  disabled={isSubmitting}
-                >
-                  <option value="active">Active</option>
-                  <option value="pending">Pending</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
+                {/* Enhanced Address Field */}
+                <div>
+                  <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
+                    Address
+                  </label>
+                  <div className="relative">
+                    <MapPin className={`absolute left-3 top-3 ${getIconColor()}`} size={18} />
+                    <textarea
+                      value={formData.address}
+                      onChange={(e) => handleChange('address', e.target.value)}
+                      rows="3"
+                      className={`${inputClasses} w-full pl-10 pr-3 py-2 rounded-lg resize-none`}
+                      placeholder="123 Business St, City, State 12345"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
 
-              {/* Enhanced Additional Info for AI-extracted data */}
-              {prePopulatedData && showAIDataInfo && (
-                <div className={`pt-4 border-t ${isDarkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
-                  <div className={`text-sm ${textSecondaryClasses}`}>
-                    <p className={`font-medium mb-2 ${textPrimaryClasses}`}>Original Extracted Data:</p>
-                    <div className={`space-y-1 text-xs p-3 rounded ${isDarkMode ? 'bg-gray-800/30' : 'bg-gray-50'}`}>
-                      {prePopulatedData.name && (
-                        <p><span className="font-medium">Name:</span> {prePopulatedData.name}</p>
-                      )}
-                      {prePopulatedData.email && (
-                        <p><span className="font-medium">Email:</span> {prePopulatedData.email}</p>
-                      )}
-                      {prePopulatedData.phone && (
-                        <p><span className="font-medium">Phone:</span> {prePopulatedData.phone}</p>
-                      )}
-                      {prePopulatedData.address && (
-                        <p><span className="font-medium">Address:</span> {prePopulatedData.address}</p>
-                      )}
-                      {prePopulatedData.contact && (
-                        <p><span className="font-medium">Contact:</span> {prePopulatedData.contact}</p>
-                      )}
+                {/* Enhanced Status Field */}
+                <div>
+                  <label className={`block text-sm font-medium ${textPrimaryClasses} mb-1`}>
+                    Status
+                  </label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => handleChange('status', e.target.value)}
+                    className={`${inputClasses} w-full px-3 py-2 rounded-lg`}
+                    disabled={isSubmitting}
+                  >
+                    <option value="active">Active</option>
+                    <option value="pending">Pending</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+
+                {/* Enhanced Additional Info for AI-extracted data */}
+                {prePopulatedData && showAIDataInfo && (
+                  <div className={`pt-4 border-t ${isDarkMode ? 'border-gray-700/50' : 'border-gray-200'}`}>
+                    <div className={`text-sm ${textSecondaryClasses}`}>
+                      <p className={`font-medium mb-2 ${textPrimaryClasses}`}>Original Extracted Data:</p>
+                      <div className={`space-y-1 text-xs p-3 rounded ${isDarkMode ? 'bg-gray-800/30' : 'bg-gray-50'}`}>
+                        {prePopulatedData.name && (
+                          <p><span className="font-medium">Name:</span> {prePopulatedData.name}</p>
+                        )}
+                        {prePopulatedData.email && (
+                          <p><span className="font-medium">Email:</span> {prePopulatedData.email}</p>
+                        )}
+                        {prePopulatedData.phone && (
+                          <p><span className="font-medium">Phone:</span> {prePopulatedData.phone}</p>
+                        )}
+                        {prePopulatedData.address && (
+                          <p><span className="font-medium">Address:</span> {prePopulatedData.address}</p>
+                        )}
+                        {prePopulatedData.contact && (
+                          <p><span className="font-medium">Contact:</span> {prePopulatedData.contact}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </form>
+                )}
+              </form>
+            )}
+
+            {activeTab === 'bank' && (
+              <BankAccountsTab
+                bankAccounts={formData.bankAccounts || []}
+                onUpdate={(accounts) =>
+                  setFormData(prev => ({
+                    ...prev,
+                    bankAccounts: accounts
+                  }))
+                }
+                supplierName={formData.name}
+                supplierAddress={formData.address}
+                showNotification={showNotification}
+              />
+            )}
+          </div>
         </div>
 
         {/* Enhanced Footer with Dark Mode */}

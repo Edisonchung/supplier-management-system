@@ -555,15 +555,85 @@ static mapChineseProduct(item, index) {
   static extractBankingDetails(data) {
     const text = JSON.stringify(data);
     
+    // Prefer structured fields via extractValue, then fall back to regex-based helpers
+    const bankName = this.extractValue(data, [
+      'bank_name',
+      'beneficiary_bank',
+      'bank name',
+      'beneficiary bank'
+    ]) || this.extractBankName(text);
+
+    const accountNumber = this.extractValue(data, [
+      'account_number',
+      'beneficiary_account',
+      'account no',
+      'acc no',
+      'account number'
+    ]) || this.extractAccountNumber(text);
+
+    const accountName = this.extractValue(data, [
+      'account_name',
+      'beneficiary_name',
+      'holder_name',
+      'beneficiary name'
+    ]) || this.extractAccountName(text);
+
+    const swiftCode = this.extractValue(data, [
+      'swift_code',
+      'swift',
+      'bic',
+      'swift code',
+      'swift/bic'
+    ]) || this.extractSwiftCode(text);
+
+    const bankAddress = this.extractValue(data, [
+      'bank_address',
+      'bank address'
+    ]) || this.extractBankAddress(text);
+
+    const bankCode = this.extractValue(data, [
+      'bank_code',
+      'bank code'
+    ]) || this.extractBankCode(text);
+
+    const branchCode = this.extractValue(data, [
+      'branch_code',
+      'branch_number',
+      'branch code'
+    ]) || this.extractBranchCode(text);
+
+    const iban = this.extractValue(data, [
+      'iban',
+      'iban number'
+    ]) || this.extractIban(text);
+
+    const routingNumber = this.extractValue(data, [
+      'routing_number',
+      'routing number'
+    ]) || this.extractRoutingNumber(text);
+
+    const beneficiaryAddress = this.extractValue(data, [
+      'beneficiary_address',
+      'beneficiary address'
+    ]) || this.extractBeneficiaryAddress(text);
+
+    // Country: explicit field if available, otherwise infer from text/address
+    const country =
+      this.extractValue(data, ['country', 'region']) ||
+      this.extractCountry(bankAddress || text);
+
     return {
-      bankName: this.extractBankName(text),
-      accountNumber: this.extractAccountNumber(text),
-      accountName: this.extractAccountName(text),
-      swiftCode: this.extractSwiftCode(text),
-      iban: '',
-      bankAddress: this.extractBankAddress(text),
-      bankCode: this.extractBankCode(text),
-      branchCode: this.extractBranchCode(text)
+      bankName,
+      accountNumber,
+      accountName,
+      swiftCode,
+      bankAddress,
+      bankCode,
+      branchCode,
+      iban,
+      routingNumber,
+      beneficiaryAddress,
+      country
     };
   }
   
@@ -761,6 +831,9 @@ static mapChineseProduct(item, index) {
   static extractAccountNumber(text) {
     const patterns = [
       /Account\s*Number[\:\s]*([0-9\s\-]+)/i,
+      /Account\s*No\.?[\:\s]*([0-9\s\-]+)/i,
+      /Acc(?:ount)?\s*No\.?[\:\s]*([0-9\s\-]+)/i,
+      /A\/C\s*No\.?[\:\s]*([0-9\s\-]+)/i,
       /USD\s*Account[\:\s]*([0-9\s\-]+)/i,
       /Beneficiary\s*account\s*number[\:\s]*([0-9\s\-]+)/i,
       /([0-9]{10,})/g
@@ -847,6 +920,53 @@ static mapChineseProduct(item, index) {
     const patterns = [
       /Branch\s*Code[\:\s]*([0-9]+)/i,
       /BRANCH\s*CODE[\:\s]*([0-9]+)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+    
+    return '';
+  }
+
+  static extractIban(text) {
+    const patterns = [
+      /IBAN[\s\:]*([A-Z0-9]{10,34})/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim().toUpperCase();
+      }
+    }
+    
+    return '';
+  }
+
+  static extractRoutingNumber(text) {
+    const patterns = [
+      /Routing\s*Number[\:\s]*([0-9A-Z\-]+)/i,
+      /ABA\s*Routing[\:\s]*([0-9A-Z\-]+)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+    
+    return '';
+  }
+
+  static extractBeneficiaryAddress(text) {
+    const patterns = [
+      /Beneficiary\s*Address[\:\s]*([^,\n\r]*)/i,
+      /Beneficiary\'s\s*Address[\:\s]*([^,\n\r]*)/i
     ];
     
     for (const pattern of patterns) {

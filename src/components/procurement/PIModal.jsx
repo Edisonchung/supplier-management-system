@@ -12,6 +12,8 @@ import FSPortalProjectInput from '../common/FSPortalProjectInput';
 import { PIPOMatchingService } from '../../services/PIPOMatchingService';
 import TradeDocumentUpload from '../common/TradeDocumentUpload';
 import TradeDocumentViewer from '../common/TradeDocumentViewer';
+import BankDetailsSection from './BankDetailsSection';
+import { useBankAccounts } from '../../hooks/useBankAccounts';
 
 
 
@@ -650,7 +652,7 @@ const normalizeDate = (dateValue) => {
 
 
 
-const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification }) => {
+const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSupplier, showNotification, refreshSuppliers }) => {
  
     const [formData, setFormData] = useState({
     piNumber: '',
@@ -696,9 +698,7 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
     // Additional extracted fields
     deliveryTerms: '',
     validity: ''
-
-    // ✅ ADD THESE NEW FIELDS HERE:
-  ,
+  });
   // Document storage fields
   documentId: '',
   documentNumber: '',
@@ -714,6 +714,16 @@ const PIModal = ({ proformaInvoice, suppliers, products, onSave, onClose, addSup
 
 
 
+
+  // Bank accounts hook for selected supplier
+  const {
+    bankAccounts: supplierBankAccounts,
+    saveBankDetailsFromPI,
+    getBestAccountForCurrency
+  } = useBankAccounts(formData.supplierId || proformaInvoice?.supplierId, {
+    suppliers,
+    showNotification
+  });
 
   // ✅ ADD THIS FUNCTION HERE - AFTER STATE DECLARATIONS
   const handleFixAllPrices = () => {
@@ -2749,65 +2759,27 @@ const saveProductEdit = (index, field) => {
               
               {/* Banking details section (if international supplier) */}
               {formData.currency !== 'MYR' && formData.bankDetails && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                  <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                    <CreditCard size={16} />
-                    Banking Details (International Payment)
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <label className="block text-gray-600 mb-1">Bank Name</label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails?.bankName || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          bankDetails: { ...prev.bankDetails, bankName: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Bank name"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 mb-1">Account Number</label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails?.accountNumber || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          bankDetails: { ...prev.bankDetails, accountNumber: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Account number"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 mb-1">SWIFT Code</label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails?.swiftCode || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          bankDetails: { ...prev.bankDetails, swiftCode: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="SWIFT code"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-gray-600 mb-1">IBAN</label>
-                      <input
-                        type="text"
-                        value={formData.bankDetails?.iban || ''}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          bankDetails: { ...prev.bankDetails, iban: e.target.value }
-                        }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="IBAN (if applicable)"
-                      />
-                    </div>
-                  </div>
+                <div className="mb-6">
+                  <BankDetailsSection
+                    bankDetails={formData.bankDetails || {}}
+                    supplierBankAccounts={supplierBankAccounts}
+                    selectedSupplierId={formData.supplierId || proformaInvoice?.supplierId}
+                    selectedSupplierName={formData.supplierName || proformaInvoice?.supplierName}
+                    currency={formData.currency || 'USD'}
+                    onChange={(bankDetails) =>
+                      setFormData(prev => ({
+                        ...prev,
+                        bankDetails
+                      }))
+                    }
+                    onSaveToSupplier={async (bankAccount) => {
+                      await saveBankDetailsFromPI(bankAccount, formData.currency);
+                      if (typeof refreshSuppliers === 'function') {
+                        refreshSuppliers();
+                      }
+                    }}
+                    showNotification={showNotification}
+                  />
                 </div>
               )}
 

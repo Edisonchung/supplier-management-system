@@ -26,6 +26,7 @@ import BatchPaymentProcessor from './BatchPaymentProcessor';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import { ProductEnrichmentService } from '../../services/ProductEnrichmentService';
+import { suppliersService } from '../../services/firestore/suppliers.service';
 
 
 
@@ -49,6 +50,9 @@ const ProformaInvoices = ({ showNotification }) => {
     updateSupplier, 
     deleteSupplier 
   } = useSuppliers();
+  const refreshSuppliers = async () => {
+    // Placeholder refresh function; useSuppliers hook may already keep data fresh
+  };
   
   // ✅ Get Products hook functions for syncing
   const { 
@@ -865,6 +869,52 @@ const syncPIProductsToDatabase = async (piData, savedPI) => {
       } catch (error) {
         console.error('Error matching PO:', error);
       }
+    }
+
+    // Detect and optionally save new bank details to supplier
+    try {
+      const hasSupplierId = !!piData.supplierId;
+      const extractedBank = extractedData.bankDetails;
+
+      if (hasSupplierId && extractedBank) {
+        const supplier = suppliers.find(s => s.id === piData.supplierId);
+        const existingAccounts = supplier?.bankAccounts || [];
+
+        const alreadyExists = existingAccounts.some(acc =>
+          acc.accountNumber === extractedBank.accountNumber &&
+          acc.swiftCode === extractedBank.swiftCode
+        );
+
+        if (!alreadyExists) {
+          const shouldSave = window.confirm(
+            `New bank account detected for ${supplier?.name || extractedData.supplier?.name || 'this supplier'}.\n\n` +
+            `Bank: ${extractedData.bankDetails?.bankName || 'Unknown'}\n` +
+            `Account: ${extractedData.bankDetails?.accountNumber || 'N/A'}\n` +
+            `SWIFT: ${extractedData.bankDetails?.swiftCode || 'N/A'}\n\n` +
+            `Save this bank account to supplier for future use?`
+          );
+
+          if (shouldSave) {
+            try {
+              await suppliersService.addBankAccount(piData.supplierId, {
+                ...extractedData.bankDetails,
+                currency: piData.currency || 'USD',
+                addedFrom: 'ai-extraction',
+                isDefault: (supplier?.bankAccounts?.length || 0) === 0
+              });
+              showNotification?.('Bank account saved to supplier', 'success');
+              if (typeof refreshSuppliers === 'function') {
+                await refreshSuppliers();
+              }
+            } catch (err) {
+              console.error('Failed to save bank account:', err);
+              showNotification?.('Failed to save bank account', 'error');
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error processing extracted bank details for supplier:', error);
     }
 
     return piData;
