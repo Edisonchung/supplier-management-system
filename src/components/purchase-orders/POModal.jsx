@@ -4,6 +4,8 @@ import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, User
 import { AIExtractionService, ValidationService } from "../../services/ai";
 import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDisplay';
 import DocumentViewer from '../common/DocumentViewer';
+import { useClients } from '../../hooks/useClients';
+import { ClientSelector, ClientContactSelector, ClientTermsDisplay } from './POModalClientIntegration';
 
 // =============================================================================
 // FIX 1: CORS Protection Wrapper
@@ -484,6 +486,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     poNumber: '',
     clientPoNumber: '',
     projectCode: '',
+    clientId: '',
     clientName: '',
     clientContact: '',
     clientEmail: '',
@@ -492,6 +495,7 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
     requiredDate: '',
     paymentTerms: 'Net 30',
     deliveryTerms: 'FOB',
+    currency: 'MYR',
     status: 'draft',
     notes: '',
     // Financial fields
@@ -524,6 +528,13 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   
   // Add activeTab state for Documents tab
   const [activeTab, setActiveTab] = useState('details');
+
+  // Client selection state
+  const { clients, getContactsForClient } = useClients();
+  const [selectedClientId, setSelectedClientId] = useState(null);
+  const [clientContacts, setClientContacts] = useState([]);
+  const [selectedContactId, setSelectedContactId] = useState(null);
+  const [termsAutoPopulated, setTermsAutoPopulated] = useState(false);
 
   // Mock products for demo
   const mockProducts = [
@@ -727,6 +738,11 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
             editingPO.requiredDate.toISOString().split('T')[0]) : 
           ''
       });
+
+      // Set selectedClientId if editingPO has clientId
+      if (editingPO?.clientId) {
+        setSelectedClientId(editingPO.clientId);
+      }
       
       console.log('[SUCCESS] POModal: Form data set with enhanced document field preservation');
       
@@ -742,8 +758,26 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
         originalFileName: '',
         items: []
       }));
+      // Reset client selection state
+      setSelectedClientId(null);
+      setClientContacts([]);
+      setSelectedContactId(null);
+      setTermsAutoPopulated(false);
     }
   }, [editingPO, isOpen]);
+
+  // Load contacts when client changes
+  useEffect(() => {
+    if (selectedClientId) {
+      const contacts = getContactsForClient(selectedClientId);
+      setClientContacts(contacts);
+      const primary = contacts.find(c => c.isPrimary);
+      if (primary) setSelectedContactId(primary.id);
+    } else {
+      setClientContacts([]);
+      setSelectedContactId(null);
+    }
+  }, [selectedClientId, getContactsForClient]);
 
   // CRITICAL FIX: Real-time total recalculation useEffect with improved logic
   useEffect(() => {
@@ -1522,36 +1556,42 @@ const selectProduct = (product) => {
                       </div>
 
                       {/* Client Name - Required */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Client Name *
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.clientName}
-                          onChange={(e) => handleInputChange('clientName', e.target.value)}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                            validationErrors && validationErrors.find(e => e.field === 'clientName') 
-                              ? 'border-red-500' 
-                              : 'border-gray-300'
-                          }`}
-                          placeholder="Enter client company name"
-                          required
-                        />
-                      </div>
+                      <ClientSelector
+                        clients={clients}
+                        selectedClientId={selectedClientId}
+                        onClientSelect={(clientId, clientData) => {
+                          setSelectedClientId(clientId);
+                          setFormData(prev => ({
+                            ...prev,
+                            clientId: clientId,
+                            clientName: clientData.clientName,
+                            paymentTerms: clientData.paymentTerms,
+                            deliveryTerms: clientData.deliveryTerms,
+                            currency: clientData.currency
+                          }));
+                          setTermsAutoPopulated(true);
+                        }}
+                        onManualEntry={() => {
+                          setSelectedClientId(null);
+                          setTermsAutoPopulated(false);
+                        }}
+                        error={validationErrors?.find(e => e.field === 'clientName')?.message}
+                      />
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Contact Person
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.clientContact}
-                          onChange={(e) => handleInputChange('clientContact', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          placeholder="Primary contact name"
-                        />
-                      </div>
+                      <ClientContactSelector
+                        contacts={clientContacts}
+                        selectedContactId={selectedContactId}
+                        onContactSelect={(contactId, contactData) => {
+                          setSelectedContactId(contactId);
+                          setFormData(prev => ({
+                            ...prev,
+                            clientContact: contactData.clientContact,
+                            clientEmail: contactData.clientContactEmail,
+                            clientPhone: contactData.clientContactPhone
+                          }));
+                        }}
+                        clientName={formData.clientName}
+                      />
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1579,6 +1619,14 @@ const selectProduct = (product) => {
                         />
                       </div>
 
+                      <ClientTermsDisplay
+                        paymentTerms={formData.paymentTerms || 'Net 30'}
+                        deliveryTerms={formData.deliveryTerms || 'DDP'}
+                        currency={formData.currency || 'MYR'}
+                        onTermsChange={(field, value) => handleInputChange(field, value)}
+                        isAutoPopulated={termsAutoPopulated}
+                      />
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Order Date *
@@ -1604,38 +1652,6 @@ const selectProduct = (product) => {
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Payment Terms
-                        </label>
-                        <select
-                          value={formData.paymentTerms}
-                          onChange={(e) => handleInputChange('paymentTerms', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="Net 30">Net 30</option>
-                          <option value="Net 60">Net 60</option>
-                          <option value="Net 90">Net 90</option>
-                          <option value="Due on Receipt">Due on Receipt</option>
-                          <option value="2/10 Net 30">2/10 Net 30</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Delivery Terms
-                        </label>
-                        <select
-                          value={formData.deliveryTerms}
-                          onChange={(e) => handleInputChange('deliveryTerms', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="FOB">FOB</option>
-                          <option value="CIF">CIF</option>
-                          <option value="DDP">DDP</option>
-                          <option value="EXW">EXW</option>
-                        </select>
-                      </div>
                     </div>
                     
                     {/* SECONDARY: Internal System Reference - De-emphasized */}
