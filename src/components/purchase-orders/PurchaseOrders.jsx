@@ -43,6 +43,7 @@ import {
   RealtimeStatusIndicator,
   UserPresence 
 } from '../common/LoadingFeedbackSystem';
+import ClientMetricsService from '../../services/ClientMetricsService';
 
 const extractPartNumberFromDescription = (description) => {
   if (!description) return '';
@@ -815,6 +816,14 @@ const PurchaseOrders = () => {
           if (typeof deletePurchaseOrder === 'function') {
             const result = await deletePurchaseOrder(poId);
             if (result && result.success) {
+              // When deleting a PO, decrement client metrics
+              if (po?.clientId) {
+                await ClientMetricsService.decrementClientMetrics(
+                  po.clientId,
+                  parseFloat(po.totalAmount) || 0
+                );
+              }
+              
               const successMsg = `PO ${po?.poNumber || po?.orderNumber} has been deleted.`;
               toast.success(successMsg);
             } else {

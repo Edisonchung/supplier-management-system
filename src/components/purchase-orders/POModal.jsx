@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, Building2, ChevronDown, ChevronUp, Plus, Trash2, Calculator } from 'lucide-react';
 import { AIExtractionService, ValidationService } from "../../services/ai";
 import ClientMatchingService from '../../services/ClientMatchingService';
+import ClientMetricsService from '../../services/ClientMetricsService';
 import SupplierMatchingDisplay from '../supplier-matching/SupplierMatchingDisplay';
 import DocumentViewer from '../common/DocumentViewer';
 import { useClients } from '../../hooks/useClients';
@@ -1343,6 +1344,42 @@ const selectProduct = (product) => {
         }),
         { success: true }
       );
+      
+      // Phase 5: Update client metrics
+      const clientId = formData.clientId || selectedClientId || dataToSave.clientId;
+      if (clientId) {
+        const isNewPO = !editingPO;
+        const poValue = parseFloat(dataToSave.totalAmount) || 0;
+        
+        if (isNewPO) {
+          // New PO - increment metrics
+          await ClientMetricsService.incrementClientMetrics(
+            clientId,
+            poValue,
+            { poNumber: dataToSave.poNumber }
+          );
+          console.log('[Phase 5] ✅ Client metrics incremented for new PO');
+        } else if (editingPO.clientId !== clientId) {
+          // Client changed - handle transfer
+          const oldValue = parseFloat(editingPO.totalAmount) || 0;
+          await ClientMetricsService.handleClientChange(
+            editingPO.clientId,
+            clientId,
+            poValue,
+            { poNumber: dataToSave.poNumber }
+          );
+          console.log('[Phase 5] ✅ Client metrics transferred to new client');
+        } else {
+          // Same client, value may have changed
+          const oldValue = parseFloat(editingPO.totalAmount) || 0;
+          await ClientMetricsService.updateClientMetricsOnEdit(
+            clientId,
+            poValue,
+            oldValue
+          );
+          console.log('[Phase 5] ✅ Client metrics updated for edited PO');
+        }
+      }
       
       onClose();
     } catch (error) {
