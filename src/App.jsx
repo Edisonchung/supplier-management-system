@@ -30,6 +30,7 @@ import {
   LazyDashboard, 
   LazySuppliers, 
   LazyProducts, 
+  LazyClients,
   LazyProformaInvoices,
   LazyPurchaseOrders,
   LazyClientInvoices,
@@ -861,6 +862,17 @@ function AppContent() {
                   <ProtectedRoute permission="canViewProducts">
                     <LazyWrapper componentName="Products (Real Data)">
                       <LazyProducts showNotification={showNotification} realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              <Route 
+                path="/clients" 
+                element={
+                  <ProtectedRoute permission="canViewSuppliers">
+                    <LazyWrapper componentName="Clients (Real Data)">
+                      <LazyClients showNotification={showNotification} />
                     </LazyWrapper>
                   </ProtectedRoute>
                 } 

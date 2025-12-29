@@ -27,6 +27,7 @@ export const LazyWrapper = ({ children, componentName = "Component" }) => (
 export const LazyDashboard = lazy(() => import('./dashboard/Dashboard'));
 export const LazySuppliers = lazy(() => import('./suppliers/Suppliers'));
 export const LazyProducts = lazy(() => import('./products/Products'));
+export const LazyClients = lazy(() => import('./clients/Clients'));
 
 // Procurement Components
 export const LazyProformaInvoices = lazy(() => import('./procurement/ProformaInvoices'));
@@ -205,6 +206,7 @@ export const componentRegistry = {
   'Dashboard': LazyDashboard,
   'Suppliers': LazySuppliers,
   'Products': LazyProducts,
+  'Clients': LazyClients,
   
   // Procurement
   'Proforma Invoices': LazyProformaInvoices,

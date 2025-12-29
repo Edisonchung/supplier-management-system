@@ -442,6 +442,16 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
             `${realDataStatus.productCount} Real` : null,
           badgeColor: 'bg-blue-500',
           realDataIndicator: true
+        },
+        {
+          name: 'Clients',
+          href: '/clients',
+          icon: Building2,
+          description: realDataStatus.enabled ? 
+            'Manage client relationships with real data' : 
+            'Manage client relationships',
+          permission: 'canViewSuppliers',
+          realDataIndicator: true
         }
       ]
     },
