@@ -32,9 +32,7 @@ import useJobCodes, {
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
 import jobCodeService from '../../services/JobCodeService';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../config/firebase';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import CrossReferenceLink from '../common/CrossReferenceLink';
 import JobCodeModal from './JobCodeModal';
