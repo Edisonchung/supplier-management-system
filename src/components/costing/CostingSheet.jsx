@@ -72,11 +72,11 @@ const CostingSheet = ({ currentUser, approvers = [] }) => {
   
   // Calculate financials
   const financials = useMemo(() => {
-    if (!jobCodeData) return null;
+    if (!jobCodeData || !summary) return null;
     
     const revenue = jobCodeData.totalRevenue || 0;
-    const preCost = summary.preCost.total;
-    const postCost = summary.postCost.total;
+    const preCost = summary.preCost?.total || 0;
+    const postCost = summary.postCost?.total || 0;
     const grossProfit = revenue - postCost;
     const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
     const taxDeduction = grossProfit > 0 ? grossProfit * 0.25 : 0;
@@ -270,9 +270,9 @@ const CostingSheet = ({ currentUser, approvers = [] }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {Object.entries(COST_CATEGORIES).map(([code, cat]) => {
-                  const pre = summary.preCost.byCategory[code] || 0;
-                  const post = summary.postCost.byCategory[code] || 0;
+                {summary && Object.entries(COST_CATEGORIES).map(([code, cat]) => {
+                  const pre = summary.preCost?.byCategory?.[code] || 0;
+                  const post = summary.postCost?.byCategory?.[code] || 0;
                   const variance = post - pre;
                   
                   if (pre === 0 && post === 0) return null;
@@ -305,10 +305,10 @@ const CostingSheet = ({ currentUser, approvers = [] }) => {
                 <tr className="bg-gray-100 dark:bg-gray-700 font-semibold">
                   <td className="px-4 py-3">Total</td>
                   <td className="px-4 py-3 text-right">
-                    RM {summary.preCost.total.toLocaleString()}
+                    RM {(summary?.preCost?.total || 0).toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    RM {summary.postCost.total.toLocaleString()}
+                    RM {(summary?.postCost?.total || 0).toLocaleString()}
                   </td>
                   <td className={`px-4 py-3 text-right ${
                     financials?.variance > 0 ? 'text-red-600' : 
