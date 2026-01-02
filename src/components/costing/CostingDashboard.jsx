@@ -43,6 +43,7 @@ const CostingDashboard = ({
   
   // Filter and sort job codes
   const filteredJobCodes = useMemo(() => {
+    if (!jobCodes || !Array.isArray(jobCodes)) return [];
     let filtered = [...jobCodes];
     
     // Apply search filter
@@ -85,6 +86,17 @@ const CostingDashboard = ({
   
   // Calculate summary stats
   const summaryStats = useMemo(() => {
+    if (!jobCodes || !Array.isArray(jobCodes)) {
+      return {
+        totalJobs: 0,
+        activeJobs: 0,
+        totalRevenue: 0,
+        totalCost: 0,
+        avgMargin: 0,
+        pendingApprovals: 0
+      };
+    }
+    
     const activeJobs = jobCodes.filter(j => j.status === 'active');
     return {
       totalJobs: jobCodes.length,

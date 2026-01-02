@@ -1,7 +1,7 @@
 // src/components/jobs/JobCodeDashboard.jsx
 // Job Code Dashboard - Based on JCCS Standard
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Briefcase,
@@ -31,6 +31,8 @@ import useJobCodes, {
   JOB_NATURE_CODES, 
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import JobCodeModal from './JobCodeModal';
 import JobCodeCard from './JobCodeCard';
 import CrossReferenceLink, { LinkedDocumentsSummary } from '../common/CrossReferenceLink';
@@ -57,23 +59,21 @@ const JobCodeDashboard = ({ showNotification }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
+  // Local filter state
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterNature, setFilterNature] = useState('all');
+  const [filterPrefix, setFilterPrefix] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
   // Hook for job codes
   const {
-    filteredJobCodes,
-    stats,
+    jobCodes,
     loading,
     error,
-    filterStatus,
-    setFilterStatus,
-    filterNature,
-    setFilterNature,
-    filterPrefix,
-    setFilterPrefix,
-    searchTerm,
-    setSearchTerm,
     createJobCode,
     updateJobCode,
-    deleteJobCode
+    assignUser,
+    removeUser
   } = useJobCodes();
 
   // Local state
@@ -82,6 +82,98 @@ const JobCodeDashboard = ({ showNotification }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
   const [selectedJobId, setSelectedJobId] = useState(searchParams.get('id'));
+  
+  // Filter and calculate stats locally
+  const filteredJobCodes = useMemo(() => {
+    if (!jobCodes || !Array.isArray(jobCodes)) return [];
+    
+    let filtered = [...jobCodes];
+    
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(job => 
+        job.id?.toLowerCase().includes(term) ||
+        job.projectName?.toLowerCase().includes(term) ||
+        job.clientName?.toLowerCase().includes(term)
+      );
+    }
+    
+    // Apply status filter
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(job => job.status === filterStatus);
+    }
+    
+    // Apply nature filter
+    if (filterNature !== 'all') {
+      filtered = filtered.filter(job => job.jobNatureCode === filterNature);
+    }
+    
+    // Apply prefix filter
+    if (filterPrefix !== 'all') {
+      filtered = filtered.filter(job => job.companyPrefix === filterPrefix);
+    }
+    
+    return filtered;
+  }, [jobCodes, searchTerm, filterStatus, filterNature, filterPrefix]);
+  
+  // Calculate stats
+  const stats = useMemo(() => {
+    if (!jobCodes || !Array.isArray(jobCodes)) {
+      return {
+        total: 0,
+        byStatus: {},
+        byNature: {},
+        byPrefix: {},
+        totalPOValue: 0,
+        totalPIValue: 0
+      };
+    }
+    
+    const byStatus = {};
+    const byNature = {};
+    const byPrefix = {};
+    let totalPOValue = 0;
+    let totalPIValue = 0;
+    
+    jobCodes.forEach(job => {
+      // Count by status
+      const status = job.status || 'draft';
+      byStatus[status] = (byStatus[status] || 0) + 1;
+      
+      // Count by nature
+      const nature = job.jobNatureCode || 'P';
+      byNature[nature] = (byNature[nature] || 0) + 1;
+      
+      // Count by prefix
+      const prefix = job.companyPrefix || 'FS';
+      byPrefix[prefix] = (byPrefix[prefix] || 0) + 1;
+      
+      // Sum values
+      totalPOValue += job.totalPOValue || 0;
+      totalPIValue += job.totalPIValue || 0;
+    });
+    
+    return {
+      total: jobCodes.length,
+      byStatus,
+      byNature,
+      byPrefix,
+      totalPOValue,
+      totalPIValue
+    };
+  }, [jobCodes]);
+  
+  // Delete function wrapper
+  const deleteJobCode = useCallback(async (jobId) => {
+    try {
+      await deleteDoc(doc(db, 'jobCodes', jobId));
+      return { success: true };
+    } catch (err) {
+      console.error('Error deleting job code:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
 
   // Group jobs by year if enabled
   const jobsByYear = useMemo(() => {
@@ -157,7 +249,7 @@ const JobCodeDashboard = ({ showNotification }) => {
             <Briefcase className="w-5 h-5 text-gray-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            <p className="text-2xl font-bold text-gray-900">{stats?.total || 0}</p>
             <p className="text-xs text-gray-500">Total Jobs</p>
           </div>
         </div>
@@ -165,7 +257,7 @@ const JobCodeDashboard = ({ showNotification }) => {
 
       {/* By Nature */}
       {Object.entries(JOB_NATURE_CODES).map(([code, config]) => {
-        const count = stats.byNature[code] || 0;
+        const count = stats?.byNature?.[code] || 0;
         const Icon = NATURE_ICONS[code] || Briefcase;
         
         return (
@@ -195,7 +287,7 @@ const JobCodeDashboard = ({ showNotification }) => {
           </div>
           <div>
             <p className="text-lg font-bold text-gray-900">
-              {formatCurrency(stats.totalPOValue)}
+              {formatCurrency(stats?.totalPOValue || 0)}
             </p>
             <p className="text-xs text-gray-500">Total PO Value</p>
           </div>
@@ -499,7 +591,7 @@ const JobCodeDashboard = ({ showNotification }) => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Job Codes</h1>
           <p className="text-gray-600 mt-1">
-            JCCS-compliant job tracking • {stats.total} total jobs
+            JCCS-compliant job tracking • {stats?.total || 0} total jobs
           </p>
         </div>
         <button
