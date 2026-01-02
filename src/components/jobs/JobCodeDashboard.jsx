@@ -31,9 +31,10 @@ import useJobCodes, {
   JOB_NATURE_CODES, 
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
-import { doc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, deleteDoc, setDoc, getDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import jobCodeService from '../../services/JobCodeService';
+import { useAuth } from '../../context/AuthContext';
 import JobCodeModal from './JobCodeModal';
 import JobCodeCard from './JobCodeCard';
 import CrossReferenceLink, { LinkedDocumentsSummary } from '../common/CrossReferenceLink';
@@ -59,6 +60,7 @@ const formatCurrency = (value, currency = 'MYR') => {
 const JobCodeDashboard = ({ showNotification }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { user } = useAuth();
   
   // Local filter state
   const [filterStatus, setFilterStatus] = useState('all');
@@ -228,28 +230,115 @@ const JobCodeDashboard = ({ showNotification }) => {
   const handleSaveJob = async (jobData) => {
     try {
       if (editingJob) {
-        // Update existing job code
-        const updateData = {
-          title: jobData.title,
-          description: jobData.description,
-          clientId: jobData.clientId,
-          clientName: jobData.clientName,
-          status: jobData.status,
-          quotedValue: jobData.quotedValue || 0,
-          contractValue: jobData.quotedValue || 0,
-          totalRevenue: jobData.quotedValue || 0,
-          currency: jobData.currency || 'MYR',
-          startDate: jobData.startDate,
-          expectedEndDate: jobData.expectedEndDate
-        };
-        const result = await updateJobCode(editingJob.id, updateData);
-        if (result && result.success !== false) {
+        const oldJobCode = editingJob.id || editingJob.jobCode;
+        const newJobCode = jobData.jobCode?.trim().toUpperCase();
+        
+        // Check if job code has changed
+        if (newJobCode && newJobCode !== oldJobCode) {
+          // Validate new job code format
+          const validation = jobCodeService.parseJobCode(newJobCode);
+          if (!validation.companyPrefix || !validation.jobNatureCode || !validation.runningNumber) {
+            showNotification?.('Invalid job code format. Please use format: PREFIX-NATURENUMBER (e.g., FS-S5135)', 'error');
+            return { success: false, error: 'Invalid job code format' };
+          }
+          
+          // Check if new job code already exists
+          const existingDoc = await getDoc(doc(db, 'jobCodes', newJobCode));
+          if (existingDoc.exists()) {
+            showNotification?.('Job code already exists. Please choose a different code.', 'error');
+            return { success: false, error: 'Job code already exists' };
+          }
+          
+          // Get the current document data
+          const currentDoc = await getDoc(doc(db, 'jobCodes', oldJobCode));
+          if (!currentDoc.exists()) {
+            showNotification?.('Job code not found', 'error');
+            return { success: false, error: 'Job code not found' };
+          }
+          
+          const currentData = currentDoc.data();
+          
+          // Create new document with updated data
+          const updatedData = {
+            ...currentData,
+            jobCode: newJobCode,
+            id: newJobCode,
+            title: jobData.title,
+            projectName: jobData.title,
+            description: jobData.description || '',
+            clientId: jobData.clientId || '',
+            clientName: jobData.clientName || '',
+            status: jobData.status || 'draft',
+            quotedValue: jobData.quotedValue || 0,
+            contractValue: jobData.quotedValue || 0,
+            totalRevenue: jobData.quotedValue || 0,
+            currency: jobData.currency || 'MYR',
+            startDate: jobData.startDate || null,
+            expectedEndDate: jobData.expectedEndDate || null,
+            // Update parsed components if job code changed
+            companyPrefix: validation.companyPrefix,
+            jobNatureCode: validation.jobNatureCode,
+            runningNumber: validation.runningNumber,
+            updatedAt: serverTimestamp()
+          };
+          
+          // Create new document with audit trail
+          const finalData = {
+            ...updatedData,
+            jobCodeEditHistory: arrayUnion({
+              previousCode: oldJobCode,
+              newCode: newJobCode,
+              editedAt: new Date().toISOString(),
+              editedBy: user?.uid || 'unknown',
+              editedByName: user?.displayName || user?.email || 'Unknown User'
+            })
+          };
+          
+          await setDoc(doc(db, 'jobCodes', newJobCode), finalData);
+          
+          // Cascade update all references
+          try {
+            const cascadeResult = await jobCodeService.cascadeJobCodeUpdate(oldJobCode, newJobCode);
+            console.log('Cascade update result:', cascadeResult);
+          } catch (cascadeError) {
+            console.error('Error in cascade update:', cascadeError);
+            // Don't fail the operation, but log the error
+            showNotification?.('Job code changed, but some references may need manual update', 'warning');
+          }
+          
+          // Delete old document
+          await deleteDoc(doc(db, 'jobCodes', oldJobCode));
+          
+          showNotification?.(`Job code changed from ${oldJobCode} to ${newJobCode}. All linked records have been updated.`, 'success');
           setModalOpen(false);
           setEditingJob(null);
-          showNotification?.('Job code updated successfully', 'success');
           return { success: true };
+        } else {
+          // Job code hasn't changed, just update the data
+          const updateData = {
+            title: jobData.title,
+            projectName: jobData.title,
+            description: jobData.description || '',
+            clientId: jobData.clientId || '',
+            clientName: jobData.clientName || '',
+            status: jobData.status || 'draft',
+            quotedValue: jobData.quotedValue || 0,
+            contractValue: jobData.quotedValue || 0,
+            totalRevenue: jobData.quotedValue || 0,
+            currency: jobData.currency || 'MYR',
+            startDate: jobData.startDate || null,
+            expectedEndDate: jobData.expectedEndDate || null,
+            updatedAt: serverTimestamp()
+          };
+          const result = await updateJobCode(oldJobCode, updateData);
+          if (result && result.success !== false) {
+            setModalOpen(false);
+            setEditingJob(null);
+            showNotification?.('Job code updated successfully', 'success');
+            return { success: true };
+          }
+          return result || { success: false };
         }
-        return result || { success: false };
       } else {
         // Create new job code
         const jobCode = jobData.jobCode || await jobCodeService.generateJobCode(
@@ -290,6 +379,7 @@ const JobCodeDashboard = ({ showNotification }) => {
           },
           linkedPOs: [],
           linkedPIs: [],
+          source: 'manual', // Track source for CRM integration
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         };

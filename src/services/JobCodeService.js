@@ -18,7 +18,8 @@ import {
   limit,
   serverTimestamp,
   increment,
-  writeBatch
+  writeBatch,
+  arrayUnion
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -664,6 +665,135 @@ class JobCodeService {
     } catch (error) {
       console.error('Error linking to Notion:', error);
       throw error;
+    }
+  }
+  
+  // --------------------------------------------------------------------------
+  // JOB CODE CASCADE UPDATES
+  // --------------------------------------------------------------------------
+  
+  /**
+   * Cascade update all references when job code changes
+   * Updates costingEntries, approvalQueue, purchaseOrders, and proformaInvoices
+   */
+  async cascadeJobCodeUpdate(oldCode, newCode) {
+    const batch = writeBatch(db);
+    let updateCount = 0;
+    
+    try {
+      // Update costingEntries
+      const costingQuery = query(collection(db, 'costingEntries'), where('jobCode', '==', oldCode));
+      const costingSnap = await getDocs(costingQuery);
+      costingSnap.forEach(doc => {
+        batch.update(doc.ref, { jobCode: newCode });
+        updateCount++;
+      });
+      
+      // Update approvalQueue
+      const approvalQuery = query(collection(db, 'approvalQueue'), where('jobCode', '==', oldCode));
+      const approvalSnap = await getDocs(approvalQuery);
+      approvalSnap.forEach(doc => {
+        batch.update(doc.ref, { jobCode: newCode });
+        updateCount++;
+      });
+      
+      // Update POs that reference this job code in projectCode field
+      const poQuery = query(collection(db, 'purchaseOrders'), where('projectCode', '==', oldCode));
+      const poSnap = await getDocs(poQuery);
+      poSnap.forEach(doc => {
+        batch.update(doc.ref, { projectCode: newCode });
+        updateCount++;
+      });
+      
+      // Update POs with projectCodes array containing old code
+      // Note: Firestore doesn't support array-contains updates directly, so we need to read and update
+      const poArrayQuery = query(collection(db, 'purchaseOrders'), where('projectCodes', 'array-contains', oldCode));
+      const poArraySnap = await getDocs(poArrayQuery);
+      poArraySnap.forEach(doc => {
+        const data = doc.data();
+        const projectCodes = data.projectCodes || [];
+        const updatedCodes = projectCodes.map(c => c === oldCode ? newCode : c);
+        batch.update(doc.ref, { projectCodes: updatedCodes });
+        updateCount++;
+      });
+      
+      // Update PO items that have projectCode field
+      const allPOsQuery = query(collection(db, 'purchaseOrders'));
+      const allPOsSnap = await getDocs(allPOsQuery);
+      allPOsSnap.forEach(poDoc => {
+        const poData = poDoc.data();
+        if (poData.items && Array.isArray(poData.items)) {
+          const updatedItems = poData.items.map(item => {
+            if (item.projectCode === oldCode) {
+              return { ...item, projectCode: newCode };
+            }
+            return item;
+          });
+          const hasChanges = updatedItems.some((item, idx) => item.projectCode !== poData.items[idx].projectCode);
+          if (hasChanges) {
+            batch.update(poDoc.ref, { items: updatedItems });
+            updateCount++;
+          }
+        }
+      });
+      
+      // Update Proforma Invoices that reference this job code
+      const piQuery = query(collection(db, 'proformaInvoices'), where('projectCode', '==', oldCode));
+      const piSnap = await getDocs(piQuery);
+      piSnap.forEach(doc => {
+        batch.update(doc.ref, { projectCode: newCode });
+        updateCount++;
+      });
+      
+      // Commit all updates
+      if (updateCount > 0) {
+        await batch.commit();
+        console.log(`Cascade update completed: ${updateCount} documents updated from ${oldCode} to ${newCode}`);
+      }
+      
+      return { success: true, updateCount };
+    } catch (error) {
+      console.error('Error in cascade job code update:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get count of linked records for a job code
+   */
+  async getLinkedRecordsCount(jobCode) {
+    try {
+      const [costingSnap, approvalSnap, poSnap, piSnap] = await Promise.all([
+        getDocs(query(collection(db, 'costingEntries'), where('jobCode', '==', jobCode))),
+        getDocs(query(collection(db, 'approvalQueue'), where('jobCode', '==', jobCode))),
+        getDocs(query(collection(db, 'purchaseOrders'), where('projectCode', '==', jobCode))),
+        getDocs(query(collection(db, 'proformaInvoices'), where('projectCode', '==', jobCode)))
+      ]);
+      
+      // Also check PO items
+      const allPOsSnap = await getDocs(collection(db, 'purchaseOrders'));
+      let poItemsCount = 0;
+      allPOsSnap.forEach(poDoc => {
+        const items = poDoc.data().items || [];
+        if (items.some(item => item.projectCode === jobCode)) {
+          poItemsCount++;
+        }
+      });
+      
+      return {
+        costingEntries: costingSnap.size,
+        approvalQueue: approvalSnap.size,
+        purchaseOrders: poSnap.size + poItemsCount,
+        proformaInvoices: piSnap.size
+      };
+    } catch (error) {
+      console.error('Error getting linked records count:', error);
+      return {
+        costingEntries: 0,
+        approvalQueue: 0,
+        purchaseOrders: 0,
+        proformaInvoices: 0
+      };
     }
   }
 }

@@ -24,6 +24,8 @@ import useJobCodes, {
 } from '../../hooks/useJobCodes';
 import jobCodeService from '../../services/JobCodeService';
 import { useClients } from '../../hooks/useClients';
+import { useAuth } from '../../context/AuthContext';
+import { AlertTriangle, Lock } from 'lucide-react';
 
 // Nature code icons
 const NATURE_ICONS = {
@@ -40,6 +42,12 @@ const JobCodeModal = ({
   editingJob = null 
 }) => {
   const { clients = [] } = useClients?.() || {};
+  const { user } = useAuth();
+  const [linkedRecordsCount, setLinkedRecordsCount] = useState(null);
+  const [loadingLinkedCount, setLoadingLinkedCount] = useState(false);
+  
+  // Check if this is a CRM-sourced job code
+  const isCRMSourced = editingJob?.source === 'crm';
   
   // Validate job code format
   const validateJobCode = (jobCode) => {
@@ -88,11 +96,44 @@ const JobCodeModal = ({
     expectedEndDate: ''
   });
 
+  // Load linked records count when editing
+  useEffect(() => {
+    if (editingJob && isOpen) {
+      const loadLinkedCount = async () => {
+        setLoadingLinkedCount(true);
+        try {
+          const counts = await jobCodeService.getLinkedRecordsCount(editingJob.id || editingJob.jobCode);
+          // Also include linkedPOs and linkedPIs from the job code itself
+          const finalCounts = {
+            ...counts,
+            purchaseOrders: counts.purchaseOrders + (editingJob.linkedPOs?.length || 0),
+            proformaInvoices: counts.proformaInvoices + (editingJob.linkedPIs?.length || 0)
+          };
+          setLinkedRecordsCount(finalCounts);
+        } catch (error) {
+          console.error('Error loading linked records count:', error);
+          // Fallback to job code's own linked arrays
+          setLinkedRecordsCount({
+            costingEntries: 0,
+            approvalQueue: 0,
+            purchaseOrders: editingJob.linkedPOs?.length || 0,
+            proformaInvoices: editingJob.linkedPIs?.length || 0
+          });
+        } finally {
+          setLoadingLinkedCount(false);
+        }
+      };
+      loadLinkedCount();
+    } else {
+      setLinkedRecordsCount(null);
+    }
+  }, [editingJob, isOpen]);
+  
   // Initialize form when editing
   useEffect(() => {
     if (editingJob) {
       setFormData({
-        jobCode: editingJob.jobCode || '',
+        jobCode: editingJob.id || editingJob.jobCode || '',
         companyPrefix: editingJob.companyPrefix || 'FS',
         jobNatureCode: editingJob.jobNatureCode || 'S',
         title: editingJob.title || '',
@@ -170,11 +211,11 @@ const JobCodeModal = ({
   const validate = () => {
     const errors = [];
     
-    if (!formData.jobCode && !editingJob) {
+    if (!formData.jobCode) {
       errors.push({ field: 'jobCode', message: 'Job code is required. Click "Generate" to create one.' });
     }
     
-    if (formData.jobCode && !editingJob) {
+    if (formData.jobCode) {
       const validation = validateJobCode(formData.jobCode);
       if (!validation.isValid) {
         errors.push({ field: 'jobCode', message: validation.errors.join(', ') });
@@ -192,6 +233,15 @@ const JobCodeModal = ({
   // Handle save
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Prevent editing CRM-sourced job codes
+    if (isCRMSourced) {
+      setValidationErrors([{ 
+        field: 'general', 
+        message: 'Cannot edit CRM-synced job codes. Please update in your CRM system.' 
+      }]);
+      return;
+    }
     
     if (!validate()) return;
     
@@ -246,6 +296,36 @@ const JobCodeModal = ({
                 <span className="text-sm">{error.message}</span>
               </div>
             ))}
+            
+            {/* Linked Records Warning */}
+            {editingJob && linkedRecordsCount && !isCRMSourced && (
+              (linkedRecordsCount.costingEntries > 0 || 
+               linkedRecordsCount.approvalQueue > 0 || 
+               linkedRecordsCount.purchaseOrders > 0 || 
+               linkedRecordsCount.proformaInvoices > 0) && (
+                <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-medium">Changing this job code will affect linked records:</p>
+                    <ul className="mt-1 text-xs list-disc list-inside space-y-0.5">
+                      {linkedRecordsCount.purchaseOrders > 0 && (
+                        <li>{linkedRecordsCount.purchaseOrders} linked Purchase Order(s)</li>
+                      )}
+                      {linkedRecordsCount.proformaInvoices > 0 && (
+                        <li>{linkedRecordsCount.proformaInvoices} linked Proforma Invoice(s)</li>
+                      )}
+                      {linkedRecordsCount.costingEntries > 0 && (
+                        <li>{linkedRecordsCount.costingEntries} costing entr{linkedRecordsCount.costingEntries === 1 ? 'y' : 'ies'}</li>
+                      )}
+                      {linkedRecordsCount.approvalQueue > 0 && (
+                        <li>{linkedRecordsCount.approvalQueue} approval queue entr{linkedRecordsCount.approvalQueue === 1 ? 'y' : 'ies'}</li>
+                      )}
+                    </ul>
+                    <p className="mt-2 text-xs font-medium">These references will be updated automatically.</p>
+                  </div>
+                </div>
+              )
+            )}
 
             {/* Job Code Generation */}
             <div className="bg-gray-50 rounded-lg p-4 space-y-4">
@@ -298,7 +378,22 @@ const JobCodeModal = ({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Job Code
+                  {isCRMSourced && (
+                    <span className="ml-2 text-xs text-orange-600 flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      CRM-synced
+                    </span>
+                  )}
                 </label>
+                {isCRMSourced && (
+                  <div className="mb-2 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2">
+                    <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-orange-800">
+                      <p className="font-medium">This job code is synced from CRM</p>
+                      <p className="text-xs mt-1">Job code cannot be edited here. Please update it in your CRM system.</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <div className="flex-1 relative">
                     <input
@@ -309,11 +404,13 @@ const JobCodeModal = ({
                       className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-lg ${
                         validationErrors.some(e => e.field === 'jobCode') 
                           ? 'border-red-300 bg-red-50' 
+                          : isCRMSourced
+                          ? 'border-gray-300 bg-gray-100 cursor-not-allowed'
                           : 'border-gray-300'
-                      } ${editingJob ? 'bg-gray-100' : ''}`}
-                      disabled={editingJob}
+                      }`}
+                      disabled={isCRMSourced}
                     />
-                    {formData.jobCode && !editingJob && (
+                    {formData.jobCode && !isCRMSourced && (
                       <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-green-500" />
                     )}
                   </div>
@@ -511,8 +608,8 @@ const JobCodeModal = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+              disabled={loading || isCRMSourced}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
