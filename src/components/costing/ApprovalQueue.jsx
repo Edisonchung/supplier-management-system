@@ -20,7 +20,7 @@ import {
   ChevronDown,
   Image
 } from 'lucide-react';
-import { useApprovalQueue } from '../hooks/useCostingEntries';
+import { useApprovalQueue } from '../../hooks/useCostingEntries';
 import { COST_CATEGORIES } from '../services/CostingService';
 
 // ============================================================================

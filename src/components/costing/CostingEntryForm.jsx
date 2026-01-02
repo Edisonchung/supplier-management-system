@@ -20,7 +20,7 @@ import {
   User,
   AlertCircle
 } from 'lucide-react';
-import { COST_CATEGORIES, COST_TYPES, APPROVAL_STATUSES } from '../services/CostingService';
+import { COST_CATEGORIES, COST_TYPES, APPROVAL_STATUSES } from '../../services/CostingService';
 
 // ============================================================================
 // COSTING ENTRY FORM

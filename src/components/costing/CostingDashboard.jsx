@@ -19,7 +19,7 @@ import {
   Building2,
   ExternalLink
 } from 'lucide-react';
-import { useJobCodes } from '../hooks/useJobCodes';
+import { useJobCodes } from '../../hooks/useJobCodes';
 
 // ============================================================================
 // DASHBOARD COMPONENT

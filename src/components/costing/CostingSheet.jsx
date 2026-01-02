@@ -27,8 +27,8 @@ import {
   Edit,
   Users
 } from 'lucide-react';
-import { useJobCode } from '../hooks/useJobCodes';
-import { useCostingEntries, COST_CATEGORIES, APPROVAL_STATUSES } from '../hooks/useCostingEntries';
+import { useJobCode } from '../../hooks/useJobCodes';
+import { useCostingEntries, COST_CATEGORIES, APPROVAL_STATUSES } from '../../hooks/useCostingEntries';
 import CostingEntryForm from './CostingEntryForm';
 
 // ============================================================================
