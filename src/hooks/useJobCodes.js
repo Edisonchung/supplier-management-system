@@ -9,6 +9,36 @@ import { collection, doc, query, where, orderBy, onSnapshot } from 'firebase/fir
 import { db } from '../config/firebase';
 import jobCodeService from '../services/JobCodeService';
 
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+export const COMPANY_PREFIXES = {
+  'FS': { code: 'FS', name: 'Flow Solution Sdn Bhd' },
+  'FSE': { code: 'FSE', name: 'Flow Solution Engineering Sdn Bhd' },
+  'FSP': { code: 'FSP', name: 'Flow Solution (Penang) Sdn Bhd' },
+  'BWS': { code: 'BWS', name: 'Broadwater Solution Sdn Bhd' },
+  'BWE': { code: 'BWE', name: 'Broadwater Engineering Sdn Bhd' },
+  'EMIT': { code: 'EMIT', name: 'EMI Technology Sdn Bhd' },
+  'EMIA': { code: 'EMIA', name: 'EMI Automation Sdn Bhd' },
+  'FTS': { code: 'FTS', name: 'Futuresmiths Sdn Bhd' },
+  'IHS': { code: 'IHS', name: 'Inhaus Sdn Bhd' }
+};
+
+export const JOB_NATURE_CODES = {
+  'P': { code: 'P', name: 'Project', description: 'Full project delivery', color: 'blue' },
+  'S': { code: 'S', name: 'Service/Supply', description: 'Service or supply contract', color: 'green' },
+  'SV': { code: 'SV', name: 'Service', description: 'Service contract', color: 'purple' },
+  'R': { code: 'R', name: 'Repair', description: 'Repair and maintenance', color: 'orange' }
+};
+
+export const JOB_STATUSES = {
+  'active': { value: 'active', label: 'Active', color: 'green' },
+  'on-hold': { value: 'on-hold', label: 'On Hold', color: 'yellow' },
+  'completed': { value: 'completed', label: 'Completed', color: 'blue' },
+  'cancelled': { value: 'cancelled', label: 'Cancelled', color: 'red' }
+};
+
 /**
  * Hook for fetching and managing job codes
  */
@@ -160,3 +190,6 @@ export function useJobCode(jobCode) {
 export function useMyJobCodes(userId) {
   return useJobCodes({ userId });
 }
+
+// Default export for convenience
+export default useJobCodes;
