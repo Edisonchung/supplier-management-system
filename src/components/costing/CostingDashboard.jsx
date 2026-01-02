@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, 
   Plus, 
@@ -19,7 +20,7 @@ import {
   Building2,
   ExternalLink
 } from 'lucide-react';
-import { useJobCodes } from '../../hooks/useJobCodes';
+import useJobCodes from '../../hooks/useJobCodes';
 
 // ============================================================================
 // DASHBOARD COMPONENT
@@ -31,6 +32,7 @@ const CostingDashboard = ({
   companyFilter = null,
   showCreateButton = true 
 }) => {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('createdAt');
@@ -40,6 +42,25 @@ const CostingDashboard = ({
   const { jobCodes, loading, error } = useJobCodes({
     companyPrefix: companyFilter
   });
+  
+  // Default handlers if props not provided
+  const handleSelectJobCode = (jobId) => {
+    if (onSelectJobCode) {
+      onSelectJobCode(jobId);
+    } else {
+      // Navigate to costing sheet for this job code
+      navigate(`/costing/${encodeURIComponent(jobId)}`);
+    }
+  };
+  
+  const handleCreateJobCode = () => {
+    if (onCreateJobCode) {
+      onCreateJobCode();
+    } else {
+      // Navigate to job codes page to create new one
+      navigate('/jobs');
+    }
+  };
   
   // Filter and sort job codes
   const filteredJobCodes = useMemo(() => {
@@ -141,7 +162,7 @@ const CostingDashboard = ({
         
         {showCreateButton && (
           <button
-            onClick={onCreateJobCode}
+            onClick={handleCreateJobCode}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Plus className="h-4 w-4" />
@@ -260,7 +281,7 @@ const CostingDashboard = ({
                   <JobCodeRow 
                     key={job.id} 
                     jobCode={job} 
-                    onClick={() => onSelectJobCode(job.id)}
+                    onClick={() => handleSelectJobCode(job.id)}
                   />
                 ))
               )}
