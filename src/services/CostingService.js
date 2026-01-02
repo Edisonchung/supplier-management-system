@@ -934,4 +934,5 @@ class CostingService {
 // Export singleton instance
 const costingService = new CostingService();
 export default costingService;
-export { CostingService, COST_CATEGORIES, COST_TYPES, APPROVAL_STATUSES, PAYMENT_STATUSES };
+export { CostingService };
+// Note: COST_CATEGORIES, COST_TYPES, APPROVAL_STATUSES, PAYMENT_STATUSES are already exported above
