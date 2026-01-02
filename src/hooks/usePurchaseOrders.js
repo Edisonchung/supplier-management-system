@@ -9,6 +9,7 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc, 
+  getDoc,
   serverTimestamp, 
   where,
   getDocs 
@@ -18,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePermissions } from './usePermissions';
 import { toast } from 'react-hot-toast';
 import companyManagementService from '../services/companyManagementService';
+import jobCodeService from '../services/JobCodeService';
 
 export const usePurchaseOrders = () => {
   const { user } = useAuth();
@@ -305,6 +307,94 @@ export const usePurchaseOrders = () => {
     setFilteredPurchaseOrders(filtered);
   }, [purchaseOrders, selectedCompany, selectedBranch]);
 
+  // Helper function to extract all project codes from a PO
+  const extractProjectCodes = useCallback((poData) => {
+    const codes = new Set();
+    
+    // From projectCode field
+    if (poData.projectCode && poData.projectCode.trim()) {
+      codes.add(poData.projectCode.trim().toUpperCase());
+    }
+    
+    // From projectCodes array
+    if (Array.isArray(poData.projectCodes)) {
+      poData.projectCodes.forEach(code => {
+        if (code && code.trim()) {
+          codes.add(code.trim().toUpperCase());
+        }
+      });
+    }
+    
+    // From items array
+    if (Array.isArray(poData.items)) {
+      poData.items.forEach(item => {
+        if (item.projectCode && item.projectCode.trim()) {
+          codes.add(item.projectCode.trim().toUpperCase());
+        }
+      });
+    }
+    
+    return Array.from(codes);
+  }, []);
+  
+  // Helper function to link/unlink PO to job codes
+  const linkPOToJobCodes = useCallback(async (poId, poNumber, poData) => {
+    try {
+      const projectCodes = extractProjectCodes(poData);
+      
+      if (projectCodes.length === 0) {
+        return; // No project codes to link
+      }
+      
+      // Link to each job code
+      for (const jobCode of projectCodes) {
+        try {
+          // Check if job code exists
+          const jobCodeData = await jobCodeService.getJobCode(jobCode);
+          if (jobCodeData) {
+            // Link the PO
+            await jobCodeService.linkPO(jobCode, poId, poNumber);
+            console.log(`✅ Linked PO ${poNumber} to job code ${jobCode}`);
+          } else {
+            console.warn(`⚠️ Job code ${jobCode} not found, skipping link`);
+          }
+        } catch (err) {
+          console.error(`Error linking PO to job code ${jobCode}:`, err);
+          // Continue with other job codes even if one fails
+        }
+      }
+    } catch (error) {
+      console.error('Error in linkPOToJobCodes:', error);
+      // Don't throw - linking is not critical for PO creation
+    }
+  }, [extractProjectCodes]);
+  
+  // Helper function to unlink PO from job codes (when project codes are removed)
+  const unlinkPOFromJobCodes = useCallback(async (poId, oldProjectCodes) => {
+    try {
+      if (!oldProjectCodes || oldProjectCodes.length === 0) {
+        return;
+      }
+      
+      for (const jobCode of oldProjectCodes) {
+        try {
+          const jobCodeData = await jobCodeService.getJobCode(jobCode);
+          if (jobCodeData && jobCodeData.linkedPOs) {
+            const updatedLinkedPOs = jobCodeData.linkedPOs.filter(po => po.id !== poId);
+            if (updatedLinkedPOs.length !== jobCodeData.linkedPOs.length) {
+              await jobCodeService.updateJobCode(jobCode, { linkedPOs: updatedLinkedPOs });
+              console.log(`✅ Unlinked PO ${poId} from job code ${jobCode}`);
+            }
+          }
+        } catch (err) {
+          console.error(`Error unlinking PO from job code ${jobCode}:`, err);
+        }
+      }
+    } catch (error) {
+      console.error('Error in unlinkPOFromJobCodes:', error);
+    }
+  }, []);
+  
   // CRITICAL FIX: Enhanced addPurchaseOrder with complete document storage support
   const addPurchaseOrder = useCallback(async (poData, options = {}) => {
     if (!user) {
@@ -400,6 +490,9 @@ export const usePurchaseOrders = () => {
       
       console.log(`Added purchase order to Firestore: ${validatedData.poNumber} for ${validatedData.companyId}`);
       console.log(`✅ Document storage fields preserved in Firestore document: ${docRef.id}`);
+      
+      // Auto-link PO to job codes based on project codes
+      await linkPOToJobCodes(docRef.id, validatedData.poNumber, completeDocData);
       
       // CRITICAL: Trigger refresh if requested
       if (options.shouldRefresh && typeof refetch === 'function') {
@@ -531,10 +624,30 @@ export const usePurchaseOrders = () => {
         preservedFieldsCount: Object.keys(documentStorageFields).length
       });
       
+      // Get old PO data to check for project code changes
+      const oldPODoc = await getDoc(doc(db, 'purchaseOrders', id));
+      const oldPOData = oldPODoc.exists() ? oldPODoc.data() : {};
+      const oldProjectCodes = extractProjectCodes(oldPOData);
+      
       await updateDoc(doc(db, 'purchaseOrders', id), updateData);
       
       console.log(`Updated purchase order in Firestore: ${id}`);
       console.log(`✅ Document storage fields preserved in update: documentId=${updateData.documentId}, hasStoredDocuments=${updateData.hasStoredDocuments}`);
+      
+      // Get new project codes
+      const newProjectCodes = extractProjectCodes({ ...oldPOData, ...updateData });
+      
+      // Unlink from removed project codes
+      const removedCodes = oldProjectCodes.filter(code => !newProjectCodes.includes(code));
+      if (removedCodes.length > 0) {
+        await unlinkPOFromJobCodes(id, removedCodes);
+      }
+      
+      // Link to new project codes
+      if (newProjectCodes.length > 0) {
+        const poNumber = updateData.poNumber || oldPOData.poNumber;
+        await linkPOToJobCodes(id, poNumber, { ...oldPOData, ...updateData });
+      }
       
       // Trigger refresh if needed
       if (options.shouldRefresh) {

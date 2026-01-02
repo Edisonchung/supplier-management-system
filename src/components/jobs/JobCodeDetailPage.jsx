@@ -32,6 +32,8 @@ import useJobCodes, {
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
 import jobCodeService from '../../services/JobCodeService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import CrossReferenceLink from '../common/CrossReferenceLink';
@@ -86,6 +88,47 @@ const JobCodeDetailPage = ({ showNotification }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  
+  // Fetch full PO data for linked POs
+  useEffect(() => {
+    const fetchLinkedPODetails = async () => {
+      if (!job?.linkedPOs || job.linkedPOs.length === 0) {
+        setLinkedPOs([]);
+        return;
+      }
+      
+      try {
+        const poPromises = job.linkedPOs.map(async (linkedPO) => {
+          try {
+            const poDoc = await getDoc(doc(db, 'purchaseOrders', linkedPO.id));
+            if (poDoc.exists()) {
+              const poData = poDoc.data();
+              return {
+                ...linkedPO,
+                ...poData,
+                id: poDoc.id
+              };
+            }
+            return linkedPO; // Return minimal data if PO not found
+          } catch (err) {
+            console.error(`Error fetching PO ${linkedPO.id}:`, err);
+            return linkedPO; // Return minimal data on error
+          }
+        });
+        
+        const enrichedPOs = await Promise.all(poPromises);
+        setLinkedPOs(enrichedPOs);
+      } catch (error) {
+        console.error('Error fetching linked PO details:', error);
+        // Fallback to minimal data
+        setLinkedPOs(job.linkedPOs || []);
+      }
+    };
+    
+    if (job) {
+      fetchLinkedPODetails();
+    }
+  }, [job]);
 
   // Load job details and linked documents
   useEffect(() => {
@@ -111,7 +154,7 @@ const JobCodeDetailPage = ({ showNotification }) => {
     // If hook found the job code, use it
     if (jobData) {
       setJob(jobData);
-      setLinkedPOs(jobData.linkedPOs || []);
+      // Don't set linkedPOs here - let the useEffect fetch full data
       setLinkedPIs(jobData.linkedPIs || []);
       setLoading(false);
       return;
@@ -127,7 +170,7 @@ const JobCodeDetailPage = ({ showNotification }) => {
         .then(data => {
           if (data) {
             setJob(data);
-            setLinkedPOs(data.linkedPOs || []);
+            // Don't set linkedPOs here - let the useEffect fetch full data
             setLinkedPIs(data.linkedPIs || []);
           } else {
             setError(`Job code "${decodedJobCode}" not found. This may be a project code from an older purchase order that hasn't been converted to a job code yet.`);
