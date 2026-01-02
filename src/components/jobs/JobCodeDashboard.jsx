@@ -212,11 +212,12 @@ const JobCodeDashboard = ({ showNotification }) => {
   };
 
   const handleViewJob = (job) => {
-    navigate(`/jobs/${encodeURIComponent(job.jobCode)}`);
+    navigate(`/jobs/${encodeURIComponent(job.id || job.jobCode)}`);
   };
 
   const handleDeleteJob = async (job) => {
-    if (window.confirm(`Are you sure you want to cancel job ${job.jobCode}?`)) {
+    const jobCode = job.id || job.jobCode;
+    if (window.confirm(`Are you sure you want to cancel job ${jobCode}?`)) {
       const result = await deleteJobCode(job.id);
       if (result.success) {
         showNotification?.('Job code cancelled successfully', 'success');
@@ -260,7 +261,8 @@ const JobCodeDashboard = ({ showNotification }) => {
         
         // Create the job code document
         const jobCodeDoc = {
-          id: jobCode,
+          jobCode: jobCode, // Add jobCode field for consistency
+          id: jobCode, // Also include id field
           source: 'manual',
           companyPrefix: parsed.companyPrefix || jobData.companyPrefix,
           jobNatureCode: parsed.jobNatureCode || jobData.jobNatureCode,
@@ -509,7 +511,7 @@ const JobCodeDashboard = ({ showNotification }) => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-blue-600 hover:text-blue-800">
-                          {job.jobCode}
+                          {job.id || job.jobCode}
                         </span>
                       </div>
                     </td>

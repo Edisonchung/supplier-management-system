@@ -68,24 +68,70 @@ export function useJobCodes(filters = {}) {
       constraints.push(where('assignedUserIds', 'array-contains', filters.userId));
     }
     
+    // Add orderBy for createdAt
     constraints.push(orderBy('createdAt', 'desc'));
-    
     q = query(q, ...constraints);
     
     // Subscribe to real-time updates
     const unsubscribe = onSnapshot(q, 
       (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const data = snapshot.docs.map(doc => {
+          const docData = doc.data();
+          return {
+            id: doc.id,
+            jobCode: doc.id, // Ensure jobCode field exists for backward compatibility
+            ...docData
+          };
+        });
+        // Additional client-side sort as backup (in case server-side sort has issues)
+        data.sort((a, b) => {
+          const aTime = a.createdAt?.toDate?.() || a.createdAt || new Date(0);
+          const bTime = b.createdAt?.toDate?.() || b.createdAt || new Date(0);
+          return bTime - aTime; // Descending
+        });
         setJobCodes(data);
         setLoading(false);
       },
       (err) => {
         console.error('Error fetching job codes:', err);
-        setError(err.message);
-        setLoading(false);
+        // If the error is about missing index for createdAt, try without orderBy
+        if (err.code === 'failed-precondition' || err.message?.includes('index')) {
+          console.warn('Retrying without orderBy due to index issue');
+          const fallbackConstraints = constraints.filter(c => c.type !== 'orderBy');
+          const fallbackQ = fallbackConstraints.length > 0 
+            ? query(collection(db, 'jobCodes'), ...fallbackConstraints)
+            : collection(db, 'jobCodes');
+          
+          const fallbackUnsubscribe = onSnapshot(fallbackQ,
+            (snapshot) => {
+              const data = snapshot.docs.map(doc => {
+                const docData = doc.data();
+                return {
+                  id: doc.id,
+                  jobCode: doc.id,
+                  ...docData
+                };
+              });
+              // Client-side sort
+              data.sort((a, b) => {
+                const aTime = a.createdAt?.toDate?.() || a.createdAt || new Date(0);
+                const bTime = b.createdAt?.toDate?.() || b.createdAt || new Date(0);
+                return bTime - aTime;
+              });
+              setJobCodes(data);
+              setLoading(false);
+            },
+            (fallbackErr) => {
+              console.error('Error in fallback query:', fallbackErr);
+              setError(fallbackErr.message);
+              setLoading(false);
+            }
+          );
+          return () => fallbackUnsubscribe();
+        } else {
+          setError(err.message);
+          setLoading(false);
+        }
       }
     );
     
