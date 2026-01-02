@@ -22,6 +22,7 @@ import useJobCodes, {
   JOB_NATURE_CODES, 
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
+import jobCodeService from '../../services/JobCodeService';
 import { useClients } from '../../hooks/useClients';
 
 // Nature code icons
@@ -38,8 +39,34 @@ const JobCodeModal = ({
   onSave, 
   editingJob = null 
 }) => {
-  const { generateNextJobCode, validateJobCode } = useJobCodes();
   const { clients = [] } = useClients?.() || {};
+  
+  // Validate job code format
+  const validateJobCode = (jobCode) => {
+    const parsed = jobCodeService.parseJobCode(jobCode);
+    const errors = [];
+    
+    if (!parsed.companyPrefix) {
+      errors.push('Missing company prefix');
+    } else if (!COMPANY_PREFIXES[parsed.companyPrefix]) {
+      errors.push(`Invalid company prefix: ${parsed.companyPrefix}`);
+    }
+    
+    if (!parsed.jobNatureCode) {
+      errors.push('Missing job nature code');
+    } else if (!JOB_NATURE_CODES[parsed.jobNatureCode]) {
+      errors.push(`Invalid job nature code: ${parsed.jobNatureCode}`);
+    }
+    
+    if (!parsed.runningNumber || parsed.runningNumber <= 0) {
+      errors.push('Missing or invalid running number');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
   
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -104,11 +131,12 @@ const JobCodeModal = ({
   const handleGenerateCode = async () => {
     setGenerating(true);
     try {
-      const code = await generateNextJobCode(formData.companyPrefix, formData.jobNatureCode);
+      const code = await jobCodeService.generateJobCode(formData.companyPrefix, formData.jobNatureCode);
       setGeneratedCode(code);
       setFormData(prev => ({ ...prev, jobCode: code }));
     } catch (err) {
       console.error('Error generating code:', err);
+      setValidationErrors([{ field: 'jobCode', message: 'Failed to generate job code. Please try again.' }]);
     } finally {
       setGenerating(false);
     }

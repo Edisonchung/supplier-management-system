@@ -31,8 +31,9 @@ import useJobCodes, {
   JOB_NATURE_CODES, 
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import jobCodeService from '../../services/JobCodeService';
 import JobCodeModal from './JobCodeModal';
 import JobCodeCard from './JobCodeCard';
 import CrossReferenceLink, { LinkedDocumentsSummary } from '../common/CrossReferenceLink';
@@ -224,19 +225,93 @@ const JobCodeDashboard = ({ showNotification }) => {
   };
 
   const handleSaveJob = async (jobData) => {
-    let result;
-    if (editingJob) {
-      result = await updateJobCode(editingJob.id, jobData);
-    } else {
-      result = await createJobCode(jobData);
+    try {
+      if (editingJob) {
+        // Update existing job code
+        const updateData = {
+          title: jobData.title,
+          description: jobData.description,
+          clientId: jobData.clientId,
+          clientName: jobData.clientName,
+          status: jobData.status,
+          quotedValue: jobData.quotedValue || 0,
+          contractValue: jobData.quotedValue || 0,
+          totalRevenue: jobData.quotedValue || 0,
+          currency: jobData.currency || 'MYR',
+          startDate: jobData.startDate,
+          expectedEndDate: jobData.expectedEndDate
+        };
+        const result = await updateJobCode(editingJob.id, updateData);
+        if (result && result.success !== false) {
+          setModalOpen(false);
+          setEditingJob(null);
+          showNotification?.('Job code updated successfully', 'success');
+          return { success: true };
+        }
+        return result || { success: false };
+      } else {
+        // Create new job code
+        const jobCode = jobData.jobCode || await jobCodeService.generateJobCode(
+          jobData.companyPrefix, 
+          jobData.jobNatureCode
+        );
+        
+        const parsed = jobCodeService.parseJobCode(jobCode);
+        
+        // Create the job code document
+        const jobCodeDoc = {
+          id: jobCode,
+          source: 'manual',
+          companyPrefix: parsed.companyPrefix || jobData.companyPrefix,
+          jobNatureCode: parsed.jobNatureCode || jobData.jobNatureCode,
+          runningNumber: parsed.runningNumber || 0,
+          title: jobData.title,
+          projectName: jobData.title,
+          description: jobData.description || '',
+          clientId: jobData.clientId || '',
+          clientName: jobData.clientName || '',
+          status: jobData.status || 'draft',
+          quotedValue: jobData.quotedValue || 0,
+          contractValue: jobData.quotedValue || 0,
+          totalRevenue: jobData.quotedValue || 0,
+          currency: jobData.currency || 'MYR',
+          startDate: jobData.startDate || null,
+          expectedEndDate: jobData.expectedEndDate || null,
+          costingSummary: {
+            preCost: { total: 0, byCategory: { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, G: 0, H: 0 } },
+            postCost: { total: 0, byCategory: { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, G: 0, H: 0 } },
+            totalPaid: 0,
+            totalPayable: 0,
+            pendingApprovalCount: 0,
+            pendingApprovalAmount: 0,
+            byUser: {}
+          },
+          linkedPOs: [],
+          linkedPIs: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+        
+        await setDoc(doc(db, 'jobCodes', jobCode), jobCodeDoc);
+        
+        // Increment counter if we generated the code
+        if (!jobData.jobCode) {
+          await jobCodeService.incrementJobCodeCounter(
+            jobData.companyPrefix, 
+            jobData.jobNatureCode
+          );
+        }
+        
+        setModalOpen(false);
+        setEditingJob(null);
+        showNotification?.('Job code created successfully', 'success');
+        return { success: true };
+      }
+    } catch (error) {
+      console.error('Error saving job code:', error);
+      showNotification?.('Failed to save job code: ' + error.message, 'error');
+      return { success: false, error: error.message };
     }
-    
-    if (result.success) {
-      setModalOpen(false);
-      setEditingJob(null);
-    }
-    
-    return result;
   };
 
   // Render stats cards
