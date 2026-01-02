@@ -44,6 +44,7 @@ import {
   UserPresence 
 } from '../common/LoadingFeedbackSystem';
 import ClientMetricsService from '../../services/ClientMetricsService';
+import CrossReferenceLink, { ProjectCodeDisplay } from '../common/CrossReferenceLink';
 
 const extractPartNumberFromDescription = (description) => {
   if (!description) return '';
@@ -1333,7 +1334,10 @@ const PurchaseOrders = () => {
                   Branch
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Project Code
+                  Project Code(s)
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Linked PI
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Client
@@ -1358,7 +1362,7 @@ const PurchaseOrders = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredPOs.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-6 py-12 text-center text-sm text-gray-500">
+                  <td colSpan="11" className="px-6 py-12 text-center text-sm text-gray-500">
                     <div className="flex flex-col items-center">
                       <FileText className="h-12 w-12 text-gray-300 mb-3" />
                       <p className="text-gray-500">No purchase orders found</p>
@@ -1403,14 +1407,53 @@ const PurchaseOrders = () => {
                       />
                     </td>
 
-                    {/* PROJECT CODE */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {po.projectCode ? (
-                        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-mono">
-                          {po.projectCode}
-                        </span>
+                    {/* PROJECT CODE - Clickable with navigation */}
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      {po.items && Array.isArray(po.items) && po.items.length > 0 ? (
+                        <ProjectCodeDisplay
+                          items={po.items}
+                          variant="badge"
+                          size="sm"
+                          maxDisplay={3}
+                          emptyText="—"
+                        />
+                      ) : po.projectCode ? (
+                        <CrossReferenceLink
+                          type="jobCode"
+                          id={po.projectCode}
+                          variant="badge"
+                          size="sm"
+                        />
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+
+                    {/* LINKED PI - Clickable with navigation */}
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {po.linkedPIs && Array.isArray(po.linkedPIs) && po.linkedPIs.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {po.linkedPIs.map((pi, idx) => (
+                            <CrossReferenceLink
+                              key={idx}
+                              type="proformaInvoice"
+                              id={pi.id || pi.number}
+                              label={pi.number || pi.id}
+                              variant="badge"
+                              size="sm"
+                            />
+                          ))}
+                        </div>
+                      ) : po.linkedPiId ? (
+                        <CrossReferenceLink
+                          type="proformaInvoice"
+                          id={po.linkedPiId}
+                          label={po.linkedPiNumber || 'View PI'}
+                          variant="badge"
+                          size="sm"
+                        />
+                      ) : (
+                        <span className="text-gray-400">—</span>
                       )}
                     </td>
 

@@ -51,6 +51,7 @@ import {
   Filter,
   Home,
   Briefcase,
+  Calculator,
   // 🚀 NEW: Real Data Integration Icons
   Database,
   RefreshCw,
@@ -538,6 +539,20 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       name: 'Business',
       section: true,
       children: [
+        {
+          name: 'Job Codes',
+          href: '/jobs',
+          icon: Briefcase,
+          description: 'Manage job codes',
+          permission: 'canViewOrders'
+        },
+        {
+          name: 'Costing',
+          href: '/costing',
+          icon: Calculator,
+          description: 'Cost tracking & approval',
+          permission: 'canViewOrders'
+        },
         {
           name: 'Client Invoices',
           href: '/client-invoices',

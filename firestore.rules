@@ -673,6 +673,49 @@ service cloud.firestore {
       allow delete: if isManagerOrAbove();
     }
 
+    // ============================================
+    // 💼 JOB CODE & COSTING SYSTEM COLLECTIONS
+    // ============================================
+    
+    // Job Codes Collection
+    match /jobCodes/{jobCode} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Costing Entries Collection  
+    match /costingEntries/{entryId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && (
+        resource.data.createdBy == request.auth.uid ||
+        exists(/databases/$(database)/documents/approvers/$(request.auth.uid))
+      );
+      allow delete: if request.auth != null && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Approval Queue Collection (denormalized)
+    match /approvalQueue/{entryId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Managed by backend/Cloud Functions
+    }
+
+    // Approvers Collection
+    match /approvers/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Job Code Counters (auto-increment)
+    match /jobCodeCounters/{counterId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
     // SETTINGS AND PREFERENCES: User and system settings
     
     // User settings

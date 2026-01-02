@@ -27,6 +27,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import { ProductEnrichmentService } from '../../services/ProductEnrichmentService';
 import { suppliersService } from '../../services/firestore/suppliers.service';
+import CrossReferenceLink from '../common/CrossReferenceLink';
 
 
 
@@ -1868,6 +1869,9 @@ const handleSavePI = async (piData) => {
                   Project Code
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Linked PO
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Supplier
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1898,7 +1902,7 @@ const handleSavePI = async (piData) => {
                 <React.Fragment key={year}>
                   {groupByYear && (
                     <tr className="bg-gray-50">
-                      <td colSpan={bulkMode ? 11 : 10} className="px-6 py-3 text-sm font-semibold text-gray-900">
+                      <td colSpan={bulkMode ? 12 : 11} className="px-6 py-3 text-sm font-semibold text-gray-900">
                         {year} - {pisByYear[year].length} Proforma Invoices
                       </td>
                     </tr>
@@ -1935,8 +1939,52 @@ const handleSavePI = async (piData) => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {pi.piNumber}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600">
-                            {pi.projectCode || '-'}
+                          {/* Project Code - Clickable with navigation */}
+                          <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {pi.projectCode ? (
+                              <CrossReferenceLink
+                                type="jobCode"
+                                id={pi.projectCode}
+                                variant="badge"
+                                size="sm"
+                              />
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          {/* Linked PO - Clickable with navigation */}
+                          <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {pi.linkedPOs && Array.isArray(pi.linkedPOs) && pi.linkedPOs.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {pi.linkedPOs.map((po, idx) => (
+                                  <CrossReferenceLink
+                                    key={idx}
+                                    type="purchaseOrder"
+                                    id={po.id || po.number}
+                                    label={po.number || po.id}
+                                    variant="badge"
+                                    size="sm"
+                                  />
+                                ))}
+                              </div>
+                            ) : pi.linkedPO ? (
+                              <CrossReferenceLink
+                                type="purchaseOrder"
+                                id={pi.linkedPO}
+                                variant="badge"
+                                size="sm"
+                              />
+                            ) : pi.clientPoNumber ? (
+                              <CrossReferenceLink
+                                type="purchaseOrder"
+                                id={pi.clientPoNumber}
+                                label={pi.clientPoNumber}
+                                variant="badge"
+                                size="sm"
+                              />
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {supplier?.name || pi.supplierName || 'Unknown'}

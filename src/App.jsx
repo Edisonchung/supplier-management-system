@@ -19,6 +19,8 @@ import SampleDataTest from './components/test/SampleDataTest';
 import EcommerceSetup from './components/setup/EcommerceSetup';
 import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
 import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
+import { JobCodeDashboard, JobCodeDetailPage, JobCodeModal } from './components/jobs';
+import { CostingDashboard, CostingSheet, CostingEntryForm, ApprovalQueue } from './components/costing';
 
 // Phase 2B Analytics Service with Real Data
 import { higgsFlowAnalytics, useHiggsFlowAnalytics } from './services/analyticsService';
@@ -981,6 +983,80 @@ function AppContent() {
                   <ProtectedRoute permission="canViewInvoices">
                     <LazyWrapper componentName="Client Invoices (Real Data)">
                       <LazyClientInvoices showNotification={showNotification} realData={realDataEnabled} />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Job Code Routes */}
+              <Route 
+                path="/jobs" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Job Code Dashboard">
+                      <JobCodeDashboard />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/jobs/:jobCode" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Job Code Detail">
+                      <JobCodeDetailPage />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Costing Routes */}
+              <Route 
+                path="/costing" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Costing Dashboard">
+                      <CostingDashboard />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/costing/approvals" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Approval Queue">
+                      <ApprovalQueue />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/costing/:jobCode" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Costing Sheet">
+                      <CostingSheet />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/costing/:jobCode/entry" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Costing Entry Form">
+                      <CostingEntryForm />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/costing/:jobCode/entry/:entryId" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Costing Entry Form">
+                      <CostingEntryForm />
                     </LazyWrapper>
                   </ProtectedRoute>
                 } 

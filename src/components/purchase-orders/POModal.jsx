@@ -1,5 +1,5 @@
 // src/components/purchase-orders/POModal.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Upload, FileText, AlertTriangle, CheckCircle, Info, TrendingUp, Users, Package, CreditCard, Loader2, Building2, ChevronDown, ChevronUp, Plus, Trash2, Calculator } from 'lucide-react';
 import { AIExtractionService, ValidationService } from "../../services/ai";
 import ClientMatchingService from '../../services/ClientMatchingService';
@@ -11,6 +11,7 @@ import { ClientSelector, ClientContactSelector, ClientTermsDisplay } from './POM
 import ClientModal from '../clients/ClientModal';
 import { db } from '../../config/firebase';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import CrossReferenceLink from '../common/CrossReferenceLink';
 
 // =============================================================================
 // FIX 1: CORS Protection Wrapper
@@ -541,6 +542,15 @@ const POModal = ({ isOpen, onClose, onSave, editingPO = null }) => {
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [termsAutoPopulated, setTermsAutoPopulated] = useState(false);
   const [showClientModal, setShowClientModal] = useState(false);
+
+  // Derive project codes from items
+  const derivedProjectCodes = useMemo(() => {
+    if (!formData.items || !Array.isArray(formData.items)) return [];
+    const codes = formData.items
+      .filter(item => item.projectCode?.trim())
+      .map(item => item.projectCode.trim().toUpperCase());
+    return [...new Set(codes)].sort();
+  }, [formData.items]);
 
   // Mock products for demo
   const mockProducts = [
@@ -1657,29 +1667,28 @@ const selectProduct = (product) => {
                         </p>
                       </div>
 
-                      {/* Project Code - Secondary but Important */}
+                      {/* Project Code(s) - Read-only, derived from line items */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Project Code
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Project Code(s) <span className="text-xs text-gray-500">(from line items)</span>
                         </label>
-                        <input
-                          type="text"
-                          value={formData.projectCode}
-                          onChange={(e) => handleInputChange('projectCode', e.target.value)}
-                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-                            validationErrors && validationErrors.find(e => e.field === 'projectCode') 
-                              ? 'border-red-500' 
-                              : 'border-gray-300'
-                          }`}
-                          placeholder="e.g., FS-S4814"
-                        />
-                        {validationErrors && validationErrors.find(e => e.field === 'projectCode') && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {validationErrors.find(e => e.field === 'projectCode')?.message}
-                          </p>
-                        )}
+                        <div className="flex flex-wrap gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg min-h-[38px]">
+                          {derivedProjectCodes.length > 0 ? (
+                            derivedProjectCodes.map((code, idx) => (
+                              <CrossReferenceLink
+                                key={idx}
+                                type="jobCode"
+                                id={code}
+                                variant="badge"
+                                size="sm"
+                              />
+                            ))
+                          ) : (
+                            <span className="text-gray-400 text-sm">No project codes in items</span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500 mt-1">
-                          For linking with CRM quotations and contacts
+                          Project codes are derived from line items. Click a code to view job details.
                         </p>
                       </div>
 
