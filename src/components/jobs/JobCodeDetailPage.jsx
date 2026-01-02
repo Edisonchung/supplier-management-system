@@ -23,7 +23,8 @@ import {
   AlertCircle,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  RotateCw
 } from 'lucide-react';
 import { useJobCode } from '../../hooks/useJobCodes';
 import useJobCodes, { 
@@ -32,8 +33,9 @@ import useJobCodes, {
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
 import jobCodeService from '../../services/JobCodeService';
-import { doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { toast } from 'react-hot-toast';
 import CrossReferenceLink from '../common/CrossReferenceLink';
 import JobCodeModal from './JobCodeModal';
 
@@ -86,6 +88,7 @@ const JobCodeDetailPage = ({ showNotification }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   
   // Fetch full PO data for linked POs
   useEffect(() => {
@@ -222,6 +225,80 @@ const JobCodeDetailPage = ({ showNotification }) => {
       }
     }
   };
+  
+  // Handle refresh values from linked records
+  const handleRefreshValues = async () => {
+    if (!job || !job.id) return;
+    
+    setRefreshing(true);
+    try {
+      // Calculate totalPOValue from linked POs
+      let totalPOValue = 0;
+      if (linkedPOs && linkedPOs.length > 0) {
+        totalPOValue = linkedPOs.reduce((sum, po) => {
+          const amount = parseFloat(po.totalAmount) || 0;
+          return sum + amount;
+        }, 0);
+      }
+      
+      // Calculate totalPIValue from linked PIs
+      let totalPIValue = 0;
+      if (job.linkedPIs && job.linkedPIs.length > 0) {
+        // Fetch full PI data if needed
+        const piPromises = job.linkedPIs.map(async (linkedPI) => {
+          try {
+            const piDoc = await getDoc(doc(db, 'proformaInvoices', linkedPI.id));
+            if (piDoc.exists()) {
+              return piDoc.data();
+            }
+            return null;
+          } catch (err) {
+            console.error(`Error fetching PI ${linkedPI.id}:`, err);
+            return null;
+          }
+        });
+        
+        const piDataArray = await Promise.all(piPromises);
+        totalPIValue = piDataArray.reduce((sum, piData) => {
+          if (!piData) return sum;
+          const amount = parseFloat(piData.totalAmount) || parseFloat(piData.total) || 0;
+          return sum + amount;
+        }, 0);
+      }
+      
+      // Calculate gross margin
+      const quotedValue = parseFloat(job.quotedValue) || 0;
+      const grossMargin = quotedValue - totalPIValue;
+      const grossMarginPercentage = quotedValue > 0 ? (grossMargin / quotedValue) * 100 : 0;
+      
+      // Update job code document
+      await updateDoc(doc(db, 'jobCodes', job.id), {
+        totalPOValue,
+        totalPIValue,
+        grossMargin,
+        grossMarginPercentage,
+        updatedAt: serverTimestamp()
+      });
+      
+      // Update local state
+      setJob({
+        ...job,
+        totalPOValue,
+        totalPIValue,
+        grossMargin,
+        grossMarginPercentage
+      });
+      
+      toast.success('Financial summary updated');
+      showNotification?.('Financial summary updated', 'success');
+    } catch (err) {
+      console.error('Error refreshing values:', err);
+      toast.error('Failed to refresh values');
+      showNotification?.('Failed to refresh values', 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Loading state
   if (loading) {
@@ -305,6 +382,15 @@ const JobCodeDetailPage = ({ showNotification }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefreshValues}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Recalculate financial values from linked records"
+          >
+            <RotateCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh Values
+          </button>
           <button
             onClick={handleEdit}
             className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"

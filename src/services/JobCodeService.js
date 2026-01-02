@@ -616,7 +616,25 @@ class JobCodeService {
       const linkedPOs = jobCodeData.linkedPOs || [];
       if (!linkedPOs.some(po => po.id === poId)) {
         linkedPOs.push({ id: poId, number: poNumber, linkedAt: new Date().toISOString() });
-        await this.updateJobCode(jobCode, { linkedPOs });
+        
+        // Fetch PO data to get totalAmount for recalculation
+        let totalPOValue = jobCodeData.totalPOValue || 0;
+        try {
+          const poDoc = await getDoc(doc(db, 'purchaseOrders', poId));
+          if (poDoc.exists()) {
+            const poData = poDoc.data();
+            const poAmount = parseFloat(poData.totalAmount) || 0;
+            totalPOValue = (jobCodeData.totalPOValue || 0) + poAmount;
+          }
+        } catch (err) {
+          console.warn('Could not fetch PO data for recalculation:', err);
+          // Continue without updating totalPOValue
+        }
+        
+        await this.updateJobCode(jobCode, { 
+          linkedPOs,
+          totalPOValue 
+        });
       }
       
       return true;
