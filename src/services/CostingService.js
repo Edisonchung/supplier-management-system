@@ -21,7 +21,7 @@ import {
   writeBatch,
   onSnapshot
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============================================================================

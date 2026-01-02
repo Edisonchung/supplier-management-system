@@ -20,7 +20,7 @@ import {
   increment,
   writeBatch
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 
 // ============================================================================
 // JOB CODE SOURCE ABSTRACTION (API-Ready)

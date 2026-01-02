@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { collection, doc, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 import jobCodeService from '../services/JobCodeService';
 
 /**

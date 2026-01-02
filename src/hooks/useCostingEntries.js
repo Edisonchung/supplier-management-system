@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { collection, doc, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 import costingService, { COST_CATEGORIES, APPROVAL_STATUSES } from '../services/CostingService';
 
 /**
