@@ -25,11 +25,15 @@ import {
   CheckCircle,
   XCircle
 } from 'lucide-react';
+import { useJobCode } from '../../hooks/useJobCodes';
 import useJobCodes, { 
   COMPANY_PREFIXES, 
   JOB_NATURE_CODES, 
   JOB_STATUSES 
 } from '../../hooks/useJobCodes';
+import jobCodeService from '../../services/JobCodeService';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import CrossReferenceLink from '../common/CrossReferenceLink';
 import JobCodeModal from './JobCodeModal';
 
@@ -70,13 +74,11 @@ const JobCodeDetailPage = ({ showNotification }) => {
   const { jobCode: jobCodeParam } = useParams();
   const navigate = useNavigate();
   
-  const {
-    getByJobCode,
-    getLinkedPODetails,
-    getLinkedPIDetails,
-    updateJobCode,
-    deleteJobCode
-  } = useJobCodes();
+  // Use the useJobCode hook for single job code fetching
+  const decodedJobCode = jobCodeParam ? decodeURIComponent(jobCodeParam) : null;
+  const { data: jobData, loading: hookLoading, error: hookError } = useJobCode(decodedJobCode);
+  
+  const { updateJobCode: updateJobCodeHook } = useJobCodes();
 
   const [job, setJob] = useState(null);
   const [linkedPOs, setLinkedPOs] = useState([]);
@@ -85,49 +87,62 @@ const JobCodeDetailPage = ({ showNotification }) => {
   const [error, setError] = useState(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
 
-  // Load job details
+  // Load job details and linked documents
   useEffect(() => {
-    const loadJobDetails = async () => {
-      if (!jobCodeParam) {
-        setError('No job code provided');
-        setLoading(false);
-        return;
-      }
+    if (!jobCodeParam) {
+      setError('No job code provided');
+      setLoading(false);
+      return;
+    }
 
+    // Use hook data if available
+    if (hookLoading) {
       setLoading(true);
       setError(null);
+      return;
+    }
 
-      try {
-        const jobData = await getByJobCode(decodeURIComponent(jobCodeParam));
-        
-        if (!jobData) {
-          setError(`Job code ${jobCodeParam} not found`);
+    if (hookError) {
+      setError(hookError);
+      setLoading(false);
+      return;
+    }
+
+    // If hook found the job code, use it
+    if (jobData) {
+      setJob(jobData);
+      setLinkedPOs(jobData.linkedPOs || []);
+      setLinkedPIs(jobData.linkedPIs || []);
+      setLoading(false);
+      return;
+    }
+
+    // If hook didn't find it (jobData is null but no error), try service as fallback
+    // This handles the case where the job code doesn't exist (old PO project codes)
+    if (decodedJobCode && !hookLoading && !hookError) {
+      setLoading(true);
+      setError(null);
+      
+      jobCodeService.getJobCode(decodedJobCode)
+        .then(data => {
+          if (data) {
+            setJob(data);
+            setLinkedPOs(data.linkedPOs || []);
+            setLinkedPIs(data.linkedPIs || []);
+          } else {
+            setError(`Job code "${decodedJobCode}" not found. This may be a project code from an older purchase order that hasn't been converted to a job code yet.`);
+          }
           setLoading(false);
-          return;
-        }
-
-        setJob(jobData);
-
-        // Load linked documents
-        if (jobData.linkedPOs?.length > 0) {
-          const poDetails = await getLinkedPODetails(jobData.linkedPOs);
-          setLinkedPOs(poDetails);
-        }
-
-        if (jobData.linkedPIs?.length > 0) {
-          const piDetails = await getLinkedPIDetails(jobData.linkedPIs);
-          setLinkedPIs(piDetails);
-        }
-      } catch (err) {
-        console.error('Error loading job details:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadJobDetails();
-  }, [jobCodeParam, getByJobCode, getLinkedPODetails, getLinkedPIDetails]);
+        })
+        .catch(err => {
+          console.warn(`Job code ${decodedJobCode} not found in Firestore:`, err);
+          setError(`Job code "${decodedJobCode}" not found. This may be a project code from an older purchase order that hasn't been converted to a job code yet.`);
+          setLoading(false);
+        });
+    } else {
+      setLoading(false);
+    }
+  }, [jobCodeParam, decodedJobCode, jobData, hookLoading, hookError]);
 
   // Handle edit
   const handleEdit = () => {
@@ -136,22 +151,33 @@ const JobCodeDetailPage = ({ showNotification }) => {
 
   // Handle save after edit
   const handleSaveEdit = async (updatedData) => {
-    const result = await updateJobCode(job.id, updatedData);
-    if (result.success) {
-      setJob({ ...job, ...updatedData });
-      setEditModalOpen(false);
-      showNotification?.('Job updated successfully', 'success');
+    try {
+      const result = await updateJobCodeHook(job.id, updatedData);
+      if (result.success) {
+        setJob({ ...job, ...updatedData });
+        setEditModalOpen(false);
+        showNotification?.('Job updated successfully', 'success');
+      }
+      return result;
+    } catch (err) {
+      console.error('Error updating job:', err);
+      showNotification?.('Failed to update job', 'error');
+      return { success: false, error: err.message };
     }
-    return result;
   };
 
   // Handle delete
   const handleDelete = async () => {
-    if (window.confirm(`Are you sure you want to cancel job ${job.jobCode}?`)) {
-      const result = await deleteJobCode(job.id);
-      if (result.success) {
+    if (!job || !job.id) return;
+    
+    if (window.confirm(`Are you sure you want to cancel job ${job.id}?`)) {
+      try {
+        await deleteDoc(doc(db, 'jobCodes', job.id));
         showNotification?.('Job cancelled successfully', 'success');
         navigate('/jobs');
+      } catch (err) {
+        console.error('Error deleting job:', err);
+        showNotification?.('Failed to cancel job', 'error');
       }
     }
   };
@@ -172,16 +198,32 @@ const JobCodeDetailPage = ({ showNotification }) => {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Job</h3>
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => navigate('/jobs')}
-            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-          >
-            Back to Jobs
-          </button>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center max-w-2xl mx-auto">
+          <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-yellow-800 mb-2">Job Code Not Found</h3>
+          <p className="text-yellow-700 mb-4">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => navigate(-1)}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Go Back
+            </button>
+            <button
+              onClick={() => navigate('/jobs')}
+              className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+            >
+              View All Job Codes
+            </button>
+            {decodedJobCode && (
+              <button
+                onClick={() => navigate('/jobs', { state: { createFromCode: decodedJobCode } })}
+                className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+              >
+                Create Job Code
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -210,7 +252,7 @@ const JobCodeDetailPage = ({ showNotification }) => {
               <span className={`p-2 rounded-lg bg-${natureConfig?.color || 'gray'}-100`}>
                 <NatureIcon className={`w-6 h-6 text-${natureConfig?.color || 'gray'}-600`} />
               </span>
-              <h1 className="text-2xl font-bold text-gray-900">{job.jobCode}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{job.id || job.jobCode}</h1>
               <span className={`px-3 py-1 rounded-full text-sm font-medium bg-${statusConfig?.color || 'gray'}-100 text-${statusConfig?.color || 'gray'}-700`}>
                 {statusConfig?.label || job.status}
               </span>
