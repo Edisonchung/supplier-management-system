@@ -894,8 +894,9 @@ const QuotationCreate = () => {
         <ProductSearchModal
           isOpen={showProductSearch}
           onClose={() => { setShowProductSearch(false); setEditingLineIndex(null); }}
-          onSelect={handleProductSelect}
+          onSelectProduct={handleProductSelect}
           currency={quotation.currency}
+          clientTier={quotation.clientTier}
         />
       )}
 
