@@ -120,11 +120,29 @@ const cleanFirestoreData = (obj) => {
     } else if (Array.isArray(value)) {
       // Clean arrays by filtering out undefined values and null items that shouldn't be in arrays
       const cleanedArray = value
-        .filter(item => item !== undefined && item !== null) // Remove undefined and null from arrays
+        .filter(item => item !== undefined) // Remove undefined from arrays (null is allowed)
         .map(item => {
-          if (typeof item === 'object' && item !== null && !(item instanceof Date) && !(item instanceof Timestamp)) {
+          // Handle null values in arrays
+          if (item === null) return null;
+          
+          // Handle objects in arrays
+          if (typeof item === 'object' && item !== null) {
+            // Check for Firestore Timestamp
+            if (typeof item.toDate === 'function') {
+              return item;
+            }
+            // Check for Date
+            if (item instanceof Date) {
+              return item;
+            }
+            // Check for Timestamp class
+            if (item instanceof Timestamp) {
+              return item;
+            }
+            // Recursively clean nested objects
             return cleanFirestoreData(item);
           }
+          // Keep primitives as-is
           return item;
         });
       
@@ -132,7 +150,12 @@ const cleanFirestoreData = (obj) => {
       cleaned[key] = cleanedArray;
     } else {
       // Keep primitive values (string, number, boolean, Date)
-      cleaned[key] = value;
+      // But ensure they're not undefined
+      if (value !== undefined) {
+        cleaned[key] = value;
+      } else {
+        removedFields.push(key);
+      }
     }
   }
   
@@ -141,6 +164,51 @@ const cleanFirestoreData = (obj) => {
   }
   
   return cleaned;
+};
+
+// Sanitize data when reading from Firestore to handle corrupted data
+export const sanitizeFirestoreData = (data) => {
+  if (!data || typeof data !== 'object') return data;
+  
+  // If it's an array, sanitize each item
+  if (Array.isArray(data)) {
+    return data
+      .filter(item => item !== undefined)
+      .map(item => sanitizeFirestoreData(item));
+  }
+  
+  // If it's a Firestore Timestamp or Date, return as-is
+  if (data && typeof data === 'object') {
+    if (typeof data.toDate === 'function' || data instanceof Date || data instanceof Timestamp) {
+      return data;
+    }
+  }
+  
+  // Recursively sanitize object properties
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    // Skip undefined values
+    if (value === undefined) {
+      continue;
+    }
+    
+    // Recursively sanitize nested structures
+    if (value && typeof value === 'object') {
+      if (Array.isArray(value)) {
+        sanitized[key] = value
+          .filter(item => item !== undefined)
+          .map(item => sanitizeFirestoreData(item));
+      } else if (typeof value.toDate === 'function' || value instanceof Date || value instanceof Timestamp) {
+        sanitized[key] = value;
+      } else {
+        sanitized[key] = sanitizeFirestoreData(value);
+      }
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  
+  return sanitized;
 };
 
 // Helper function to handle Firestore operations safely
@@ -294,10 +362,26 @@ export const safeGetCollection = async (collectionName, queryConstraints = []) =
     const q = queryConstraints.length > 0 ? query(collectionRef, ...queryConstraints) : collectionRef;
     const snapshot = await getDocs(q);
     
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Sanitize each document's data to handle corrupted data
+    return snapshot.docs.map(doc => {
+      try {
+        const data = doc.data();
+        // Sanitize the data to remove any undefined values or invalid structures
+        const sanitized = sanitizeFirestoreData(data);
+        return {
+          id: doc.id,
+          ...sanitized
+        };
+      } catch (error) {
+        console.error(`Error sanitizing document ${doc.id} in ${collectionName}:`, error);
+        // Return minimal document structure if sanitization fails
+        return {
+          id: doc.id,
+          _error: 'Data sanitization failed',
+          _rawData: doc.data()
+        };
+      }
+    });
   }, `getCollection(${collectionName})`);
 };
 
