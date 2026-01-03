@@ -16,7 +16,7 @@ import { useQuotations } from '../../hooks/useQuotations';
 import { useAuth } from '../../context/AuthContext';
 import QuotationService from '../../services/QuotationService';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import CrossReferenceLink from '../shared/CrossReferenceLink';
+import CrossReferenceLink from '../common/CrossReferenceLink';
 
 // Status configuration
 const STATUS_CONFIG = {
