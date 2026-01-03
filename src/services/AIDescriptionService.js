@@ -123,6 +123,51 @@ class AIDescriptionService {
   }
 
   /**
+   * Generate description - wrapper method for quotation system
+   * @param {Object} params - Product parameters
+   * @param {string} params.productId - Product ID
+   * @param {string} params.productName - Product name
+   * @param {Object} params.productSpecs - Product specifications
+   * @param {string} params.standardDescription - Standard description
+   * @param {Object} params.config - Configuration options
+   * @returns {Promise<Object>} Result with success flag and description
+   */
+  async generateDescription({ productId, productName, productSpecs = {}, standardDescription = '', config = {} }) {
+    try {
+      // Extract product info from specs or use defaults
+      const sku = productSpecs.sku || productSpecs.partNumber || '';
+      const brand = productSpecs.brand || '';
+      const category = productSpecs.category || 'Industrial Equipment';
+      const style = config.tone === 'technical' ? 'technical' : 
+                   config.tone === 'commercial' ? 'marketing' : 
+                   'professional';
+      
+      const result = await this.generateProductDescription({
+        sku,
+        brand,
+        category,
+        existingDescription: standardDescription,
+        technicalSpecs: productSpecs,
+        style
+      });
+      
+      // Return in expected format with success flag
+      return {
+        success: true,
+        description: result.description || '',
+        ...result
+      };
+    } catch (error) {
+      console.error('AI description generation error:', error);
+      return {
+        success: false,
+        description: '',
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Build the prompt for description generation
    */
   buildDescriptionPrompt({ sku, brand, category, existingDescription, technicalSpecs, style }) {

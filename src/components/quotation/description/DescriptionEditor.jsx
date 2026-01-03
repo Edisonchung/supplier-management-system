@@ -88,11 +88,26 @@ const DescriptionEditor = ({
 
   // Handle AI description generated
   const handleAIGenerated = (description) => {
-    setAiDescription(description);
+    // Ensure description is a string, not an object
+    let descriptionText = description;
+    if (typeof description === 'object' && description !== null) {
+      if (description.description) {
+        descriptionText = description.description;
+      } else {
+        console.error('DescriptionEditor: Received invalid description object:', description);
+        descriptionText = '';
+      }
+    }
+    
+    if (typeof descriptionText !== 'string') {
+      descriptionText = String(descriptionText || '');
+    }
+    
+    setAiDescription(descriptionText);
     setShowAIGenerator(false);
     setHasChanges(true);
     if (activeTab === 'ai') {
-      onChange?.(description, 'ai');
+      onChange?.(descriptionText, 'ai');
     }
     // Switch to AI tab
     handleTabChange('ai');
@@ -140,6 +155,22 @@ const DescriptionEditor = ({
   // Format description for display (handle newlines, bullets, etc.)
   const formatDescription = (text) => {
     if (!text) return null;
+    
+    // Handle objects - extract description if it's an object
+    if (typeof text === 'object' && text !== null) {
+      if (text.description) {
+        text = text.description;
+      } else {
+        console.warn('DescriptionEditor: Received object without description property:', text);
+        return null;
+      }
+    }
+    
+    // Ensure text is a string
+    if (typeof text !== 'string') {
+      console.warn('DescriptionEditor: Expected string but got:', typeof text, text);
+      return String(text || '');
+    }
     
     return text.split('\n').map((line, index) => {
       // Check for bullet points
