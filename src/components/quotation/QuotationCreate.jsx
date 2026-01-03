@@ -12,7 +12,7 @@ import {
   Users, Package, DollarSign, Truck, FileCheck, AlertCircle, Sparkles,
   Copy, Eye, ChevronDown, ChevronUp, Settings, Globe
 } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../context/AuthContext';
 import { useClients } from '../../hooks/useClients';
 import QuotationService from '../../services/QuotationService';
 import QuotationPricingService from '../../services/QuotationPricingService';

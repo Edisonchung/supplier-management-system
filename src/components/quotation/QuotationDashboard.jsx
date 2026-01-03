@@ -13,7 +13,7 @@ import {
   Users, Calendar, DollarSign, RefreshCw, AlertCircle
 } from 'lucide-react';
 import { useQuotations } from '../../hooks/useQuotations';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../context/AuthContext';
 import QuotationService from '../../services/QuotationService';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import CrossReferenceLink from '../shared/CrossReferenceLink';
