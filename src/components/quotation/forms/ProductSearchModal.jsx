@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { collection, query, where, orderBy, limit, getDocs, startAfter } from 'firebase/firestore';
 import { db } from '../../../firebase';
-import { PricingService } from '../../../services/QuotationPricingService';
+import QuotationPricingService from '../../../services/QuotationPricingService';
 
 const ProductSearchModal = ({
   isOpen,

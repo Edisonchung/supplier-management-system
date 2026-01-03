@@ -9,7 +9,7 @@ import {
   Calendar, Clock, RefreshCw, X, Check, Copy, Search
 } from 'lucide-react';
 import { QuotationService } from '../../services/QuotationService';
-import { PricingService } from '../../services/PricingService';
+import QuotationPricingService from '../../services/QuotationPricingService';
 import ContactSelector from './forms/ContactSelector';
 import ProductSearchModal from './forms/ProductSearchModal';
 import QuotationLineForm from './forms/QuotationLineForm';
@@ -190,7 +190,7 @@ const QuotationEdit = () => {
   const recalculateLinesForTier = async (newTier) => {
     const updatedLines = await Promise.all(lines.map(async (line) => {
       if (line.priceSource === 'list_price' && line.listPriceBookEntry) {
-        const pricing = await PricingService.calculateQuotationLinePricing(
+        const pricing = await QuotationPricingService.calculateQuotationLinePricing(
           line.listPriceBookEntry,
           newTier,
           line.quantity,

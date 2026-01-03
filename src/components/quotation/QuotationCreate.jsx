@@ -15,7 +15,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useClients } from '../../hooks/useClients';
 import QuotationService from '../../services/QuotationService';
-import PricingService from '../../services/PricingService';
+import QuotationPricingService from '../../services/QuotationPricingService';
 import ClientService from '../../services/ClientService';
 import QuotationHeaderForm from './forms/QuotationHeaderForm';
 import QuotationLineForm from './forms/QuotationLineForm';
@@ -158,7 +158,7 @@ const QuotationCreate = () => {
     const loadTierPricing = async () => {
       if (quotation.clientTier) {
         try {
-          const pricing = await PricingService.getTierMarkup(quotation.clientTier);
+          const pricing = await QuotationPricingService.getTierMarkup(quotation.clientTier);
           setTierPricing(pricing);
         } catch (err) {
           console.error('Error loading tier pricing:', err);
@@ -240,7 +240,7 @@ const QuotationCreate = () => {
     if (lines.length > 0 && client.tier !== quotation.clientTier) {
       const updatedLines = await Promise.all(lines.map(async (line) => {
         if (line.costPrice > 0) {
-          const pricing = await PricingService.calculateQuotationLinePricing({
+          const pricing = await QuotationPricingService.calculateQuotationLinePricing({
             ...line,
             clientTier: client.tier,
             quotationCurrency: quotation.currency
@@ -294,7 +294,7 @@ const QuotationCreate = () => {
     const lineIndex = editingLineIndex !== null ? editingLineIndex : lines.length;
     
     // Get pricing for product
-    const pricing = await PricingService.calculateQuotationLinePricing({
+    const pricing = await QuotationPricingService.calculateQuotationLinePricing({
       productId: product.id,
       brand: product.brand,
       category: product.category,
@@ -357,7 +357,7 @@ const QuotationCreate = () => {
         taxAmount: totals.tax,
         grandTotal: totals.grandTotal,
         grandTotalMYR: quotation.currency === 'MYR' ? totals.grandTotal : 
-          await PricingService.convertToMYR(totals.grandTotal, quotation.currency)
+          await QuotationPricingService.convertToMYR(totals.grandTotal, quotation.currency)
       };
 
       const result = await QuotationService.createQuotation(quotationData, lines, user.uid);

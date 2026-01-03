@@ -21,7 +21,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { QuotationService } from '../../services/QuotationService';
-import { PricingService } from '../../../services/QuotationPricingService';
+import QuotationPricingService from '../../../services/QuotationPricingService';
 
 // Company configurations
 const COMPANIES = [
