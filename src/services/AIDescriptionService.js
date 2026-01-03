@@ -151,11 +151,28 @@ class AIDescriptionService {
         style
       });
       
+      // Check if result has an error (fallback case)
+      if (result.error) {
+        return {
+          success: false,
+          description: result.description || '', // Use fallback description if available
+          error: result.error
+        };
+      }
+      
+      // Extract only the description string to avoid rendering objects
+      const descriptionText = typeof result.description === 'string' 
+        ? result.description 
+        : String(result.description || '');
+      
       // Return in expected format with success flag
       return {
         success: true,
-        description: result.description || '',
-        ...result
+        description: descriptionText,
+        style: result.style,
+        generatedAt: result.generatedAt,
+        source: result.source,
+        confidence: result.confidence
       };
     } catch (error) {
       console.error('AI description generation error:', error);

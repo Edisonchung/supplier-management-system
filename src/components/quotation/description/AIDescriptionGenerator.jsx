@@ -35,9 +35,17 @@ const AIDescriptionGenerator = ({
     includeBrand: true
   });
   
+  // Normalize existingAIDescription to ensure it's always a string
+  const normalizeDescription = (desc) => {
+    if (!desc) return '';
+    if (typeof desc === 'string') return desc;
+    if (typeof desc === 'object' && desc.description) return desc.description;
+    return String(desc);
+  };
+  
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedText, setGeneratedText] = useState(existingAIDescription);
+  const [generatedText, setGeneratedText] = useState(normalizeDescription(existingAIDescription));
   const [error, setError] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -119,7 +127,13 @@ const AIDescriptionGenerator = ({
       });
       
       if (result.success) {
-        setGeneratedText(result.description);
+        // Ensure description is always a string, not an object
+        const descriptionText = typeof result.description === 'string' 
+          ? result.description 
+          : (result.description && typeof result.description === 'object' && result.description.description)
+            ? result.description.description
+            : String(result.description || '');
+        setGeneratedText(descriptionText);
       } else {
         setError(result.error || 'Failed to generate description');
       }
@@ -145,7 +159,13 @@ const AIDescriptionGenerator = ({
   // Apply generated description
   const handleApply = () => {
     if (generatedText) {
-      onGenerated(generatedText);
+      // Ensure generatedText is always a string before passing to parent
+      const descriptionText = typeof generatedText === 'string' 
+        ? generatedText 
+        : (generatedText && typeof generatedText === 'object' && generatedText.description)
+          ? generatedText.description
+          : String(generatedText || '');
+      onGenerated(descriptionText);
     }
   };
 
@@ -411,10 +431,18 @@ const AIDescriptionGenerator = ({
               </div>
               <div className="p-4">
                 <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                  {generatedText}
+                  {typeof generatedText === 'string' 
+                    ? generatedText 
+                    : (generatedText && typeof generatedText === 'object' && generatedText.description)
+                      ? generatedText.description
+                      : String(generatedText || '')}
                 </p>
                 <div className="mt-3 text-xs text-gray-400">
-                  {generatedText.length} characters
+                  {typeof generatedText === 'string' 
+                    ? generatedText.length 
+                    : (generatedText && typeof generatedText === 'object' && generatedText.description)
+                      ? generatedText.description.length
+                      : String(generatedText || '').length} characters
                 </div>
               </div>
             </div>
