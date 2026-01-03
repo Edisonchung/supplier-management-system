@@ -358,30 +358,50 @@ export const safeUpdateDocument = async (collectionName, docId, updates) => {
 // Enhanced safe get collection
 export const safeGetCollection = async (collectionName, queryConstraints = []) => {
   return handleFirestoreOperation(async function() {
-    const collectionRef = collection(db, collectionName);
-    const q = queryConstraints.length > 0 ? query(collectionRef, ...queryConstraints) : collectionRef;
-    const snapshot = await getDocs(q);
-    
-    // Sanitize each document's data to handle corrupted data
-    return snapshot.docs.map(doc => {
-      try {
-        const data = doc.data();
-        // Sanitize the data to remove any undefined values or invalid structures
-        const sanitized = sanitizeFirestoreData(data);
-        return {
-          id: doc.id,
-          ...sanitized
-        };
-      } catch (error) {
-        console.error(`Error sanitizing document ${doc.id} in ${collectionName}:`, error);
-        // Return minimal document structure if sanitization fails
-        return {
-          id: doc.id,
-          _error: 'Data sanitization failed',
-          _rawData: doc.data()
-        };
+    try {
+      const collectionRef = collection(db, collectionName);
+      const q = queryConstraints.length > 0 ? query(collectionRef, ...queryConstraints) : collectionRef;
+      const snapshot = await getDocs(q);
+      
+      // Sanitize each document's data to handle corrupted data
+      const results = [];
+      for (const doc of snapshot.docs) {
+        try {
+          // Try to get data - this might fail if document is corrupted
+          const data = doc.data();
+          // Sanitize the data to remove any undefined values or invalid structures
+          const sanitized = sanitizeFirestoreData(data);
+          results.push({
+            id: doc.id,
+            ...sanitized
+          });
+        } catch (docError) {
+          // If individual document fails, log and skip it
+          console.warn(`⚠️ Skipping corrupted document ${doc.id} in ${collectionName}:`, docError.message);
+          // Try to get at least the ID
+          try {
+            results.push({
+              id: doc.id,
+              _error: 'Corrupted document - skipped',
+              _errorMessage: docError.message
+            });
+          } catch (idError) {
+            // Even getting the ID failed, skip entirely
+            console.error(`❌ Could not process document in ${collectionName}:`, idError);
+          }
+        }
       }
-    });
+      
+      return results;
+    } catch (error) {
+      // If the entire query fails due to corrupted data, return empty array
+      if (error.message && error.message.includes('nullValue')) {
+        console.error(`❌ Collection ${collectionName} contains corrupted data that cannot be read. Returning empty array.`);
+        return [];
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }, `getCollection(${collectionName})`);
 };
 
