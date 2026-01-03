@@ -360,12 +360,26 @@ const QuotationCreate = () => {
           await QuotationPricingService.convertToMYR(totals.grandTotal, quotation.currency)
       };
 
-      const result = await QuotationService.createQuotation(quotationData, lines, user.uid);
+      // Create quotation
+      const result = await QuotationService.createQuotation(quotationData, user);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create quotation');
+      }
+      
+      const quotationId = result.quotationNumber || result.data?.id;
+      
+      // Save all lines
+      if (lines.length > 0) {
+        for (const line of lines) {
+          await QuotationService.addQuotationLine(quotationId, line, user);
+        }
+      }
       
       if (status === 'draft') {
-        navigate(`/quotations/${result.id}/edit`);
+        navigate(`/quotations/${quotationId}/edit`);
       } else {
-        navigate(`/quotations/${result.id}`);
+        navigate(`/quotations/${quotationId}`);
       }
     } catch (err) {
       console.error('Error saving quotation:', err);

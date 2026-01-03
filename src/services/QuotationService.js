@@ -20,6 +20,7 @@ import {
   writeBatch, increment
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { cleanFirestoreData } from './firebase';
 
 // ============================================================================
 // CONSTANTS
@@ -271,8 +272,11 @@ class QuotationService {
         }]
       };
       
+      // Clean data before saving to Firestore
+      const cleanedQuotation = cleanFirestoreData(quotation);
+      
       // Save to Firestore
-      await setDoc(doc(db, 'quotations', quotationNumber), quotation);
+      await setDoc(doc(db, 'quotations', quotationNumber), cleanedQuotation);
       
       console.log('✅ Quotation created:', quotationNumber);
       
@@ -509,8 +513,11 @@ class QuotationService {
         updatedAt: null
       };
       
+      // Clean data before saving to Firestore
+      const cleanedLine = cleanFirestoreData(line);
+      
       // Save line
-      await setDoc(doc(db, 'quotationLines', lineId), line);
+      await setDoc(doc(db, 'quotationLines', lineId), cleanedLine);
       
       // Recalculate quotation totals
       await this.recalculateQuotationTotals(quotationId);
