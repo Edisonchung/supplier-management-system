@@ -19,6 +19,7 @@ import {
   setDoc, updateDoc, orderBy, limit, serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { safeGetCollection } from './firebase';
 
 // ============================================================================
 // CONSTANTS
@@ -592,16 +593,13 @@ class PricingService {
         return this.tierPricingCache.get(cacheKey);
       }
       
-      // Query tier pricing configuration
-      const tierQuery = query(
-        collection(db, 'clientTierPricing'),
+      // Query tier pricing configuration using safe wrapper to handle corrupted data
+      const tierConfigs = await safeGetCollection('clientTierPricing', [
         where('tierName', '==', tierName),
         where('isActive', '!=', false)
-      );
+      ]);
       
-      const tierSnap = await getDocs(tierQuery);
-      
-      if (tierSnap.empty) {
+      if (!tierConfigs || tierConfigs.length === 0) {
         // Return default markup
         const defaultMarkup = this.getDefaultTierMarkup(tierName);
         return {
@@ -612,7 +610,7 @@ class PricingService {
         };
       }
       
-      const tierConfig = tierSnap.docs[0].data();
+      const tierConfig = tierConfigs[0];
       
       // Check for brand-specific markup
       let brandMarkup = 0;
