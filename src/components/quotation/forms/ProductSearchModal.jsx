@@ -189,7 +189,7 @@ const ProductSearchModal = ({
         );
         
         // Get tier markup
-        const tierMarkup = await QuotationPricingService.getTierMarkup(
+        const tierMarkupData = await QuotationPricingService.getTierMarkup(
           clientTier,
           product.brand,
           product.categoryId
@@ -197,9 +197,10 @@ const ProductSearchModal = ({
         
         // Calculate suggested price
         let suggestedPrice = null;
-        if (listPrice) {
+        if (listPrice && tierMarkupData) {
           const discountedCost = listPrice.listPrice * (1 - (listPrice.discountPercent || 0) / 100);
-          suggestedPrice = discountedCost * (1 + tierMarkup / 100);
+          const appliedMarkup = typeof tierMarkupData === 'object' ? tierMarkupData.appliedMarkup : tierMarkupData;
+          suggestedPrice = discountedCost * (1 + appliedMarkup / 100);
         }
         
         setPricingCache(prev => ({
@@ -207,7 +208,7 @@ const ProductSearchModal = ({
           [product.id]: {
             listPrice: listPrice?.listPrice,
             discountPercent: listPrice?.discountPercent,
-            tierMarkup,
+            tierMarkup: tierMarkupData,
             suggestedPrice,
             currency: listPrice?.currency || 'MYR'
           }
@@ -580,7 +581,7 @@ const ProductSearchModal = ({
                                   )}
                                   {pricing.tierMarkup && (
                                     <div className="text-xs text-blue-600">
-                                      +{pricing.tierMarkup}% tier markup
+                                      +{typeof pricing.tierMarkup === 'object' ? pricing.tierMarkup.appliedMarkup : pricing.tierMarkup}% tier markup
                                     </div>
                                   )}
                                 </>

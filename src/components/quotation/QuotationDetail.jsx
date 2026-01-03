@@ -465,7 +465,13 @@ const QuotationDetail = () => {
                       </div>
                       <div>
                         <div className="text-gray-500 mb-1">Tier Markup</div>
-                        <div className="font-medium">{line.pricing?.tierMarkup || 0}%</div>
+                        <div className="font-medium">
+                          {typeof line.pricing?.tierMarkup === 'object' 
+                            ? line.pricing.tierMarkup.appliedMarkup 
+                            : typeof line.tierMarkup === 'object'
+                            ? line.tierMarkup.appliedMarkup
+                            : line.pricing?.tierMarkup || line.tierMarkup || 0}%
+                        </div>
                       </div>
                       <div>
                         <div className="text-gray-500 mb-1">Margin</div>
