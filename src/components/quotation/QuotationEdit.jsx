@@ -8,7 +8,7 @@ import {
   Package, User, Building2, FileText, DollarSign, Calculator,
   Calendar, Clock, RefreshCw, X, Check, Copy, Search
 } from 'lucide-react';
-import { QuotationService } from '../../services/QuotationService';
+import QuotationService from '../../services/QuotationService';
 import QuotationPricingService from '../../services/QuotationPricingService';
 import ContactSelector from './forms/ContactSelector';
 import ProductSearchModal from './forms/ProductSearchModal';

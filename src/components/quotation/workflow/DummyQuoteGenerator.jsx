@@ -20,7 +20,7 @@ import {
   X,
   Sparkles
 } from 'lucide-react';
-import { QuotationService } from '../../services/QuotationService';
+import QuotationService from '../../../services/QuotationService';
 import QuotationPricingService from '../../../services/QuotationPricingService';
 
 // Company configurations
