@@ -102,7 +102,7 @@ const QuotationDashboard = () => {
     };
   }, [quotations]);
 
-  const handleCreateNew = () => navigate('/quotations/new');
+  const handleCreateNew = () => navigate('/quotations/create');
   const handleView = (id) => navigate(`/quotations/${id}`);
   const handleEdit = (id) => navigate(`/quotations/${id}/edit`);
   
