@@ -205,7 +205,8 @@ const QuotationCreate = () => {
 
   const handleClientSelect = async (client) => {
     setSelectedClient(client);
-    const clientContacts = await ClientService.getClientContacts(client.id);
+    const contactsResponse = await ClientService.getClientContacts(client.id);
+    const clientContacts = contactsResponse?.data || [];
     const primaryContact = clientContacts.find(c => c.isPrimary) || clientContacts[0];
     
     setQuotation(prev => ({
