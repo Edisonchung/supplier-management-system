@@ -8,7 +8,7 @@ import {
   collection, doc, getDoc, setDoc, updateDoc,
   query, where, orderBy, limit, getDocs, Timestamp 
 } from 'firebase/firestore';
-import { db } from '../../../firebase';
+import { db } from '../../../config/firebase';
 
 /**
  * NettPriceEntry - Enter and manage nett prices for products

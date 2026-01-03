@@ -7,7 +7,7 @@ import {
   Calendar, DollarSign, Building2, Check, AlertCircle,
   Link2, Unlink
 } from 'lucide-react';
-import { db } from '../../../firebase';
+import { db } from '../../../config/firebase';
 import { 
   collection, doc, getDoc, getDocs, query, where, 
   updateDoc, arrayUnion, arrayRemove, orderBy, limit 

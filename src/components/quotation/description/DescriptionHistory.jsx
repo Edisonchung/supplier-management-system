@@ -8,7 +8,7 @@ import {
   collection, query, where, orderBy, limit, 
   getDocs, Timestamp 
 } from 'firebase/firestore';
-import { db } from '../../../firebase';
+import { db } from '../../../config/firebase';
 
 /**
  * DescriptionHistory - View and restore previous description versions

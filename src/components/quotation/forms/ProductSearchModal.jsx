@@ -23,7 +23,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { collection, query, where, orderBy, limit, getDocs, startAfter } from 'firebase/firestore';
-import { db } from '../../../firebase';
+import { db } from '../../../config/firebase';
 import QuotationPricingService from '../../../services/QuotationPricingService';
 
 const ProductSearchModal = ({

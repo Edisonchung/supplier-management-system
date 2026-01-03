@@ -28,7 +28,7 @@ import {
   Mail,
   Bell
 } from 'lucide-react';
-import { db } from '../../../firebase';
+import { db } from '../../../config/firebase';
 import {
   doc,
   getDoc,

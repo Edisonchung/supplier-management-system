@@ -21,7 +21,7 @@ import {
   Building2
 } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '../../../firebase';
+import { db } from '../../../config/firebase';
 
 // Delivery terms (Incoterms)
 const DELIVERY_TERMS = [

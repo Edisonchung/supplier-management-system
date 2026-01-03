@@ -21,7 +21,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '../../../firebase';
+import { db } from '../../../config/firebase';
 
 const ContactSelector = ({
   clientId,
