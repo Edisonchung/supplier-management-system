@@ -240,12 +240,16 @@ const QuotationCreate = () => {
     if (lines.length > 0 && client.tier !== quotation.clientTier) {
       const updatedLines = await Promise.all(lines.map(async (line) => {
         if (line.costPrice > 0) {
-          const pricing = await QuotationPricingService.calculateQuotationLinePricing({
-            ...line,
-            clientTier: client.tier,
-            quotationCurrency: quotation.currency
-          });
-          return { ...line, ...pricing };
+          const pricing = await QuotationPricingService.calculateQuotationLinePricing(
+            line,
+            client.tier || quotation.clientTier || 'end_user',
+            quotation.currency || 'MYR'
+          );
+          // Remove undefined values from pricing before spreading
+          const cleanedPricing = Object.fromEntries(
+            Object.entries(pricing || {}).filter(([_, v]) => v !== undefined)
+          );
+          return { ...line, ...cleanedPricing };
         }
         return line;
       }));
@@ -294,13 +298,31 @@ const QuotationCreate = () => {
     const lineIndex = editingLineIndex !== null ? editingLineIndex : lines.length;
     
     // Get pricing for product
-    const pricing = await QuotationPricingService.calculateQuotationLinePricing({
-      productId: product.id,
-      brand: product.brand,
-      category: product.category,
-      clientTier: quotation.clientTier,
-      quotationCurrency: quotation.currency
-    });
+    let pricing = {};
+    try {
+      const pricingResult = await QuotationPricingService.calculateQuotationLinePricing(
+        {
+          productId: product.id,
+          brand: product.brand,
+          category: product.category,
+          partNumber: product.partNumber || product.sku,
+          quantity: 1
+        },
+        quotation.clientTier || 'end_user',
+        quotation.currency || 'MYR'
+      );
+      
+      // Ensure pricing is an object and clean it
+      if (pricingResult && typeof pricingResult === 'object') {
+        // Remove any undefined values from pricing object
+        pricing = Object.fromEntries(
+          Object.entries(pricingResult).filter(([_, v]) => v !== undefined)
+        );
+      }
+    } catch (err) {
+      console.error('Error calculating pricing:', err);
+      // Continue with empty pricing object
+    }
 
     const newLine = {
       ...DEFAULT_LINE,

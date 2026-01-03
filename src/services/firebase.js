@@ -28,6 +28,7 @@ import {
   orderBy,
   limit,
   serverTimestamp,
+  Timestamp,
   onSnapshot,
   enableNetwork,
   disableNetwork,
@@ -48,7 +49,20 @@ console.log('Using centralized Firebase configuration from services layer');
 
 // Enhanced clean data helper function with PAYMENT PROTECTION
 const cleanFirestoreData = (obj) => {
-  if (typeof obj !== 'object' || obj === null) return obj;
+  // Handle primitives and null
+  if (obj === null) return null;
+  if (obj === undefined) return undefined; // This will be filtered out by caller
+  if (typeof obj !== 'object') return obj;
+  
+  // Handle Firestore Timestamp
+  if (obj && typeof obj === 'object' && typeof obj.toDate === 'function') {
+    return obj;
+  }
+  
+  // Handle Date objects
+  if (obj instanceof Date) {
+    return obj;
+  }
   
   const cleaned = {};
   const removedFields = [];
@@ -89,26 +103,33 @@ const cleanFirestoreData = (obj) => {
     }
     
     // Recursively clean nested objects
-    if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+    // Check for Firestore Timestamp by checking for toDate method
+    const isFirestoreTimestamp = value && typeof value === 'object' && typeof value.toDate === 'function';
+    if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date) && !isFirestoreTimestamp && value !== null) {
       const nestedCleaned = cleanFirestoreData(value);
-      // Only include non-empty objects
+      // Only include non-empty objects (but allow objects with only null values if needed)
       if (Object.keys(nestedCleaned).length > 0) {
         cleaned[key] = nestedCleaned;
       } else {
+        // Remove empty objects to avoid Firestore errors
         removedFields.push(key);
       }
+    } else if (isFirestoreTimestamp) {
+      // Preserve Firestore Timestamp objects as-is
+      cleaned[key] = value;
     } else if (Array.isArray(value)) {
-      // Clean arrays by filtering out undefined values
+      // Clean arrays by filtering out undefined values and null items that shouldn't be in arrays
       const cleanedArray = value
-        .map(item => typeof item === 'object' && item !== null ? cleanFirestoreData(item) : item)
-        .filter(item => item !== undefined);
+        .filter(item => item !== undefined && item !== null) // Remove undefined and null from arrays
+        .map(item => {
+          if (typeof item === 'object' && item !== null && !(item instanceof Date) && !(item instanceof Timestamp)) {
+            return cleanFirestoreData(item);
+          }
+          return item;
+        });
       
-      if (cleanedArray.length > 0) {
-        cleaned[key] = cleanedArray;
-      } else {
-        // Keep empty arrays for non-important fields, remove only if not important
-        cleaned[key] = cleanedArray;
-      }
+      // Always keep arrays (even if empty) as Firestore supports empty arrays
+      cleaned[key] = cleanedArray;
     } else {
       // Keep primitive values (string, number, boolean, Date)
       cleaned[key] = value;

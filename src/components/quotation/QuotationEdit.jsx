@@ -191,16 +191,22 @@ const QuotationEdit = () => {
     const updatedLines = await Promise.all(lines.map(async (line) => {
       if (line.priceSource === 'list_price' && line.listPriceBookEntry) {
         const pricing = await QuotationPricingService.calculateQuotationLinePricing(
-          line.listPriceBookEntry,
+          {
+            ...line.listPriceBookEntry,
+            quantity: line.quantity
+          },
           newTier,
-          line.quantity,
-          quotation.currency
+          quotation.currency || 'MYR'
+        );
+        // Remove undefined values from pricing before using
+        const cleanedPricing = Object.fromEntries(
+          Object.entries(pricing || {}).filter(([_, v]) => v !== undefined)
         );
         return {
           ...line,
-          unitPrice: pricing.unitPrice,
-          tierMarkup: pricing.tierMarkup,
-          totalPrice: pricing.lineTotal,
+          unitPrice: cleanedPricing.unitPrice,
+          tierMarkup: cleanedPricing.tierMarkup,
+          totalPrice: cleanedPricing.lineTotal,
           _modified: true
         };
       }
