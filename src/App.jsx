@@ -21,6 +21,12 @@ import ProductSyncDashboard from './components/sync/ProductSyncDashboard';
 import CORSSafeSyncTest from './components/sync/CORSSafeSyncTest';
 import { JobCodeDashboard, JobCodeDetailPage, JobCodeModal } from './components/jobs';
 import { CostingDashboard, CostingSheet, CostingEntryForm, ApprovalQueue } from './components/costing';
+import { 
+  QuotationDashboard, 
+  QuotationCreate, 
+  QuotationDetail, 
+  QuotationEdit 
+} from './components/quotation';
 
 // Phase 2B Analytics Service with Real Data
 import { higgsFlowAnalytics, useHiggsFlowAnalytics } from './services/analyticsService';
@@ -1057,6 +1063,48 @@ function AppContent() {
                   <ProtectedRoute permission="canViewOrders">
                     <LazyWrapper componentName="Costing Entry Form">
                       <CostingEntryForm />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Quotation Routes */}
+              <Route 
+                path="/quotations" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Quotation Dashboard">
+                      <QuotationDashboard />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/quotations/create" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Create Quotation">
+                      <QuotationCreate />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/quotations/:id" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Quotation Detail">
+                      <QuotationDetail />
+                    </LazyWrapper>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/quotations/:id/edit" 
+                element={
+                  <ProtectedRoute permission="canViewOrders">
+                    <LazyWrapper componentName="Edit Quotation">
+                      <QuotationEdit />
                     </LazyWrapper>
                   </ProtectedRoute>
                 } 

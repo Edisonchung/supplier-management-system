@@ -554,6 +554,13 @@ const Navigation = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           permission: 'canViewOrders'
         },
         {
+          name: 'Quotations',
+          href: '/quotations',
+          icon: FileEdit,
+          description: 'Create and manage client quotations',
+          permission: 'canViewOrders'
+        },
+        {
           name: 'Client Invoices',
           href: '/client-invoices',
           icon: Receipt,
