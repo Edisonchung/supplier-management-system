@@ -254,14 +254,14 @@ const PDFConfigPanel = ({
   };
 
   // Render section
-  const renderSection = (title, fields, icon: SectionIcon) => {
+  const renderSection = (title, fields, Icon) => {
     const visibleFields = fields.filter(f => !f.adminOnly || isAdmin);
     if (visibleFields.length === 0) return null;
 
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-          <SectionIcon className="w-4 h-4 text-gray-400" />
+          <Icon className="w-4 h-4 text-gray-400" />
           {title}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
