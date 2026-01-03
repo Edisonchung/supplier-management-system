@@ -9,6 +9,12 @@ export const safeTimestampConversion = (timestamp) => {
   if (!timestamp) return null;
   
   try {
+    // Handle serverTimestamp() sentinel objects - these should not be converted
+    if (timestamp && typeof timestamp === 'object' && timestamp._methodName === 'serverTimestamp') {
+      // Return null for serverTimestamp sentinels - they will be resolved by Firestore
+      return null;
+    }
+    
     // If it's already a Date object
     if (timestamp instanceof Date) {
       return timestamp;

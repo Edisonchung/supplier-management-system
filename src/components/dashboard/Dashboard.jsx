@@ -30,6 +30,12 @@ const safeTimestampConversion = (timestamp) => {
   if (!timestamp) return null;
   
   try {
+    // Handle serverTimestamp() sentinel objects - these should not be converted
+    if (timestamp && typeof timestamp === 'object' && timestamp._methodName === 'serverTimestamp') {
+      // Return null for serverTimestamp sentinels - they will be resolved by Firestore
+      return null;
+    }
+    
     // Handle Firestore Timestamp objects
     if (timestamp && typeof timestamp.toDate === 'function') {
       return timestamp.toDate();
